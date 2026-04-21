@@ -1,0 +1,112 @@
+{
+  "name": "axiom-ai",
+  "displayName": "Axiom AI — Scaffold-Aware Developer Assistant",
+  "description": "react-app-scaffold 기반 프론트엔드 개발 AI 어시스턴트 (폐쇄망 sLLM 연동)",
+  "version": "0.1.0",
+  "publisher": "axiom",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "axiom-ai-container",
+          "title": "Axiom AI",
+          "icon": "media/axiom-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "axiom-ai-container": [
+        {
+          "type": "webview",
+          "id": "axiom-ai.chatPanel",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "axiom-ai.openChat",
+        "title": "Axiom AI: Chat 열기"
+      },
+      {
+        "command": "axiom-ai.clearHistory",
+        "title": "Axiom AI: 대화 기록 초기화"
+      }
+    ],
+    "configuration": {
+      "title": "Axiom AI",
+      "properties": {
+        "axiom-ai.endpoint": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "sLLM 서버 URL (Ollama / vLLM / LocalAI)"
+        },
+        "axiom-ai.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API 키 (Ollama 로컬의 경우 비워두세요)"
+        },
+        "axiom-ai.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:14b",
+          "description": "사용할 모델명 (서버에 등록된 모델명)"
+        },
+        "axiom-ai.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Temperature (0~1, 낮을수록 일관된 코드 생성)"
+        },
+        "axiom-ai.maxTokens": {
+          "type": "number",
+          "default": 4096,
+          "description": "최대 응답 토큰 수"
+        },
+        "axiom-ai.corpusPath": {
+          "type": "string",
+          "default": "./corpus",
+          "description": "scaffold corpus 폴더 경로 (워크스페이스 루트 기준 상대경로)"
+        },
+        "axiom-ai.maxFileLines": {
+          "type": "number",
+          "default": 200,
+          "description": "현재 파일 컨텍스트 최대 줄 수 (초과 시 잘림)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.extension.js && node esbuild.webview.js",
+    "watch": "concurrently \"node esbuild.extension.js --watch\" \"node esbuild.webview.js --watch\"",
+    "package": "vsce package --no-dependencies",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.webview.json"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "concurrently": "^8.0.0",
+    "esbuild": "^0.21.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-markdown": "^9.0.0",
+    "rehype-highlight": "^7.0.0",
+    "remark-gfm": "^4.0.0",
+    "typescript": "~5.4.0"
+  }
+}
