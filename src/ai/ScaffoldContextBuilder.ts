@@ -2,51 +2,45 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExtensionConfig } from '../config/ExtensionConfig';
+import { RagRetriever } from './RagRetriever';
 import type { EditorContext } from './EditorContextCollector';
 
 export class ScaffoldContextBuilder {
-  private cachedDocs: string | null = null;
+  private readonly _retriever = new RagRetriever();
+  private _corpusDir: string | null | undefined = undefined; // undefined = 아직 탐색 전
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
-  private findCorpusDir(): string | null {
-    const extensionUri = this.extensionUri;
-    // 1순위: 열린 워크스페이스의 corpus (항상 최신)
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders) {
-      for (const folder of folders) {
-        const candidate = path.resolve(folder.uri.fsPath, ExtensionConfig.getCorpusPath());
-        if (fs.existsSync(candidate)) return candidate;
-      }
+  /**
+   * corpus 디렉터리를 확인하고 RAG 인덱스 빌드를 백그라운드에서 시작한다.
+   * activate 시점에 호출하면 첫 채팅 전에 인덱스가 준비된다.
+   */
+  startIndexBuild(): void {
+    const dir = this._getCorpusDir();
+    if (dir) {
+      this._retriever.buildIndex(dir).catch((err) => {
+        console.error('[axiom-ai] RAG 인덱스 빌드 실패:', err);
+      });
     }
-
-    // 2순위: 확장 프로그램에 번들된 corpus (오프라인 폴백)
-    const bundled = vscode.Uri.joinPath(extensionUri, 'corpus').fsPath;
-    return fs.existsSync(bundled) ? bundled : null;
   }
 
-  private loadDocs(corpusDir: string): string {
-    const docsDir = path.join(corpusDir, 'scaffold-docs');
-    if (!fs.existsSync(docsDir)) return '';
+  /**
+   * 사용자 질문과 관련된 corpus 청크만 골라 시스템 프롬프트를 조립한다.
+   * RAG 인덱스가 준비되지 않은 경우 scaffold 문서 섹션을 빈 문자열로 처리한다.
+   */
+  async buildSystemPrompt(ctx: EditorContext, userQuery: string): Promise<string> {
+    const corpusDir = this._getCorpusDir();
 
-    return fs
-      .readdirSync(docsDir)
-      .filter((f) => f.endsWith('.md'))
-      .sort()
-      .map((file) => {
-        const content = fs.readFileSync(path.join(docsDir, file), 'utf-8');
-        return `## [${file}]\n\n${content}`;
-      })
-      .join('\n\n---\n\n');
-  }
-
-  buildSystemPrompt(ctx: EditorContext): string {
-    if (!this.cachedDocs) {
-      const corpusDir = this.findCorpusDir();
-      this.cachedDocs = corpusDir
-        ? this.loadDocs(corpusDir)
-        : '(corpus 문서를 찾을 수 없습니다. axiom-ai.corpusPath 설정을 확인하세요.)';
+    // 인덱스가 아직 없으면 빌드 시작 (startIndexBuild 를 건너뛴 경우 대비)
+    if (corpusDir && !this._retriever.isReady()) {
+      this._retriever.buildIndex(corpusDir).catch((err) => {
+        console.error('[axiom-ai] RAG 인덱스 빌드 실패:', err);
+      });
     }
+
+    const ragDocs = corpusDir
+      ? await this._retriever.retrieve(userQuery)
+      : '(corpus 문서를 찾을 수 없습니다. axiom-ai.corpusPath 설정을 확인하세요.)';
 
     const fileSection = ctx.available
       ? [
@@ -58,6 +52,10 @@ export class ScaffoldContextBuilder {
             ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
             : '',
         ].join('\n')
+      : '';
+
+    const scaffoldSection = ragDocs
+      ? `## Scaffold 문서 (관련 항목)\n${ragDocs}`
       : '';
 
     return `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
@@ -74,12 +72,31 @@ export class ScaffoldContextBuilder {
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
 해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)
 
-## Scaffold 문서
-${this.cachedDocs}${fileSection}`;
+${scaffoldSection}${fileSection}`;
   }
 
-  /** corpus 내용이 변경된 경우 캐시를 초기화한다 */
-  invalidateCache(): void {
-    this.cachedDocs = null;
+  /** corpus 파일이 변경된 경우 RAG 인덱스를 재빌드한다. */
+  invalidateAndRebuild(): void {
+    this._retriever.reset();
+    this.startIndexBuild();
+  }
+
+  private _getCorpusDir(): string | null {
+    if (this._corpusDir !== undefined) return this._corpusDir;
+
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders) {
+      for (const folder of folders) {
+        const candidate = path.resolve(folder.uri.fsPath, ExtensionConfig.getCorpusPath());
+        if (fs.existsSync(candidate)) {
+          this._corpusDir = candidate;
+          return candidate;
+        }
+      }
+    }
+
+    const bundled = vscode.Uri.joinPath(this.extensionUri, 'corpus').fsPath;
+    this._corpusDir = fs.existsSync(bundled) ? bundled : null;
+    return this._corpusDir;
   }
 }

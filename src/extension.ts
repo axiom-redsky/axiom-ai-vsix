@@ -38,6 +38,13 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   registerCommands(context, launcherProvider);
+
+  // corpus 파일 변경 감시 등록
+  chatProvider.registerCorpusWatcher(context);
+
+  // RAG 임베딩 인덱스를 백그라운드에서 미리 빌드 시작
+  // (첫 채팅 전에 준비되도록 activate 시점에 실행)
+  chatProvider.startIndexBuild();
 }
 
 export function deactivate(): void {}

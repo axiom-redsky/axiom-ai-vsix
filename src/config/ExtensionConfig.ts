@@ -1,6 +1,13 @@
 import { AI_DEFAULTS } from '../ai/config';
 import type { LlmConfig } from '../ai/types';
 
+export interface RagConfig {
+  embeddingModel: string;
+  chunkSize: number;
+  chunkOverlap: number;
+  topK: number;
+}
+
 export class ExtensionConfig {
   static getLlmConfig(): LlmConfig {
     return {
@@ -18,5 +25,9 @@ export class ExtensionConfig {
 
   static getMaxFileLines(): number {
     return AI_DEFAULTS.maxFileLines;
+  }
+
+  static getRagConfig(): RagConfig {
+    return { ...AI_DEFAULTS.rag };
   }
 }

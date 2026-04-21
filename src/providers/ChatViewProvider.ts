@@ -67,6 +67,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._history = [];
   }
 
+  /** corpus 파일 변경 시 RAG 인덱스를 재빌드하는 파일 와처를 등록한다. */
+  registerCorpusWatcher(context: vscode.ExtensionContext): void {
+    const corpusPath = ExtensionConfig.getCorpusPath();
+    const pattern = new vscode.RelativePattern(
+      vscode.workspace.workspaceFolders?.[0] ?? this._extensionUri,
+      `${corpusPath}/scaffold-docs/**/*.md`,
+    );
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+    const rebuild = () => this._scaffoldBuilder.invalidateAndRebuild();
+    context.subscriptions.push(
+      watcher,
+      watcher.onDidChange(rebuild),
+      watcher.onDidCreate(rebuild),
+      watcher.onDidDelete(rebuild),
+    );
+  }
+
+  /** RAG 인덱스 빌드를 백그라운드에서 시작한다. */
+  startIndexBuild(): void {
+    this._scaffoldBuilder.startIndexBuild();
+  }
+
   private async _handleMessage(text: string): Promise<void> {
     if (!this._view) return;
 
@@ -80,7 +103,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const editorCtx = this._editorCollector.collect();
-      const systemPrompt = this._scaffoldBuilder.buildSystemPrompt(editorCtx);
+      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text);
 
       const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },

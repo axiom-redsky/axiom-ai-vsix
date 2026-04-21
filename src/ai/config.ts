@@ -11,4 +11,14 @@ export const AI_DEFAULTS = {
   maxTokens: 4096,
   corpusPath: './corpus',
   maxFileLines: 200,
+  rag: {
+    /** 로컬 임베딩 모델 (transformers.js, 첫 실행 시 자동 다운로드 후 캐시) */
+    embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+    /** 헤더 분할 후 재분할 기준 글자 수 */
+    chunkSize: 600,
+    /** 슬라이딩 윈도우 오버랩 글자 수 */
+    chunkOverlap: 100,
+    /** 프롬프트에 삽입할 상위 청크 수 */
+    topK: 5,
+  },
 } as const;

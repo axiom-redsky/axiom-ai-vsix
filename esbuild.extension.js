@@ -7,7 +7,7 @@ async function main() {
     entryPoints: ['src/extension.ts'],
     bundle: true,
     outfile: 'dist/extension.js',
-    external: ['vscode'],   // vscode는 런타임에 제공 — 절대 번들하지 않음
+    external: ['vscode', '@xenova/transformers', 'onnxruntime-node'],
     format: 'cjs',
     platform: 'node',
     target: 'node18',
