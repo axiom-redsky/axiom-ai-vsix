@@ -1,12 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { HostToWebviewMessage, WebviewToHostMessage } from '../../../types/messages';
-
-declare function acquireVsCodeApi(): {
-  postMessage(message: WebviewToHostMessage): void;
-};
-
-// acquireVsCodeApi()는 페이지 생명주기 동안 딱 한 번만 호출해야 한다
-const vscode = acquireVsCodeApi();
+import { vscode } from '../../vscodeApi';
+import type { HostToWebviewMessage } from '../../../types/messages';
 
 export interface Message {
   id: string;
@@ -31,7 +25,6 @@ export function useChat() {
       switch (msg.type) {
         case 'token': {
           if (!streamingIdRef.current) {
-            // 새 스트리밍 메시지 시작
             const id = Date.now().toString();
             streamingIdRef.current = id;
             setIsStreaming(true);
@@ -70,7 +63,12 @@ export function useChat() {
             }
             return [
               ...prev,
-              { id: Date.now().toString(), role: 'assistant', content: `오류: ${msg.message}`, isError: true },
+              {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `오류: ${msg.message}`,
+                isError: true,
+              },
             ];
           });
           streamingIdRef.current = null;

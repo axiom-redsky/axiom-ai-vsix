@@ -10,7 +10,7 @@ async function main() {
     format: 'esm',
     platform: 'browser',
     target: 'chrome114',    // VS Code 1.85+ Electron의 Chromium 버전
-    loader: { '.tsx': 'tsx', '.ts': 'ts' },
+    loader: { '.tsx': 'tsx', '.ts': 'ts', '.css': 'css' },
     sourcemap: true,
     define: { 'process.env.NODE_ENV': '"production"' },
   });

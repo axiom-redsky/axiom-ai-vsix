@@ -1,17 +1,11 @@
 import * as vscode from 'vscode';
 import type { ChatPanelProvider } from '../providers/ChatPanelProvider';
 
+// extension.ts에서 openChat / clearHistory를 직접 등록하므로,
+// 여기서는 추가 커맨드가 생길 경우에만 등록한다.
 export function registerCommands(
-  context: vscode.ExtensionContext,
-  provider: ChatPanelProvider,
+  _context: vscode.ExtensionContext,
+  _provider: ChatPanelProvider,
 ): void {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('axiom-ai.openChat', () => {
-      vscode.commands.executeCommand('axiom-ai.chatPanel.focus');
-    }),
-    vscode.commands.registerCommand('axiom-ai.clearHistory', () => {
-      provider.clearHistory();
-      vscode.window.showInformationMessage('Axiom AI: 대화 기록이 초기화되었습니다.');
-    }),
-  );
+  // reserved for future commands
 }

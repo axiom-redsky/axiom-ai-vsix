@@ -4,9 +4,10 @@ import type { Message } from '../hooks/useChat';
 
 interface Props {
   messages: Message[];
+  isStreaming: boolean;
 }
 
-export function MessageList({ messages }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming }: Props): React.ReactElement {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -17,13 +18,23 @@ export function MessageList({ messages }: Props): React.ReactElement {
     <div className="message-list">
       {messages.length === 0 && (
         <div className="empty-state">
-          <p>Axiom AI에게 질문하세요.</p>
-          <p className="hint">예: "useApi로 GET 요청하는 코드 짜줘"</p>
+          <div className="empty-state__icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" opacity="0.35">
+              <path fill="currentColor" d="M18.164,7.931V5.085c0.769-0.359,1.262-1.13,1.266-1.978V3.04c-0.003-1.21-0.983-2.189-2.193-2.193H17.17   c-1.21,0.003-2.189,0.983-2.193,2.193v0.067c0.004,0.849,0.497,1.619,1.266,1.978v2.852c-1.083,0.166-2.103,0.614-2.957,1.301   L5.458,3.142C5.814,1.81,5.023,0.441,3.69,0.085S0.989,0.521,0.633,1.853s0.436,2.701,1.768,3.057   c0.637,0.17,1.316,0.081,1.888-0.247l7.696,5.991c-1.419,2.14-1.38,4.931,0.096,7.032l-2.342,2.342   c-0.188-0.06-0.384-0.092-0.581-0.095c-1.123,0-2.033,0.91-2.033,2.033C7.125,23.09,8.035,24,9.158,24   c1.123,0,2.033-0.91,2.033-2.033l0,0c-0.003-0.197-0.035-0.393-0.095-0.581l2.317-2.317c2.742,2.094,6.662,1.569,8.756-1.172   s1.569-6.662-1.172-8.756c-0.83-0.634-1.806-1.05-2.838-1.209 M17.2,17.308c-1.77-0.004-3.202-1.443-3.198-3.213   c0.004-1.77,1.443-3.202,3.213-3.198c1.768,0.004,3.199,1.439,3.198,3.207c0,1.77-1.435,3.205-3.205,3.205"/>
+            </svg>
+          </div>
+          <p className="empty-state__title">Axiom AI에게 질문하세요</p>
+          <p className="empty-state__hint">코드 작성, 버그 수정, scaffold 구조 설명 등</p>
         </div>
       )}
       {messages.map((msg) => (
         <MessageItem key={msg.id} message={msg} />
       ))}
+      {isStreaming && (
+        <div className="typing-indicator">
+          <span /><span /><span />
+        </div>
+      )}
       <div ref={bottomRef} />
     </div>
   );

@@ -3,7 +3,8 @@ export type WebviewToHostMessage =
   | { type: 'sendMessage'; text: string }
   | { type: 'stopMessage' }
   | { type: 'clearHistory' }
-  | { type: 'ready' };
+  | { type: 'ready' }
+  | { type: 'openChat' };
 
 // Extension Host → WebView
 export type HostToWebviewMessage =

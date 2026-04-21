@@ -24,6 +24,13 @@
           "title": "Axiom AI",
           "icon": "media/axiom-ai.svg"
         }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "axiom-ai-chat-container",
+          "title": "Axiom AI Chat",
+          "icon": "media/axiom-ai.svg"
+        }
       ]
     },
     "views": {
@@ -31,20 +38,44 @@
         {
           "type": "webview",
           "id": "axiom-ai.chatPanel",
-          "name": "Chat"
+          "name": "Axiom AI",
+          "visibility": "visible"
+        }
+      ],
+      "axiom-ai-chat-container": [
+        {
+          "type": "webview",
+          "id": "axiom-ai.chatView",
+          "name": "Chat",
+          "visibility": "visible"
         }
       ]
     },
     "commands": [
       {
         "command": "axiom-ai.openChat",
-        "title": "Axiom AI: Chat 열기"
+        "title": "Axiom AI: 채팅 창 열기",
+        "icon": "$(comment-discussion)"
       },
       {
         "command": "axiom-ai.clearHistory",
         "title": "Axiom AI: 대화 기록 초기화"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "axiom-ai.openChat",
+          "when": "view == axiom-ai.chatPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "axiom-ai.clearHistory",
+          "when": "view == axiom-ai.chatView",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "node esbuild.extension.js && node esbuild.webview.js",

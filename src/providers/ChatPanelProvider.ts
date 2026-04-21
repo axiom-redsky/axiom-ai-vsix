@@ -1,26 +1,13 @@
 import * as vscode from 'vscode';
-import { LlmService } from '../ai/LlmService';
-import { EditorContextCollector } from '../ai/EditorContextCollector';
-import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import type { ChatMessage } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage } from '../types/messages';
 
 export class ChatPanelProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'axiom-ai.chatPanel';
 
   private _view?: vscode.WebviewView;
-  private _history: ChatMessage[] = [];
-  private _abortController?: AbortController;
 
-  private readonly _llm = new LlmService();
-  private readonly _editorCollector: EditorContextCollector;
-  private readonly _scaffoldBuilder: ScaffoldContextBuilder;
-
-  constructor(private readonly _extensionUri: vscode.Uri) {
-    this._editorCollector = new EditorContextCollector(ExtensionConfig.getMaxFileLines());
-    this._scaffoldBuilder = new ScaffoldContextBuilder(_extensionUri);
-  }
+  constructor(private readonly _extensionUri: vscode.Uri) {}
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -39,66 +26,22 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (msg: WebviewToHostMessage) => {
       switch (msg.type) {
         case 'ready':
-          this._postStatus('준비됨');
+          this._postStatus(ExtensionConfig.getLlmConfig().model);
           break;
-        case 'sendMessage':
-          await this._handleMessage(msg.text);
-          break;
-        case 'stopMessage':
-          this._abortController?.abort();
+        case 'openChat':
+          // extension.ts에 등록된 axiom-ai.openChat 커맨드를 실행한다.
+          // (Secondary Side Bar 이동 + 채팅 뷰 포커스 로직이 모두 포함되어 있다)
+          vscode.commands.executeCommand('axiom-ai.openChat');
           break;
         case 'clearHistory':
-          this._history = [];
+          vscode.commands.executeCommand('axiom-ai.clearHistory');
           break;
       }
     });
   }
 
   clearHistory(): void {
-    this._history = [];
-  }
-
-  private async _handleMessage(text: string): Promise<void> {
-    if (!this._view) return;
-
-    // 진행 중인 요청 취소
-    this._abortController?.abort();
-    this._abortController = new AbortController();
-
-    this._history.push({ role: 'user', content: text });
-
-    const config = ExtensionConfig.getLlmConfig();
-
-    this._postStatus(`${config.model} 응답 중…`);
-
-    try {
-      const editorCtx = this._editorCollector.collect();
-      const systemPrompt = this._scaffoldBuilder.buildSystemPrompt(editorCtx);
-
-      const messages: ChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        ...this._history,
-      ];
-      let fullResponse = '';
-
-      for await (const token of this._llm.streamChat(messages, config, this._abortController.signal)) {
-        fullResponse += token;
-        this._post({ type: 'token', content: token });
-      }
-
-      this._history.push({ role: 'assistant', content: fullResponse });
-      this._post({ type: 'done' });
-      this._postStatus(config.model);
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        this._post({ type: 'done' });
-        this._postStatus(config.model);
-        return;
-      }
-      const msg = err instanceof Error ? err.message : '알 수 없는 오류';
-      this._post({ type: 'error', message: msg });
-      this._postStatus('오류 발생');
-    }
+    // ChatViewProvider의 clearHistory는 extension.ts에서 직접 호출한다.
   }
 
   private _postStatus(text: string): void {
@@ -113,11 +56,15 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'),
     );
+    const cssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.css'),
+    );
     const nonce = Array.from(
       { length: 32 },
-      () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
-        Math.floor(Math.random() * 62)
-      ],
+      () =>
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
+          Math.floor(Math.random() * 62)
+        ],
     ).join('');
 
     return `<!DOCTYPE html>
@@ -128,10 +75,12 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none';
              script-src 'nonce-${nonce}';
-             style-src ${webview.cspSource} 'unsafe-inline';" />
+             style-src ${webview.cspSource} 'unsafe-inline';
+             font-src ${webview.cspSource};" />
+  <link rel="stylesheet" href="${cssUri}" />
   <title>Axiom AI</title>
 </head>
-<body>
+<body data-mode="launcher">
   <div id="root"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

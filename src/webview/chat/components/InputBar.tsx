@@ -14,7 +14,9 @@ export function InputBar({ onSend, onStop, isStreaming }: Props): React.ReactEle
     if (!value.trim() || isStreaming) return;
     onSend(value.trim());
     setValue('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -32,33 +34,48 @@ export function InputBar({ onSend, onStop, isStreaming }: Props): React.ReactEle
 
   return (
     <div className="input-bar">
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={handleInput}
-        onKeyDown={handleKeyDown}
-        placeholder="질문 입력… (Enter: 전송, Shift+Enter: 줄바꿈)"
-        disabled={isStreaming}
-        rows={1}
-        className="input-bar__textarea"
-      />
-      {isStreaming ? (
-        <button
-          onClick={onStop}
-          className="input-bar__button input-bar__button--stop"
-          title="응답 중단"
-        >
-          ■ 중단
-        </button>
-      ) : (
-        <button
-          onClick={submit}
-          disabled={!value.trim()}
-          className="input-bar__button"
-        >
-          전송
-        </button>
-      )}
+      <div className="input-bar__inner">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder="질문을 입력하세요… (Enter: 전송 / Shift+Enter: 줄바꿈)"
+          disabled={isStreaming}
+          rows={1}
+          className="input-bar__textarea"
+        />
+        <div className="input-bar__actions">
+          {isStreaming ? (
+            <button
+              onClick={onStop}
+              className="input-bar__btn input-bar__btn--stop"
+              title="응답 중단"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <rect x="2" y="2" width="10" height="10" rx="1" />
+              </svg>
+              중단
+            </button>
+          ) : (
+            <button
+              onClick={submit}
+              disabled={!value.trim()}
+              className="input-bar__btn input-bar__btn--send"
+              title="전송 (Enter)"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path
+                  d="M12 7L2 12L4.5 7L2 2L12 7Z"
+                  fill="currentColor"
+                />
+              </svg>
+              전송
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈</p>
     </div>
   );
 }
