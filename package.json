@@ -44,49 +44,7 @@
         "command": "axiom-ai.clearHistory",
         "title": "Axiom AI: 대화 기록 초기화"
       }
-    ],
-    "configuration": {
-      "title": "Axiom AI",
-      "properties": {
-        "axiom-ai.endpoint": {
-          "type": "string",
-          "default": "http://localhost:11434",
-          "description": "sLLM 서버 URL (Ollama / vLLM / LocalAI)"
-        },
-        "axiom-ai.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "API 키 (Ollama 로컬의 경우 비워두세요)"
-        },
-        "axiom-ai.model": {
-          "type": "string",
-          "default": "qwen2.5-coder:14b",
-          "description": "사용할 모델명 (서버에 등록된 모델명)"
-        },
-        "axiom-ai.temperature": {
-          "type": "number",
-          "default": 0.2,
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Temperature (0~1, 낮을수록 일관된 코드 생성)"
-        },
-        "axiom-ai.maxTokens": {
-          "type": "number",
-          "default": 4096,
-          "description": "최대 응답 토큰 수"
-        },
-        "axiom-ai.corpusPath": {
-          "type": "string",
-          "default": "./corpus",
-          "description": "scaffold corpus 폴더 경로 (워크스페이스 루트 기준 상대경로)"
-        },
-        "axiom-ai.maxFileLines": {
-          "type": "number",
-          "default": 200,
-          "description": "현재 파일 컨텍스트 최대 줄 수 (초과 시 잘림)"
-        }
-      }
-    }
+    ]
   },
   "scripts": {
     "compile": "node esbuild.extension.js && node esbuild.webview.js",

@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import { LlmService } from '../services/LlmService';
-import { EditorContextCollector } from '../context/EditorContextCollector';
-import { ScaffoldContextBuilder } from '../context/ScaffoldContextBuilder';
+import { LlmService } from '../ai/LlmService';
+import { EditorContextCollector } from '../ai/EditorContextCollector';
+import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import type { ChatMessage, WebviewToHostMessage, HostToWebviewMessage } from '../types/llm';
+import type { ChatMessage } from '../ai/types';
+import type { WebviewToHostMessage, HostToWebviewMessage } from '../types/messages';
 
 export class ChatPanelProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'axiom-ai.chatPanel';
@@ -14,10 +15,11 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
   private readonly _llm = new LlmService();
   private readonly _editorCollector: EditorContextCollector;
-  private readonly _scaffoldBuilder = new ScaffoldContextBuilder();
+  private readonly _scaffoldBuilder: ScaffoldContextBuilder;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._editorCollector = new EditorContextCollector(ExtensionConfig.getMaxFileLines());
+    this._scaffoldBuilder = new ScaffoldContextBuilder(_extensionUri);
   }
 
   resolveWebviewView(
@@ -42,6 +44,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         case 'sendMessage':
           await this._handleMessage(msg.text);
           break;
+        case 'stopMessage':
+          this._abortController?.abort();
+          break;
         case 'clearHistory':
           this._history = [];
           break;
@@ -62,18 +67,18 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
     this._history.push({ role: 'user', content: text });
 
-    const editorCtx = this._editorCollector.collect();
-    const systemPrompt = this._scaffoldBuilder.buildSystemPrompt(editorCtx);
     const config = ExtensionConfig.getLlmConfig();
-
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...this._history,
-    ];
 
     this._postStatus(`${config.model} 응답 중…`);
 
     try {
+      const editorCtx = this._editorCollector.collect();
+      const systemPrompt = this._scaffoldBuilder.buildSystemPrompt(editorCtx);
+
+      const messages: ChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        ...this._history,
+      ];
       let fullResponse = '';
 
       for await (const token of this._llm.streamChat(messages, config, this._abortController.signal)) {
@@ -85,7 +90,11 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'done' });
       this._postStatus(config.model);
     } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
+      if ((err as Error).name === 'AbortError') {
+        this._post({ type: 'done' });
+        this._postStatus(config.model);
+        return;
+      }
       const msg = err instanceof Error ? err.message : '알 수 없는 오류';
       this._post({ type: 'error', message: msg });
       this._postStatus('오류 발생');

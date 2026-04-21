@@ -1,4 +1,4 @@
-import type { ChatMessage, LlmConfig } from '../types/llm';
+import type { ChatMessage, LlmConfig } from './types';
 
 export class LlmService {
   /**
@@ -15,10 +15,14 @@ export class LlmService {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     };
     if (config.apiKey) {
       headers['Authorization'] = `Bearer ${config.apiKey}`;
     }
+
+    console.log(`[Axiom AI] → 요청 URL: ${url}`);
+    console.log(`[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -32,6 +36,8 @@ export class LlmService {
       }),
       signal,
     });
+
+    console.log(`[Axiom AI] ← 응답 상태: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       throw new Error(`sLLM 서버 오류: ${response.status} ${response.statusText}`);

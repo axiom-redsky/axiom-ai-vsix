@@ -2,15 +2,16 @@ import React, { useState, useRef } from 'react';
 
 interface Props {
   onSend: (text: string) => void;
-  disabled: boolean;
+  onStop: () => void;
+  isStreaming: boolean;
 }
 
-export function InputBar({ onSend, disabled }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming }: Props): React.ReactElement {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const submit = () => {
-    if (!value.trim() || disabled) return;
+    if (!value.trim() || isStreaming) return;
     onSend(value.trim());
     setValue('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -37,17 +38,27 @@ export function InputBar({ onSend, disabled }: Props): React.ReactElement {
         onChange={handleInput}
         onKeyDown={handleKeyDown}
         placeholder="질문 입력… (Enter: 전송, Shift+Enter: 줄바꿈)"
-        disabled={disabled}
+        disabled={isStreaming}
         rows={1}
         className="input-bar__textarea"
       />
-      <button
-        onClick={submit}
-        disabled={disabled || !value.trim()}
-        className="input-bar__button"
-      >
-        {disabled ? '…' : '전송'}
-      </button>
+      {isStreaming ? (
+        <button
+          onClick={onStop}
+          className="input-bar__button input-bar__button--stop"
+          title="응답 중단"
+        >
+          ■ 중단
+        </button>
+      ) : (
+        <button
+          onClick={submit}
+          disabled={!value.trim()}
+          className="input-bar__button"
+        >
+          전송
+        </button>
+      )}
     </div>
   );
 }

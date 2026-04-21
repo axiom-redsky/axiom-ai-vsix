@@ -7,16 +7,22 @@ import type { EditorContext } from './EditorContextCollector';
 export class ScaffoldContextBuilder {
   private cachedDocs: string | null = null;
 
-  private findCorpusDir(): string | null {
-    const corpusPath = ExtensionConfig.getCorpusPath();
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders) return null;
+  constructor(private readonly extensionUri: vscode.Uri) {}
 
-    for (const folder of folders) {
-      const candidate = path.resolve(folder.uri.fsPath, corpusPath);
-      if (fs.existsSync(candidate)) return candidate;
+  private findCorpusDir(): string | null {
+    const extensionUri = this.extensionUri;
+    // 1순위: 열린 워크스페이스의 corpus (항상 최신)
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders) {
+      for (const folder of folders) {
+        const candidate = path.resolve(folder.uri.fsPath, ExtensionConfig.getCorpusPath());
+        if (fs.existsSync(candidate)) return candidate;
+      }
     }
-    return null;
+
+    // 2순위: 확장 프로그램에 번들된 corpus (오프라인 폴백)
+    const bundled = vscode.Uri.joinPath(extensionUri, 'corpus').fsPath;
+    return fs.existsSync(bundled) ? bundled : null;
   }
 
   private loadDocs(corpusDir: string): string {

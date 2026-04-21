@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { HostToWebviewMessage, WebviewToHostMessage } from '../../../types/llm';
+import type { HostToWebviewMessage, WebviewToHostMessage } from '../../../types/messages';
 
 declare function acquireVsCodeApi(): {
   postMessage(message: WebviewToHostMessage): void;
@@ -104,5 +104,9 @@ export function useChat() {
     vscode.postMessage({ type: 'clearHistory' });
   }, []);
 
-  return { messages, status, isStreaming, sendMessage, clearHistory };
+  const stopStreaming = useCallback(() => {
+    vscode.postMessage({ type: 'stopMessage' });
+  }, []);
+
+  return { messages, status, isStreaming, sendMessage, clearHistory, stopStreaming };
 }

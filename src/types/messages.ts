@@ -1,19 +1,7 @@
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-export interface LlmConfig {
-  endpoint: string;
-  apiKey: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-}
-
 // WebView → Extension Host
 export type WebviewToHostMessage =
   | { type: 'sendMessage'; text: string }
+  | { type: 'stopMessage' }
   | { type: 'clearHistory' }
   | { type: 'ready' };
 
