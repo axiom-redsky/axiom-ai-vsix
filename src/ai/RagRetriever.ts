@@ -18,7 +18,7 @@ export class RagRetriever {
   private _ready = false;
   private _buildPromise: Promise<void> | null = null;
 
-  /** corpus/scaffold-docs 디렉터리를 기준으로 인덱스를 빌드한다. */
+  /** .rag/ 디렉터리 하위 모든 .md 파일을 재귀 스캔해 임베딩 인덱스를 빌드한다. */
   buildIndex(corpusDir: string): Promise<void> {
     if (this._buildPromise) return this._buildPromise;
     this._buildPromise = this._doBuild(corpusDir).catch((err) => {
@@ -62,9 +62,8 @@ export class RagRetriever {
     this._buildPromise = null;
   }
 
-  private async _doBuild(corpusDir: string): Promise<void> {
-    const docsDir = path.join(corpusDir, 'scaffold-docs');
-    if (!fs.existsSync(docsDir)) {
+  private async _doBuild(ragDir: string): Promise<void> {
+    if (!fs.existsSync(ragDir)) {
       this._ready = true;
       return;
     }
@@ -72,14 +71,19 @@ export class RagRetriever {
     const { chunkSize, chunkOverlap } = ExtensionConfig.getRagConfig();
     const rawChunks: Chunk[] = [];
 
-    const files = fs.readdirSync(docsDir).filter((f) => f.endsWith('.md')).sort();
-    for (const file of files) {
-      const content = fs.readFileSync(path.join(docsDir, file), 'utf-8');
+    // .rag/ 하위 모든 .md 파일을 재귀적으로 수집 (_index.md 제외)
+    const mdFiles = collectMdFiles(ragDir).filter(
+      (f) => !path.basename(f).startsWith('_')
+    );
+
+    for (const absPath of mdFiles) {
+      const rel = path.relative(ragDir, absPath).replace(/\\/g, '/');
+      const content = fs.readFileSync(absPath, 'utf-8');
       const sections = splitByHeaders(content);
       for (const section of sections) {
         const pieces = slidingWindow(section, chunkSize, chunkOverlap);
         for (const piece of pieces) {
-          rawChunks.push({ source: file, text: piece.trim(), embedding: null });
+          rawChunks.push({ source: rel, text: piece.trim(), embedding: null });
         }
       }
     }
@@ -92,6 +96,20 @@ export class RagRetriever {
     this._chunks = rawChunks;
     this._ready = true;
   }
+}
+
+/** 디렉터리를 재귀 탐색해 .md 파일의 절대 경로 목록을 반환한다. */
+function collectMdFiles(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectMdFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
 }
 
 /** 마크다운 헤더(#, ##, ###) 앞에서 분할한다. */

@@ -4,12 +4,14 @@
  *   package.json contributes.configuration default 값을 이 상수와 맞춰 관리한다.
  */
 export const AI_DEFAULTS = {
-  endpoint: 'https://unions-assembly-celtic-wake.trycloudflare.com',
+  endpoint: 'https://referral-aerial-than-mathematical.trycloudflare.com',
   apiKey: '',
-  model: 'qwen2.5-coder:14b-instruct-q4_k_M',
+  model: 'qwen2.5-coder:14b',
   temperature: 0.2,
   maxTokens: 4096,
   corpusPath: './corpus',
+  /** 키워드 라우팅 + 파일 컨텍스트 분석 기반 하이브리드 RAG 지식 폴더 */
+  ragPath: '.rag',
   maxFileLines: 200,
   rag: {
     /** 로컬 임베딩 모델 (transformers.js, 첫 실행 시 자동 다운로드 후 캐시) */

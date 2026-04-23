@@ -23,6 +23,10 @@ export class ExtensionConfig {
     return AI_DEFAULTS.corpusPath;
   }
 
+  static getRagPath(): string {
+    return AI_DEFAULTS.ragPath;
+  }
+
   static getMaxFileLines(): number {
     return AI_DEFAULTS.maxFileLines;
   }
