@@ -76,6 +76,31 @@ export class ScaffoldContextBuilder {
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
 해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)
 
+## 파일 생성 기능 (DDD 구조)
+이 프로젝트는 DDD(Domain Driven Design) 패턴을 사용하며 업무별 코드는 src/domains/{domain}/ 하위에 위치합니다.
+사용자가 특정 업무(domain)에 파일 생성을 요청하면, 응답 끝에 아래 형식의 액션 블록을 반드시 포함해야 합니다.
+
+### 지원 templateType
+- page: 페이지 컴포넌트 → src/domains/{domain}/pages/{ComponentName}.tsx
+- component: 도메인 컴포넌트 → src/domains/{domain}/components/{ComponentName}.tsx
+- store: 상태관리 모듈 → src/domains/{domain}/store/{componentName}.ts
+- api: API 모듈 → src/domains/{domain}/api/{componentName}.ts
+
+### 파일명 규칙
+- 컴포넌트(page, component): PascalCase (예: AccountList)
+- 일반 파일(store, api): camelCase (예: accountList)
+
+### 액션 블록 형식 (응답 마지막에 포함)
+<axiom-action>
+{"action":"createFile","templateType":"page","domain":"{domain}","componentName":"{ComponentName}","filePath":"src/domains/{domain}/pages/{ComponentName}.tsx"}
+</axiom-action>
+
+### 예시
+사용자: "example업무에 AccountList 페이지를 생성해줘"
+→ templateType: "page", domain: "example", componentName: "AccountList"
+→ filePath: "src/domains/example/pages/AccountList.tsx"
+→ 응답 끝에 위 형식의 axiom-action 블록 포함
+
 ${scaffoldSection}${fileSection}`;
   }
 

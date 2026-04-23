@@ -1,0 +1,11 @@
+interface I{{ComponentName}}Props {
+  // test?: string;
+}
+
+export default function {{ComponentName}}({}: I{{ComponentName}}Props): React.ReactNode {
+  return (
+    <>
+      <div>{{ComponentName}} Page!</div>
+    </>
+  );
+}

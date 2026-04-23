@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { LlmService } from '../ai/LlmService';
 import { EditorContextCollector } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
+import { FileCreatorService } from '../ai/FileCreatorService';
+import type { AxiomAction } from '../ai/FileCreatorService';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage } from '../types/messages';
@@ -20,6 +22,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _llm = new LlmService();
   private readonly _editorCollector: EditorContextCollector;
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
+  private readonly _fileCreator = new FileCreatorService();
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._editorCollector = new EditorContextCollector(ExtensionConfig.getMaxFileLines());
@@ -120,9 +123,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._post({ type: 'token', content: token });
       }
 
-      this._history.push({ role: 'assistant', content: fullResponse });
+      const cleanedResponse = this._stripActionBlock(fullResponse);
+      this._history.push({ role: 'assistant', content: cleanedResponse });
       this._post({ type: 'done' });
       this._postStatus(config.model);
+
+      await this._handleAxiomAction(fullResponse);
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         this._post({ type: 'done' });
@@ -133,6 +139,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'error', message });
       this._postStatus('오류 발생');
     }
+  }
+
+  /** LLM 응답에서 <axiom-action> 블록을 파싱하여 파일 생성을 실행한다. */
+  private async _handleAxiomAction(response: string): Promise<void> {
+    const match = response.match(/<axiom-action>([\s\S]*?)<\/axiom-action>/);
+    if (!match) return;
+
+    let action: AxiomAction;
+    try {
+      action = JSON.parse(match[1].trim()) as AxiomAction;
+    } catch {
+      this._post({ type: 'fileError', message: 'axiom-action 블록 파싱에 실패했습니다.' });
+      return;
+    }
+
+    const result = await this._fileCreator.createFile(action);
+    if (result.success) {
+      this._post({ type: 'fileCreated', filePath: result.filePath! });
+    } else if (result.cancelled) {
+      this._post({ type: 'fileCancelled' });
+    } else {
+      this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
+    }
+  }
+
+  /** 응답 텍스트에서 <axiom-action> 블록을 제거한다. */
+  private _stripActionBlock(text: string): string {
+    return text.replace(/<axiom-action>[\s\S]*?<\/axiom-action>/g, '').trim();
   }
 
   private _postStatus(text: string): void {

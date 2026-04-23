@@ -1,6 +1,20 @@
 const esbuild = require('esbuild');
+const fs = require('fs');
+const path = require('path');
 
 const isWatch = process.argv.includes('--watch');
+
+function copyTemplates() {
+  const srcDir = path.join(__dirname, 'src', 'ai', 'templates');
+  const destDir = path.join(__dirname, 'dist', 'templates');
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+  for (const file of fs.readdirSync(srcDir)) {
+    fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+  }
+  console.log('[axiom-ai] Templates copied to dist/templates/');
+}
 
 async function main() {
   const ctx = await esbuild.context({
@@ -12,6 +26,14 @@ async function main() {
     platform: 'node',
     target: 'node18',
     sourcemap: true,
+    plugins: [
+      {
+        name: 'copy-templates',
+        setup(build) {
+          build.onEnd(() => copyTemplates());
+        },
+      },
+    ],
   });
 
   if (isWatch) {

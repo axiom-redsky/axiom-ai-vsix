@@ -4,7 +4,7 @@ import type { HostToWebviewMessage } from '../../../types/messages';
 
 export interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
@@ -77,6 +77,37 @@ export function useChat() {
         }
         case 'status':
           setStatus(msg.text);
+          break;
+        case 'fileCreated':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              content: `파일이 생성되었습니다: \`${msg.filePath}\``,
+            },
+          ]);
+          break;
+        case 'fileError':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              content: `파일 생성 실패: ${msg.message}`,
+              isError: true,
+            },
+          ]);
+          break;
+        case 'fileCancelled':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              content: '파일 생성이 취소되었습니다.',
+            },
+          ]);
           break;
       }
     };

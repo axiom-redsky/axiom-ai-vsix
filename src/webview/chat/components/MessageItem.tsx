@@ -8,8 +8,29 @@ interface Props {
   message: Message;
 }
 
+const ACTION_BLOCK_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
+
 export function MessageItem({ message }: Props): React.ReactElement {
   const isUser = message.role === 'user';
+  const isSystem = message.role === 'system';
+
+  if (isSystem) {
+    return (
+      <div className={`message message--system${message.isError ? ' message--error' : ''}`}>
+        <div className="message__body">
+          <div className="message__content">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const assistantContent = isUser
+    ? message.content
+    : message.content.replace(ACTION_BLOCK_RE, '').trim();
 
   return (
     <div className={`message ${isUser ? 'message--user' : 'message--assistant'}${message.isError ? ' message--error' : ''}`}>
@@ -27,7 +48,7 @@ export function MessageItem({ message }: Props): React.ReactElement {
             <p>{message.content}</p>
           ) : (
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-              {message.content + (message.isStreaming ? '▌' : '')}
+              {assistantContent + (message.isStreaming ? '▌' : '')}
             </ReactMarkdown>
           )}
         </div>

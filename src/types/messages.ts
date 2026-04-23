@@ -11,4 +11,7 @@ export type HostToWebviewMessage =
   | { type: 'token'; content: string }
   | { type: 'done' }
   | { type: 'error'; message: string }
-  | { type: 'status'; text: string };
+  | { type: 'status'; text: string }
+  | { type: 'fileCreated'; filePath: string }
+  | { type: 'fileError'; message: string }
+  | { type: 'fileCancelled' };
