@@ -1,8 +1,37 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
+import hljs from 'highlight.js';
 import type { Message } from '../hooks/useChat';
+
+/**
+ * react-markdown의 code 컴포넌트를 직접 교체한다.
+ * rehype-highlight/lowlight 파이프라인은 tsx/jsx를 미지원하므로
+ * highlight.js를 직접 사용해 더 넓은 언어 커버리지를 확보한다.
+ */
+function CodeBlock({
+  className,
+  children,
+}: React.ComponentPropsWithoutRef<'code'>) {
+  const lang = className?.match(/^language-(.+)/)?.[1] ?? '';
+  const code = String(children).replace(/\n$/, '');
+
+  if (lang) {
+    const resolvedLang = hljs.getLanguage(lang) ? lang : 'plaintext';
+    const highlighted = hljs.highlight(code, { language: resolvedLang });
+    return (
+      <code
+        className={`hljs language-${resolvedLang}`}
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: highlighted.value }}
+      />
+    );
+  }
+
+  return <code className={className}>{children}</code>;
+}
+
+const MARKDOWN_COMPONENTS = { code: CodeBlock } as const;
 
 interface Props {
   message: Message;
@@ -19,7 +48,7 @@ export function MessageItem({ message }: Props): React.ReactElement {
       <div className={`message message--system${message.isError ? ' message--error' : ''}`}>
         <div className="message__body">
           <div className="message__content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
               {message.content}
             </ReactMarkdown>
           </div>
@@ -47,7 +76,7 @@ export function MessageItem({ message }: Props): React.ReactElement {
           {isUser ? (
             <p>{message.content}</p>
           ) : (
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
               {assistantContent + (message.isStreaming ? '▌' : '')}
             </ReactMarkdown>
           )}

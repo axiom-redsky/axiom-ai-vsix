@@ -427,6 +427,13 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   font-size: 12px;
 }
 
+/* highlight.js가 code.hljs에 배경을 중복 적용하지 않도록 제거 */
+.message__content pre code.hljs {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
 .message__content :not(pre) > code {
   background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.2));
   padding: 1px 5px;

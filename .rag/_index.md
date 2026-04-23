@@ -36,6 +36,9 @@ project: react-app-scaffold
 - keywords: [domain, 도메인, 페이지, page, 업무, biz, 기능, feature, 신규도메인, 새도메인]
   files: [patterns/domain-structure.md, scaffold/project-structure.md]
 
+- keywords: [페이지생성, 페이지만들기, 업무생성, 신규페이지, 페이지추가, 업무추가, createpage, newpage, addpage, 생성해줘, 만들어줘]
+  files: [patterns/page-generation.md, patterns/domain-structure.md, patterns/router.md]
+
 - keywords: [zustand, store, 상태, state, 전역, context, provider, 프로바이더]
   files: [patterns/state-management.md]
 

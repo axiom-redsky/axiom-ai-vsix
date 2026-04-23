@@ -1,0 +1,14 @@
+import type { TAppRoute } from '@/types/router';
+import loadable from '@loadable/component';
+
+const {{ComponentName}} = loadable(() => import('@/domains/{{componentName}}/pages/{{ComponentName}}'));
+
+const routes: TAppRoute[] = [
+  {
+    path: '{{componentName}}',
+    element: <{{ComponentName}} />,
+    name: '{{ComponentName}}',
+  },
+];
+
+export default routes;

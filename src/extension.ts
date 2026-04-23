@@ -22,6 +22,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('axiom-ai.openChat', async () => {
+      await vscode.commands.executeCommand('workbench.view.explorer');
       // chatView는 secondarySidebar의 axiom-ai-chat-container에 등록되어 있으므로
       // focus 커맨드만으로 우측 Secondary Side Bar에서 열린다.
       try {

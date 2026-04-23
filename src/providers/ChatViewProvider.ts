@@ -141,26 +141,63 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** LLM 응답에서 <axiom-action> 블록을 파싱하여 파일 생성을 실행한다. */
+  /**
+   * LLM 응답에서 모든 <axiom-action> 블록을 파싱하여 순차적으로 파일 생성/수정을 실행한다.
+   *
+   * 각 블록 형식:
+   *   <axiom-action>
+   *   {"action":"createFile","templateType":"page",...}  ← JSON 메타데이터 (코드 제외)
+   *   ```tsx
+   *   // 실제 파일 코드
+   *   ```
+   *   </axiom-action>
+   *
+   * JSON과 코드 블록을 분리하여 파싱하므로 LLM이 JSON 이스케이프 없이 코드를 작성할 수 있다.
+   */
   private async _handleAxiomAction(response: string): Promise<void> {
-    const match = response.match(/<axiom-action>([\s\S]*?)<\/axiom-action>/);
-    if (!match) return;
+    const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
+    const actions: AxiomAction[] = [];
 
-    let action: AxiomAction;
-    try {
-      action = JSON.parse(match[1].trim()) as AxiomAction;
-    } catch {
-      this._post({ type: 'fileError', message: 'axiom-action 블록 파싱에 실패했습니다.' });
-      return;
+    for (const blockMatch of response.matchAll(blockRegex)) {
+      const blockContent = blockMatch[1];
+
+      // JSON 메타데이터: 블록 내 첫 번째 { ... } 한 줄 또는 첫 JSON 객체
+      const jsonMatch = blockContent.match(/(\{[^`]*?\})/s);
+      if (!jsonMatch) {
+        this._post({ type: 'fileError', message: 'axiom-action JSON 메타데이터를 찾을 수 없습니다.' });
+        continue;
+      }
+
+      let action: AxiomAction;
+      try {
+        action = JSON.parse(jsonMatch[1].trim()) as AxiomAction;
+      } catch {
+        this._post({ type: 'fileError', message: 'axiom-action JSON 파싱에 실패했습니다.' });
+        continue;
+      }
+
+      // 코드 블록: 블록 내 ```언어\n...\n``` 추출 (없으면 generatedCode 없이 진행)
+      const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
+      if (codeMatch?.[1]) {
+        action.generatedCode = codeMatch[1].trimEnd();
+      }
+
+      actions.push(action);
     }
 
-    const result = await this._fileCreator.createFile(action);
-    if (result.success) {
-      this._post({ type: 'fileCreated', filePath: result.filePath! });
-    } else if (result.cancelled) {
-      this._post({ type: 'fileCancelled' });
-    } else {
-      this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
+    if (actions.length === 0) return;
+
+    for (const action of actions) {
+      const result = await this._fileCreator.createFile(action);
+      if (result.success) {
+        this._post({ type: 'fileCreated', filePath: result.filePath! });
+      } else if (result.cancelled) {
+        this._post({ type: 'fileCancelled' });
+        // 페이지(page/component/store/api) 생성을 취소하면 이후 라우터 액션도 중단
+        if (action.templateType !== 'router') break;
+      } else {
+        this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
+      }
     }
   }
 
