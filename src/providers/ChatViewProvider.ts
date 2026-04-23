@@ -190,7 +190,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     for (const action of actions) {
       const result = await this._fileCreator.createFile(action);
       if (result.success) {
-        this._post({ type: 'fileCreated', filePath: result.filePath! });
+        const isUpdate = action.action === 'updateFile';
+        this._post(
+          isUpdate
+            ? { type: 'fileUpdated', filePath: result.filePath! }
+            : { type: 'fileCreated', filePath: result.filePath! },
+        );
       } else if (result.cancelled) {
         this._post({ type: 'fileCancelled' });
         // 페이지(page/component/store/api) 생성을 취소하면 이후 라우터 액션도 중단

@@ -39,20 +39,92 @@ interface Props {
 
 const ACTION_BLOCK_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
 
+function FileResultCard({ message }: { message: Message }): React.ReactElement {
+  const { subtype, content } = message;
+
+  if (subtype === 'file-created') {
+    return (
+      <div className="file-result file-result--created">
+        <span className="file-result__icon">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M2 2h7l3 3v9H2V2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
+            <path d="M9 2v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            <path d="M5 9l2 2 4-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <span className="file-result__label">생성됨</span>
+        <span className="file-result__path">{content}</span>
+      </div>
+    );
+  }
+
+  if (subtype === 'file-updated') {
+    return (
+      <div className="file-result file-result--updated">
+        <span className="file-result__icon">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M2 2h7l3 3v9H2V2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
+            <path d="M9 2v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            <path d="M5 8h6M5 11h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span className="file-result__label">수정됨</span>
+        <span className="file-result__path">{content}</span>
+      </div>
+    );
+  }
+
+  if (subtype === 'file-error') {
+    return (
+      <div className="file-result file-result--error">
+        <span className="file-result__icon">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
+            <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span className="file-result__label">오류</span>
+        <span className="file-result__path">{content}</span>
+      </div>
+    );
+  }
+
+  if (subtype === 'file-cancelled') {
+    return (
+      <div className="file-result file-result--cancelled">
+        <span className="file-result__icon">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
+            <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span className="file-result__label">취소됨</span>
+      </div>
+    );
+  }
+
+  // 일반 시스템 메시지 (fallback)
+  return (
+    <div className={`message message--system${message.isError ? ' message--error' : ''}`}>
+      <div className="message__body">
+        <div className="message__content">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+            {content}
+          </ReactMarkdown>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MessageItem({ message }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
   if (isSystem) {
     return (
-      <div className={`message message--system${message.isError ? ' message--error' : ''}`}>
-        <div className="message__body">
-          <div className="message__content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-              {message.content}
-            </ReactMarkdown>
-          </div>
-        </div>
+      <div className="message message--system">
+        <FileResultCard message={message} />
       </div>
     );
   }

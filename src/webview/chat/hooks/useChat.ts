@@ -8,6 +8,7 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
+  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled';
 }
 
 export function useChat() {
@@ -84,7 +85,19 @@ export function useChat() {
             {
               id: Date.now().toString(),
               role: 'system',
-              content: `파일이 생성되었습니다: \`${msg.filePath}\``,
+              subtype: 'file-created',
+              content: msg.filePath,
+            },
+          ]);
+          break;
+        case 'fileUpdated':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              subtype: 'file-updated',
+              content: msg.filePath,
             },
           ]);
           break;
@@ -94,7 +107,8 @@ export function useChat() {
             {
               id: Date.now().toString(),
               role: 'system',
-              content: `파일 생성 실패: ${msg.message}`,
+              subtype: 'file-error',
+              content: msg.message,
               isError: true,
             },
           ]);
@@ -105,7 +119,8 @@ export function useChat() {
             {
               id: Date.now().toString(),
               role: 'system',
-              content: '파일 생성이 취소되었습니다.',
+              subtype: 'file-cancelled',
+              content: '',
             },
           ]);
           break;

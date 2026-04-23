@@ -13,5 +13,6 @@ export type HostToWebviewMessage =
   | { type: 'error'; message: string }
   | { type: 'status'; text: string }
   | { type: 'fileCreated'; filePath: string }
+  | { type: 'fileUpdated'; filePath: string }
   | { type: 'fileError'; message: string }
   | { type: 'fileCancelled' };
