@@ -61,3 +61,8 @@ project: react-app-scaffold
 
 - keywords: [tailwind, tailwindcss, 스타일, css, 클래스, className, 다크모드, darkmode, brand]
   files: [components/Button.md]
+
+## React 코드 패턴
+
+- keywords: [react, component, 컴포넌트분리, 훅추출, 커스텀훅, memoization, usecallback, usememo, react.memo, 최적화, useeffect, 의존성배열, 이벤트핸들러, 조건부렌더링, classname, cn, extract, refactor, 리팩토링, typescript오류, ts오류, props타입, usestate타입]
+  files: [react/component.md]
