@@ -15,7 +15,8 @@ export const AI_DEFAULTS = {
   maxFileLines: 200,
   rag: {
     /** 로컬 임베딩 모델 (transformers.js, 첫 실행 시 자동 다운로드 후 캐시) */
-    embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+    // embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+    embeddingModel: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
     /** 헤더 분할 후 재분할 기준 글자 수 */
     chunkSize: 600,
     /** 슬라이딩 윈도우 오버랩 글자 수 */

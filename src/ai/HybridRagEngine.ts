@@ -30,12 +30,15 @@ export class HybridRagEngine {
   /**
    * .rag/ 디렉터리를 기준으로 각 Retriever를 초기화하고
    * 임베딩 인덱스 빌드를 백그라운드에서 시작한다.
+   *
+   * @param ragDir       내장 .rag/ 경로
+   * @param extraDirs    사용자 지정 추가 폴더 경로 목록
+   * @param extraFiles   사용자 지정 개별 파일 경로 목록
    */
-  initialize(ragDir: string): void {
+  initialize(ragDir: string, extraDirs: string[] = [], extraFiles: string[] = []): void {
     this._keywordRetriever.initialize(ragDir);
     this._fileContextRetriever.initialize(ragDir);
-    // 임베딩 인덱스는 비동기 빌드 (폴백용)
-    this._ragRetriever.buildIndex(ragDir).catch((err) => {
+    this._ragRetriever.buildIndex(ragDir, extraDirs, extraFiles).catch((err) => {
       console.error('[axiom-ai] RAG 임베딩 인덱스 빌드 실패:', err);
     });
   }

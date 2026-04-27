@@ -18,11 +18,16 @@ export class RagRetriever {
   private _ready = false;
   private _buildPromise: Promise<void> | null = null;
 
-  /** .rag/ 디렉터리 하위 모든 .md 파일을 재귀 스캔해 임베딩 인덱스를 빌드한다. */
-  buildIndex(corpusDir: string): Promise<void> {
+  /**
+   * .rag/ 디렉터리 및 추가 소스를 재귀 스캔해 임베딩 인덱스를 빌드한다.
+   *
+   * @param corpusDir  내장 .rag/ 디렉터리 경로
+   * @param extraDirs  추가 폴더 경로 목록
+   * @param extraFiles 추가 개별 파일 경로 목록
+   */
+  buildIndex(corpusDir: string, extraDirs: string[] = [], extraFiles: string[] = []): Promise<void> {
     if (this._buildPromise) return this._buildPromise;
-    this._buildPromise = this._doBuild(corpusDir).catch((err) => {
-      // 빌드 실패 시 재시도 가능하도록 초기화
+    this._buildPromise = this._doBuild(corpusDir, extraDirs, extraFiles).catch((err) => {
       this._buildPromise = null;
       throw err;
     });
@@ -62,30 +67,38 @@ export class RagRetriever {
     this._buildPromise = null;
   }
 
-  private async _doBuild(ragDir: string): Promise<void> {
-    if (!fs.existsSync(ragDir)) {
-      this._ready = true;
-      return;
-    }
-
+  private async _doBuild(ragDir: string, extraDirs: string[], extraFiles: string[]): Promise<void> {
     const { chunkSize, chunkOverlap } = ExtensionConfig.getRagConfig();
     const rawChunks: Chunk[] = [];
 
-    // .rag/ 하위 모든 .md 파일을 재귀적으로 수집 (_index.md 제외)
-    const mdFiles = collectMdFiles(ragDir).filter(
-      (f) => !path.basename(f).startsWith('_')
-    );
-
-    for (const absPath of mdFiles) {
-      const rel = path.relative(ragDir, absPath).replace(/\\/g, '/');
-      const content = fs.readFileSync(absPath, 'utf-8');
-      const sections = splitByHeaders(content);
-      for (const section of sections) {
-        const pieces = slidingWindow(section, chunkSize, chunkOverlap);
-        for (const piece of pieces) {
-          rawChunks.push({ source: rel, text: piece.trim(), embedding: null });
-        }
+    // 1) 내장 .rag/ 디렉터리
+    if (fs.existsSync(ragDir)) {
+      const mdFiles = collectMdFiles(ragDir).filter(
+        (f) => !path.basename(f).startsWith('_'),
+      );
+      for (const absPath of mdFiles) {
+        const rel = path.relative(ragDir, absPath).replace(/\\/g, '/');
+        chunkFile(absPath, rel, chunkSize, chunkOverlap, rawChunks);
       }
+    }
+
+    // 2) 사용자 지정 추가 폴더
+    for (const dir of extraDirs) {
+      if (!dir || !fs.existsSync(dir)) continue;
+      const mdFiles = collectMdFiles(dir).filter(
+        (f) => !path.basename(f).startsWith('_'),
+      );
+      for (const absPath of mdFiles) {
+        const label = `[user-rag] ${path.basename(dir)}/${path.relative(dir, absPath).replace(/\\/g, '/')}`;
+        chunkFile(absPath, label, chunkSize, chunkOverlap, rawChunks);
+      }
+    }
+
+    // 3) 사용자 지정 개별 파일
+    for (const filePath of extraFiles) {
+      if (!filePath || !fs.existsSync(filePath)) continue;
+      const label = `[user-file] ${path.basename(filePath)}`;
+      chunkFile(filePath, label, chunkSize, chunkOverlap, rawChunks);
     }
 
     // 청크별 임베딩 생성 (순차 처리 — 메모리 압박 방지)
@@ -95,6 +108,28 @@ export class RagRetriever {
 
     this._chunks = rawChunks;
     this._ready = true;
+  }
+}
+
+/** 단일 .md 파일을 청킹하여 rawChunks 배열에 추가한다. */
+function chunkFile(
+  absPath: string,
+  label: string,
+  chunkSize: number,
+  chunkOverlap: number,
+  out: Chunk[],
+): void {
+  try {
+    const content = fs.readFileSync(absPath, 'utf-8');
+    const sections = splitByHeaders(content);
+    for (const section of sections) {
+      const pieces = slidingWindow(section, chunkSize, chunkOverlap);
+      for (const piece of pieces) {
+        out.push({ source: label, text: piece.trim(), embedding: null });
+      }
+    }
+  } catch {
+    // 읽기 실패한 파일은 조용히 건너뜀
   }
 }
 

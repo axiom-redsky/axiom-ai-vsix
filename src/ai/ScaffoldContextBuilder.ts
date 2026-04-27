@@ -27,7 +27,9 @@ export class ScaffoldContextBuilder {
   startIndexBuild(): void {
     const dir = this._getRagDir();
     if (dir) {
-      this._engine.initialize(dir);
+      const { folder, files } = ExtensionConfig.getUserRagSources();
+      const extraDirs = folder ? [folder] : [];
+      this._engine.initialize(dir, extraDirs, files);
     }
   }
 
@@ -161,11 +163,13 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 
   /** .rag/ 파일이 변경된 경우 캐시를 초기화하고 엔진을 재빌드한다. */
   invalidateAndRebuild(): void {
-    this._ragDir = undefined; // 경로 캐시 초기화 (디렉터리 이동 대비)
+    this._ragDir = undefined;
     this._engine.invalidate();
     const dir = this._getRagDir();
     if (dir) {
-      this._engine.initialize(dir);
+      const { folder, files } = ExtensionConfig.getUserRagSources();
+      const extraDirs = folder ? [folder] : [];
+      this._engine.initialize(dir, extraDirs, files);
     }
   }
 

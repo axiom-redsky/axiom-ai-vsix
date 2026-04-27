@@ -51,6 +51,50 @@
         }
       ]
     },
+    "configuration": {
+      "title": "Axiom AI",
+      "properties": {
+        "axiom-ai.llm.endpoint": {
+          "type": "string",
+          "default": "https://referral-aerial-than-mathematical.trycloudflare.com",
+          "description": "LLM 서버 엔드포인트 URL (OpenAI 호환 API)"
+        },
+        "axiom-ai.llm.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:14b",
+          "description": "사용할 LLM 모델명"
+        },
+        "axiom-ai.llm.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "LLM API 키 (로컬 서버 사용 시 빈 값으로 유지)"
+        },
+        "axiom-ai.llm.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "LLM 응답 온도 (0 = 결정적, 2 = 창의적)"
+        },
+        "axiom-ai.llm.maxTokens": {
+          "type": "integer",
+          "default": 4096,
+          "minimum": 256,
+          "description": "LLM 최대 출력 토큰 수"
+        },
+        "axiom-ai.rag.userRagFolder": {
+          "type": "string",
+          "default": "",
+          "description": "추가 RAG 지식 폴더 경로 (절대 경로). 이 폴더의 모든 .md 파일이 임베딩 인덱스에 포함됩니다."
+        },
+        "axiom-ai.rag.additionalFiles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "RAG 인덱스에 추가할 개별 .md 파일 경로 목록 (절대 경로)"
+        }
+      }
+    },
     "commands": [
       {
         "command": "axiom-ai.openChat",
