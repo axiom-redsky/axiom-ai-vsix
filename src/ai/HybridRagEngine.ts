@@ -1,6 +1,7 @@
 import { KeywordRetriever } from './KeywordRetriever';
 import { FileContextRetriever } from './FileContextRetriever';
 import { RagRetriever } from './RagRetriever';
+import type { ExternalCorpus } from './ExternalCorpusLoader';
 
 /** buildContext() 반환 타입 */
 export interface RagContext {
@@ -31,14 +32,31 @@ export class HybridRagEngine {
    * .rag/ 디렉터리를 기준으로 각 Retriever를 초기화하고
    * 임베딩 인덱스 빌드를 백그라운드에서 시작한다.
    *
-   * @param ragDir       내장 .rag/ 경로
-   * @param extraDirs    사용자 지정 추가 폴더 경로 목록
-   * @param extraFiles   사용자 지정 개별 파일 경로 목록
+   * @param ragDir          내장 .rag/ 경로
+   * @param extraDirs       사용자 지정 추가 폴더 경로 목록
+   * @param extraFiles      사용자 지정 개별 파일 경로 목록
+   * @param externalCorpora 외부 corpus 로드 결과 목록
    */
-  initialize(ragDir: string, extraDirs: string[] = [], extraFiles: string[] = []): void {
+  initialize(
+    ragDir: string,
+    extraDirs: string[] = [],
+    extraFiles: string[] = [],
+    externalCorpora: ExternalCorpus[] = []
+  ): void {
     this._keywordRetriever.initialize(ragDir);
     this._fileContextRetriever.initialize(ragDir);
-    this._ragRetriever.buildIndex(ragDir, extraDirs, extraFiles).catch((err) => {
+
+    for (const corpus of externalCorpora) {
+      this._keywordRetriever.mergeExternalIndex(corpus.indexEntries, corpus.ragDir);
+      this._fileContextRetriever.addExternalRagDir(corpus.ragDir);
+    }
+
+    const allExtraFiles = [
+      ...extraFiles,
+      ...externalCorpora.flatMap((c) => c.validFiles),
+    ];
+
+    this._ragRetriever.buildIndex(ragDir, extraDirs, allExtraFiles).catch((err) => {
       console.error('[axiom-ai] RAG 임베딩 인덱스 빌드 실패:', err);
     });
   }

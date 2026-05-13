@@ -1,202 +1,139 @@
 ---
-title: API 호출 패턴 (useApi)
-tags: [api, fetch, axios, useapi, query, mutation, get, post, put, delete, patch, 통신, 캐시]
+title: "API 클라이언트 패턴"
+category: pattern
+tags: [api, axios, api-client, 클라이언트, http, fetch, 통신, baseurl, interceptor, 인터셉터, error, 에러, callApi, ApiError, ApiResponse, initApiConfig]
+priority: 1
+language: ko
 scope: pattern
-related: [scaffold/project-structure.md]
+related: [patterns/api-call.md]
+version: "1.0"
 ---
 
-# API 호출 패턴
+# API 클라이언트 패턴
 
-scaffold에서 **모든 API 호출은 `useApi` 훅**을 통해서만 한다.
-`useQuery` / `useMutation` 직접 사용 금지. `callApi` 직접 사용도 특수한 경우에만.
+---
 
 ## 계층 구조
 
 ```
-useApi (훅) — 항상 이것만 사용
+useApi (훅)
   └── callApi (함수)
         └── BaseAxiosClient (Axios 싱글턴)
               └── getApiConfig → window.__MF_APP_CONFIG__
 ```
 
-## 임포트
+일반적으로 컴포넌트에서 직접 `callApi` 또는 `BaseAxiosClient`를 사용하지 않는다.
+**항상 `useApi` 훅을 통해서만 API를 호출한다.**
+
+---
+
+## BaseAxiosClient (내부 싱글턴)
+
+`src/core/api/api-client.ts`
+
+Axios 인스턴스를 싱글턴으로 관리하는 클래스. 직접 사용하지 않는다.
 
 ```typescript
-import { useApi } from '@axiom/hooks';
+// 내부 구조 (참고용)
+class BaseAxiosClient {
+  private static instance: BaseAxiosClient;
+
+  static getInstance(): BaseAxiosClient { ... }
+
+  makeRequestConfig(endpoint, config): AxiosRequestConfig { ... }
+  async request<T>(config, token?): Promise<ApiResponse<T>> { ... }
+}
+
+export default BaseAxiosClient.getInstance(); // 싱글턴 export
 ```
 
-## GET 조회 (자동 실행)
+### 요청 URL 결정 로직
+
+- 절대 URL (`https://...`): 그대로 사용
+- 상대 경로 + baseURL 있음: `new URL(endpoint, baseURL)`
+- 상대 경로 + baseURL 없음: `new URL(endpoint, window.location.origin)`
+
+### 에러 응답 처리
+
+| 케이스 | 반환 메시지 |
+|--------|------------|
+| `ECONNABORTED` (타임아웃) | `'요청 시간이 초과되었습니다'` |
+| 서버 에러 응답 | `response.data.message` 또는 `response.data.error` |
+| 기타 Axios 에러 | `error.message` |
+| 알 수 없는 에러 | `'알 수 없는 오류가 발생했습니다'` |
+
+기본 타임아웃: **30초**
+
+---
+
+## callApi 함수
+
+`src/core/api/api.ts`
 
 ```typescript
-// 기본 GET
-const { data, isLoading, error } = useApi<Post[]>('/api/posts');
-
-// query string params
-const { data } = useApi<User>('/api/users', {
-  params: { id: 1, status: 'active' },
-});
-// 실제 요청: GET /api/users?id=1&status=active
-
-// 조건부 실행 (enabled)
-const { data } = useApi<Config>('/api/config', {
-  queryOptions: {
-    staleTime: 1000 * 60 * 5, // 5분 캐시
-    enabled: !!userId,          // userId가 있을 때만 실행
-  },
-});
+export async function callApi<T = unknown>(
+  endpoint: string,
+  config: ApiRequestConfig = {},
+): Promise<ApiResponse<T>>
 ```
 
-## GET 반환값
+`BaseAxiosClient`를 호출하고 `ApiError`로 에러를 표준화한다.
 
 ```typescript
-const {
-  data,        // TData | undefined
-  isLoading,   // 최초 로딩 중
-  isPending,   // 데이터 없는 로딩 상태
-  isFetching,  // 백그라운드 재조회 포함
-  error,       // Error | null
-  refetch,     // 수동 재조회 함수
-} = useApi<Post[]>('/api/posts');
+// 직접 사용 예시 (useApi 대신 특수한 경우에만)
+import { callApi } from '@/core/api/api';
+
+const response = await callApi<User[]>('/api/users', { method: 'GET' });
+// response.data → User[]
+// response.statusCode → 200
 ```
 
-## POST 생성 (수동 실행)
+**토큰 추가 위치:**
 
 ```typescript
-const { mutate, isPending } = useApi<User, CreateUserDto>('/api/users', {
-  method: 'POST',
-});
-
-// 호출
-mutate({ name: '홍길동', email: 'hong@example.com' });
-
-// mutationOptions 활용
-const { mutate } = useApi<User, CreateUserDto>('/api/users', {
-  method: 'POST',
-  mutationOptions: {
-    onSuccess: (data) => {
-      console.log('생성 완료:', data);
-    },
-    onError: (error) => {
-      console.error('생성 실패:', error.message);
-    },
-  },
-});
+// src/core/api/api.ts 내부
+const token: string | null = null;
+// 인증이 필요한 경우:
+// token = localStorage.getItem('access_token');
 ```
 
-## PUT 수정
+---
+
+## ApiError 클래스
+
+`src/core/api/api.ts`
 
 ```typescript
-const { mutate } = useApi<User, UpdateUserDto>('/api/users/1', {
-  method: 'PUT',
-});
+export class ApiError extends Error {
+  status: number;  // HTTP 상태 코드
+  data?: unknown;  // 원본 응답 데이터
+
+  constructor(status: number, message: string, data?: unknown) { ... }
+}
 ```
 
-## DELETE + 캐시 무효화
+`callApi`는 실패 시 항상 `ApiError`를 throw한다.
 
 ```typescript
-const { mutate, invalidateQueries } = useApi('/api/users/1', {
-  method: 'DELETE',
-});
-
-mutate(
-  {},
-  {
-    onSuccess: async () => {
-      await invalidateQueries('/api/users'); // GET /api/users 캐시 갱신
-    },
+try {
+  const response = await callApi('/api/users');
+} catch (error) {
+  if (error instanceof ApiError) {
+    console.error(error.status, error.message);
   }
-);
-```
-
-## POST이지만 조회 목적 (type 명시)
-
-```typescript
-const { data } = useApi<SearchResult>('/api/search', {
-  method: 'POST',
-  body: { keyword: 'react' },
-  type: 'query', // mutation 대신 query로 강제
-});
-```
-
-## Mutation 반환값
-
-```typescript
-const {
-  mutate,            // (variables: TVariables) => void
-  mutateAsync,       // Promise 반환 버전
-  isPending,         // 요청 진행 중
-  data,              // TData | undefined
-  error,             // Error | null
-  reset,             // 상태 초기화
-  invalidateQueries, // (endpoint: string) => Promise<void>
-} = useApi<User, CreateUserDto>('/api/users', { method: 'POST' });
-```
-
-## 컴포넌트 사용 전체 예시
-
-```tsx
-import { useApi } from '@axiom/hooks';
-import { Button } from '@axiom/components/ui';
-
-function UserListPage() {
-  const { data, isLoading, error } = useApi<User[]>('/api/users');
-  const { mutate: deleteUser, invalidateQueries } = useApi('/api/users', {
-    method: 'DELETE',
-  });
-
-  if (isLoading) return <div>로딩 중...</div>;
-  if (error) return <p className="text-red-500">에러: {error.message}</p>;
-
-  return (
-    <div>
-      {data?.map((user) => (
-        <div key={user.id} className="flex items-center gap-2">
-          <span>{user.name}</span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() =>
-              deleteUser(
-                { id: user.id },
-                { onSuccess: async () => await invalidateQueries('/api/users') }
-              )
-            }
-          >
-            삭제
-          </Button>
-        </div>
-      ))}
-    </div>
-  );
 }
 ```
 
-## 타입 자동 결정 규칙
+`useApi` 사용 시에는 `try/catch` 없이 `error` 필드로 접근한다.
 
-| 조건 | 동작 |
-|------|------|
-| `type` 생략 + `method` 없음 또는 `'GET'` | `useQuery` (자동 실행) |
-| `type` 생략 + `method: 'POST'/'PUT'/'PATCH'/'DELETE'` | `useMutation` (수동 실행) |
-| `type: 'query'` 명시 | 항상 `useQuery` |
-| `type: 'mutation'` 명시 | 항상 `useMutation` |
+---
 
-## 에러 처리
+## ApiResponse 타입
+
+`src/core/types/api-types.ts`
 
 ```typescript
-const { error } = useApi<Post[]>('/api/posts');
-if (error) {
-  // error.message — 서버 응답 메시지 또는 '요청 시간이 초과되었습니다'
-}
-
-// mutation 에러
-const { error } = useApi<User, CreateUserDto>('/api/users', { method: 'POST' });
-// JSX: {error && <p>에러: {error.message}</p>}
-```
-
-## ApiResponse 타입 참고
-
-```typescript
-type ApiResponse<T = unknown> = {
+export type ApiResponse<T = unknown> = {
   success?: boolean;
   data?: T;
   error?: string;
@@ -205,14 +142,77 @@ type ApiResponse<T = unknown> = {
 };
 ```
 
-## ApiRequestConfig 옵션
+---
+
+## API 설정 초기화
+
+`src/core/api/api-config.ts`
+
+### initApiConfig — 앱 진입 시 baseURL 설정
 
 ```typescript
-interface ApiRequestConfig {
+import { initApiConfig } from '@/core/api/api-config';
+
+// main.tsx 또는 App.tsx에서 초기화
+initApiConfig({
+  baseURL: window.__MF_APP_CONFIG__?.baseURL ?? import.meta.env.VITE_EXTERNAL_API_BASE_URL1,
+});
+```
+
+### 환경변수
+
+`.env` 파일의 API 관련 환경변수:
+
+```
+VITE_EXTERNAL_API_BASE_URL1=https://api.internal.company.com
+VITE_EXTERNAL_API_BASE_URL2=https://jsonplaceholder.typicode.com
+```
+
+컴포넌트에서 환경변수 사용:
+
+```typescript
+const apiBase = import.meta.env.VITE_EXTERNAL_API_BASE_URL2 as string | undefined;
+```
+
+### getApiConfig — 현재 설정 조회
+
+```typescript
+import { getApiConfig } from '@/core/api/api-config';
+
+const { baseURL } = getApiConfig();
+// baseURL이 없으면 window.location.origin 반환
+```
+
+---
+
+## ApiRequestConfig 타입
+
+```typescript
+export interface ApiRequestConfig {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'; // 기본값: 'GET'
   headers?: Record<string, string>;
   body?: Record<string, unknown>;
   params?: Record<string, string | number | boolean | undefined | null>;
   timeout?: number; // ms, 기본값: 30000
+}
+```
+
+---
+
+## 인터셉터 커스터마이징
+
+`src/core/api/api-client.ts`의 `BaseAxiosClient` 내부 인터셉터 메서드를 수정한다.
+
+```typescript
+// 요청 인터셉터 — 공통 헤더 추가
+private requestInterceptor(requestConfig: InternalAxiosRequestConfig) {
+  requestConfig.headers['X-Request-ID'] = crypto.randomUUID();
+  return requestConfig;
+}
+
+// 응답 인터셉터 — 공통 로깅
+private responseInterceptor(response: AxiosResponse) {
+  console.log(`[API] ${response.config.method} ${response.config.url} → ${response.status}`);
+  return response;
 }
 ```

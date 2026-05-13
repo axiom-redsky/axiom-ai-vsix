@@ -1,3 +1,14 @@
+---
+title: "react-app-scaffold 아키텍처"
+category: scaffold
+tags: [architecture, 아키텍처, 구조, 폴더, 레이어, folder, structure, directory, 디렉터리, layer, alias, 앨리어스, "@axiom", "@/", import, 임포트, stack, 스택, react, typescript, vite, tanstack]
+priority: 1
+language: ko
+scope: scaffold
+related: [scaffold/project-structure.md, patterns/domain-structure.md]
+version: "1.0"
+---
+
 # react-app-scaffold 아키텍처
 
 ## 프로젝트 스택

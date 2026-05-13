@@ -1,3 +1,14 @@
+---
+title: "라우팅 패턴"
+category: pattern
+tags: [router, 라우터, routing, 라우팅, createHashRouter, createAppRouter, hash, 해시, route, 경로, navigate, 이동, loadable, 코드스플리팅, TAppRoute, lazy, 지연로딩, "$router"]
+priority: 1
+language: ko
+scope: pattern
+related: [patterns/router.md]
+version: "1.0"
+---
+
 # 라우팅 패턴
 
 scaffold는 `createHashRouter` 기반 해시 라우팅을 사용한다.

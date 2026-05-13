@@ -1,3 +1,14 @@
+---
+title: "컴포넌트 패턴"
+category: component
+tags: [component, 컴포넌트, button, 버튼, input, 입력, table, 테이블, dialog, 모달, select, 드롭다운, form, 폼, card, badge, tabs, tailwind, 스타일, shadcn, "@axiom/components", layout, 레이아웃, pascalcase]
+priority: 1
+language: ko
+scope: component
+related: [components/Button.md, components/Table.md, components/Dialog.md, components/Input.md, components/Select.md, components/Form.md, react/component.md]
+version: "1.0"
+---
+
 # 컴포넌트 패턴
 
 ---

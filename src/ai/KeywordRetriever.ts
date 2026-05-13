@@ -1,10 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-
-interface IndexEntry {
-  keywords: string[];
-  files: string[];
-}
+import type { IndexEntry } from './ExternalCorpusLoader';
 
 /**
  * .rag/_index.md 를 파싱해 키워드→파일 매핑을 메모리에 로드한다.
@@ -21,6 +17,19 @@ export class KeywordRetriever {
   initialize(ragDir: string): void {
     this._ragDir = ragDir;
     this._entries = this._parseIndex(ragDir);
+  }
+
+  /**
+   * 외부 corpus 인덱스를 병합한다.
+   * 외부 파일 경로를 externalDir 기준 절대경로로 변환하여 _entries에 추가한다.
+   */
+  mergeExternalIndex(entries: IndexEntry[], externalDir: string): void {
+    for (const entry of entries) {
+      this._entries.push({
+        keywords: entry.keywords,
+        files: entry.files.map((f) => path.join(externalDir, f)),
+      });
+    }
   }
 
   /**
@@ -45,16 +54,17 @@ export class KeywordRetriever {
   }
 
   /**
-   * matchedFiles()로 얻은 상대 경로들의 파일 내용을 읽어 문자열 배열로 반환한다.
+   * matchedFiles()로 얻은 경로들의 파일 내용을 읽어 문자열 배열로 반환한다.
+   * 절대경로면 그대로 사용하고, 상대경로면 ragDir 기준으로 결합한다.
    * 존재하지 않는 파일은 조용히 건너뛴다.
    */
-  readFiles(relativePaths: string[]): string[] {
+  readFiles(filePaths: string[]): string[] {
     const results: string[] = [];
-    for (const rel of relativePaths) {
-      const abs = path.join(this._ragDir, rel);
+    for (const p of filePaths) {
+      const abs = path.isAbsolute(p) ? p : path.join(this._ragDir, p);
       if (fs.existsSync(abs)) {
         const content = fs.readFileSync(abs, 'utf-8');
-        results.push(`## [${rel}]\n\n${content}`);
+        results.push(`## [${p}]\n\n${content}`);
       }
     }
     return results;

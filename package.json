@@ -92,6 +92,16 @@
           "items": { "type": "string" },
           "default": [],
           "description": "RAG 인덱스에 추가할 개별 .md 파일 경로 목록 (절대 경로)"
+        },
+        "axiom-ai.rag.externalCorpusEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "외부 사용자 corpus 폴더의 키워드 라우팅을 활성화합니다"
+        },
+        "axiom-ai.rag.validateExternalCorpus": {
+          "type": "boolean",
+          "default": true,
+          "description": "외부 corpus frontmatter 유효성 검사 후 Output 채널에 경고를 표시합니다"
         }
       }
     },
@@ -104,6 +114,10 @@
       {
         "command": "axiom-ai.clearHistory",
         "title": "Axiom AI: 대화 기록 초기화"
+      },
+      {
+        "command": "axiom-ai.reindexCorpus",
+        "title": "Axiom AI: Corpus 인덱스 재빌드"
       }
     ],
     "menus": {
@@ -122,6 +136,8 @@
     }
   },
   "scripts": {
+    "build:corpus": "node scripts/build-corpus.mjs",
+    "prebuild": "npm run build:corpus",
     "compile": "node esbuild.extension.js && node esbuild.webview.js",
     "watch": "concurrently \"node esbuild.extension.js --watch\" \"node esbuild.webview.js --watch\"",
     "package": "vsce package --no-dependencies",

@@ -1,137 +1,69 @@
 ---
-title: 상태 관리 패턴
-tags: [zustand, store, 상태, state, 전역, context, provider, 프로바이더, queryClient]
+title: "Provider 패턴"
+category: pattern
+tags: [provider, 프로바이더, AppProviders, QueryProvider, context, 컨텍스트, 상태, state, tanstack, devtools, sidebar, 레이아웃]
+priority: 2
+language: ko
 scope: pattern
-related: [patterns/api-call.md]
+related: [patterns/state-management.md]
+version: "1.0"
 ---
 
-# 상태 관리 패턴
+# Provider 패턴
 
-scaffold에서 상태는 크게 세 가지로 분류된다.
+---
 
-| 상태 종류 | 도구 | 위치 |
-|----------|------|------|
-| 서버 상태 (API 데이터) | `useApi` (TanStack Query) | `@axiom/hooks` |
-| 전역 UI 상태 | React Context 또는 Zustand | `core/context/` 또는 `core/store/` |
-| 로컬 컴포넌트 상태 | `useState`, `useReducer` | 컴포넌트 내부 |
+## AppProviders — 모든 Provider의 통합 지점
 
-## 서버 상태 — useApi (권장)
-
-모든 API 데이터는 `useApi`가 내부적으로 TanStack Query 캐시에 저장한다.
+`src/core/providers/AppProviders.tsx`
 
 ```typescript
-import { useApi } from '@axiom/hooks';
-
-// GET — 자동 캐싱
-const { data, isLoading } = useApi<User[]>('/api/users');
-
-// 캐시 무효화 (다른 쿼리 갱신)
-const { mutate, invalidateQueries } = useApi('/api/users', { method: 'POST' });
-mutate(newUser, {
-  onSuccess: async () => {
-    await invalidateQueries('/api/users');
-  },
-});
-```
-
-## 컴포넌트 외부에서 캐시 무효화
-
-```typescript
-import { getQueryClient } from '@/core/query/query-client';
-
-// 서비스·유틸 함수에서 캐시 무효화
-await getQueryClient().invalidateQueries({ queryKey: ['api', '/api/users'] });
-```
-
-## AppProviders — Provider 등록 위치
-
-모든 전역 Provider는 `src/core/providers/AppProviders.tsx`에 중첩한다.
-
-```tsx
-// src/core/providers/AppProviders.tsx
 import type { ReactNode } from 'react';
 import { QueryProvider } from './query-client/QueryProvider';
-import { ThemeProvider } from './theme/ThemeProvider'; // 신규 Provider 예시
 
 export function AppProviders({ children }: { children: ReactNode }) {
+  return <QueryProvider>{children}</QueryProvider>;
+}
+```
+
+**앱의 모든 전역 Provider는 이 컴포넌트 안에서 중첩한다.**
+Provider 순서는 의존성을 고려해 배치한다 (의존되는 Provider가 바깥쪽).
+
+---
+
+## App.tsx 연결
+
+```tsx
+// src/App.tsx
+import { AppProviders } from '@/core/providers/AppProviders';
+import { RouterProvider } from 'react-router';
+import { createAppRouter } from '@/core/router';
+import routes from '@/shared/router';
+
+const router = createAppRouter(routes);
+
+export default function App() {
   return (
-    <ThemeProvider>      {/* 바깥 → 안쪽: 의존 관계 고려 */}
-      <QueryProvider>
-        {children}
-      </QueryProvider>
-    </ThemeProvider>
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>
   );
 }
 ```
 
-**규칙:** Provider 구현 파일은 `src/core/providers/{name}/` 아래에 둔다.
+---
 
-## React Context 패턴 (UI 전역 상태)
+## QueryProvider
 
-```typescript
-// src/core/context/ThemeContext.tsx
-import { createContext, useContext, useState } from 'react';
+`src/core/providers/query-client/QueryProvider.tsx`
 
-interface ThemeContextValue {
-  isDark: boolean;
-  toggle: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [isDark, setIsDark] = useState(false);
-
-  return (
-    <ThemeContext.Provider value={{ isDark, toggle: () => setIsDark((v) => !v) }}>
-      {children}
-    </ThemeContext.Provider>
-  );
-}
-
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
-  return ctx;
-}
-```
-
-## Zustand 패턴 (복잡한 전역 상태)
-
-scaffold에 Zustand가 포함된 경우:
-
-```typescript
-// src/core/store/uiStore.ts
-import { create } from 'zustand';
-
-interface UiState {
-  sidebarOpen: boolean;
-  setSidebarOpen: (open: boolean) => void;
-}
-
-export const useUiStore = create<UiState>((set) => ({
-  sidebarOpen: true,
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-}));
-```
+TanStack Query의 `QueryClientProvider`를 래핑.
 
 ```tsx
-// 컴포넌트에서 사용
-import { useUiStore } from '@/core/store/uiStore';
-
-function AppSidebar() {
-  const { sidebarOpen, setSidebarOpen } = useUiStore();
-  // ...
-}
-```
-
-## QueryProvider 구조
-
-```tsx
-// src/core/providers/query-client/QueryProvider.tsx
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => getQueryClient());
 
+  // DevTools Extension 연동용
   useEffect(() => {
     window.__TANSTACK_QUERY_CLIENT__ = queryClient;
   }, [queryClient]);
@@ -144,3 +76,67 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   );
 }
 ```
+
+- `getQueryClient()`는 `src/core/providers/query-client/query-client-config.ts`에서 싱글턴으로 관리
+- 개발 환경(`DEV`)에서만 `ReactQueryDevtools`가 렌더링된다
+
+---
+
+## 새 Provider 추가 방법
+
+예: `ThemeProvider`를 추가하는 경우
+
+```tsx
+// src/core/providers/AppProviders.tsx
+import type { ReactNode } from 'react';
+import { QueryProvider } from './query-client/QueryProvider';
+import { ThemeProvider } from './theme/ThemeProvider'; // 신규 추가
+
+export function AppProviders({ children }: { children: ReactNode }) {
+  return (
+    <ThemeProvider>          {/* 바깥 → 안쪽 순서: 의존 관계 고려 */}
+      <QueryProvider>
+        {children}
+      </QueryProvider>
+    </ThemeProvider>
+  );
+}
+```
+
+**규칙:** Provider 구현 파일은 `src/core/providers/{name}/` 아래에 둔다.
+
+---
+
+## LayoutDefaultSidebarProvider (레이아웃 전용)
+
+`src/core/providers/layout/default/LayoutDefaultSidebarProvider.tsx`
+
+사이드바 열림/닫힘 상태를 관리하는 Context Provider.
+`RootLayout` 내부에서만 사용하며, AppProviders에 포함하지 않는다.
+
+```tsx
+// RootLayout에서 사용
+<LayoutDefaultSidebarProvider>
+  <AppHeader />
+  <AppSidebar />
+  <main>{children}</main>
+</LayoutDefaultSidebarProvider>
+```
+
+---
+
+## QueryClient 설정
+
+`src/core/providers/query-client/query-client-config.ts` 또는
+`src/core/query/query-client.ts`에서 QueryClient를 싱글턴으로 관리.
+
+`getQueryClient()`를 통해 컴포넌트 외부에서도 접근 가능하다.
+
+```typescript
+import { getQueryClient } from '@/core/query/query-client';
+
+// 컴포넌트 외부에서 캐시 무효화
+await getQueryClient().invalidateQueries({ queryKey: ['api', 'posts'] });
+```
+
+`useApi`의 `invalidateQueries`가 내부적으로 이를 사용한다.

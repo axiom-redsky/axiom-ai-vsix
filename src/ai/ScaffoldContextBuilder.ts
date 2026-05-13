@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import { HybridRagEngine } from './HybridRagEngine';
+import { ExternalCorpusLoader } from './ExternalCorpusLoader';
+import type { ExternalCorpus } from './ExternalCorpusLoader';
 import type { EditorContext } from './EditorContextCollector';
 
 interface DomainContext {
@@ -18,7 +20,10 @@ export class ScaffoldContextBuilder {
   private readonly _engine = new HybridRagEngine();
   private _ragDir: string | null | undefined = undefined; // undefined = 아직 탐색 전
 
-  constructor(private readonly extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly _outputChannel?: vscode.OutputChannel
+  ) {}
 
   /**
    * .rag/ 디렉터리를 확인하고 HybridRagEngine을 초기화한다.
@@ -26,11 +31,13 @@ export class ScaffoldContextBuilder {
    */
   startIndexBuild(): void {
     const dir = this._getRagDir();
-    if (dir) {
-      const { folder, files } = ExtensionConfig.getUserRagSources();
-      const extraDirs = folder ? [folder] : [];
-      this._engine.initialize(dir, extraDirs, files);
-    }
+    if (!dir) return;
+
+    const { folder, files } = ExtensionConfig.getUserRagSources();
+    const extraDirs = folder ? [folder] : [];
+    const externalCorpora = this._loadExternalCorpora(folder);
+
+    this._engine.initialize(dir, extraDirs, files, externalCorpora);
   }
 
   /**
@@ -165,12 +172,7 @@ ${domainSection}${scaffoldSection}${fileSection}`;
   invalidateAndRebuild(): void {
     this._ragDir = undefined;
     this._engine.invalidate();
-    const dir = this._getRagDir();
-    if (dir) {
-      const { folder, files } = ExtensionConfig.getUserRagSources();
-      const extraDirs = folder ? [folder] : [];
-      this._engine.initialize(dir, extraDirs, files);
-    }
+    this.startIndexBuild();
   }
 
   /**
@@ -263,6 +265,13 @@ ${domainSection}${scaffoldSection}${fileSection}`;
       }
     }
     return null;
+  }
+
+  /** 외부 corpus 폴더가 설정되어 있으면 로드한다. */
+  private _loadExternalCorpora(folder: string | undefined): ExternalCorpus[] {
+    if (!folder || !this._outputChannel) return [];
+    const loader = new ExternalCorpusLoader(this._outputChannel);
+    return [loader.load(folder)];
   }
 
   private _getWorkspaceRoot(): string | null {

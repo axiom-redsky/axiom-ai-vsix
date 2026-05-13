@@ -1,3 +1,14 @@
+---
+title: "API 클라이언트 패턴"
+category: pattern
+tags: [api, axios, api-client, 클라이언트, http, fetch, 통신, baseurl, interceptor, 인터셉터, error, 에러, callApi, ApiError, ApiResponse, initApiConfig]
+priority: 1
+language: ko
+scope: pattern
+related: [patterns/api-call.md]
+version: "1.0"
+---
+
 # API 클라이언트 패턴
 
 ---

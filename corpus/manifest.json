@@ -1,0 +1,97 @@
+{
+  "version": "1.0",
+  "project": "react-app-scaffold",
+  "builtIn": [
+    {
+      "id": "scaffold-docs/architecture",
+      "sourcePath": "corpus/scaffold-docs/architecture.md",
+      "ragPath": ".rag/scaffold/project-structure.md",
+      "category": "scaffold",
+      "priority": 1,
+      "lastSourceHash": "673ba4aa6777f7c8cce62773fbcbaf5a",
+      "lastBuilt": "2026-05-13T12:58:47.722Z"
+    },
+    {
+      "id": "scaffold-docs/api-client",
+      "sourcePath": "corpus/scaffold-docs/api-client.md",
+      "ragPath": ".rag/patterns/api-call.md",
+      "category": "pattern",
+      "priority": 1,
+      "lastSourceHash": "9d32075e80878a7ee86766863e793862",
+      "lastBuilt": "2026-05-13T12:58:47.725Z"
+    },
+    {
+      "id": "scaffold-docs/components",
+      "sourcePath": "corpus/scaffold-docs/components.md",
+      "ragPath": ".rag/react/component.md",
+      "category": "component",
+      "priority": 1,
+      "lastSourceHash": "4596721b5b06a34071af56f1eb1ff78c",
+      "lastBuilt": "2026-05-13T12:58:47.726Z"
+    },
+    {
+      "id": "scaffold-docs/providers",
+      "sourcePath": "corpus/scaffold-docs/providers.md",
+      "ragPath": ".rag/patterns/state-management.md",
+      "category": "pattern",
+      "priority": 2,
+      "lastSourceHash": "7994abdbe326cc786c70de0c2a30af3c",
+      "lastBuilt": "2026-05-13T12:58:47.727Z"
+    },
+    {
+      "id": "scaffold-docs/routing",
+      "sourcePath": "corpus/scaffold-docs/routing.md",
+      "ragPath": ".rag/patterns/router.md",
+      "category": "pattern",
+      "priority": 1,
+      "lastSourceHash": "e25a9ce9d02ff1661677959cc374a9a2",
+      "lastBuilt": "2026-05-13T12:58:47.728Z"
+    },
+    {
+      "id": "scaffold-docs/use-api",
+      "sourcePath": "corpus/scaffold-docs/use-api.md",
+      "ragPath": ".rag/patterns/use-api.md",
+      "category": "pattern",
+      "priority": 1,
+      "lastSourceHash": "c1c8f14628019606d9ad5348bdc4a7b8",
+      "lastBuilt": "2026-05-13T12:58:47.729Z"
+    },
+    {
+      "id": "scaffold-source/ExUseApi.tsx",
+      "sourcePath": "corpus/scaffold-source/ExUseApi.tsx.md",
+      "ragPath": ".rag/patterns/use-api-example.md",
+      "category": "source",
+      "priority": 2,
+      "lastSourceHash": "f331a83cf87ea529b11e6b396ab77f32",
+      "lastBuilt": "2026-05-13T12:58:47.747Z"
+    },
+    {
+      "id": "scaffold-source/api-client.ts",
+      "sourcePath": "corpus/scaffold-source/api-client.ts.md",
+      "ragPath": ".rag/patterns/api-client-source.md",
+      "category": "source",
+      "priority": 2,
+      "lastSourceHash": "5b23c0ab4439e04b8d80bd6073f7d537",
+      "lastBuilt": "2026-05-13T12:58:47.749Z"
+    },
+    {
+      "id": "scaffold-source/query-key-factory.ts",
+      "sourcePath": "corpus/scaffold-source/query-key-factory.ts.md",
+      "ragPath": ".rag/patterns/query-key-factory.md",
+      "category": "source",
+      "priority": 3,
+      "lastSourceHash": "b9553427f8f0ad95845dbf56e5c04373",
+      "lastBuilt": "2026-05-13T12:58:47.750Z"
+    },
+    {
+      "id": "scaffold-source/use-api.ts",
+      "sourcePath": "corpus/scaffold-source/use-api.ts.md",
+      "ragPath": ".rag/patterns/use-api-source.md",
+      "category": "source",
+      "priority": 1,
+      "lastSourceHash": "531d18f42e9920da86411646fcb14d32",
+      "lastBuilt": "2026-05-13T12:58:47.751Z"
+    }
+  ],
+  "lastBuilt": "2026-05-13T12:58:53.767Z"
+}

@@ -10,9 +10,16 @@ import * as path from 'path';
  */
 export class FileContextRetriever {
   private _ragDir = '';
+  private _extraDirs: string[] = [];
 
   initialize(ragDir: string): void {
     this._ragDir = ragDir;
+    this._extraDirs = [];
+  }
+
+  /** 외부 corpus 디렉터리를 추가한다. related 경로 해석에 활용된다. */
+  addExternalRagDir(dir: string): void {
+    this._extraDirs.push(dir);
   }
 
   /**
@@ -26,21 +33,27 @@ export class FileContextRetriever {
     this._detectByPath(lowerPath, detected);
     this._detectByImports(fileContent, detected);
 
-    return [...detected].filter((rel) =>
-      fs.existsSync(path.join(this._ragDir, rel))
-    );
+    return [...detected].filter((rel) => {
+      if (fs.existsSync(path.join(this._ragDir, rel))) return true;
+      return this._extraDirs.some((d) => fs.existsSync(path.join(d, rel)));
+    });
   }
 
   /**
    * matchedFiles()로 얻은 상대 경로들의 파일 내용을 읽어 문자열 배열로 반환한다.
+   * 내장 ragDir에 없으면 extraDirs에서도 탐색한다.
    */
   readFiles(relativePaths: string[]): string[] {
     const results: string[] = [];
     for (const rel of relativePaths) {
-      const abs = path.join(this._ragDir, rel);
-      if (fs.existsSync(abs)) {
-        const content = fs.readFileSync(abs, 'utf-8');
-        results.push(`## [${rel}]\n\n${content}`);
+      const dirs = [this._ragDir, ...this._extraDirs];
+      for (const dir of dirs) {
+        const abs = path.join(dir, rel);
+        if (fs.existsSync(abs)) {
+          const content = fs.readFileSync(abs, 'utf-8');
+          results.push(`## [${rel}]\n\n${content}`);
+          break;
+        }
       }
     }
     return results;

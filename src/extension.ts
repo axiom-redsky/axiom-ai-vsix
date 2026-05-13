@@ -38,7 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  registerCommands(context, launcherProvider);
+  registerCommands(context, launcherProvider, chatProvider);
 
   // corpus 파일 변경 감시 등록
   chatProvider.registerCorpusWatcher(context);

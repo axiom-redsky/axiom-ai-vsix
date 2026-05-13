@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
 import type { ChatPanelProvider } from '../providers/ChatPanelProvider';
+import type { ChatViewProvider } from '../providers/ChatViewProvider';
 
-// extension.ts에서 openChat / clearHistory를 직접 등록하므로,
-// 여기서는 추가 커맨드가 생길 경우에만 등록한다.
 export function registerCommands(
-  _context: vscode.ExtensionContext,
+  context: vscode.ExtensionContext,
   _provider: ChatPanelProvider,
+  chatProvider?: ChatViewProvider,
 ): void {
-  // reserved for future commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('axiom-ai.reindexCorpus', () => {
+      chatProvider?.startIndexBuild();
+      vscode.window.showInformationMessage('Axiom AI: Corpus 인덱스 재빌드를 시작했습니다.');
+    }),
+  );
 }

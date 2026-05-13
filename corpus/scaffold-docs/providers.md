@@ -1,3 +1,14 @@
+---
+title: "Provider 패턴"
+category: pattern
+tags: [provider, 프로바이더, AppProviders, QueryProvider, context, 컨텍스트, 상태, state, tanstack, devtools, sidebar, 레이아웃]
+priority: 2
+language: ko
+scope: pattern
+related: [patterns/state-management.md]
+version: "1.0"
+---
+
 # Provider 패턴
 
 ---
