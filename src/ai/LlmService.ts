@@ -1,4 +1,5 @@
 import type { ChatMessage, LlmConfig } from './types';
+import { FallbackStubService } from './FallbackStubService';
 
 export class LlmService {
   /**
@@ -9,6 +10,7 @@ export class LlmService {
     messages: ChatMessage[],
     config: LlmConfig,
     signal?: AbortSignal,
+    onFallback?: (reason: string) => void,
   ): AsyncGenerator<string> {
     const url = new URL('/v1/chat/completions', config.endpoint).toString();
 
@@ -24,20 +26,40 @@ export class LlmService {
     console.log(`[Axiom AI] → 요청 URL: ${url}`);
     console.log(`[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}`);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: config.model,
-        messages,
-        stream: true,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-      }),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          stream: true,
+          temperature: config.temperature,
+          max_tokens: config.maxTokens,
+        }),
+        signal,
+      });
+    } catch (fetchErr) {
+      if ((fetchErr as Error).name === 'AbortError') {
+        throw fetchErr;
+      }
+      const reason = (fetchErr as Error).message;
+      console.warn(`[Axiom AI] 네트워크 오류, 폴백 모드: ${reason}`);
+      onFallback?.(reason);
+      yield* new FallbackStubService().stream(FallbackStubService.extractUserText(messages));
+      return;
+    }
 
     console.log(`[Axiom AI] ← 응답 상태: ${response.status} ${response.statusText}`);
+
+    if (response.status >= 500) {
+      const reason = `서버 오류 ${response.status} ${response.statusText}`;
+      console.warn(`[Axiom AI] ${reason}, 폴백 모드 활성화`);
+      onFallback?.(reason);
+      yield* new FallbackStubService().stream(FallbackStubService.extractUserText(messages));
+      return;
+    }
 
     if (!response.ok) {
       throw new Error(`sLLM 서버 오류: ${response.status} ${response.statusText}`);

@@ -172,11 +172,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ...this._history,
       ];
       let fullResponse = '';
+      let wasFallback = false;
 
       for await (const token of this._llm.streamChat(
         messages,
         config,
         this._abortController.signal,
+        (reason) => {
+          wasFallback = true;
+          console.warn(`[Axiom AI] 오프라인 폴백 활성화: ${reason}`);
+        },
       )) {
         fullResponse += token;
         this._post({ type: 'token', content: token });
@@ -185,7 +190,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const cleanedResponse = this._stripActionBlock(fullResponse);
       this._history.push({ role: 'assistant', content: cleanedResponse });
       this._post({ type: 'done' });
-      this._postStatus(config.model);
+      this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
 
       await this._handleAxiomAction(fullResponse);
     } catch (err) {
