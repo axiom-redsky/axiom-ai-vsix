@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1520" viewBox="0 0 1000 1520" font-family="'Segoe UI',Arial,sans-serif">
+<defs>
+  <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#64748b"/></marker>
+  <marker id="ag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4ade80"/></marker>
+  <marker id="ar" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#f87171"/></marker>
+  <marker id="ap" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a78bfa"/></marker>
+</defs>
+<rect width="1000" height="1520" fill="#0d1117" rx="12"/>
+<text x="500" y="38" text-anchor="middle" fill="#f0f6fc" font-size="17" font-weight="700">Axiom AI VSCode Extension — 프롬프트 처리 흐름도</text>
+
+<!-- ① 웹뷰 레이어 -->
+<rect x="12" y="55" width="976" height="175" fill="#12082c" stroke="#7c3aed" stroke-width="2" rx="8"/>
+<text x="22" y="73" fill="#a78bfa" font-size="10.5" font-weight="700">① 웹뷰 레이어 (Webview Layer)</text>
+<rect x="330" y="80" width="340" height="44" fill="#25145c" stroke="#7c3aed" stroke-width="1.5" rx="5"/>
+<text x="500" y="98" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">사용자가 InputBar에 프롬프트 입력</text>
+<text x="500" y="115" text-anchor="middle" fill="#8b949e" font-size="9.5">webview/chat/components/InputBar.tsx</text>
+<line x1="500" y1="124" x2="500" y2="138" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#ap)"/>
+<rect x="255" y="140" width="490" height="75" fill="#25145c" stroke="#7c3aed" stroke-width="1.5" rx="5"/>
+<text x="500" y="158" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">useChat.ts — sendMessage()</text>
+<text x="500" y="174" text-anchor="middle" fill="#8b949e" font-size="9.5">webview/chat/hooks/useChat.ts</text>
+<text x="500" y="190" text-anchor="middle" fill="#c4b5fd" font-size="9.5">vscode.postMessage({ type: 'sendMessage', text })</text>
+<text x="500" y="206" text-anchor="middle" fill="#8b949e" font-size="9">isStreaming 상태 관리 · 메시지 목록 업데이트</text>
+<line x1="500" y1="230" x2="500" y2="254" stroke="#7c3aed" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+<text x="512" y="246" fill="#a78bfa" font-size="9.5">postMessage ↓</text>
+
+<!-- ② Extension Host -->
+<rect x="12" y="256" width="976" height="100" fill="#060e1e" stroke="#3b82f6" stroke-width="2" rx="8"/>
+<text x="22" y="274" fill="#60a5fa" font-size="10.5" font-weight="700">② Extension Host</text>
+<rect x="80" y="280" width="840" height="66" fill="#0d2244" stroke="#3b82f6" stroke-width="1.5" rx="5"/>
+<text x="500" y="298" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">ChatViewProvider._handleMessage(text)</text>
+<text x="500" y="314" text-anchor="middle" fill="#8b949e" font-size="9.5">providers/ChatViewProvider.ts — 웹뷰 메시지 수신 진입점</text>
+<text x="500" y="330" text-anchor="middle" fill="#8b949e" font-size="9">_history에 user 메시지 추가 → EditorContext 수집 → ScaffoldContextBuilder 호출 → LlmService 스트리밍 루프</text>
+<line x1="500" y1="356" x2="500" y2="378" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+<!-- ③ 에디터 컨텍스트 수집 -->
+<rect x="12" y="380" width="976" height="88" fill="#0b1800" stroke="#84cc16" stroke-width="2" rx="8"/>
+<text x="22" y="398" fill="#a3e635" font-size="10.5" font-weight="700">③ 에디터 컨텍스트 수집</text>
+<rect x="80" y="404" width="840" height="56" fill="#142400" stroke="#84cc16" stroke-width="1.5" rx="5"/>
+<text x="500" y="422" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">EditorContextCollector.collect()</text>
+<text x="500" y="438" text-anchor="middle" fill="#8b949e" font-size="9.5">ai/EditorContextCollector.ts</text>
+<text x="500" y="452" text-anchor="middle" fill="#8b949e" font-size="9">활성 파일 경로 · 언어(languageId) · 파일 내용(최대 200줄) · 선택된 텍스트</text>
+<line x1="500" y1="468" x2="500" y2="490" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="510" y="482" fill="#8b949e" font-size="9">filePath, language, content, selectedText</text>
+
+<!-- ④ 하이브리드 RAG 시스템 -->
+<rect x="12" y="492" width="976" height="238" fill="#0d1c00" stroke="#eab308" stroke-width="2" rx="8"/>
+<text x="22" y="510" fill="#fbbf24" font-size="10.5" font-weight="700">④ 하이브리드 RAG 시스템 — HybridRagEngine.buildContext(userQuery, filePath, fileContent)</text>
+<text x="978" y="510" text-anchor="end" fill="#8b949e" font-size="9">ai/HybridRagEngine.ts</text>
+
+<rect x="25" y="518" width="296" height="198" fill="#1c2900" stroke="#eab308" stroke-width="1.5" rx="6"/>
+<text x="173" y="537" text-anchor="middle" fill="#fde68a" font-size="11" font-weight="600">방법 1: KeywordRetriever</text>
+<text x="173" y="552" text-anchor="middle" fill="#8b949e" font-size="8.5">ai/KeywordRetriever.ts</text>
+<line x1="25" y1="558" x2="321" y2="558" stroke="#eab308" stroke-width="0.5"/>
+<text x="173" y="574" text-anchor="middle" fill="#fde68a" font-size="10">_index.md 키워드 매칭</text>
+<text x="173" y="592" text-anchor="middle" fill="#8b949e" font-size="9">쿼리에서 키워드 패턴 탐지</text>
+<text x="173" y="608" text-anchor="middle" fill="#8b949e" font-size="9">"useApi" → api-call.md</text>
+<text x="173" y="624" text-anchor="middle" fill="#8b949e" font-size="9">"router" → router.md</text>
+<text x="173" y="640" text-anchor="middle" fill="#8b949e" font-size="9">"form" → form-handling.md</text>
+<text x="173" y="660" text-anchor="middle" fill="#86efac" font-size="9" font-weight="600">⚡ 항상 실행 (최우선)</text>
+<text x="173" y="676" text-anchor="middle" fill="#8b949e" font-size="9">파일 변경 감시 · 자동 갱신</text>
+<text x="173" y="692" text-anchor="middle" fill="#8b949e" font-size="8.5">매칭 결과 → RAG 문서 파일 읽기</text>
+<text x="173" y="708" text-anchor="middle" fill="#8b949e" font-size="8.5">extension 활성화 시 .rag/ 로드</text>
+
+<rect x="352" y="518" width="296" height="198" fill="#1c2900" stroke="#eab308" stroke-width="1.5" rx="6"/>
+<text x="500" y="537" text-anchor="middle" fill="#fde68a" font-size="11" font-weight="600">방법 2: FileContextRetriever</text>
+<text x="500" y="552" text-anchor="middle" fill="#8b949e" font-size="8.5">ai/FileContextRetriever.ts</text>
+<line x1="352" y1="558" x2="648" y2="558" stroke="#eab308" stroke-width="0.5"/>
+<text x="500" y="574" text-anchor="middle" fill="#fde68a" font-size="10">파일 경로 + import 패턴 분석</text>
+<text x="500" y="592" text-anchor="middle" fill="#8b949e" font-size="9">활성 에디터 컨텍스트 기반</text>
+<text x="500" y="608" text-anchor="middle" fill="#8b949e" font-size="9">/domains/ → domain-structure.md</text>
+<text x="500" y="624" text-anchor="middle" fill="#8b949e" font-size="9">/pages/ → router.md</text>
+<text x="500" y="640" text-anchor="middle" fill="#8b949e" font-size="9">/hooks/ → api-call.md</text>
+<text x="500" y="656" text-anchor="middle" fill="#8b949e" font-size="9">useForm import → form-handling.md</text>
+<text x="500" y="672" text-anchor="middle" fill="#86efac" font-size="9" font-weight="600">⚡ 항상 실행</text>
+<text x="500" y="688" text-anchor="middle" fill="#8b949e" font-size="9">import 구문 파싱 · 경로 패턴 매칭</text>
+<text x="500" y="708" text-anchor="middle" fill="#8b949e" font-size="8.5">결과 dedup → MAX_DOCS 제한</text>
+
+<rect x="679" y="518" width="296" height="198" fill="#1c2900" stroke="#eab308" stroke-width="1.5" rx="6"/>
+<text x="827" y="537" text-anchor="middle" fill="#fde68a" font-size="11" font-weight="600">방법 3: RagRetriever (임베딩)</text>
+<text x="827" y="552" text-anchor="middle" fill="#8b949e" font-size="8.5">ai/RagRetriever.ts + EmbeddingService.ts</text>
+<line x1="679" y1="558" x2="975" y2="558" stroke="#eab308" stroke-width="0.5"/>
+<text x="827" y="574" text-anchor="middle" fill="#fde68a" font-size="10">벡터 임베딩 유사도 검색</text>
+<text x="827" y="592" text-anchor="middle" fill="#8b949e" font-size="9">로컬 transformers.js (완전 오프라인)</text>
+<text x="827" y="608" text-anchor="middle" fill="#8b949e" font-size="9">paraphrase-multilingual-MiniLM</text>
+<text x="827" y="624" text-anchor="middle" fill="#8b949e" font-size="9">코사인 유사도, topK=5</text>
+<text x="827" y="640" text-anchor="middle" fill="#8b949e" font-size="9">chunk 600자 / overlap 100자</text>
+<text x="827" y="660" text-anchor="middle" fill="#fb923c" font-size="9" font-weight="600">⚠ 결과 &lt; 3개일 때만 실행 (폴백)</text>
+<text x="827" y="676" text-anchor="middle" fill="#8b949e" font-size="9">activation 시 백그라운드 인덱싱</text>
+<text x="827" y="692" text-anchor="middle" fill="#8b949e" font-size="9">사용자 corpus 폴더/파일도 포함</text>
+<text x="827" y="708" text-anchor="middle" fill="#8b949e" font-size="8.5">reindexCorpus 명령으로 재빌드</text>
+
+<line x1="500" y1="730" x2="500" y2="752" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="510" y="744" fill="#8b949e" font-size="9">RAG 문서들 (dedup, MAX_DOCS 제한)</text>
+
+<!-- ⑤ ScaffoldContextBuilder -->
+<rect x="12" y="754" width="976" height="70" fill="#0b1800" stroke="#84cc16" stroke-width="1.5" rx="8"/>
+<text x="22" y="772" fill="#a3e635" font-size="10.5" font-weight="700">⑤ 시스템 프롬프트 조립</text>
+<rect x="120" y="776" width="760" height="42" fill="#142400" stroke="#84cc16" stroke-width="1" rx="5"/>
+<text x="500" y="794" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">ScaffoldContextBuilder.buildSystemPrompt(editorCtx, userQuery)</text>
+<text x="500" y="810" text-anchor="middle" fill="#8b949e" font-size="9">ai/ScaffoldContextBuilder.ts — 도메인 감지 + RAG 문서 + 에디터 컨텍스트 결합 → 완성된 시스템 프롬프트</text>
+<line x1="500" y1="824" x2="500" y2="846" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="510" y="837" fill="#8b949e" font-size="9">messages[ system, ...history, user ]</text>
+
+<!-- ⑥ LlmService -->
+<rect x="12" y="848" width="976" height="70" fill="#140808" stroke="#ef4444" stroke-width="2" rx="8"/>
+<text x="22" y="866" fill="#f87171" font-size="10.5" font-weight="700">⑥ LLM 서비스</text>
+<rect x="120" y="870" width="760" height="42" fill="#291010" stroke="#ef4444" stroke-width="1.5" rx="5"/>
+<text x="500" y="888" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">LlmService.streamChat(messages, config, signal, onFallback)</text>
+<text x="500" y="904" text-anchor="middle" fill="#8b949e" font-size="9.5">ai/LlmService.ts — HTTP POST /v1/chat/completions (stream: true) · SSE · Bearer {apiKey}</text>
+<line x1="500" y1="918" x2="500" y2="940" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+<!-- 결정 다이아몬드: center(500,975), top=932, bottom=1018, left=375, right=625 -->
+<polygon points="500,932 628,975 500,1018 372,975" fill="#1e0a0a" stroke="#ef4444" stroke-width="2"/>
+<text x="500" y="969" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">AI 서버</text>
+<text x="500" y="986" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">연결 가능?</text>
+
+<!-- 왼쪽 분기 (실패) -->
+<line x1="372" y1="975" x2="200" y2="975" stroke="#f87171" stroke-width="2"/>
+<line x1="200" y1="975" x2="200" y2="1030" stroke="#f87171" stroke-width="2" marker-end="url(#ar)"/>
+<text x="286" y="962" text-anchor="middle" fill="#f87171" font-size="9.5">실패</text>
+<text x="286" y="976" text-anchor="middle" fill="#8b949e" font-size="8.5">네트워크 오류 / HTTP 500+</text>
+
+<!-- 오른쪽 분기 (성공) -->
+<line x1="628" y1="975" x2="800" y2="975" stroke="#4ade80" stroke-width="2"/>
+<line x1="800" y1="975" x2="800" y2="1030" stroke="#4ade80" stroke-width="2" marker-end="url(#ag)"/>
+<text x="712" y="962" text-anchor="middle" fill="#4ade80" font-size="9.5">성공</text>
+
+<!-- ⑦-A FallbackStubService -->
+<rect x="12" y="1032" width="378" height="168" fill="#1a1000" stroke="#f59e0b" stroke-width="2" rx="8"/>
+<text x="201" y="1052" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700">⑦-A FallbackStubService</text>
+<text x="201" y="1067" text-anchor="middle" fill="#8b949e" font-size="9">ai/FallbackStubService.ts</text>
+<line x1="12" y1="1074" x2="390" y2="1074" stroke="#f59e0b" stroke-width="0.5"/>
+<text x="201" y="1089" text-anchor="middle" fill="#fde68a" font-size="10">키워드 기반 사전 정의 응답 선택</text>
+<text x="201" y="1107" text-anchor="middle" fill="#8b949e" font-size="9">"useapi/usefetch" → useApi 훅 예제 코드</text>
+<text x="201" y="1123" text-anchor="middle" fill="#8b949e" font-size="9">"usestate/useeffect" → React 훅 예제 코드</text>
+<text x="201" y="1139" text-anchor="middle" fill="#8b949e" font-size="9">"test/단위테스트" → 테스트 템플릿</text>
+<text x="201" y="1155" text-anchor="middle" fill="#8b949e" font-size="9">"custom hook" → 커스텀 훅 템플릿</text>
+<text x="201" y="1175" text-anchor="middle" fill="#fb923c" font-size="9" font-weight="600">일치 없음 → ⚠️ 오프라인 안내 메시지</text>
+<text x="201" y="1192" text-anchor="middle" fill="#8b949e" font-size="8.5">AsyncGenerator로 토큰 단위 yield</text>
+
+<!-- ⑦-B AI 서버 -->
+<rect x="610" y="1032" width="378" height="168" fill="#031408" stroke="#4ade80" stroke-width="2" rx="8"/>
+<text x="799" y="1052" text-anchor="middle" fill="#4ade80" font-size="12" font-weight="700">⑦-B AI 서버 (OpenAI-compatible)</text>
+<text x="799" y="1067" text-anchor="middle" fill="#8b949e" font-size="9">LlmService.ts — SSE 스트림 파싱</text>
+<line x1="610" y1="1074" x2="988" y2="1074" stroke="#4ade80" stroke-width="0.5"/>
+<text x="799" y="1089" text-anchor="middle" fill="#86efac" font-size="10">SSE (Server-Sent Events) 수신 · 파싱</text>
+<text x="799" y="1107" text-anchor="middle" fill="#8b949e" font-size="9">data: {choices[0].delta.content} 파싱</text>
+<text x="799" y="1123" text-anchor="middle" fill="#8b949e" font-size="9">토큰 단위 AsyncGenerator yield</text>
+<text x="799" y="1139" text-anchor="middle" fill="#8b949e" font-size="9">data: [DONE] 수신 시 스트림 종료</text>
+<text x="799" y="1155" text-anchor="middle" fill="#8b949e" font-size="9">model: qwen2.5-coder:14b · temp: 0.2</text>
+<text x="799" y="1175" text-anchor="middle" fill="#4ade80" font-size="9">Cloudflare Tunnel 또는 로컬 Ollama</text>
+<text x="799" y="1192" text-anchor="middle" fill="#8b949e" font-size="8.5">maxTokens: 4096 · Authorization: Bearer</text>
+
+<!-- 병합 라인 -->
+<line x1="200" y1="1200" x2="200" y2="1224" stroke="#f59e0b" stroke-width="1.5"/>
+<line x1="200" y1="1224" x2="500" y2="1224" stroke="#64748b" stroke-width="1.5"/>
+<line x1="800" y1="1200" x2="800" y2="1224" stroke="#4ade80" stroke-width="1.5"/>
+<line x1="800" y1="1224" x2="500" y2="1224" stroke="#64748b" stroke-width="1.5"/>
+<line x1="500" y1="1224" x2="500" y2="1244" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="510" y="1237" fill="#8b949e" font-size="9">fullResponse 조립 완료</text>
+
+<!-- ⑧ axiom-action 파서 -->
+<rect x="120" y="1246" width="760" height="64" fill="#040e1a" stroke="#06b6d4" stroke-width="2" rx="8"/>
+<text x="500" y="1265" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="600">⑧ axiom-action 블록 파서</text>
+<text x="500" y="1281" text-anchor="middle" fill="#8b949e" font-size="9.5">ChatViewProvider._handleAxiomAction() — providers/ChatViewProvider.ts</text>
+<text x="500" y="1297" text-anchor="middle" fill="#8b949e" font-size="9">&lt;axiom-action&gt;{ JSON 메타데이터 + 코드블록 }&lt;/axiom-action&gt; 정규식 파싱 → AxiomAction[] 추출</text>
+<line x1="500" y1="1310" x2="500" y2="1328" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+<!-- ⑨ FileCreatorService -->
+<rect x="120" y="1330" width="760" height="64" fill="#040e1a" stroke="#06b6d4" stroke-width="1.5" rx="8"/>
+<text x="500" y="1349" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="600">⑨ FileCreatorService.createFile(action)</text>
+<text x="500" y="1365" text-anchor="middle" fill="#8b949e" font-size="9.5">ai/FileCreatorService.ts</text>
+<text x="500" y="1381" text-anchor="middle" fill="#8b949e" font-size="9">createFile: InputBox 경로 확인 후 생성 | updateFile: 자동 덮어쓰기 | 템플릿: page · component · store · api · router</text>
+<line x1="500" y1="1394" x2="500" y2="1412" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+<!-- ⑩ 토큰 스트리밍 -->
+<rect x="150" y="1414" width="700" height="56" fill="#08051e" stroke="#818cf8" stroke-width="2" rx="8"/>
+<text x="500" y="1433" text-anchor="middle" fill="#a5b4fc" font-size="11" font-weight="600">⑩ 토큰 스트리밍 → 웹뷰 전송</text>
+<text x="500" y="1449" text-anchor="middle" fill="#8b949e" font-size="9.5">for await token → postMessage({ type:'token', content }) 실시간 전송</text>
+<text x="500" y="1463" text-anchor="middle" fill="#8b949e" font-size="9">완료 → postMessage({ type:'done' }) · 파일 생성 결과 → postMessage({ type:'fileCreated' })</text>
+<line x1="500" y1="1470" x2="500" y2="1488" stroke="#7c3aed" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+
+<!-- ⑪ 웹뷰 수신 -->
+<rect x="200" y="1490" width="600" height="20" fill="#12082c" stroke="#7c3aed" stroke-width="2" rx="8"/>
+<rect x="200" y="1490" width="600" height="22" fill="#12082c" stroke="#7c3aed" stroke-width="2" rx="8"/>
+<rect x="180" y="1490" width="640" height="20" fill="none"/>
+<rect x="180" y="1490" width="640" height="54" fill="#12082c" stroke="#7c3aed" stroke-width="2" rx="8"/>
+<text x="500" y="1510" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">⑪ useChat.ts — 토큰 수신 및 UI 업데이트</text>
+<text x="500" y="1528" text-anchor="middle" fill="#8b949e" font-size="9.5">token 수신 시 메시지에 append → done 수신 시 isStreaming=false, 완료 표시</text>
+</svg>
