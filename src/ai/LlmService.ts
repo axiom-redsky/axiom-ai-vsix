@@ -1,7 +1,30 @@
+import * as vscode from 'vscode';
+import * as fs from 'fs';
 import type { ChatMessage, LlmConfig } from './types';
 import { FallbackStubService } from './FallbackStubService';
+import { ExtensionConfig } from '../config/ExtensionConfig';
 
 export class LlmService {
+  private readonly _bundledStubsDir: string | null;
+  private _stub: FallbackStubService;
+
+  constructor(extensionUri?: vscode.Uri) {
+    if (extensionUri) {
+      const p = vscode.Uri.joinPath(extensionUri, '.stubs').fsPath;
+      this._bundledStubsDir = fs.existsSync(p) ? p : null;
+    } else {
+      this._bundledStubsDir = null;
+    }
+    const userDir = ExtensionConfig.getUserStubsFolder() || null;
+    this._stub = new FallbackStubService(this._bundledStubsDir, userDir);
+  }
+
+  /** 사용자 stubs 폴더 변경 시 ChatViewProvider에서 호출 */
+  reloadStubs(): void {
+    const userDir = ExtensionConfig.getUserStubsFolder() || null;
+    this._stub.reload(this._bundledStubsDir, userDir);
+  }
+
   /**
    * OpenAI 호환 /v1/chat/completions SSE 스트리밍.
    * Ollama, vLLM, LocalAI 모두 동일한 스키마를 사용한다.
@@ -47,7 +70,7 @@ export class LlmService {
       const reason = (fetchErr as Error).message;
       console.warn(`[Axiom AI] 네트워크 오류, 폴백 모드: ${reason}`);
       onFallback?.(reason);
-      yield* new FallbackStubService().stream(FallbackStubService.extractUserText(messages));
+      yield* this._stub.stream(FallbackStubService.extractUserText(messages));
       return;
     }
 
@@ -57,7 +80,7 @@ export class LlmService {
       const reason = `서버 오류 ${response.status} ${response.statusText}`;
       console.warn(`[Axiom AI] ${reason}, 폴백 모드 활성화`);
       onFallback?.(reason);
-      yield* new FallbackStubService().stream(FallbackStubService.extractUserText(messages));
+      yield* this._stub.stream(FallbackStubService.extractUserText(messages));
       return;
     }
 

@@ -20,15 +20,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _abortController?: AbortController;
   private _externalWatcherDebounce: ReturnType<typeof setTimeout> | null = null;
   private _externalWatcher: vscode.FileSystemWatcher | null = null;
+  private _userStubsWatcher: vscode.FileSystemWatcher | null = null;
+  private _userStubsDebounce: ReturnType<typeof setTimeout> | null = null;
   private _configChangeDisposable?: vscode.Disposable;
 
-  private readonly _llm = new LlmService();
+  private readonly _llm: LlmService;
   private readonly _editorCollector: EditorContextCollector;
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
+    this._llm = new LlmService(_extensionUri);
     this._editorCollector = new EditorContextCollector(ExtensionConfig.getMaxFileLines());
     this._corpusOutputChannel = vscode.window.createOutputChannel('axiom-ai: Corpus');
     this._scaffoldBuilder = new ScaffoldContextBuilder(_extensionUri, this._corpusOutputChannel);
@@ -95,12 +98,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 외부 corpus 감시자 등록
     this._registerExternalCorpusWatcher(context);
 
-    // axiom-ai.rag 설정 변경 시 외부 corpus 감시자 재등록
+    // 사용자 stubs 폴더 감시자 등록
+    this._registerUserStubsWatcher(context);
+
+    // 설정 변경 시 감시자 재등록
     this._configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('axiom-ai.rag')) {
         this._unregisterExternalCorpusWatcher();
         this._registerExternalCorpusWatcher(context);
         this._scaffoldBuilder.invalidateAndRebuild();
+      }
+      if (e.affectsConfiguration('axiom-ai.stubs')) {
+        this._unregisterUserStubsWatcher();
+        this._registerUserStubsWatcher(context);
+        this._llm.reloadStubs();
       }
     });
     context.subscriptions.push(this._configChangeDisposable);
@@ -150,6 +161,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     this._externalWatcher?.dispose();
     this._externalWatcher = null;
+  }
+
+  /** 사용자 stubs 폴더 변경을 감시하는 FileSystemWatcher를 등록한다. */
+  private _registerUserStubsWatcher(context: vscode.ExtensionContext): void {
+    const folder = ExtensionConfig.getUserStubsFolder();
+    if (!folder) return;
+
+    try {
+      const pattern = new vscode.RelativePattern(vscode.Uri.file(folder), '**/*.md');
+      this._userStubsWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+      const reload = () => {
+        if (this._userStubsDebounce) clearTimeout(this._userStubsDebounce);
+        this._userStubsDebounce = setTimeout(() => {
+          this._corpusOutputChannel.appendLine('[hot-reload] User stubs changed, reloading...');
+          this._llm.reloadStubs();
+        }, 500);
+      };
+
+      context.subscriptions.push(
+        this._userStubsWatcher,
+        this._userStubsWatcher.onDidChange(reload),
+        this._userStubsWatcher.onDidCreate(reload),
+        this._userStubsWatcher.onDidDelete(reload),
+      );
+    } catch {
+      this._corpusOutputChannel.appendLine(`[warn] 사용자 stubs 감시자 등록 실패: ${folder}`);
+    }
+  }
+
+  /** 사용자 stubs 감시자를 해제한다. */
+  private _unregisterUserStubsWatcher(): void {
+    if (this._userStubsDebounce) {
+      clearTimeout(this._userStubsDebounce);
+      this._userStubsDebounce = null;
+    }
+    this._userStubsWatcher?.dispose();
+    this._userStubsWatcher = null;
   }
 
   private async _handleMessage(text: string): Promise<void> {

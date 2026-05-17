@@ -41,6 +41,11 @@ export class ExtensionConfig {
     return { ...AI_DEFAULTS.rag };
   }
 
+  /** 사용자가 설정한 오프라인 stubs 보강 폴더 */
+  static getUserStubsFolder(): string {
+    return ExtensionConfig._cfg().get<string>('stubs.userStubsFolder', '');
+  }
+
   /** 사용자가 설정한 추가 RAG 소스 (폴더 + 개별 파일) */
   static getUserRagSources(): { folder: string; files: string[] } {
     const cfg = ExtensionConfig._cfg();

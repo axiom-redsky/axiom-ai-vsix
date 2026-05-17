@@ -93,6 +93,11 @@
           "default": [],
           "description": "RAG 인덱스에 추가할 개별 .md 파일 경로 목록 (절대 경로)"
         },
+        "axiom-ai.stubs.userStubsFolder": {
+          "type": "string",
+          "default": "",
+          "description": "오프라인 stubs를 보강하거나 덮어쓸 사용자 정의 폴더 경로 (절대경로). 이 폴더의 .md 파일이 번들 stubs보다 우선 적용됩니다."
+        },
         "axiom-ai.rag.externalCorpusEnabled": {
           "type": "boolean",
           "default": true,
