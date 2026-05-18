@@ -26,7 +26,7 @@ export class ScaffoldContextBuilder {
   ) {}
 
   /**
-   * .rag/ 디렉터리를 확인하고 HybridRagEngine을 초기화한다.
+   * knowledge/ 디렉터리를 확인하고 HybridRagEngine을 초기화한다.
    * activate 시점에 호출하면 첫 채팅 전에 임베딩 인덱스가 준비된다.
    */
   startIndexBuild(): void {
@@ -303,8 +303,8 @@ ${domainSection}${scaffoldSection}${fileSection}`;
       }
     }
 
-    // 확장 번들 내 .rag/ 폴백
-    const bundled = vscode.Uri.joinPath(this.extensionUri, '.rag').fsPath;
+    // 확장 번들 내 knowledge/ 폴백
+    const bundled = vscode.Uri.joinPath(this.extensionUri, 'knowledge').fsPath;
     this._ragDir = fs.existsSync(bundled) ? bundled : null;
     return this._ragDir;
   }

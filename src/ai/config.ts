@@ -9,9 +9,8 @@ export const AI_DEFAULTS = {
   model: 'qwen2.5-coder:14b',
   temperature: 0.2,
   maxTokens: 4096,
-  corpusPath: './corpus',
-  /** 키워드 라우팅 + 파일 컨텍스트 분석 기반 하이브리드 RAG 지식 폴더 */
-  ragPath: '.rag',
+  /** scaffold 컨벤션·패턴·문서 통합 지식 폴더 (.rag/ + corpus/ 통합) */
+  knowledgePath: 'knowledge',
   maxFileLines: 200,
   rag: {
     /** 로컬 임베딩 모델 (transformers.js, 첫 실행 시 자동 다운로드 후 캐시) */

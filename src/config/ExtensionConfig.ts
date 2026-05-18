@@ -25,12 +25,19 @@ export class ExtensionConfig {
     };
   }
 
-  static getCorpusPath(): string {
-    return AI_DEFAULTS.corpusPath;
+  /** scaffold 컨벤션·패턴·문서 통합 지식 폴더 경로 */
+  static getKnowledgePath(): string {
+    return AI_DEFAULTS.knowledgePath;
   }
 
+  /** @deprecated getRagPath → getKnowledgePath */
   static getRagPath(): string {
-    return AI_DEFAULTS.ragPath;
+    return AI_DEFAULTS.knowledgePath;
+  }
+
+  /** @deprecated getCorpusPath → getKnowledgePath */
+  static getCorpusPath(): string {
+    return AI_DEFAULTS.knowledgePath;
   }
 
   static getMaxFileLines(): number {
@@ -53,5 +60,36 @@ export class ExtensionConfig {
       folder: cfg.get<string>('rag.userRagFolder', ''),
       files:  cfg.get<string[]>('rag.additionalFiles', []),
     };
+  }
+
+  // ─── SDD 설정 ───────────────────────────────────────────────────────────────
+
+  /** .axiom/ 폴더 경로 (SDD 스펙 저장소). 설정 없으면 빈 문자열 */
+  static getSddAxiomFolder(): string {
+    return ExtensionConfig._cfg().get<string>('sdd.axiomFolder', '');
+  }
+
+  /** 금융 컴플라이언스 필드 강제 여부 */
+  static getSddRequireComplianceTags(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('sdd.requireComplianceTags', false);
+  }
+
+  // ─── 서버 설정 (폐쇄망 지원) ──────────────────────────────────────────────
+
+  /** 내부 AI 서버 엔드포인트. 설정 있으면 llm.endpoint보다 우선 */
+  static getServerEndpoint(): string {
+    return ExtensionConfig._cfg().get<string>('server.endpoint', '');
+  }
+
+  /** AI 서버 미응답 시 scaffold 기반 빈 스텁 반환 여부 */
+  static isOfflineFallbackEnabled(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('server.offlineFallback', true);
+  }
+
+  /** 실제 LLM 요청에 사용할 엔드포인트 (server.endpoint 우선, 없으면 llm.endpoint) */
+  static getEffectiveLlmConfig(): LlmConfig {
+    const base = ExtensionConfig.getLlmConfig();
+    const serverEndpoint = ExtensionConfig.getServerEndpoint();
+    return serverEndpoint ? { ...base, endpoint: serverEndpoint } : base;
   }
 }

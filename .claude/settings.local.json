@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\\\\src\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(cp -r .rag/components knowledge/)",
+      "Bash(cp -r .rag/conventions knowledge/)",
+      "Bash(cp -r .rag/patterns knowledge/)",
+      "Bash(cp -r .rag/react knowledge/)",
+      "Bash(cp -r .rag/scaffold knowledge/)",
+      "Bash(npm run *)"
+    ]
+  }
+}

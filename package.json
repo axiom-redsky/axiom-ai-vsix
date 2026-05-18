@@ -40,6 +40,11 @@
           "id": "axiom-ai.chatPanel",
           "name": "Axiom AI",
           "visibility": "visible"
+        },
+        {
+          "id": "axiom-ai.sddPanel",
+          "name": "SDD 스펙",
+          "visibility": "collapsed"
         }
       ],
       "axiom-ai-chat-container": [
@@ -107,6 +112,31 @@
           "type": "boolean",
           "default": true,
           "description": "외부 corpus frontmatter 유효성 검사 후 Output 채널에 경고를 표시합니다"
+        },
+        "axiom-ai.sdd.axiomFolder": {
+          "type": "string",
+          "default": "",
+          "description": "SDD 스펙 저장 폴더 경로 (워크스페이스 상대 또는 절대 경로). 예: .axiom"
+        },
+        "axiom-ai.sdd.requireComplianceTags": {
+          "type": "boolean",
+          "default": false,
+          "description": "금융 컴플라이언스 태그(compliance-tags, reviewer) 필수 여부"
+        },
+        "axiom-ai.server.endpoint": {
+          "type": "string",
+          "default": "",
+          "description": "내부 AI 서버 엔드포인트 (폐쇄망용). 설정 시 llm.endpoint보다 우선 적용됩니다."
+        },
+        "axiom-ai.server.offlineFallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "AI 서버 미응답 시 scaffold 기반 빈 스텁을 반환합니다"
+        },
+        "axiom-ai.user.name": {
+          "type": "string",
+          "default": "developer",
+          "description": "스펙 승인/감사 로그에 기록할 사용자 이름"
         }
       }
     },
@@ -123,6 +153,34 @@
       {
         "command": "axiom-ai.reindexCorpus",
         "title": "Axiom AI: Corpus 인덱스 재빌드"
+      },
+      {
+        "command": "axiom-ai.generateSpec",
+        "title": "Axiom AI: SDD 스펙 생성",
+        "icon": "$(file-add)"
+      },
+      {
+        "command": "axiom-ai.generateSpecForFolder",
+        "title": "Axiom AI: 이 폴더의 스펙 생성"
+      },
+      {
+        "command": "axiom-ai.scaffoldFromSpec",
+        "title": "Axiom AI: 스펙에서 코드 생성 (/scaffold)",
+        "icon": "$(play)"
+      },
+      {
+        "command": "axiom-ai.approveSpec",
+        "title": "Axiom AI: 스펙 승인 (Approve)",
+        "icon": "$(check)"
+      },
+      {
+        "command": "axiom-ai.openSpec",
+        "title": "Axiom AI: 스펙 열기"
+      },
+      {
+        "command": "axiom-ai.refreshSddPanel",
+        "title": "Axiom AI: SDD 패널 새로고침",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -136,6 +194,40 @@
           "command": "axiom-ai.clearHistory",
           "when": "view == axiom-ai.chatView",
           "group": "navigation"
+        },
+        {
+          "command": "axiom-ai.refreshSddPanel",
+          "when": "view == axiom-ai.sddPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "axiom-ai.generateSpec",
+          "when": "view == axiom-ai.sddPanel",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "axiom-ai.openSpec",
+          "when": "view == axiom-ai.sddPanel && viewItem == sddSpec",
+          "group": "sdd@1"
+        },
+        {
+          "command": "axiom-ai.scaffoldFromSpec",
+          "when": "view == axiom-ai.sddPanel && viewItem == sddSpec",
+          "group": "sdd@2"
+        },
+        {
+          "command": "axiom-ai.approveSpec",
+          "when": "view == axiom-ai.sddPanel && viewItem == sddSpec",
+          "group": "sdd@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "axiom-ai.generateSpecForFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "axiomAi"
         }
       ]
     }
