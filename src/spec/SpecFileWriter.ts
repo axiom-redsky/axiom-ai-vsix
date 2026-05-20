@@ -3,6 +3,34 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 
+const SPEC_GUIDE_FOOTER = `<!--
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  스펙 작성 가이드 (이 주석은 렌더링되지 않습니다)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ status 흐름
+  draft → review → approved → implemented
+  - /spec review   : review 전환
+  - /spec approve  : approved 전환 (reviewer 필드 필수)
+  - /scaffold      : TSX 스텁 생성 후 자동 implemented
+
+■ 수락 기준 필수 4케이스
+  - [ ] 정상 상태: 데이터가 정상 표시
+  - [ ] 로딩 상태: 스피너/스켈레톤 표시
+  - [ ] 빈 상태:   Empty UI + 안내 메시지
+  - [ ] 에러 상태: ApiError 코드별 처리 (400/403/500/503)
+
+■ 스펙 수정 방법
+  · 직접 편집: 수락 기준 체크, status 변경, 미결정 사항 해소
+  · AI 수정: spec.md 열고 → /spec update <변경 내용>
+  · 상세 규칙: 채팅창에 /spec guide 입력
+
+■ 코딩 규칙
+  · API 호출  : useApi(@axiom/hooks)
+  · UI 컴포넌트: @axiom/components/ui
+  · 라우팅    : createHashRouter + loadable()
+-->`;
+
 export interface SpecFrontmatter {
   title: string;
   category: string;
@@ -124,7 +152,8 @@ export class SpecFileWriter {
     fs.mkdirSync(specDir, { recursive: true });
 
     const specPath = path.join(specDir, 'spec.md');
-    const content = overrideContent ?? parsed.raw;
+    const base = overrideContent ?? parsed.raw;
+    const content = base.trimEnd() + '\n\n' + SPEC_GUIDE_FOOTER;
     fs.writeFileSync(specPath, content, 'utf-8');
 
     // 에디터에서 열기

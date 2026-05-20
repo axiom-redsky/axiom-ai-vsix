@@ -9,7 +9,8 @@
       "Bash(cp -r .rag/patterns knowledge/)",
       "Bash(cp -r .rag/react knowledge/)",
       "Bash(cp -r .rag/scaffold knowledge/)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

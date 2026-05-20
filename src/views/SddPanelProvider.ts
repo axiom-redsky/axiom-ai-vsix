@@ -23,6 +23,7 @@ class SddTreeItem extends vscode.TreeItem {
     public readonly specPath?: string,
     public readonly status?: SpecStatus,
     public readonly contextValue?: string,
+    public readonly specTitle?: string,
   ) {
     super(label, collapsibleState);
     if (specPath) {
@@ -33,8 +34,12 @@ class SddTreeItem extends vscode.TreeItem {
         arguments: [specPath],
       };
       const badge = STATUS_BADGE[status ?? 'unknown'];
-      this.description = badge;
-      this.tooltip = `${badge} ${status ?? 'unknown'} — ${path.basename(path.dirname(specPath))}`;
+      this.description = specTitle ?? '';
+      this.tooltip = [
+        `${badge} ${status ?? 'unknown'}`,
+        specTitle ? `📝 ${specTitle}` : '',
+        path.basename(path.dirname(specPath)),
+      ].filter(Boolean).join('\n');
     }
     this.contextValue = contextValue;
   }
@@ -159,24 +164,28 @@ export class SddPanelProvider implements vscode.TreeDataProvider<SddTreeItem> {
         const status = this._getSpecStatus(fullPath);
         const screenName = path.basename(dirPath);
         const badge = STATUS_BADGE[status];
+        const title = this._getSpecTitle(fullPath);
         const item = new SddTreeItem(
           `${badge} ${screenName}`,
           vscode.TreeItemCollapsibleState.None,
           fullPath,
           status,
-          'sddSpec',
+          `sddSpec-${status}`,
+          title,
         );
         item.iconPath = new vscode.ThemeIcon('file-text');
         items.push(item);
       } else if (name.endsWith('.md')) {
         const status = this._getSpecStatus(fullPath);
         const badge = STATUS_BADGE[status];
+        const title = this._getSpecTitle(fullPath);
         const item = new SddTreeItem(
           `${badge} ${name.replace('.md', '')}`,
           vscode.TreeItemCollapsibleState.None,
           fullPath,
           status,
-          'sddSpec',
+          `sddSpec-${status}`,
+          title,
         );
         item.iconPath = new vscode.ThemeIcon('file-text');
         items.push(item);
@@ -184,6 +193,16 @@ export class SddPanelProvider implements vscode.TreeDataProvider<SddTreeItem> {
     }
 
     return items;
+  }
+
+  private _getSpecTitle(specPath: string): string | undefined {
+    try {
+      const content = fs.readFileSync(specPath, 'utf-8');
+      const match = content.match(/^title:\s*(.+)$/m);
+      return match?.[1].trim().replace(/^["']|["']$/g, '') ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private _getSpecStatus(specPath: string): SpecStatus {

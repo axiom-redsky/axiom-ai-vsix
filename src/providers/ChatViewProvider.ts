@@ -15,6 +15,7 @@ import { SpecGenerator } from '../spec/SpecGenerator';
 import { SpecFileWriter } from '../spec/SpecFileWriter';
 import { SpecScaffolder } from '../spec/SpecScaffolder';
 import { AxiomIndexTracker } from '../spec/AxiomIndexTracker';
+import type { SpecIndexEntry } from '../spec/AxiomIndexTracker';
 import { DomainRouter } from '../spec/DomainRouter';
 import { SddCorpusLoader } from '../spec/SddCorpusLoader';
 
@@ -146,6 +147,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await this._handleSpecCommand(intent);
   }
 
+  /** /spec update 커맨드 처리 — spec.md가 이미 열려 있어야 한다 */
+  async runSpecUpdateCommand(intent: string): Promise<void> {
+    this._post({ type: 'token', content: `✏️ 스펙 수정 중: ${intent}\n\n` });
+    await this._handleSpecUpdate(intent);
+  }
+
   // ─── private: 메시지 처리 ────────────────────────────────────────────────────
 
   private async _handleMessage(text: string): Promise<void> {
@@ -155,6 +162,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (text.startsWith('/spec ') || text === '/spec') {
       const subtext = text.slice('/spec'.length).trim();
 
+      if (!subtext || subtext === 'help') {
+        this._showSpecHelp();
+        return;
+      }
+      if (subtext === 'guide') {
+        this._showSpecGuide();
+        return;
+      }
       if (subtext.startsWith('approve')) {
         await this._handleSpecApprove();
         return;
@@ -167,7 +182,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this._handleSpecUpdate(subtext.slice('update '.length).trim());
         return;
       }
-      await this._handleSpecCommand(subtext || '현재 파일 스펙 생성');
+      if (subtext.startsWith('fast ') || subtext === 'fast') {
+        await this._handleSpecFast(subtext.slice('fast'.length).trim());
+        return;
+      }
+      await this._handleSpecCommand(subtext);
       return;
     }
 
@@ -251,7 +270,178 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // ─── /spec 서브 커맨드 ───────────────────────────────────────────────────────
 
+  private _showSpecHelp(): void {
+    const guide = [
+      '📋 **SDD 스펙 가이드**',
+      '',
+      '**사용법**',
+      '```',
+      '/spec <만들고 싶은 화면 설명>',
+      '```',
+      '',
+      '---',
+      '',
+      '**Case 1 — 기존 파일 수정·기능 추가**',
+      '대상 `.tsx` 파일을 열고 실행하면 도메인·API 패턴을 자동으로 반영합니다.',
+      '```',
+      '// TransferConfirmPage.tsx 를 열고:',
+      '/spec 이체 확인 화면 한도 초과 예외처리 추가',
+      '/spec 로그인 화면 소셜 로그인 추가',
+      '```',
+      '',
+      '**Case 2 — 새 화면 처음 만들기 (파일 없음)**',
+      '파일이 없으면 도메인을 자동 감지할 수 없습니다.',
+      '`[도메인] [화면명(PascalCase)] [기능 설명]` 형태로 입력하세요.',
+      '```',
+      '/spec example 도메인 AccountListPage 계좌 목록 조회',
+      '/spec order 도메인 OrderDetailPage 주문 상세 및 취소 기능',
+      '/spec auth 도메인 SignUpPage 회원가입, 약관 동의 포함',
+      '```',
+      '생성 후 `.axiom/screens/example/AccountListPage/spec.md` 에 저장되고,',
+      '`/scaffold` 실행 시 `src/domains/example/pages/AccountListPage.tsx` 스텁이 생성됩니다.',
+      '',
+      '---',
+      '',
+      '**서브 커맨드**',
+      '| 명령어 | 설명 |',
+      '|---|---|',
+      '| `/spec fast <설명>` | ⚡ 스펙 생성 + 승인 + 코드 생성 한 번에 |',
+      '| `/spec <설명>` | 스펙 생성 (draft 저장) |',
+      '| `/spec update <수정 내용>` | 현재 열린 spec.md AI 보조 수정 |',
+      '| `/spec review` | 스펙을 리뷰 요청 상태로 전환 |',
+      '| `/spec approve` | 스펙 승인 (reviewer 필드 필수) |',
+      '| `/spec guide` | 📖 스펙 작성 규칙 및 구조 가이드 |',
+      '| `/scaffold` | 승인된 spec.md → TSX 스텁 생성 |',
+      '',
+      '💡 **팁**: 구체적으로 쓸수록 수락 기준 체크리스트 품질이 올라갑니다.',
+    ].join('\n');
+
+    this._post({ type: 'token', content: guide });
+    this._post({ type: 'done' });
+    this._postStatus(ExtensionConfig.getLlmConfig().model);
+  }
+
+  private _showSpecGuide(): void {
+    const guide = [
+      '📖 **스펙 파일 작성 가이드**',
+      '',
+      '---',
+      '',
+      '## Frontmatter 필드',
+      '```yaml',
+      'title: AccountListPage 계좌 목록 조회   # 사람이 읽기 좋은 제목',
+      'category: screen                        # screen | component | api',
+      'domain: example                         # 도메인 폴더명 (소문자)',
+      'screen: AccountListPage                 # PascalCase 컴포넌트명',
+      'owner: 홍길동                           # git user.name 자동 입력',
+      'status: draft                           # ↓ 아래 상태 흐름 참고',
+      'tags: [example, account-list]           # 검색/필터용 태그',
+      '# 금융 화면 추가 필수 필드:',
+      'reviewer: 이검토                        # 승인 담당자',
+      'compliance-tags: [KYC, AML]             # 금융 규정 태그',
+      '```',
+      '',
+      '**status 흐름**: `draft` → `review` → `approved` → `implemented`',
+      '- `draft` — 작성 중 (기본값)',
+      '- `review` — 리뷰 요청. `/spec review` 로 전환',
+      '- `approved` — 승인 완료. `/spec approve` 로 전환 (reviewer 필수)',
+      '- `implemented` — 코드 생성 완료. `/scaffold` 실행 시 자동 전환',
+      '',
+      '---',
+      '',
+      '## 필수 섹션 구조',
+      '',
+      '### ## 수락 기준 *(frontmatter 바로 뒤, 필수)*',
+      '4가지 케이스를 체크리스트로 작성합니다.',
+      '```markdown',
+      '## 수락 기준',
+      '- [ ] 정상 상태: 계좌 목록이 카드 형태로 표시된다',
+      '- [ ] 로딩 상태: API 호출 중 스켈레톤 UI가 표시된다',
+      '- [ ] 빈 상태: 계좌 없을 때 "등록된 계좌가 없습니다" 안내가 표시된다',
+      '- [ ] 에러 상태: 400/500 응답 시 토스트 메시지가 표시된다',
+      '```',
+      '',
+      '### ## API',
+      '```markdown',
+      '## API',
+      '- GET /api/accounts — 계좌 목록 조회',
+      '- DELETE /api/accounts/{id} — 계좌 삭제',
+      '```',
+      '',
+      '### ## 컴포넌트 구조',
+      '```markdown',
+      '## 컴포넌트 구조',
+      '- `AccountListPage.tsx` — src/domains/example/pages/',
+      '  - `AccountCard` — @axiom/components/ui',
+      '  - `EmptyState` — @axiom/components/ui',
+      '```',
+      '',
+      '### ## 예외 처리',
+      '```markdown',
+      '## 예외 처리',
+      '- 400: "잘못된 요청입니다" 토스트',
+      '- 403: 권한 없음 페이지로 리다이렉트',
+      '- 500/503: "일시적 오류" 안내 + 재시도 버튼',
+      '```',
+      '',
+      '### ## 미결정 사항 *(선택)*',
+      '```markdown',
+      '## 미결정 사항',
+      '- 페이지네이션 방식: 무한 스크롤 vs 페이지 버튼 (기획 확인 필요)',
+      '```',
+      '',
+      '---',
+      '',
+      '## 스펙 수정 방법',
+      '',
+      '| 방법 | 사용 시점 |',
+      '|---|---|',
+      '| **직접 편집** | 수락 기준 체크, 미결정 사항 해소 등 간단한 수정 |',
+      '| **`/spec update <내용>`** | spec.md 열고 AI에게 수정 요청 (큰 변경) |',
+      '',
+      '**직접 편집 예시**',
+      '```markdown',
+      '# 수락 기준에 케이스 추가:',
+      '- [ ] 검색 상태: 키워드 입력 시 필터링된 목록이 실시간 표시된다',
+      '',
+      '# status 수동 변경:',
+      'status: review',
+      '```',
+      '',
+      '**AI 보조 수정 예시**',
+      '```',
+      '# spec.md 파일을 열고:',
+      '/spec update 페이지네이션을 무한 스크롤로 결정, 수락 기준에 추가해줘',
+      '/spec update 계좌 삭제 기능 추가, API 섹션과 수락 기준 업데이트',
+      '```',
+      '',
+      '---',
+      '',
+      '## 코딩 규칙 (스펙 작성 시 참고)',
+      '- API 호출: `useApi(@axiom/hooks)` 훅만 사용',
+      '- UI 컴포넌트: `@axiom/components/ui` 에서 import',
+      '- 라우팅: `createHashRouter` + `loadable()` 적용',
+    ].join('\n');
+
+    this._post({ type: 'token', content: guide });
+    this._post({ type: 'done' });
+    this._postStatus(ExtensionConfig.getLlmConfig().model);
+  }
+
   private async _handleSpecCommand(intent: string): Promise<void> {
+    const result = await this._generateAndSaveSpec(intent);
+    if (!result) return;
+    const wsRoot = this._getWorkspaceRoot();
+    this._post({ type: 'token', content: `\n\n✅ 스펙 저장: \`${path.relative(wsRoot ?? '', result.specPath)}\`` });
+    this._post({ type: 'done' });
+    this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
+  }
+
+  /** 스펙 생성 → 저장까지의 핵심 로직. 성공 시 {specPath, parsed} 반환, 실패·취소 시 null */
+  private async _generateAndSaveSpec(
+    intent: string,
+    overrideDefaults?: Partial<import('../spec/SpecFileWriter').SpecFrontmatter>,
+  ): Promise<{ specPath: string; parsed: import('../spec/SpecFileWriter').ParsedSpec } | null> {
     this._abortController?.abort();
     this._abortController = new AbortController();
 
@@ -259,18 +449,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!axiomDir) {
       this._post({ type: 'error', message: 'axiom-ai.sdd.axiomFolder 설정이 필요합니다.' });
       this._post({ type: 'done' });
-      return;
+      return null;
     }
 
     const knowledgeDir = this._resolveKnowledgeDir();
     const currentFile = vscode.window.activeTextEditor?.document.fileName;
     const config = ExtensionConfig.getEffectiveLlmConfig();
 
-    this._postStatus(`스펙 생성 중…`);
+    this._postStatus('스펙 생성 중…');
 
     try {
       const collector = new ContextCollector(axiomDir, knowledgeDir);
       const ctx = await collector.collect(intent, currentFile);
+
+      // 파일 미오픈 상태일 때 intent에서 도메인 추출
+      // "example 도메인 ...", "example domain ...", "example/ ..." 형태 지원
+      // ※ \b는 한글 앞에서 동작하지 않으므로 (?=\s|$) 사용
+      if (!ctx.domain) {
+        const fromIntent =
+          intent.match(/^([a-zA-Z][\w-]*)\s*(?:도메인|domain)(?=\s|$)/i)?.[1]
+          ?? intent.match(/^([a-zA-Z][\w-]*)\/\s*/)?.[1];
+        if (fromIntent) ctx.domain = fromIntent.toLowerCase();
+      }
+
       const generator = new SpecGenerator(this._llm);
 
       let fullSpec = '';
@@ -285,63 +486,109 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._post({ type: 'token', content: token });
       }
 
-      this._post({ type: 'done' });
       this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
 
       let gitUser = 'unknown';
       try { gitUser = cp.execSync('git config user.name', { encoding: 'utf-8', timeout: 2000 }).trim() || 'unknown'; } catch { /* git 없는 환경 */ }
 
-      // 오프라인 fallback이면 FallbackStubService 결과를 버리고 스펙 전용 스텁 사용
       if (wasFallback) {
         fullSpec = SpecGenerator.generateOfflineStub(intent, ctx.domain ?? 'unknown', gitUser);
       }
 
-      // 누락 필드 자동 채움
       const writer = new SpecFileWriter(axiomDir);
       let parsed = writer.parseDraft(fullSpec);
-
       parsed = writer.applyDefaults(parsed, {
         status: 'draft',
         category: 'screen',
         owner: gitUser,
+        ...overrideDefaults,
       });
 
-      // 자동으로 채울 수 없는 필드만 경고
+      // AI가 domain을 'unknown'으로 채우거나 누락한 경우 intent에서 추출한 값으로 강제 교정
+      if (ctx.domain && (!parsed.frontmatter.domain || parsed.frontmatter.domain === 'unknown')) {
+        parsed.frontmatter.domain = ctx.domain;
+        parsed = {
+          ...parsed,
+          raw: parsed.raw.replace(/^domain:\s*.*$/m, `domain: ${ctx.domain}`),
+        };
+      }
+
       const issues = writer.validateCompliance(parsed);
-      if (issues.length > 0) {
+      if (issues.length > 0 && !overrideDefaults) {
         const issueText = issues.map((i) => `- ${i.field}: ${i.message}`).join('\n');
         const answer = await vscode.window.showWarningMessage(
           `컴플라이언스 검증 문제:\n${issueText}\n\n계속 저장하시겠습니까?`,
           { modal: true },
           '저장',
         );
-        if (answer !== '저장') return;
+        if (answer !== '저장') return null;
       }
 
-      // 저장
       const specPath = await writer.save(parsed);
 
-      // .axiom-index.json 업데이트
       const tracker = new AxiomIndexTracker(axiomDir);
       const domain = parsed.frontmatter.domain ?? 'unknown';
       const screen = parsed.frontmatter.screen ?? 'Unknown';
-      const wsRoot = this._getWorkspaceRoot();
       tracker.upsertSpec({
         specPath: path.relative(axiomDir, specPath).replace(/\\/g, '/'),
         linkedSourcePath: `src/domains/${domain}/pages/${screen}.tsx`,
         lastModified: new Date().toISOString().slice(0, 10),
         domain,
-        status: 'draft',
+        status: (overrideDefaults?.status as SpecIndexEntry['status'] | undefined) ?? 'draft',
       });
 
-      this._post({ type: 'token', content: `\n\n✅ 스펙 저장: \`${path.relative(wsRoot ?? '', specPath)}\`` });
-      this._post({ type: 'done' });
+      return { specPath, parsed };
 
     } catch (err) {
-      if ((err as Error).name === 'AbortError') { this._post({ type: 'done' }); return; }
+      if ((err as Error).name === 'AbortError') { this._post({ type: 'done' }); return null; }
       this._post({ type: 'error', message: (err as Error).message });
       this._postStatus('오류 발생');
+      return null;
     }
+  }
+
+  /** /spec fast: 스펙 생성 → 자동 승인 → 코드 생성을 한 번에 처리 */
+  private async _handleSpecFast(intent: string): Promise<void> {
+    let gitUser = 'unknown';
+    try { gitUser = cp.execSync('git config user.name', { encoding: 'utf-8', timeout: 2000 }).trim() || 'unknown'; } catch { /* ignore */ }
+
+    this._post({ type: 'token', content: `⚡ 빠른 생성 모드: 스펙 생성 → 승인 → 코드 생성\n\n` });
+
+    const result = await this._generateAndSaveSpec(intent, {
+      status: 'approved',
+      reviewer: gitUser,
+    });
+    if (!result) return;
+
+    const wsRoot = this._getWorkspaceRoot();
+    const writer = new SpecFileWriter(this._resolveAxiomDir()!);
+    writer.updateStatus(result.specPath, 'approved', gitUser);
+
+    this._post({ type: 'token', content: `\n\n✅ 스펙 저장 + 자동 승인: \`${path.relative(wsRoot ?? '', result.specPath)}\`` });
+    this._post({ type: 'token', content: `\n\n🔨 코드 생성 중…\n` });
+
+    const scaffolder = new SpecScaffolder();
+    if (!wsRoot) {
+      this._post({ type: 'error', message: '워크스페이스 루트를 찾을 수 없습니다.' });
+      this._post({ type: 'done' });
+      return;
+    }
+
+    const targetPath = await scaffolder.generate(result.parsed, wsRoot);
+    if (!targetPath) {
+      this._post({ type: 'token', content: '\n\n⏭️ 코드 생성을 건너뜀.' });
+    } else {
+      const axiomDir = this._resolveAxiomDir()!;
+      const tracker = new AxiomIndexTracker(axiomDir);
+      const rel = path.relative(axiomDir, result.specPath).replace(/\\/g, '/');
+      tracker.transitionStatus(rel, 'implemented', gitUser);
+      writer.updateStatus(result.specPath, 'implemented', gitUser);
+
+      this._post({ type: 'token', content: `\n\n🎉 완료!\n- 스펙: \`${path.relative(wsRoot, result.specPath)}\`\n- 코드: \`${path.relative(wsRoot, targetPath)}\`` });
+    }
+
+    this._post({ type: 'done' });
+    this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
   }
 
   private async _handleSpecUpdate(intent: string): Promise<void> {

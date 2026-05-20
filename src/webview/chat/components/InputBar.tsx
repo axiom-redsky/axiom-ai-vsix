@@ -1,14 +1,31 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 interface Props {
   onSend: (text: string) => void;
   onStop: () => void;
   isStreaming: boolean;
+  prefillText?: string;
+  onPrefillConsumed?: () => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed }: Props): React.ReactElement {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!prefillText) return;
+    setValue(prefillText);
+    onPrefillConsumed?.();
+    // height 재계산 후 포커스
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [prefillText, onPrefillConsumed]);
 
   const submit = () => {
     if (!value.trim() || isStreaming) return;

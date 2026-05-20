@@ -9,6 +9,15 @@ import { SpecScaffolder } from '../spec/SpecScaffolder';
 import { AxiomIndexTracker } from '../spec/AxiomIndexTracker';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 
+/** TreeView context menu 또는 string으로 넘어오는 specPath를 안전하게 추출한다 */
+function resolveSpecPath(arg: unknown): string | undefined {
+  if (typeof arg === 'string') return arg;
+  if (arg && typeof (arg as Record<string, unknown>)['specPath'] === 'string') {
+    return (arg as Record<string, unknown>)['specPath'] as string;
+  }
+  return undefined;
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   _provider: ChatPanelProvider,
@@ -46,16 +55,10 @@ export function registerCommands(
     }),
 
     // ─── SDD: spec.md에서 코드 생성 ─────────────────────────────────────────────
-    vscode.commands.registerCommand('axiom-ai.scaffoldFromSpec', async () => {
+    vscode.commands.registerCommand('axiom-ai.scaffoldFromSpec', async (arg?: unknown) => {
       const axiomFolder = ExtensionConfig.getSddAxiomFolder();
       if (!axiomFolder) {
         vscode.window.showErrorMessage('axiom-ai.sdd.axiomFolder 설정이 필요합니다.');
-        return;
-      }
-
-      const editor = vscode.window.activeTextEditor;
-      if (!editor || !editor.document.fileName.endsWith('spec.md')) {
-        vscode.window.showErrorMessage('spec.md 파일을 열고 실행해주세요.');
         return;
       }
 
@@ -66,9 +69,33 @@ export function registerCommands(
         ? axiomFolder
         : path.join(wsRoot, axiomFolder);
 
-      const content = editor.document.getText();
+      // TreeView 또는 activeEditor에서 spec 경로 확보
+      const fromArg = resolveSpecPath(arg);
+      let specContent: string;
+      let specFilePath: string;
+
+      if (fromArg) {
+        if (!fs.existsSync(fromArg)) {
+          vscode.window.showErrorMessage(`파일을 찾을 수 없습니다: ${fromArg}`);
+          return;
+        }
+        specContent = fs.readFileSync(fromArg, 'utf-8');
+        specFilePath = fromArg;
+        // 에디터에서 열기
+        const doc = await vscode.workspace.openTextDocument(fromArg);
+        await vscode.window.showTextDocument(doc, { preview: false });
+      } else {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !editor.document.fileName.endsWith('spec.md')) {
+          vscode.window.showErrorMessage('spec.md 파일을 열고 실행해주세요.');
+          return;
+        }
+        specContent = editor.document.getText();
+        specFilePath = editor.document.fileName;
+      }
+
       const writer = new SpecFileWriter(axiomDir);
-      const parsed = writer.parseDraft(content);
+      const parsed = writer.parseDraft(specContent);
 
       if (parsed.frontmatter.status !== 'approved') {
         vscode.window.showErrorMessage(`스펙 status가 'approved'여야 합니다. 현재: ${parsed.frontmatter.status ?? 'unknown'}`);
@@ -79,13 +106,11 @@ export function registerCommands(
       const targetPath = await scaffolder.generate(parsed, wsRoot);
 
       if (targetPath) {
-        // implemented 상태 전이
-        const specPath = editor.document.fileName;
-        const relPath = path.relative(axiomDir, specPath).replace(/\\/g, '/');
+        const relPath = path.relative(axiomDir, specFilePath).replace(/\\/g, '/');
         const tracker = new AxiomIndexTracker(axiomDir);
         const by = vscode.workspace.getConfiguration('axiom-ai').get<string>('user.name', 'developer');
         tracker.transitionStatus(relPath, 'implemented', by);
-        writer.updateStatus(specPath, 'implemented', by);
+        writer.updateStatus(specFilePath, 'implemented', by);
 
         vscode.window.showInformationMessage(`코드 생성 완료: ${path.relative(wsRoot, targetPath)}`);
         sddPanel?.refresh();
@@ -93,7 +118,7 @@ export function registerCommands(
     }),
 
     // ─── SDD: 스펙 승인 ─────────────────────────────────────────────────────────
-    vscode.commands.registerCommand('axiom-ai.approveSpec', async (specPath?: string) => {
+    vscode.commands.registerCommand('axiom-ai.approveSpec', async (arg?: unknown) => {
       const axiomFolder = ExtensionConfig.getSddAxiomFolder();
       if (!axiomFolder) {
         vscode.window.showErrorMessage('axiom-ai.sdd.axiomFolder 설정이 필요합니다.');
@@ -105,7 +130,8 @@ export function registerCommands(
         ? path.join(wsRoot, axiomFolder)
         : axiomFolder;
 
-      const targetPath = specPath ?? vscode.window.activeTextEditor?.document.fileName;
+      const fromArg = resolveSpecPath(arg);
+      const targetPath = fromArg ?? vscode.window.activeTextEditor?.document.fileName;
       if (!targetPath || !targetPath.endsWith('spec.md')) {
         vscode.window.showErrorMessage('spec.md 파일을 선택해주세요.');
         return;
@@ -128,6 +154,29 @@ export function registerCommands(
 
       vscode.window.showInformationMessage('스펙이 approved 상태로 전환되었습니다.');
       sddPanel?.refresh();
+    }),
+
+    // ─── SDD: 스펙 수정 (AI 보조) ───────────────────────────────────────────────
+    vscode.commands.registerCommand('axiom-ai.updateSpec', async (arg?: unknown) => {
+      const fromArg = resolveSpecPath(arg);
+      const targetPath = fromArg ?? vscode.window.activeTextEditor?.document.fileName;
+
+      if (!targetPath || !targetPath.endsWith('spec.md')) {
+        vscode.window.showErrorMessage('spec.md 파일을 선택해주세요.');
+        return;
+      }
+
+      // spec.md를 에디터에서 열어 컨텍스트 확보
+      const doc = await vscode.workspace.openTextDocument(targetPath);
+      await vscode.window.showTextDocument(doc, { preview: false });
+
+      const intent = await vscode.window.showInputBox({
+        prompt: '어떻게 수정할까요?',
+        placeHolder: '예: 페이지네이션 무한 스크롤로 변경, 삭제 기능 추가',
+      });
+      if (!intent) return;
+
+      await chatProvider?.runSpecUpdateCommand(intent);
     }),
 
     // ─── SDD: 스펙 열기 ─────────────────────────────────────────────────────────
