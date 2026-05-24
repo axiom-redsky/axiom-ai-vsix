@@ -257,21 +257,41 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 
   /**
    * 사용자 쿼리에서 도메인명을 추출한다.
-   * "account 업무", "account domain", "account에", "account 업무에" 패턴을 인식한다.
+   *
+   * 우선순위:
+   * 1. 명시적 패턴: "account 업무", "account domain", "account 도메인"
+   * 2. PascalCase 페이지명 접두어: "AccountListPage" → "account"
+   * 3. kebab-case 페이지명 첫 세그먼트: "account-list-page" → "account"
    */
   private _extractDomainFromQuery(query: string): string | null {
-    const patterns = [
+    // 1순위: 명시적 도메인 언급 패턴
+    const explicitPatterns = [
       /([a-zA-Z][a-zA-Z0-9-_]*)\s*업무/,
       /([a-zA-Z][a-zA-Z0-9-_]*)\s*domain/i,
       /([a-zA-Z][a-zA-Z0-9-_]*)\s*도메인/,
     ];
 
-    for (const pattern of patterns) {
+    for (const pattern of explicitPatterns) {
       const match = query.match(pattern);
       if (match?.[1]) {
         return match[1].toLowerCase();
       }
     }
+
+    // 2순위: PascalCase 식별자(페이지명) 첫 번째 단어 → 도메인 추출
+    // 예: "AccountListPage" → "account", "OrderDetailPage" → "order"
+    const pascalMatch = query.match(/\b([A-Z][a-z]+)([A-Z][a-zA-Z0-9]*)*Page\b/);
+    if (pascalMatch?.[1]) {
+      return pascalMatch[1].toLowerCase();
+    }
+
+    // 3순위: kebab-case 페이지명 첫 세그먼트
+    // 예: "account-list-page" → "account"
+    const kebabMatch = query.match(/\b([a-z][a-z0-9]+)(?:-[a-z0-9]+)+-page\b/);
+    if (kebabMatch?.[1]) {
+      return kebabMatch[1];
+    }
+
     return null;
   }
 

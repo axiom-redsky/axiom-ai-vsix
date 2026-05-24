@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1130" width="880" height="1130"
+     font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+
+  <defs>
+    <!-- 화살표 마커 -->
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#475569"/>
+    </marker>
+    <!-- 그림자 효과 -->
+    <filter id="shadow" x="-5%" y="-5%" width="115%" height="125%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <!--    배경    -->
+  <rect width="880" height="1130" fill="#f1f5f9" rx="12"/>
+
+  <!--    헤더 바    -->
+  <rect x="0" y="0" width="880" height="44" fill="#1e293b" rx="12"/>
+  <rect x="0" y="28" width="880" height="16" fill="#1e293b"/>
+  <text x="440" y="27" text-anchor="middle" font-size="14" font-weight="700"
+        fill="white" letter-spacing="0.3">Page Creation Interactive Flow</text>
+
+  <!-- 헤더 아래 전체 콘텐츠를 50px 아래로 내려 헤더와 겹침 방지 -->
+  <g transform="translate(0, 50)">
+
+  <!-- ==========================================
+       화살표 (각 노드의 하단/우단에서 다음 노드 상단으로 연결)
+       ========================================== -->
+  <g stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#arr)">
+
+    <!-- 1. userInput → detect -->
+    <line x1="440" y1="77" x2="440" y2="113"/>
+
+    <!-- 2. detect → domainCheck -->
+    <line x1="440" y1="167" x2="440" y2="205"/>
+
+    <!-- 3. domainCheck → editorDomain -->
+    <line x1="440" y1="255" x2="440" y2="293"/>
+
+    <!-- 4. editorDomain → scanDomains (실패 / 왼쪽) -->
+    <polyline points="300,320 165,320 165,388"/>
+
+    <!-- 5. editorDomain → confirmMsg (감지 성공 / 오른쪽) -->
+    <polyline points="580,320 715,320 715,483"/>
+
+    <!-- 6. scanDomains → singleDomain -->
+    <line x1="165" y1="442" x2="165" y2="480"/>
+
+    <!-- 7. singleDomain Yes → confirmMsg -->
+    <polyline points="245,505 420,505 420,510 605,510"/>
+
+    <!-- 8. singleDomain No → choiceMsg -->
+    <line x1="165" y1="530" x2="165" y2="573"/>
+
+    <!-- 9. confirmMsg 확인 → healthCheck -->
+    <polyline points="715,537 715,695 582,695"/>
+
+    <!-- 10. choiceMsg 사용자 선택 → healthCheck -->
+    <polyline points="275,600 275,695 297,695"/>
+
+    <!-- 11. healthCheck → online -->
+    <line x1="440" y1="722" x2="440" y2="765"/>
+
+    <!-- 12. online Yes → llmFlow -->
+    <polyline points="360,790 175,790 175,858"/>
+
+    <!-- 13. online No → offlineFlow -->
+    <polyline points="520,790 705,790 705,858"/>
+
+    <!-- 14. llmFlow → fileCreate -->
+    <polyline points="175,912 175,952 345,952 345,958"/>
+
+    <!-- 15. offlineFlow → fileCreate -->
+    <polyline points="705,912 705,952 535,952 535,958"/>
+
+  </g>
+
+  <!--    화살표 라벨    -->
+  <g font-size="11" fill="#64748b" font-weight="500">
+    <!-- 실패 (editorDomain → scanDomains) -->
+    <rect x="193" y="306" width="34" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="210" y="318" text-anchor="middle">실패</text>
+
+    <!-- 감지 성공 (editorDomain → confirmMsg) -->
+    <rect x="585" y="306" width="62" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="616" y="318" text-anchor="middle">감지 성공</text>
+
+    <!-- Yes (singleDomain → confirmMsg) -->
+    <rect x="296" y="495" width="30" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="311" y="507" text-anchor="middle">Yes</text>
+
+    <!-- No (singleDomain → choiceMsg) -->
+    <rect x="172" y="545" width="26" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="185" y="557" text-anchor="middle">No</text>
+
+    <!-- 확인 (confirmMsg → healthCheck) -->
+    <rect x="720" y="606" width="30" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="735" y="618" text-anchor="middle">확인</text>
+
+    <!-- 사용자 선택 (choiceMsg → healthCheck) -->
+    <rect x="155" y="666" width="64" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="187" y="678" text-anchor="middle" font-size="10">사용자 선택</text>
+
+    <!-- Yes (online → llmFlow) -->
+    <rect x="236" y="780" width="30" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="251" y="792" text-anchor="middle">Yes</text>
+
+    <!-- No (online → offlineFlow) -->
+    <rect x="607" y="780" width="26" height="16" rx="3" fill="#f1f5f9"/>
+    <text x="620" y="792" text-anchor="middle">No</text>
+  </g>
+
+  <!-- ==========================================
+       노드
+       ========================================== -->
+
+  <!--    userInput (시작 노드 타원)    -->
+  <rect x="300" y="23" width="280" height="54" rx="27"
+        fill="#e0f2fe" stroke="#0284c7" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="46" text-anchor="middle" font-size="12" font-weight="700" fill="#0c4a6e">사용자 입력</text>
+  <text x="440" y="63" text-anchor="middle" font-size="11" fill="#0369a1">"AccountListPage 페이지를 만들어줘"</text>
+
+  <!--    detect (처리)    -->
+  <rect x="300" y="113" width="280" height="54" rx="8"
+        fill="#eff6ff" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="136" text-anchor="middle" font-size="12" font-weight="700" fill="#1e40af">PageCreationDetector.detect()</text>
+  <text x="440" y="153" text-anchor="middle" font-size="11" fill="#3b82f6">페이지명 추출 + PascalCase 검증</text>
+
+  <!--    domainCheck (분기 다이아몬드)    -->
+  <polygon points="440,205 530,230 440,255 350,230"
+           fill="#fefce8" stroke="#ca8a04" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="235" text-anchor="middle" font-size="12" font-weight="700" fill="#713f12">도메인 결정</text>
+
+  <!--    editorDomain (처리)    -->
+  <rect x="300" y="293" width="280" height="54" rx="8"
+        fill="#eff6ff" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="316" text-anchor="middle" font-size="12" font-weight="700" fill="#1e40af">현재 에디터 파일</text>
+  <text x="440" y="333" text-anchor="middle" font-size="11" fill="#3b82f6">DomainRouter.detectDomain()</text>
+
+  <!--    scanDomains (처리)    -->
+  <rect x="55" y="388" width="220" height="54" rx="8"
+        fill="#eff6ff" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="165" y="411" text-anchor="middle" font-size="12" font-weight="700" fill="#1e40af">src/domains/ 스캔</text>
+  <text x="165" y="428" text-anchor="middle" font-size="11" fill="#3b82f6">도메인 목록 나열</text>
+
+  <!--    singleDomain (분기 다이아몬드)    -->
+  <polygon points="165,480 245,505 165,530 85,505"
+           fill="#fefce8" stroke="#ca8a04" stroke-width="2" filter="url(#shadow)"/>
+  <text x="165" y="510" text-anchor="middle" font-size="11" font-weight="700" fill="#713f12">단일 도메인?</text>
+
+  <!--    confirmMsg (메시지)    -->
+  <rect x="605" y="483" width="220" height="54" rx="8"
+        fill="#f0fdf4" stroke="#16a34a" stroke-width="2" filter="url(#shadow)"/>
+  <text x="715" y="506" text-anchor="middle" font-size="12" font-weight="700" fill="#14532d">확인 메시지 표시</text>
+  <text x="715" y="523" text-anchor="middle" font-size="11" fill="#16a34a">사용자 승인 대기</text>
+
+  <!--    choiceMsg (메시지)    -->
+  <rect x="55" y="573" width="220" height="54" rx="8"
+        fill="#f0fdf4" stroke="#16a34a" stroke-width="2" filter="url(#shadow)"/>
+  <text x="165" y="596" text-anchor="middle" font-size="12" font-weight="700" fill="#14532d">선택지 제공</text>
+  <text x="165" y="613" text-anchor="middle" font-size="11" fill="#16a34a">대화 대기 상태</text>
+
+  <!--    healthCheck (처리)    -->
+  <rect x="297" y="668" width="285" height="54" rx="8"
+        fill="#eff6ff" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="691" text-anchor="middle" font-size="12" font-weight="700" fill="#1e40af">LlmService.checkHealth()</text>
+  <text x="440" y="708" text-anchor="middle" font-size="11" fill="#3b82f6">vLLM 온라인 판단</text>
+
+  <!--    online (분기 다이아몬드)    -->
+  <polygon points="440,765 520,790 440,815 360,790"
+           fill="#fefce8" stroke="#ca8a04" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="795" text-anchor="middle" font-size="12" font-weight="700" fill="#713f12">온라인?</text>
+
+  <!--    llmFlow (온라인 처리 단계)    -->
+  <rect x="55" y="858" width="240" height="54" rx="8"
+        fill="#f5f3ff" stroke="#7c3aed" stroke-width="2" filter="url(#shadow)"/>
+  <text x="175" y="881" text-anchor="middle" font-size="12" font-weight="700" fill="#4c1d95">buildSystemPrompt()</text>
+  <text x="175" y="898" text-anchor="middle" font-size="11" fill="#7c3aed">+ streamChat() → vLLM</text>
+
+  <!--    offlineFlow (오프라인 처리 단계)    -->
+  <rect x="585" y="858" width="240" height="54" rx="8"
+        fill="#fff7ed" stroke="#ea580c" stroke-width="2" filter="url(#shadow)"/>
+  <text x="705" y="881" text-anchor="middle" font-size="12" font-weight="700" fill="#7c2d12">오프라인 템플릿 생성</text>
+  <text x="705" y="898" text-anchor="middle" font-size="11" fill="#ea580c">스텁 기반 axiom-action 코드</text>
+
+  <!--    fileCreate (최종 노드 타원)    -->
+  <rect x="300" y="958" width="280" height="54" rx="27"
+        fill="#dcfce7" stroke="#16a34a" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="440" y="981" text-anchor="middle" font-size="12" font-weight="700" fill="#14532d">FileCreatorService</text>
+  <text x="440" y="998" text-anchor="middle" font-size="11" fill="#15803d">페이지 + 라우터 파일 생성</text>
+
+  <!--    범례    -->
+  <g transform="translate(30, 1048)" font-size="10" fill="#64748b">
+    <rect x="0" y="-10" width="12" height="12" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+    <text x="17" y="0">시작 / 종료</text>
+    <rect x="85" y="-10" width="12" height="12" rx="3" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="102" y="0">처리</text>
+    <polygon points="190,-4 202,2 190,8 178,2" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
+    <text x="208" y="0">분기</text>
+    <rect x="245" y="-10" width="12" height="12" rx="3" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="262" y="0">메시지 대기</text>
+    <rect x="360" y="-10" width="12" height="12" rx="3" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="377" y="0">온라인 처리</text>
+    <rect x="455" y="-10" width="12" height="12" rx="3" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+    <text x="472" y="0">오프라인 처리</text>
+  </g>
+
+  </g><!-- end translate group -->
+
+</svg>

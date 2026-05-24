@@ -7,9 +7,10 @@ import { EditorContextCollector } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction } from '../ai/FileCreatorService';
+import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage } from '../ai/types';
-import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState } from '../types/messages';
+import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState } from '../types/messages';
 import { ContextCollector } from '../spec/ContextCollector';
 import { SpecGenerator } from '../spec/SpecGenerator';
 import { SpecFileWriter } from '../spec/SpecFileWriter';
@@ -31,6 +32,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _history: ChatMessage[] = [];
   private _abortController?: AbortController;
   private _wizardState: SpecWizardState | null = null;
+  private _pageCreationState: PageCreationState | null = null;
+  private readonly _pageCreationDetector = new PageCreationDetector();
   private _externalWatcherDebounce: ReturnType<typeof setTimeout> | null = null;
   private _externalWatcher: vscode.FileSystemWatcher | null = null;
   private _userStubsWatcher: vscode.FileSystemWatcher | null = null;
@@ -256,6 +259,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _handleMessage(text: string): Promise<void> {
     if (!this._view) return;
 
+    // 페이지 생성 대화 모드: 취소 또는 도메인 선택 처리
+    if (this._pageCreationState) {
+      if (text.trim() === '/cancel') {
+        this._pageCreationState = null;
+        this._post({ type: 'token', content: '페이지 생성이 취소되었습니다.' });
+        this._post({ type: 'done' });
+        this._postStatus(ExtensionConfig.getLlmConfig().model);
+        return;
+      }
+      if (this._pageCreationState.waitingForDomain) {
+        await this._handlePageCreationDomainInput(text.trim());
+        return;
+      }
+    }
+
     // wizard 모드: 취소 또는 단계 처리
     if (this._wizardState) {
       if (text.trim() === '/cancel' || text.trim() === '/spec cancel') {
@@ -308,6 +326,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // /scaffold 커맨드 분기
     if (text.startsWith('/scaffold')) {
       await this._handleScaffoldCommand();
+      return;
+    }
+
+    // 페이지 생성 인텐트 감지
+    const pageIntent = this._pageCreationDetector.detect(text);
+    if (pageIntent.isPageCreation && pageIntent.pageName) {
+      await this._startPageCreation(pageIntent.pageName, text);
       return;
     }
 
@@ -1082,7 +1107,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // ─── axiom-action ────────────────────────────────────────────────────────────
 
-  private async _handleAxiomAction(response: string): Promise<void> {
+  /**
+   * axiom-action 블록을 파싱하여 파일을 생성/수정한다.
+   * @returns 라우터 관련 액션이 성공적으로 처리되었으면 true
+   */
+  private async _handleAxiomAction(response: string, forcePageAutoWrite = false): Promise<boolean> {
     const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
     const actions: AxiomAction[] = [];
 
@@ -1102,16 +1131,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         continue;
       }
 
+      // 페이지 생성 플로우에서는 InputBox 없이 자동 저장
+      if (forcePageAutoWrite && action.templateType === 'page') {
+        action.autoWrite = true;
+      }
+
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
       if (codeMatch?.[1]) action.generatedCode = codeMatch[1].trimEnd();
       actions.push(action);
     }
 
-    if (actions.length === 0) return;
+    if (actions.length === 0) return false;
+
+    let routerProcessed = false;
 
     for (const action of actions) {
       const result = await this._fileCreator.createFile(action);
       if (result.success) {
+        if (action.templateType === 'router') routerProcessed = true;
         const isUpdate = action.action === 'updateFile';
         this._post(
           isUpdate
@@ -1123,8 +1160,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (action.templateType !== 'router') break;
       } else {
         this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
+        if (action.templateType !== 'router') break;
       }
     }
+
+    return routerProcessed;
   }
 
   private _stripActionBlock(text: string): string {
@@ -1230,6 +1270,551 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (this._userStubsDebounce) { clearTimeout(this._userStubsDebounce); this._userStubsDebounce = null; }
     this._userStubsWatcher?.dispose();
     this._userStubsWatcher = null;
+  }
+
+  // ─── 페이지 생성 플로우 ───────────────────────────────────────────────────────
+
+  /**
+   * 페이지 생성 플로우 진입점.
+   * 도메인 자동 감지를 시도하고, 불명확하면 대화형으로 도메인을 확인한다.
+   */
+  private async _startPageCreation(pageName: string, originalText: string): Promise<void> {
+    this._history.push({ role: 'user', content: originalText });
+
+    // 1. 현재 에디터 파일 경로에서 도메인 자동 감지
+    const editorDomain = this._detectDomainFromEditor();
+
+    if (editorDomain) {
+      // 에디터 경로에서 도메인 감지 성공 → 확인 질문
+      this._pageCreationState = {
+        pageName,
+        domainCandidates: [editorDomain],
+        waitingForDomain: true,
+        resolvedDomain: null,
+      };
+      this._post({
+        type: 'token',
+        content: `**${pageName}** 페이지를 **\`${editorDomain}\`** 도메인에 생성하겠습니다.\n\n맞으면 **네** 를 입력해주세요. 다른 도메인이라면 도메인명을 직접 입력해주세요. (취소: \`/cancel\`)`,
+      });
+      this._post({ type: 'done' });
+      this._postStatus(`페이지 생성 대기 — ${pageName}`);
+      return;
+    }
+
+    // 2. src/domains/ 스캔으로 도메인 목록 확인
+    const domainList = this._scanWorkspaceDomains();
+
+    if (domainList.length === 0) {
+      // 도메인 없음 → 직접 입력 요청
+      this._pageCreationState = {
+        pageName,
+        domainCandidates: [],
+        waitingForDomain: true,
+        resolvedDomain: null,
+      };
+      this._post({
+        type: 'token',
+        content: `**${pageName}** 페이지를 생성합니다.\n\n\`src/domains/\` 폴더를 찾을 수 없습니다. 생성할 도메인명을 직접 입력해주세요.\n예: \`account\`, \`order\`, \`user\` (취소: \`/cancel\`)`,
+      });
+      this._post({ type: 'done' });
+      this._postStatus(`페이지 생성 대기 — ${pageName}`);
+      return;
+    }
+
+    if (domainList.length === 1) {
+      // 단일 도메인 → 확인 질문
+      this._pageCreationState = {
+        pageName,
+        domainCandidates: domainList,
+        waitingForDomain: true,
+        resolvedDomain: null,
+      };
+      this._post({
+        type: 'token',
+        content: `**${pageName}** 페이지를 **\`${domainList[0]}\`** 도메인에 생성하겠습니다.\n\n맞으면 **네** 를 입력해주세요. 다른 도메인이라면 도메인명을 직접 입력해주세요. (취소: \`/cancel\`)`,
+      });
+      this._post({ type: 'done' });
+      this._postStatus(`페이지 생성 대기 — ${pageName}`);
+      return;
+    }
+
+    // 3. 복수 도메인 → 번호 선택지 제공
+    const domainChoices = domainList
+      .map((d, i) => `**${i + 1}.** \`${d}\``)
+      .join('   ');
+
+    this._pageCreationState = {
+      pageName,
+      domainCandidates: domainList,
+      waitingForDomain: true,
+      resolvedDomain: null,
+    };
+    this._post({
+      type: 'token',
+      content: `**${pageName}** 페이지를 어느 도메인에 생성할까요?\n\n${domainChoices}\n\n번호 또는 도메인명을 입력해주세요. (취소: \`/cancel\`)`,
+    });
+    this._post({ type: 'done' });
+    this._postStatus(`페이지 생성 대기 — ${pageName}`);
+  }
+
+  /**
+   * 도메인 선택/입력 응답 처리.
+   * 도메인이 확정되면 vLLM 헬스체크 후 온라인/오프라인 분기로 생성을 진행한다.
+   */
+  private async _handlePageCreationDomainInput(input: string): Promise<void> {
+    if (!this._pageCreationState) return;
+
+    const { pageName, domainCandidates } = this._pageCreationState;
+    let resolvedDomain: string | null = null;
+
+    // "네" / "yes" → 단일 후보 자동 선택
+    if (/^(네|예|yes|y)$/i.test(input) && domainCandidates.length >= 1) {
+      resolvedDomain = domainCandidates[0];
+    }
+    // 숫자 입력 → 후보 목록 인덱스 선택
+    else if (/^\d+$/.test(input)) {
+      const idx = parseInt(input, 10) - 1;
+      if (idx >= 0 && idx < domainCandidates.length) {
+        resolvedDomain = domainCandidates[idx];
+      }
+    }
+    // 도메인명 직접 입력 (영문 kebab-case 허용)
+    else if (/^[a-z][a-z0-9-]*$/.test(input)) {
+      resolvedDomain = input;
+    }
+
+    if (!resolvedDomain) {
+      this._post({
+        type: 'token',
+        content: `입력을 인식하지 못했습니다. 번호(예: \`1\`) 또는 도메인명(예: \`account\`)을 입력해주세요. (취소: \`/cancel\`)`,
+      });
+      this._post({ type: 'done' });
+      return;
+    }
+
+    this._pageCreationState = {
+      ...this._pageCreationState,
+      waitingForDomain: false,
+      resolvedDomain,
+    };
+
+    this._post({
+      type: 'token',
+      content: `\`${resolvedDomain}\` 도메인에 **${pageName}** 페이지를 생성합니다...\n\n`,
+    });
+
+    // vLLM 헬스체크
+    const config = ExtensionConfig.getLlmConfig();
+    const isOnline = await this._llm.checkHealth(config);
+
+    if (isOnline) {
+      await this._createPageWithLlm(pageName, resolvedDomain);
+    } else {
+      await this._createPageOffline(pageName, resolvedDomain);
+    }
+
+    this._pageCreationState = null;
+  }
+
+  /**
+   * vLLM이 온라인일 때: 페이지 생성 전용 시스템 프롬프트를 구성하여 LLM에 전달한다.
+   */
+  private async _createPageWithLlm(pageName: string, domain: string): Promise<void> {
+    this._abortController?.abort();
+    this._abortController = new AbortController();
+
+    const config = ExtensionConfig.getLlmConfig();
+    this._postStatus(`${config.model} 생성 중…`);
+
+    // 페이지 생성 전에 도메인 존재 여부를 미리 캡처한다 (LLM이 파일을 생성하면 달라지므로)
+    const wsRoot = this._getWorkspaceRoot();
+    const domainExistedBefore = wsRoot
+      ? fs.existsSync(path.join(wsRoot, 'src', 'domains', domain))
+      : false;
+
+    try {
+      const editorCtx = this._editorCollector.collect();
+      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(
+        editorCtx,
+        `${domain} 도메인에 ${pageName} 페이지를 만들어줘`,
+      );
+
+      const userMessage = `${domain} 도메인에 ${pageName} 페이지를 react-app-scaffold 컨벤션에 맞게 만들어줘. 컴포넌트 함수명은 반드시 ${pageName}으로 작성해줘. axiom-action 블록을 포함해줘.`;
+      const messages: ChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        ...this._history,
+        { role: 'user', content: userMessage },
+      ];
+
+      let fullResponse = '';
+      let wasFallback = false;
+
+      for await (const token of this._llm.streamChat(
+        messages,
+        config,
+        this._abortController.signal,
+        (reason) => {
+          wasFallback = true;
+          console.warn(`[Axiom AI] 페이지 생성 폴백: ${reason}`);
+        },
+      )) {
+        fullResponse += token;
+        this._post({ type: 'token', content: token });
+      }
+
+      if (wasFallback) {
+        // 스트리밍 도중 폴백 발생 → 오프라인 템플릿으로 재시도
+        this._post({ type: 'token', content: '\n\n⚠️ LLM 연결이 끊겼습니다. 오프라인 템플릿으로 생성합니다.\n\n' });
+        await this._createPageOffline(pageName, domain);
+        return;
+      }
+
+      const cleanedResponse = this._stripActionBlock(fullResponse);
+      this._history.push({ role: 'assistant', content: cleanedResponse });
+      this._post({ type: 'done' });
+      this._postStatus(config.model);
+
+      // 페이지 생성 플로우: page 액션도 InputBox 없이 자동 저장
+      const routerUpdated = await this._handleAxiomAction(fullResponse, true);
+
+      // LLM이 라우터 액션을 생성하지 않은 경우 오프라인 방식으로 라우터를 연결한다
+      if (!routerUpdated) {
+        this._post({ type: 'token', content: '\n\n🔗 라우터 연결 중...\n' });
+        await this._applyRouterFallback(pageName, domain, domainExistedBefore, wsRoot);
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        this._post({ type: 'done' });
+        this._postStatus(ExtensionConfig.getLlmConfig().model);
+        return;
+      }
+      const message = err instanceof Error ? err.message : '알 수 없는 오류';
+      this._post({ type: 'error', message });
+      this._postStatus('오류 발생');
+    }
+  }
+
+  /**
+   * LLM이 라우터 액션을 생성하지 않았을 때 오프라인 방식으로 라우터를 연결한다.
+   * domainExistedBefore: LLM이 페이지를 생성하기 전 도메인 폴더 존재 여부
+   */
+  private async _applyRouterFallback(
+    pageName: string,
+    domain: string,
+    domainExistedBefore: boolean,
+    wsRoot: string | null,
+  ): Promise<void> {
+    const routePath = pageName
+      .replace(/Page$/, '')
+      .replace(/^[A-Z]/, (c) => c.toLowerCase());
+
+    const allActions = this._buildOfflinePageActions(
+      pageName,
+      domain,
+      routePath,
+      domainExistedBefore,
+      wsRoot,
+    );
+    const routerActions = allActions.filter((a) => a.templateType === 'router');
+
+    for (const action of routerActions) {
+      const result = await this._fileCreator.createFile(action);
+      if (result.success) {
+        this._post(
+          action.action === 'updateFile'
+            ? { type: 'fileUpdated', filePath: result.filePath! }
+            : { type: 'fileCreated', filePath: result.filePath! },
+        );
+      } else if (!result.cancelled) {
+        this._post({ type: 'fileError', message: result.error ?? '라우터 연결 실패' });
+      }
+    }
+  }
+
+  /**
+   * vLLM이 오프라인일 때: axiom-action 블록을 직접 조합하여 파일을 생성한다.
+   * 도메인 존재 여부에 따라 시나리오 A(2개 액션) / B(3개 액션)를 적용한다.
+   */
+  private async _createPageOffline(pageName: string, domain: string): Promise<void> {
+    this._postStatus('오프라인 모드 — 템플릿 생성 중…');
+
+    const wsRoot = this._getWorkspaceRoot();
+    const domainExists = wsRoot
+      ? fs.existsSync(path.join(wsRoot, 'src', 'domains', domain))
+      : false;
+
+    // camelCase 라우트 경로 생성 (예: AccountListPage → accountList)
+    const routePath = pageName
+      .replace(/Page$/, '')
+      .replace(/^[A-Z]/, (c) => c.toLowerCase());
+
+    const actions = this._buildOfflinePageActions(pageName, domain, routePath, domainExists, wsRoot);
+
+    const offlineMsg = [
+      `> ⚠️ **오프라인 모드** — vLLM 서버에 연결할 수 없어 기본 템플릿으로 생성합니다.`,
+      '',
+      `**생성 파일**`,
+      `- \`src/domains/${domain}/pages/${pageName}.tsx\``,
+      domainExists
+        ? `- \`src/domains/${domain}/router/index.tsx\` (라우터 업데이트)`
+        : `- \`src/domains/${domain}/router/index.tsx\` (신규 생성)`,
+      !domainExists
+        ? `- \`src/shared/router/index.tsx\` (루트 라우터 업데이트)`
+        : '',
+    ].filter(Boolean).join('\n');
+
+    this._post({ type: 'token', content: offlineMsg });
+
+    this._history.push({ role: 'assistant', content: offlineMsg });
+    this._post({ type: 'done' });
+    this._postStatus('⚠️ 오프라인 모드');
+
+    for (const action of actions) {
+      const result = await this._fileCreator.createFile(action);
+      if (result.success) {
+        this._post(
+          action.action === 'updateFile'
+            ? { type: 'fileUpdated', filePath: result.filePath! }
+            : { type: 'fileCreated', filePath: result.filePath! },
+        );
+      } else if (result.cancelled) {
+        this._post({ type: 'fileCancelled' });
+        break;
+      } else {
+        this._post({ type: 'fileError', message: result.error ?? '파일 생성 실패' });
+        break;
+      }
+    }
+  }
+
+  /**
+   * 오프라인 페이지 생성용 axiom-action 목록을 조합한다.
+   * 시나리오 A (도메인 존재): 페이지 생성 + 도메인 라우터 업데이트 (2개)
+   * 시나리오 B (신규 도메인): 페이지 생성 + 도메인 라우터 신규 + 루트 라우터 업데이트 (3개)
+   */
+  private _buildOfflinePageActions(
+    pageName: string,
+    domain: string,
+    routePath: string,
+    domainExists: boolean,
+    wsRoot: string | null,
+  ): AxiomAction[] {
+    // 도메인 Pascal (첫 글자 대문자) — 루트 라우터 import 이름에 사용
+    const domainPascal = domain.charAt(0).toUpperCase() + domain.slice(1);
+
+    // "AccountListPage" → "Account List" (사람이 읽기 좋은 H1 타이틀)
+    const pageTitle = pageName
+      .replace(/Page$/, '')
+      .replace(/([A-Z])/g, ' $1')
+      .trim();
+
+    const pageCode = `import type React from 'react';
+
+export default function ${pageName}(): React.ReactNode {
+  return (
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">${pageTitle}</h1>
+      <p className="text-muted-foreground">이 페이지의 내용을 작성하세요.</p>
+    </div>
+  );
+}`;
+
+    const newDomainRouterCode = `import type { TAppRoute } from '@/types/router';
+import loadable from '@loadable/component';
+
+const ${pageName} = loadable(() => import('@/domains/${domain}/pages/${pageName}'));
+
+const routes: TAppRoute[] = [
+  {
+    path: '${routePath}',
+    element: <${pageName} />,
+    name: '${pageName}',
+  },
+];
+
+export default routes;`;
+
+    const actions: AxiomAction[] = [
+      {
+        action: 'createFile',
+        templateType: 'page',
+        domain,
+        componentName: pageName,
+        filePath: `src/domains/${domain}/pages/${pageName}.tsx`,
+        generatedCode: pageCode,
+        autoWrite: true,
+      },
+    ];
+
+    if (domainExists) {
+      // 시나리오 A: 기존 도메인 라우터 업데이트
+      const routerFile = wsRoot
+        ? path.join(wsRoot, 'src', 'domains', domain, 'router', 'index.tsx')
+        : null;
+      const existingRouter = routerFile && fs.existsSync(routerFile)
+        ? fs.readFileSync(routerFile, 'utf-8')
+        : null;
+
+      const updatedRouterCode = existingRouter
+        ? this._appendToExistingRouter(existingRouter, pageName, domain, routePath)
+        : newDomainRouterCode;
+
+      actions.push({
+        action: 'updateFile',
+        templateType: 'router',
+        domain,
+        componentName: pageName,
+        filePath: `src/domains/${domain}/router/index.tsx`,
+        generatedCode: updatedRouterCode,
+      });
+    } else {
+      // 시나리오 B: 신규 도메인 라우터 생성 + 루트 라우터 업데이트
+      actions.push({
+        action: 'createFile',
+        templateType: 'router',
+        domain,
+        componentName: pageName,
+        filePath: `src/domains/${domain}/router/index.tsx`,
+        generatedCode: newDomainRouterCode,
+      });
+
+      const rootRouterFile = wsRoot
+        ? path.join(wsRoot, 'src', 'shared', 'router', 'index.tsx')
+        : null;
+      const existingRootRouter = rootRouterFile && fs.existsSync(rootRouterFile)
+        ? fs.readFileSync(rootRouterFile, 'utf-8')
+        : null;
+
+      const updatedRootRouter = existingRootRouter
+        ? this._appendDomainToRootRouter(existingRootRouter, domain, domainPascal)
+        : `import type { TAppRoute } from '@/types/router';
+import RootLayout from '@/shared/components/layout/RootLayout';
+import ${domainPascal}Router from '@/domains/${domain}/router';
+
+const routes: TAppRoute[] = [
+  { path: '/${domain}', element: <RootLayout />, children: ${domainPascal}Router },
+  { path: '*', element: <RootLayout /> },
+];
+
+export default routes;`;
+
+      actions.push({
+        action: 'updateFile',
+        templateType: 'router',
+        domain,
+        componentName: pageName,
+        filePath: 'src/shared/router/index.tsx',
+        generatedCode: updatedRootRouter,
+      });
+    }
+
+    return actions;
+  }
+
+  /**
+   * 기존 도메인 라우터 파일에 신규 페이지 import와 routes 항목을 추가한다.
+   *
+   * import 삽입 우선순위:
+   * 1. 마지막 loadable import 뒤에 추가
+   * 2. (폴백) `const routes` 선언 바로 앞에 추가
+   *
+   * route 항목 삽입 우선순위:
+   * 1. `];` 앞에 추가
+   * 2. (폴백) 들여쓰기된 `]` 앞에 추가
+   */
+  private _appendToExistingRouter(
+    existing: string,
+    pageName: string,
+    domain: string,
+    routePath: string,
+  ): string {
+    const importLine = `const ${pageName} = loadable(() => import('@/domains/${domain}/pages/${pageName}'));`;
+
+    let withImport: string;
+    if (existing.includes(importLine)) {
+      withImport = existing;
+    } else {
+      // 1순위: 마지막 loadable import 뒤
+      withImport = existing.replace(
+        /(\nconst \w+ = loadable[^\n]+\n)(?!const \w+ = loadable)/,
+        `$1${importLine}\n`,
+      );
+      if (withImport === existing) {
+        // 2순위: const routes 선언 바로 앞
+        withImport = existing.replace(/^(const routes\b)/m, `${importLine}\n\n$1`);
+      }
+    }
+
+    const routeEntry = `  {\n    path: '${routePath}',\n    element: <${pageName} />,\n    name: '${pageName}',\n  },`;
+
+    let result = withImport.replace(/(\];)/, `${routeEntry}\n$1`);
+    if (result === withImport) {
+      // 폴백: 들여쓰기된 `]` (세미콜론 없는 경우)
+      result = withImport.replace(/^(\s*\])/m, `${routeEntry}\n$1`);
+    }
+    return result;
+  }
+
+  /**
+   * 루트 라우터 파일에 신규 도메인 import와 routes 항목을 추가한다.
+   *
+   * import 삽입 우선순위:
+   * 1. 마지막 Router import 뒤에 추가
+   * 2. (폴백) `const routes` 선언 바로 앞에 추가
+   */
+  private _appendDomainToRootRouter(
+    existing: string,
+    domain: string,
+    domainPascal: string,
+  ): string {
+    const importLine = `import ${domainPascal}Router from '@/domains/${domain}/router';`;
+
+    let withImport: string;
+    if (existing.includes(importLine)) {
+      withImport = existing;
+    } else {
+      // 1순위: 마지막 Router import 뒤
+      withImport = existing.replace(
+        /(import \w+Router from [^\n]+\n)(?!import \w+Router)/,
+        `$1${importLine}\n`,
+      );
+      if (withImport === existing) {
+        // 2순위: const routes 선언 바로 앞
+        withImport = existing.replace(/^(const routes\b)/m, `${importLine}\n$1`);
+      }
+    }
+
+    const routeEntry = `  { path: '/${domain}', element: <RootLayout />, children: ${domainPascal}Router },`;
+
+    let result = withImport.replace(/(\];)/, `${routeEntry}\n$1`);
+    if (result === withImport) {
+      result = withImport.replace(/^(\s*\])/m, `${routeEntry}\n$1`);
+    }
+    return result;
+  }
+
+  /** 현재 활성 에디터 파일 경로에서 도메인명을 추출한다. */
+  private _detectDomainFromEditor(): string | null {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return null;
+    const filePath = editor.document.fileName;
+    const match = filePath.match(/[/\\]domains[/\\]([^/\\]+)[/\\]/);
+    return match?.[1] ?? null;
+  }
+
+  /** 워크스페이스 src/domains/ 폴더를 스캔하여 도메인 목록을 반환한다. */
+  private _scanWorkspaceDomains(): string[] {
+    const wsRoot = this._getWorkspaceRoot();
+    if (!wsRoot) return [];
+    const domainsDir = path.join(wsRoot, 'src', 'domains');
+    if (!fs.existsSync(domainsDir)) return [];
+    try {
+      return fs.readdirSync(domainsDir).filter((name) =>
+        fs.statSync(path.join(domainsDir, name)).isDirectory(),
+      );
+    } catch {
+      return [];
+    }
   }
 
   // ─── 유틸리티 ────────────────────────────────────────────────────────────────

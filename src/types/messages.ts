@@ -26,6 +26,18 @@ export interface AxiomSettings {
   };
 }
 
+// 페이지 생성 대화 상태 머신 (ChatViewProvider 내부)
+export interface PageCreationState {
+  /** 생성할 페이지명 (PascalCase + Page) */
+  pageName: string;
+  /** 도메인 후보 목록 (탐색기 스캔 결과) */
+  domainCandidates: string[];
+  /** 사용자 도메인 선택 대기 중 여부 */
+  waitingForDomain: boolean;
+  /** 확정된 도메인 */
+  resolvedDomain: string | null;
+}
+
 // /spec wizard 상태 머신 (ChatViewProvider 내부 + 웹뷰 상태 표시용)
 export interface SpecWizardState {
   step: 'intent' | 'domain' | 'acceptance' | 'api' | 'exceptions' | 'review';

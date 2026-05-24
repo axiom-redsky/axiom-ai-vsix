@@ -9,6 +9,8 @@ export interface AxiomAction {
   componentName: string;
   filePath: string;
   generatedCode?: string;
+  /** true이면 InputBox 없이 자동 저장 (페이지 생성 플로우에서 도메인 이미 확인된 경우) */
+  autoWrite?: boolean;
 }
 
 export interface CreateFileResult {
@@ -35,8 +37,8 @@ export class FileCreatorService {
 
     const workspaceRoot = workspaceFolders[0].uri;
 
-    // 라우터 파일(router)과 updateFile은 InputBox 없이 자동으로 처리
-    const isAutoWrite = action.action === 'updateFile' || action.templateType === 'router';
+    // 라우터 파일(router), updateFile, autoWrite 플래그는 InputBox 없이 자동으로 처리
+    const isAutoWrite = action.action === 'updateFile' || action.templateType === 'router' || action.autoWrite === true;
     return isAutoWrite
       ? this._updateExistingFile(action, workspaceRoot)
       : this._createNewFile(action, workspaceRoot);

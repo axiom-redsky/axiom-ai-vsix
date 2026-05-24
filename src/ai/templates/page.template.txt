@@ -1,11 +1,10 @@
-interface I{{ComponentName}}Props {
-  // test?: string;
-}
+import type React from 'react';
 
-export default function {{ComponentName}}({}: I{{ComponentName}}Props): React.ReactNode {
+export default function {{ComponentName}}(): React.ReactNode {
   return (
-    <>
-      <div>{{ComponentName}} Page!</div>
-    </>
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">{{ComponentName}}</h1>
+      <p className="text-muted-foreground">이 페이지의 내용을 작성하세요.</p>
+    </div>
   );
 }

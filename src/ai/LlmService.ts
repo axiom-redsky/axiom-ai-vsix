@@ -26,6 +26,29 @@ export class LlmService {
   }
 
   /**
+   * LLM 서버가 온라인 상태인지 확인한다.
+   * /v1/models GET 요청을 2초 타임아웃으로 시도한다.
+   */
+  async checkHealth(config: LlmConfig): Promise<boolean> {
+    const url = new URL('/v1/models', config.endpoint).toString();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
+        signal: controller.signal,
+      });
+      return res.ok || res.status === 401; // 401도 서버는 살아있음
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * OpenAI 호환 /v1/chat/completions SSE 스트리밍.
    * Ollama, vLLM, LocalAI 모두 동일한 스키마를 사용한다.
    */
