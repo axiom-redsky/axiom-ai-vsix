@@ -16,7 +16,8 @@
       "Bash(Format-List)",
       "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Directory)",
       "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\\\\src\\\\spec\")",
-      "Bash(Select-Object -ExpandProperty Name)"
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Include \"*.md\", \"SpecScaffolder.ts\", \"AxiomIndexTracker.ts\", \"SddPanelProvider.ts\", \"index.ts\", \"package.json\")"
     ]
   }
 }

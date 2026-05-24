@@ -92,3 +92,10 @@ project: react-app-scaffold
 
 - keywords: [page-template, 페이지템플릿, 폼화면, form-page, formpage, 폼, form, 등록, 수정, 입력, 저장, 취소, react-hook-form, zod, validation, 유효성]
   files: [page-templates/form-page.md]
+
+## 스펙 작성 가이드
+
+- keywords: [spec, 스펙, 스펙구조, spec-guide, spec-structure, 섹션, 복잡도, L1, L2, L3,
+             컴포넌트트리, component-tree, props, state, 상태, render-logic, 렌더조건,
+             events, 이벤트, form, 폼스펙, edge-cases, 예외처리, 수락기준, 스펙작성]
+  files: [spec-guide/spec-structure.md]
