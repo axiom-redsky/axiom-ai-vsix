@@ -8,6 +8,7 @@ import { SpecFileWriter } from '../spec/SpecFileWriter';
 import { SpecScaffolder } from '../spec/SpecScaffolder';
 import { AxiomIndexTracker } from '../spec/AxiomIndexTracker';
 import { ExtensionConfig } from '../config/ExtensionConfig';
+import { DomainRouter } from '../spec/DomainRouter';
 
 /** TreeView context menu 또는 string으로 넘어오는 specPath를 안전하게 추출한다 */
 function resolveSpecPath(arg: unknown): string | undefined {
@@ -188,6 +189,135 @@ export function registerCommands(
 
     // ─── SDD: 패널 새로고침 ──────────────────────────────────────────────────────
     vscode.commands.registerCommand('axiom-ai.refreshSddPanel', () => {
+      sddPanel?.refresh();
+    }),
+
+    // ─── SDD: 퍼블리셔 파일 → 스펙 역방향 추출 ─────────────────────────────────
+    vscode.commands.registerCommand('axiom-ai.extractSpecFromFile', async (arg?: unknown) => {
+      const axiomFolder = ExtensionConfig.getSddAxiomFolder();
+      if (!axiomFolder) {
+        vscode.window.showErrorMessage('axiom-ai.sdd.axiomFolder 설정이 필요합니다.');
+        return;
+      }
+
+      const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!wsRoot) return;
+      const axiomDir = path.isAbsolute(axiomFolder) ? axiomFolder : path.join(wsRoot, axiomFolder);
+
+      // 탐색기 우클릭(arg = Uri) 또는 활성 에디터에서 파일 경로 확보
+      let filePath: string | undefined;
+      if (arg && typeof (arg as Record<string, unknown>)['fsPath'] === 'string') {
+        filePath = (arg as vscode.Uri).fsPath;
+      }
+      filePath ??= vscode.window.activeTextEditor?.document.fileName;
+
+      if (!filePath) {
+        vscode.window.showErrorMessage('분석할 파일을 선택하거나 에디터에서 열어주세요.');
+        return;
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      if (!['.html', '.htm', '.tsx'].includes(ext)) {
+        vscode.window.showErrorMessage(`지원 파일 형식: .html, .htm, .tsx (현재: ${ext})`);
+        return;
+      }
+
+      if (!fs.existsSync(filePath)) {
+        vscode.window.showErrorMessage(`파일을 찾을 수 없습니다: ${filePath}`);
+        return;
+      }
+
+      // 도메인 감지
+      let domain = new DomainRouter(axiomDir).detectDomain(filePath) ?? undefined;
+      if (!domain) {
+        const domains = new DomainRouter(axiomDir).listDomains();
+        if (domains.length > 0) {
+          domain = await vscode.window.showQuickPick(domains, {
+            placeHolder: '스펙을 저장할 도메인을 선택하세요',
+            title: '역방향 스펙 추출',
+          }) ?? undefined;
+          if (!domain) return;
+        } else {
+          domain = await vscode.window.showInputBox({
+            prompt: '도메인명을 입력하세요',
+            placeHolder: '예: main, transfer, account',
+            title: '역방향 스펙 추출',
+          }) ?? undefined;
+          if (!domain) return;
+        }
+      }
+
+      await chatProvider?.runExtractSpecCommand(filePath, domain);
+      sddPanel?.refresh();
+    }),
+
+    // ─── SDD: 화면 추가 (원스텝) ────────────────────────────────────────────────
+    vscode.commands.registerCommand('axiom-ai.addScreen', async (arg?: unknown) => {
+      const axiomFolder = ExtensionConfig.getSddAxiomFolder();
+      if (!axiomFolder) {
+        vscode.window.showErrorMessage('axiom-ai.sdd.axiomFolder 설정이 필요합니다.');
+        return;
+      }
+
+      const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!wsRoot) return;
+      const axiomDir = path.isAbsolute(axiomFolder) ? axiomFolder : path.join(wsRoot, axiomFolder);
+
+      // 1. TreeView 폴더 우클릭 시: arg.resourceUri에서 도메인 추출
+      let prefilledDomain: string | undefined;
+      const argUri = (arg as Record<string, unknown>)?.['resourceUri'] as vscode.Uri | undefined;
+      if (argUri?.fsPath) {
+        const match = argUri.fsPath.match(/[/\\]screens[/\\]([^/\\]+)([/\\]|$)/);
+        if (match?.[1]) prefilledDomain = match[1];
+      }
+
+      // 2. 활성 에디터에서 도메인 추출
+      if (!prefilledDomain) {
+        const activeFile = vscode.window.activeTextEditor?.document.fileName;
+        if (activeFile) {
+          prefilledDomain = new DomainRouter(axiomDir).detectDomain(activeFile) ?? undefined;
+        }
+      }
+
+      const screenName = await vscode.window.showInputBox({
+        prompt: '추가할 화면명을 입력하세요 (PascalCase)',
+        placeHolder: 'AccountListPage',
+      });
+      if (!screenName) return;
+
+      // 도메인이 없으면 quick-pick 또는 직접 입력으로 선택
+      let domain = prefilledDomain;
+      if (!domain) {
+        const router = new DomainRouter(axiomDir);
+        const domains = router.listDomains();
+        if (domains.length > 0) {
+          domain = await vscode.window.showQuickPick(domains, {
+            placeHolder: '도메인을 선택하세요',
+            title: '화면 추가',
+          }) ?? undefined;
+          if (!domain) return;
+        } else {
+          domain = await vscode.window.showInputBox({
+            prompt: '도메인명을 입력하세요',
+            placeHolder: '예: main, transfer, account',
+          }) ?? undefined;
+          if (!domain) return;
+        }
+      }
+
+      const description = await vscode.window.showInputBox({
+        prompt: '화면의 주요 기능을 한 줄로 설명하세요 (선택)',
+        placeHolder: '예: 계좌 목록 조회 및 삭제',
+      });
+      if (description === undefined) return;
+
+      const intent = [
+        domain ? `${domain} 도메인` : '',
+        screenName,
+        description || '',
+      ].filter(Boolean).join(' ');
+
+      await chatProvider?.runAddScreenCommand(intent);
       sddPanel?.refresh();
     }),
   );

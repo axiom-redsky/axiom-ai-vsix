@@ -9,7 +9,7 @@ import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction } from '../ai/FileCreatorService';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage } from '../ai/types';
-import type { WebviewToHostMessage, HostToWebviewMessage } from '../types/messages';
+import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState } from '../types/messages';
 import { ContextCollector } from '../spec/ContextCollector';
 import { SpecGenerator } from '../spec/SpecGenerator';
 import { SpecFileWriter } from '../spec/SpecFileWriter';
@@ -18,6 +18,7 @@ import { AxiomIndexTracker } from '../spec/AxiomIndexTracker';
 import type { SpecIndexEntry } from '../spec/AxiomIndexTracker';
 import { DomainRouter } from '../spec/DomainRouter';
 import { SddCorpusLoader } from '../spec/SddCorpusLoader';
+import { PublishExtractor } from '../spec/PublishExtractor';
 
 /**
  * 우측 Secondary Side Bar에 표시되는 채팅 WebviewView 프로바이더.
@@ -29,6 +30,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _history: ChatMessage[] = [];
   private _abortController?: AbortController;
+  private _wizardState: SpecWizardState | null = null;
   private _externalWatcherDebounce: ReturnType<typeof setTimeout> | null = null;
   private _externalWatcher: vscode.FileSystemWatcher | null = null;
   private _userStubsWatcher: vscode.FileSystemWatcher | null = null;
@@ -153,10 +155,119 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await this._handleSpecUpdate(intent);
   }
 
+  /** "Add Screen" 원스텝 커맨드 처리 — SDD 패널 버튼에서 호출된다 */
+  async runAddScreenCommand(intent: string): Promise<void> {
+    this._post({ type: 'token', content: `🚀 화면 추가 중: ${intent}\n\n` });
+    await this._handleSpecFast(intent);
+  }
+
+  /** 퍼블리셔 파일(HTML/TSX) → spec.md 역방향 추출 */
+  async runExtractSpecCommand(filePath: string, domain?: string): Promise<void> {
+    this._abortController?.abort();
+    this._abortController = new AbortController();
+
+    const axiomDir = this._resolveAxiomDir();
+    if (!axiomDir) {
+      this._post({ type: 'error', message: 'axiom-ai.sdd.axiomFolder 설정이 필요합니다.' });
+      this._post({ type: 'done' });
+      return;
+    }
+
+    const knowledgeDir = this._resolveKnowledgeDir();
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const fileName = filePath.split(/[/\\]/).pop() ?? '';
+
+    this._post({ type: 'token', content: `🔍 파일 분석 중: ${fileName}\n\n` });
+    this._postStatus('스펙 추출 중…');
+
+    try {
+      const extractor = new PublishExtractor();
+      const fileStructure = extractor.extractFromFile(filePath);
+      if (!fileStructure) {
+        this._post({ type: 'error', message: `파일을 읽을 수 없습니다: ${fileName}` });
+        this._post({ type: 'done' });
+        return;
+      }
+
+      // publish 키워드로 knowledge 수집 (css-mapping, markup-patterns 우선)
+      const collector = new ContextCollector(axiomDir, knowledgeDir);
+      const ctx = await collector.collect('publish markup css-mapping 퍼블리셔', filePath);
+      if (domain) ctx.domain = domain;
+
+      const generator = new SpecGenerator(this._llm);
+      let fullSpec = '';
+      let wasFallback = false;
+
+      for await (const token of generator.generateFromFile(
+        fileStructure,
+        ctx,
+        this._abortController.signal,
+        (reason) => { wasFallback = true; console.warn(`[SDD] 역방향 추출 폴백: ${reason}`); },
+      )) {
+        fullSpec += token;
+        this._post({ type: 'token', content: token });
+      }
+
+      this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
+
+      let gitUser = 'unknown';
+      try { gitUser = cp.execSync('git config user.name', { encoding: 'utf-8', timeout: 2000 }).trim() || 'unknown'; } catch { /* ignore */ }
+
+      if (wasFallback) {
+        fullSpec = SpecGenerator.generateOfflineStubFromFile(filePath, ctx.domain ?? 'unknown', gitUser);
+      }
+
+      const writer = new SpecFileWriter(axiomDir);
+      let parsed = writer.parseDraft(fullSpec);
+      parsed = writer.applyDefaults(parsed, { status: 'draft', category: 'screen', owner: gitUser });
+
+      if (ctx.domain && (!parsed.frontmatter.domain || parsed.frontmatter.domain === 'unknown')) {
+        parsed.frontmatter.domain = ctx.domain;
+        parsed = { ...parsed, raw: parsed.raw.replace(/^domain:\s*.*$/m, `domain: ${ctx.domain}`) };
+      }
+
+      const specPath = await writer.save(parsed);
+
+      const tracker = new AxiomIndexTracker(axiomDir);
+      const dom = parsed.frontmatter.domain ?? 'unknown';
+      const screen = parsed.frontmatter.screen ?? 'Unknown';
+      tracker.upsertSpec({
+        specPath: path.relative(axiomDir, specPath).replace(/\\/g, '/'),
+        linkedSourcePath: `src/domains/${dom}/pages/${screen}.tsx`,
+        lastModified: new Date().toISOString().slice(0, 10),
+        domain: dom,
+        status: 'draft',
+      });
+
+      const wsRoot = this._getWorkspaceRoot();
+      this._post({ type: 'token', content: `\n\n✅ 스펙 추출 완료: \`${path.relative(wsRoot ?? '', specPath)}\`` });
+      this._post({ type: 'done' });
+      this._postStatus(config.model);
+
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') { this._post({ type: 'done' }); return; }
+      this._post({ type: 'error', message: (err as Error).message });
+      this._postStatus('오류 발생');
+    }
+  }
+
   // ─── private: 메시지 처리 ────────────────────────────────────────────────────
 
   private async _handleMessage(text: string): Promise<void> {
     if (!this._view) return;
+
+    // wizard 모드: 취소 또는 단계 처리
+    if (this._wizardState) {
+      if (text.trim() === '/cancel' || text.trim() === '/spec cancel') {
+        this._wizardState = null;
+        this._post({ type: 'token', content: '가이드 모드가 취소되었습니다. `/spec <의도>` 로 일반 생성을 시작할 수 있습니다.' });
+        this._post({ type: 'done' });
+        this._postStatus(ExtensionConfig.getLlmConfig().model);
+        return;
+      }
+      await this._handleWizardStep(text);
+      return;
+    }
 
     // /spec 커맨드 분기
     if (text.startsWith('/spec ') || text === '/spec') {
@@ -168,6 +279,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
       if (subtext === 'guide') {
         this._showSpecGuide();
+        return;
+      }
+      if (subtext === 'wizard') {
+        await this._startSpecWizard();
         return;
       }
       if (subtext.startsWith('approve')) {
@@ -307,11 +422,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       '|---|---|',
       '| `/spec fast <설명>` | ⚡ 스펙 생성 + 승인 + 코드 생성 한 번에 |',
       '| `/spec <설명>` | 스펙 생성 (draft 저장) |',
+      '| `/spec wizard` | 🧙 대화형 가이드로 스펙 작성 |',
       '| `/spec update <수정 내용>` | 현재 열린 spec.md AI 보조 수정 |',
       '| `/spec review` | 스펙을 리뷰 요청 상태로 전환 |',
       '| `/spec approve` | 스펙 승인 (reviewer 필드 필수) |',
       '| `/spec guide` | 📖 스펙 작성 규칙 및 구조 가이드 |',
       '| `/scaffold` | 승인된 spec.md → TSX 스텁 생성 |',
+      '| `/cancel` | 🧙 wizard 모드 종료 |',
       '',
       '💡 **팁**: 구체적으로 쓸수록 수락 기준 체크리스트 품질이 올라갑니다.',
     ].join('\n');
@@ -591,6 +708,158 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
   }
 
+  // ─── /spec wizard 대화형 가이드 ─────────────────────────────────────────────
+
+  private async _startSpecWizard(): Promise<void> {
+    const axiomDir = this._resolveAxiomDir();
+    if (!axiomDir) {
+      this._post({ type: 'error', message: 'axiom-ai.sdd.axiomFolder 설정이 필요합니다.' });
+      this._post({ type: 'done' });
+      return;
+    }
+
+    // 활성 파일에서 도메인 사전 감지
+    const activeFile = vscode.window.activeTextEditor?.document.fileName;
+    const detectedDomain = activeFile
+      ? new DomainRouter(axiomDir).detectDomain(activeFile) ?? undefined
+      : undefined;
+
+    this._wizardState = {
+      step: 'intent',
+      partial: { domain: detectedDomain },
+      collectedSections: {},
+    };
+
+    const domainHint = detectedDomain ? ` (현재 파일 기준: **${detectedDomain}** 도메인)` : '';
+    const welcomeMsg = [
+      '🧙 **스펙 작성 가이드 모드**',
+      '',
+      '질문에 답하면 스펙이 자동으로 완성됩니다. 언제든 `/cancel` 로 종료할 수 있습니다.',
+      '',
+      `---`,
+      '',
+      `**1단계** — 어떤 화면을 만들고 싶으신가요?${domainHint}`,
+      '예: "계좌 목록 화면", "이체 확인 페이지"',
+    ].join('\n');
+
+    this._post({ type: 'token', content: welcomeMsg });
+    this._post({ type: 'done' });
+    this._post({ type: 'wizardStep', step: 'intent', prompt: '화면 설명을 입력하세요' });
+    this._postStatus('가이드 모드 — 1/6 화면 설명');
+  }
+
+  private async _handleWizardStep(userInput: string): Promise<void> {
+    if (!this._wizardState) return;
+    const state = this._wizardState;
+
+    switch (state.step) {
+      case 'intent': {
+        state.partial.intent = userInput;
+        // 도메인이 없으면 domain 단계로
+        if (!state.partial.domain) {
+          state.step = 'domain';
+          const axiomDir = this._resolveAxiomDir();
+          const domains = axiomDir ? new DomainRouter(axiomDir).listDomains() : [];
+          const domainList = domains.length > 0
+            ? `\n사용 가능한 도메인: ${domains.map((d) => `\`${d}\``).join(', ')}`
+            : '';
+          this._post({ type: 'token', content: `\n\n**2단계** — 어느 도메인에 속하나요?${domainList}\n예: \`auth\`, \`order\`, \`account\`` });
+          this._post({ type: 'done' });
+          this._post({ type: 'wizardStep', step: 'domain', prompt: '도메인명을 입력하세요' });
+          this._postStatus('가이드 모드 — 2/6 도메인');
+        } else {
+          // 도메인이 이미 감지된 경우 acceptance 단계로
+          state.step = 'acceptance';
+          await this._wizardAskAcceptance();
+        }
+        break;
+      }
+
+      case 'domain': {
+        state.partial.domain = userInput.trim().toLowerCase();
+        state.step = 'acceptance';
+        await this._wizardAskAcceptance();
+        break;
+      }
+
+      case 'acceptance': {
+        state.collectedSections['acceptance'] = userInput;
+        state.step = 'api';
+        this._post({ type: 'token', content: '\n\n**4단계** — 어떤 API를 호출하나요? (모르면 "모름" 입력)\n예: `GET /api/accounts`, `POST /api/transfer`' });
+        this._post({ type: 'done' });
+        this._post({ type: 'wizardStep', step: 'api', prompt: 'API 경로를 입력하세요' });
+        this._postStatus('가이드 모드 — 4/6 API');
+        break;
+      }
+
+      case 'api': {
+        state.collectedSections['api'] = userInput === '모름' ? 'TODO: API 경로 작성' : userInput;
+        state.step = 'exceptions';
+        this._post({ type: 'token', content: '\n\n**5단계** — 처리해야 할 예외 상황이 있나요? (없으면 "없음" 입력)\n예: "권한 없음, 한도 초과, 서버 오류"' });
+        this._post({ type: 'done' });
+        this._post({ type: 'wizardStep', step: 'exceptions', prompt: '예외 상황을 입력하세요' });
+        this._postStatus('가이드 모드 — 5/6 예외처리');
+        break;
+      }
+
+      case 'exceptions': {
+        state.collectedSections['exceptions'] = userInput === '없음' ? '' : userInput;
+        state.step = 'review';
+        await this._wizardFinalize();
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  private async _wizardAskAcceptance(): Promise<void> {
+    if (!this._wizardState) return;
+    const { intent, domain } = this._wizardState.partial;
+    this._post({
+      type: 'token',
+      content: `\n\n**3단계** — 이 화면에서 가장 중요한 사용자 동작을 2~3가지 설명해주세요.\n(예: "계좌 목록 조회, 계좌 삭제, 빈 목록 안내")`,
+    });
+    this._post({ type: 'done' });
+    this._post({ type: 'wizardStep', step: 'acceptance', prompt: '주요 동작을 입력하세요' });
+    this._postStatus(`가이드 모드 — 3/6 수락기준 | ${domain ?? ''} > ${intent ?? ''}`);
+  }
+
+  private async _wizardFinalize(): Promise<void> {
+    if (!this._wizardState) return;
+    const { partial, collectedSections } = this._wizardState;
+
+    this._post({ type: 'token', content: '\n\n⚙️ 스펙을 생성 중입니다…\n\n' });
+
+    const intent = [
+      partial.domain ? `${partial.domain} 도메인` : '',
+      partial.intent ?? '',
+    ].filter(Boolean).join(' ');
+
+    // collectedSections를 intent에 보강하여 기존 _generateAndSaveSpec 파이프라인 재활용
+    const enrichedIntent = [
+      intent,
+      collectedSections['acceptance'] ? `\n주요 동작: ${collectedSections['acceptance']}` : '',
+      collectedSections['api'] ? `\nAPI: ${collectedSections['api']}` : '',
+      collectedSections['exceptions'] ? `\n예외처리: ${collectedSections['exceptions']}` : '',
+    ].filter(Boolean).join('');
+
+    this._wizardState = null;
+    this._postStatus('스펙 생성 중…');
+
+    const result = await this._generateAndSaveSpec(enrichedIntent, { status: 'draft' });
+    if (!result) return;
+
+    const wsRoot = this._getWorkspaceRoot();
+    this._post({
+      type: 'token',
+      content: `\n\n🎉 스펙 생성 완료!\n\`${path.relative(wsRoot ?? '', result.specPath)}\`\n\n다음 단계: \`/spec review\` → \`/spec approve\` → \`/scaffold\``,
+    });
+    this._post({ type: 'done' });
+    this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
+  }
+
   private async _handleSpecUpdate(intent: string): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !editor.document.fileName.endsWith('spec.md')) {
@@ -774,7 +1043,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       const pattern = new vscode.RelativePattern(vscode.Uri.file(axiomDir), '**/*.md');
       this._axiomWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-      context.subscriptions.push(this._axiomWatcher);
+
+      // .axiom/knowledge/ 변경 시 RAG 재빌드
+      const knowledgeSep = path.sep + 'knowledge' + path.sep;
+      const onKnowledgeChange = (uri: vscode.Uri) => {
+        if (uri.fsPath.includes(knowledgeSep)) {
+          this._scaffoldBuilder.invalidateAndRebuild();
+        }
+      };
+
+      context.subscriptions.push(
+        this._axiomWatcher,
+        this._axiomWatcher.onDidChange(onKnowledgeChange),
+        this._axiomWatcher.onDidCreate(onKnowledgeChange),
+        this._axiomWatcher.onDidDelete(onKnowledgeChange),
+      );
     } catch {
       // axiomDir가 아직 없을 수 있음
     }

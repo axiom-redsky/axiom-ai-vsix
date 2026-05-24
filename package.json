@@ -45,6 +45,12 @@
           "id": "axiom-ai.sddPanel",
           "name": "SDD 스펙",
           "visibility": "collapsed"
+        },
+        {
+          "type": "webview",
+          "id": "axiom-ai.projectConfigPanel",
+          "name": "프로젝트 설정",
+          "visibility": "collapsed"
         }
       ],
       "axiom-ai-chat-container": [
@@ -186,6 +192,16 @@
         "command": "axiom-ai.refreshSddPanel",
         "title": "Axiom AI: SDD 패널 새로고침",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "axiom-ai.addScreen",
+        "title": "Axiom AI: 화면 추가 (Add Screen)",
+        "icon": "$(add)"
+      },
+      {
+        "command": "axiom-ai.extractSpecFromFile",
+        "title": "Axiom AI: 파일에서 스펙 추출",
+        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -207,6 +223,11 @@
         },
         {
           "command": "axiom-ai.generateSpec",
+          "when": "view == axiom-ai.sddPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "axiom-ai.addScreen",
           "when": "view == axiom-ai.sddPanel",
           "group": "navigation"
         }
@@ -233,6 +254,11 @@
           "group": "sdd@4"
         },
         {
+          "command": "axiom-ai.addScreen",
+          "when": "view == axiom-ai.sddPanel && viewItem == sddFolder",
+          "group": "sdd@0"
+        },
+        {
           "command": "axiom-ai.updateSpec",
           "when": "view == axiom-ai.sddPanel && viewItem =~ /^sddSpec/",
           "group": "inline@1"
@@ -252,6 +278,11 @@
         {
           "command": "axiom-ai.generateSpecForFolder",
           "when": "explorerResourceIsFolder",
+          "group": "axiomAi"
+        },
+        {
+          "command": "axiom-ai.extractSpecFromFile",
+          "when": "resourceExtname == .html || resourceExtname == .htm || resourceExtname == .tsx",
           "group": "axiomAi"
         }
       ]

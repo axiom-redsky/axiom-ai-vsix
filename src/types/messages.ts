@@ -1,3 +1,16 @@
+// 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
+export interface ProjectConfig {
+  projectName: string;
+  designGuideUrl: string;
+  publisherConventions: string;
+  layoutPatterns: {
+    listPage: string;
+    detailPage: string;
+    formPage: string;
+  };
+  notes: string;
+}
+
 // 설정 데이터 구조 (웹뷰 ↔ extension host 공유)
 export interface AxiomSettings {
   llm: {
@@ -13,6 +26,17 @@ export interface AxiomSettings {
   };
 }
 
+// /spec wizard 상태 머신 (ChatViewProvider 내부 + 웹뷰 상태 표시용)
+export interface SpecWizardState {
+  step: 'intent' | 'domain' | 'acceptance' | 'api' | 'exceptions' | 'review';
+  partial: {
+    domain?: string;
+    screen?: string;
+    intent?: string;
+  };
+  collectedSections: Record<string, string>;
+}
+
 // WebView → Extension Host
 export type WebviewToHostMessage =
   | { type: 'sendMessage'; text: string }
@@ -25,7 +49,9 @@ export type WebviewToHostMessage =
   | { type: 'pickRagFile' }
   | { type: 'pickRagFolder' }
   | { type: 'removeRagFile'; filePath: string }
-  | { type: 'clearRagFolder' };
+  | { type: 'clearRagFolder' }
+  | { type: 'loadProjectConfig' }
+  | { type: 'saveProjectConfig'; config: ProjectConfig };
 
 // Extension Host → WebView
 export type HostToWebviewMessage =
@@ -40,4 +66,7 @@ export type HostToWebviewMessage =
   | { type: 'settingsLoaded'; settings: AxiomSettings }
   | { type: 'ragFileAdded'; filePath: string }
   | { type: 'ragFileRemoved'; filePath: string }
-  | { type: 'ragFolderSet'; folderPath: string };
+  | { type: 'ragFolderSet'; folderPath: string }
+  | { type: 'projectConfigLoaded'; config: ProjectConfig | null }
+  | { type: 'projectConfigSaved' }
+  | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string };

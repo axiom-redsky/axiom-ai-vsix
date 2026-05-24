@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ChatApp } from './chat/ChatApp';
 import { LauncherApp } from './launcher/LauncherApp';
+import { ProjectConfigApp } from './projectConfig/ProjectConfigApp';
 import './styles/webview.css';
 import 'highlight.js/styles/vs2015.css';
 
@@ -10,6 +11,8 @@ const rootEl = document.getElementById('root');
 
 if (rootEl) {
   ReactDOM.createRoot(rootEl).render(
-    mode === 'launcher' ? <LauncherApp /> : <ChatApp />,
+    mode === 'launcher' ? <LauncherApp />
+    : mode === 'project-config' ? <ProjectConfigApp />
+    : <ChatApp />,
   );
 }

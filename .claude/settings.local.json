@@ -10,7 +10,13 @@
       "Bash(cp -r .rag/react knowledge/)",
       "Bash(cp -r .rag/scaffold knowledge/)",
       "Bash(npm run *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Format-List)",
+      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Directory)",
+      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\\\\src\\\\spec\")",
+      "Bash(Select-Object -ExpandProperty Name)"
     ]
   }
 }

@@ -37,6 +37,14 @@ export class ScaffoldContextBuilder {
     const extraDirs = folder ? [folder] : [];
     const externalCorpora = this._loadExternalCorpora(folder);
 
+    // .axiom/knowledge/ 자동 감지 — userRagFolder 와 중복되지 않는 경우에만 추가
+    const axiomKnowledge = this._getAxiomKnowledgeDir();
+    if (axiomKnowledge && axiomKnowledge !== folder && this._outputChannel) {
+      extraDirs.push(axiomKnowledge);
+      const loader = new ExternalCorpusLoader(this._outputChannel);
+      externalCorpora.push(loader.load(axiomKnowledge));
+    }
+
     this._engine.initialize(dir, extraDirs, files, externalCorpora);
   }
 
@@ -265,6 +273,18 @@ ${domainSection}${scaffoldSection}${fileSection}`;
       }
     }
     return null;
+  }
+
+  /** .axiom/knowledge/ 폴더가 존재하면 경로를 반환한다. */
+  private _getAxiomKnowledgeDir(): string | null {
+    const axiomFolder = ExtensionConfig.getSddAxiomFolder();
+    if (!axiomFolder) return null;
+    const wsRoot = this._getWorkspaceRoot();
+    const axiomDir = wsRoot && !path.isAbsolute(axiomFolder)
+      ? path.join(wsRoot, axiomFolder)
+      : axiomFolder;
+    const knowledgeDir = path.join(axiomDir, 'knowledge');
+    return fs.existsSync(knowledgeDir) ? knowledgeDir : null;
   }
 
   /** 외부 corpus 폴더가 설정되어 있으면 로드한다. */

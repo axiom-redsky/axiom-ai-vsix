@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ChatPanelProvider } from './providers/ChatPanelProvider';
 import { ChatViewProvider } from './providers/ChatViewProvider';
 import { SddPanelProvider } from './views/SddPanelProvider';
+import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { registerCommands } from './commands/index';
 import { ExtensionConfig } from './config/ExtensionConfig';
 import { AxiomIndexTracker } from './spec/AxiomIndexTracker';
@@ -11,6 +12,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const launcherProvider = new ChatPanelProvider(context.extensionUri);
   const chatProvider = new ChatViewProvider(context.extensionUri);
   const sddPanel = new SddPanelProvider();
+  const projectConfigProvider = new ProjectConfigProvider(context.extensionUri);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -27,10 +29,16 @@ export function activate(context: vscode.ExtensionContext): void {
       SddPanelProvider.viewId,
       sddPanel,
     ),
+    vscode.window.registerWebviewViewProvider(
+      ProjectConfigProvider.viewId,
+      projectConfigProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
   );
 
-  // SDD 패널 axiomDir 초기화
+  // SDD 패널 + 프로젝트 설정 패널 axiomDir 초기화
   _initSddPanel(sddPanel, context);
+  _initProjectConfigProvider(projectConfigProvider);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('axiom-ai.openChat', async () => {
@@ -57,11 +65,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // RAG 임베딩 인덱스를 백그라운드에서 미리 빌드 시작
   chatProvider.startIndexBuild();
 
-  // 설정 변경 시 SDD 패널 재초기화
+  // 설정 변경 시 SDD 패널 + 프로젝트 설정 패널 재초기화
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('axiom-ai.sdd.axiomFolder')) {
         _initSddPanel(sddPanel, context);
+        _initProjectConfigProvider(projectConfigProvider);
       }
     }),
   );
@@ -81,6 +90,18 @@ function _initSddPanel(sddPanel: SddPanelProvider, context: vscode.ExtensionCont
 
   sddPanel.setAxiomDir(axiomDir);
   sddPanel.registerWatcher(context);
+}
+
+function _initProjectConfigProvider(provider: ProjectConfigProvider): void {
+  const axiomFolder = ExtensionConfig.getSddAxiomFolder();
+  if (!axiomFolder) return;
+
+  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const axiomDir = wsRoot && !path.isAbsolute(axiomFolder)
+    ? path.join(wsRoot, axiomFolder)
+    : axiomFolder;
+
+  provider.setAxiomDir(axiomDir);
 }
 
 function _checkStaleness(): void {

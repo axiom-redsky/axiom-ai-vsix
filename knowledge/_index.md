@@ -62,3 +62,33 @@ project: react-app-scaffold
 
 - keywords: [tailwind, tailwindcss, 스타일, css, 클래스, className, 다크모드, darkmode, brand]
   files: [components/Button.md]
+
+## 디자인 시스템
+
+- keywords: [design-system, 디자인시스템, 컴포넌트목록, component-list, variants, shadcn, axiom/components/ui, 전체컴포넌트, tbd, 추가예정, 확정컴포넌트]
+  files: [design-system/components.md]
+
+- keywords: [layout, 레이아웃, card, container, stack, grid, flexbox, scrollarea, 카드, 페이지구조, 목록화면, 상세화면, 폼화면, si프로젝트, 프로젝트별, 반응형, responsive, darkmode, 다크모드, rootlayout]
+  files: [design-system/layout.md]
+
+- keywords: [token, 토큰, 디자인토큰, color, 색상, typography, 타이포그래피, spacing, 간격, brand, 브랜드컬러, primitive, theme, darkmode, css-variable, tailwindcss]
+  files: [design-system/tokens.md]
+
+## 퍼블 컨벤션
+
+- keywords: [publish, 퍼블, 마크업, markup, html, 퍼블리셔, publisher, 변환, convert, 클래스, class, 패턴, 버튼, 폼, 카드, 테이블, 모달]
+  files: [publish/markup-patterns.md]
+
+- keywords: [css-mapping, css매핑, 클래스매핑, class-mapping, shadcn, btn, form-control, card, modal, badge, 변환, convert, 퍼블, publish]
+  files: [publish/css-mapping.md]
+
+## 화면 템플릿
+
+- keywords: [page-template, 페이지템플릿, 목록화면, list-page, listpage, 목록, list, 테이블, table, 검색, search, 필터, filter, 신규등록]
+  files: [page-templates/list-page.md]
+
+- keywords: [page-template, 페이지템플릿, 상세화면, detail-page, detailpage, 상세, detail, 뒤로가기, 조회, 읽기전용, readonly]
+  files: [page-templates/detail-page.md]
+
+- keywords: [page-template, 페이지템플릿, 폼화면, form-page, formpage, 폼, form, 등록, 수정, 입력, 저장, 취소, react-hook-form, zod, validation, 유효성]
+  files: [page-templates/form-page.md]
