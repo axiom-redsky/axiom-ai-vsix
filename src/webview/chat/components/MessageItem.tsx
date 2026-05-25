@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js';
 import type { Message } from '../hooks/useChat';
+import type { DiffLine } from '../../../types/messages';
 
 /**
  * react-markdown의 code 컴포넌트를 직접 교체한다.
@@ -39,6 +40,24 @@ interface Props {
 
 const ACTION_BLOCK_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
 
+function DiffView({ diff }: { diff: DiffLine[] }): React.ReactElement {
+  return (
+    <div className="diff-view">
+      {diff.map((line, i) => (
+        <div key={i} className={`diff-line diff-line--${line.type}`}>
+          <span className="diff-line__gutter">
+            {line.type === 'add' ? '+' : line.type === 'del' ? '-' : line.type === 'sep' ? '' : ' '}
+          </span>
+          <span className="diff-line__no">
+            {line.type === 'sep' ? '' : (line.type === 'del' ? line.oldNo : line.newNo) ?? ''}
+          </span>
+          <span className="diff-line__content">{line.content}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FileResultCard({ message }: { message: Message }): React.ReactElement {
   const { subtype, content } = message;
 
@@ -59,17 +78,21 @@ function FileResultCard({ message }: { message: Message }): React.ReactElement {
   }
 
   if (subtype === 'file-updated') {
+    const hasDiff = message.diff && message.diff.length > 0;
     return (
-      <div className="file-result file-result--updated">
-        <span className="file-result__icon">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M2 2h7l3 3v9H2V2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
-            <path d="M9 2v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-            <path d="M5 8h6M5 11h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-        </span>
-        <span className="file-result__label">수정됨</span>
-        <span className="file-result__path">{content}</span>
+      <div className={`file-result file-result--updated${hasDiff ? ' file-result--has-diff' : ''}`}>
+        <div className="file-result__header">
+          <span className="file-result__icon">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M2 2h7l3 3v9H2V2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
+              <path d="M9 2v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+              <path d="M5 8h6M5 11h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </span>
+          <span className="file-result__label">수정됨</span>
+          <span className="file-result__path">{content}</span>
+        </div>
+        {hasDiff && <DiffView diff={message.diff!} />}
       </div>
     );
   }

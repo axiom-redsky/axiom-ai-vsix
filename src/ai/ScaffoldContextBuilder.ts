@@ -14,6 +14,8 @@ interface DomainContext {
   domainRouterContent: string | null;
   /** 신규 도메인일 때: 현재 루트 라우터 파일 내용 */
   rootRouterContent: string | null;
+  /** true이면 현재 열린 파일 경로에서 도메인을 추출한 경우 → 현재 파일 수정 시나리오(C) */
+  isCurrentFileContext: boolean;
 }
 
 export class ScaffoldContextBuilder {
@@ -55,6 +57,17 @@ export class ScaffoldContextBuilder {
    * - 결과가 부족하면 Method 2 (임베딩 유사도) 폴백
    * - 페이지 생성 요청 시 도메인 존재 여부를 감지하여 프롬프트에 주입
    */
+  /** 사용자 쿼리에 화면 이동(navigate) 의도가 있는지 감지한다. */
+  private _hasNavigationIntent(query: string): boolean {
+    const q = query.toLowerCase();
+    const patterns = [
+      '이동', 'navigate', 'navigation', '네비게이션',
+      '뒤로', '이전 페이지', '루트', '메인으로', '메인 페이지',
+      'router.push', 'usenavigate', '화면이동', '페이지이동',
+    ];
+    return patterns.some((p) => q.includes(p));
+  }
+
   async buildSystemPrompt(ctx: EditorContext, userQuery: string): Promise<string> {
     const ragDir = this._getRagDir();
 
@@ -90,8 +103,8 @@ export class ScaffoldContextBuilder {
       : '';
 
     // 도메인 컨텍스트 감지 및 라우터 파일 내용 주입
-    const domainCtx = this._getDomainContext(userQuery);
-    const domainSection = this._buildDomainSection(domainCtx);
+    const domainCtx = this._getDomainContext(userQuery, ctx.filePath ?? '');
+    const domainSection = this._buildDomainSection(domainCtx, userQuery);
 
     return `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
 
@@ -102,6 +115,8 @@ export class ScaffoldContextBuilder {
 - 상대경로 임포트 금지 → @axiom/components/ui, @axiom/hooks, @/ 앨리어스 사용
 - scaffold의 package.json에 없는 라이브러리 제안 금지
 - 코드 주석은 한국어로 작성
+- **화면 이동 금지 패턴**: useNavigate(), useHistory() 등 react-router 훅 사용 금지
+- **화면 이동 올바른 패턴**: 전역 $router 객체 사용 (import 불필요) — $router.push('/path'), $router.replace('/path'), $router.back()
 
 ## 프로젝트 스택
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
@@ -174,6 +189,23 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 \`\`\`
 </axiom-action>
 
+### 시나리오 C: 현재 열린 파일 코드 수정 요청 (axiom-action 1개)
+"현재 페이지", "현재 파일", "이 파일", "열린 파일" 등 **기존 파일에 코드를 추가/수정**하는 경우:
+- 새 페이지 생성이 아니므로 **라우터 수정 불필요** — router/index.tsx axiom-action 절대 생성 금지
+- 해당 파일만 updateFile 1개 생성
+
+<axiom-action>
+{"action":"updateFile","templateType":"page","domain":"{domain}","componentName":"{ComponentName}","filePath":"{현재 열린 파일 경로}"}
+\`\`\`tsx
+// 기존 코드를 유지하면서 요청된 코드가 추가된 전체 파일 내용
+\`\`\`
+</axiom-action>
+
+### 도메인 라우터 파일 규칙 (중요)
+- \`src/domains/{domain}/router/index.tsx\`에서 **createHashRouter 직접 사용 금지**
+- 도메인 라우터는 \`TAppRoute[]\` 배열만 export (createHashRouter는 루트 App.tsx에서만 사용)
+- 올바른 패턴: \`const routes: TAppRoute[] = [...]; export default routes;\`
+
 ${domainSection}${scaffoldSection}${fileSection}`;
   }
 
@@ -186,18 +218,28 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 
   /**
    * 사용자 쿼리에서 도메인명을 추출하고, 워크스페이스에서 도메인 존재 여부를 확인한다.
+   * 쿼리에서 도메인을 찾지 못하면 currentFilePath(현재 열린 파일)에서 추출한다 → 시나리오 C.
    * 도메인이 존재하면 기존 도메인 라우터 파일을, 신규 도메인이면 루트 라우터 파일을 읽는다.
    */
-  private _getDomainContext(userQuery: string): DomainContext {
-    const domainName = this._extractDomainFromQuery(userQuery);
+  private _getDomainContext(userQuery: string, currentFilePath: string = ''): DomainContext {
+    let domainName = this._extractDomainFromQuery(userQuery);
+    let isCurrentFileContext = false;
+
+    // 쿼리에서 도메인을 못 찾으면 현재 열린 파일 경로에서 추출 → Scenario C
+    if (!domainName && currentFilePath) {
+      domainName = this._extractDomainFromFilePath(currentFilePath);
+      if (domainName) {
+        isCurrentFileContext = true;
+      }
+    }
 
     if (!domainName) {
-      return { domainName: null, domainExists: false, domainRouterContent: null, rootRouterContent: null };
+      return { domainName: null, domainExists: false, domainRouterContent: null, rootRouterContent: null, isCurrentFileContext: false };
     }
 
     const wsRoot = this._getWorkspaceRoot();
     if (!wsRoot) {
-      return { domainName, domainExists: false, domainRouterContent: null, rootRouterContent: null };
+      return { domainName, domainExists: false, domainRouterContent: null, rootRouterContent: null, isCurrentFileContext };
     }
 
     const domainDir = path.join(wsRoot, 'src', 'domains', domainName);
@@ -209,27 +251,67 @@ ${domainSection}${scaffoldSection}${fileSection}`;
       const domainRouterContent = fs.existsSync(routerFile)
         ? fs.readFileSync(routerFile, 'utf-8')
         : null;
-      return { domainName, domainExists: true, domainRouterContent, rootRouterContent: null };
+      return { domainName, domainExists: true, domainRouterContent, rootRouterContent: null, isCurrentFileContext };
     } else {
       // 신규 도메인 → 루트 라우터 파일 내용 주입
       const rootRouterFile = path.join(wsRoot, 'src', 'shared', 'router', 'index.tsx');
       const rootRouterContent = fs.existsSync(rootRouterFile)
         ? fs.readFileSync(rootRouterFile, 'utf-8')
         : null;
-      return { domainName, domainExists: false, domainRouterContent: null, rootRouterContent };
+      return { domainName, domainExists: false, domainRouterContent: null, rootRouterContent, isCurrentFileContext };
     }
+  }
+
+  /**
+   * 파일 경로에서 도메인명을 추출한다.
+   * 예: "src/domains/example/pages/AccountListPage.tsx" → "example"
+   */
+  private _extractDomainFromFilePath(filePath: string): string | null {
+    const match = filePath.match(/src[/\\]domains[/\\]([^/\\]+)[/\\]/);
+    return match?.[1] ?? null;
   }
 
   /**
    * 도메인 컨텍스트를 시스템 프롬프트 섹션 문자열로 변환한다.
    * 도메인 관련 요청이 아닌 경우 빈 문자열을 반환한다.
    */
-  private _buildDomainSection(ctx: DomainContext): string {
+  private _buildDomainSection(ctx: DomainContext, userQuery = ''): string {
     if (!ctx.domainName) return '';
 
     const lines: string[] = [];
-    lines.push(`\n---\n\n## 페이지 생성 컨텍스트`);
-    lines.push(`- 요청 도메인: **${ctx.domainName}**`);
+    lines.push(`\n---\n\n## 파일 컨텍스트`);
+    lines.push(`- 감지된 도메인: **${ctx.domainName}**`);
+
+    // 시나리오 C: 현재 열린 파일 수정 요청
+    if (ctx.isCurrentFileContext) {
+      lines.push(`- 요청 유형: **현재 파일 코드 수정 (시나리오 C 적용)**`);
+      lines.push(`- ⚠️ **라우터(router/index.tsx) 수정 금지** — 현재 파일에만 코드를 추가/수정하세요`);
+      lines.push(`\n### ⚠️ 필수: axiom-action 블록 출력 의무 (미준수 시 코드가 실제 파일에 반영되지 않음)`);
+      lines.push(`코드 수정 요청입니다. 설명 텍스트 작성 후 **응답 마지막에 반드시 아래 형식의 axiom-action 블록을 출력**해야 합니다:`);
+      lines.push(`- action: "updateFile"`);
+      lines.push(`- domain: "${ctx.domainName}"`);
+      lines.push(`- templateType: 해당 파일 유형 (page / component / router 등)`);
+      lines.push(`- filePath: 현재 열린 파일의 정확한 경로`);
+      lines.push(`- 코드 블록 내용: **기존 파일 전체 내용에 수정사항이 반영된 완전한 코드** (일부 발췌 금지)`);
+      lines.push(`- router/index.tsx 관련 axiom-action 생성 절대 금지`);
+
+      // 화면 이동 의도 감지 시 구체적인 구현 지침 주입
+      if (this._hasNavigationIntent(userQuery)) {
+        lines.push(`\n### 화면 이동 버튼 구현 지침`);
+        lines.push(`react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다 (import 불필요):`);
+        lines.push(`- **이동 버튼**: \`<Button onClick={() => $router.push('/이동경로')}>텍스트</Button>\``);
+        lines.push(`- **Button 컴포넌트**: \`import { Button } from '@axiom/components/ui';\``);
+        lines.push(`- **뒤로가기**: \`<Button onClick={() => $router.back()}>뒤로가기</Button>\``);
+        lines.push(`- **히스토리 교체**: \`$router.replace('/path')\``);
+        lines.push(`\n> ⚠️ \`useNavigate()\` 및 \`react-router\` 훅 사용 **절대 금지**. 항상 \`$router\`를 사용한다.`);
+        lines.push(`> onClick은 인라인 화살표 함수로 작성. 별도 핸들러 함수 선언 불필요.`);
+      }
+
+      lines.push('\n---\n');
+      return lines.join('\n');
+    }
+
+    // 시나리오 A / B: 새 페이지 생성 요청
     lines.push(`- 도메인 존재 여부: **${ctx.domainExists ? '존재함 (시나리오 A 적용)' : '없음 (시나리오 B 적용)'}**`);
 
     if (ctx.domainExists && ctx.domainRouterContent) {
@@ -294,6 +376,11 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     }
 
     return null;
+  }
+
+  /** 현재 열린 파일을 수정하는 컨텍스트(시나리오 C)인지 판단한다. */
+  isFileModificationContext(userQuery: string, filePath: string): boolean {
+    return this._getDomainContext(userQuery, filePath).isCurrentFileContext;
   }
 
   /** .axiom/knowledge/ 폴더가 존재하면 경로를 반환한다. */

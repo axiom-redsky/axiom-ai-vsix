@@ -15,6 +15,8 @@ project: react-app-scaffold
   files: [patterns/query-key-factory.md]
 - keywords: [router, 라우터, routing, 라우팅, createhashrouter, createapprouter, hash, 해시, route, 경로, navigate, 이동, loadable, 코드스플리팅, tapproute, lazy, 지연로딩, $router]
   files: [patterns/router.md]
+- keywords: [navigate, navigation, 이동버튼, 이동하는, 네비게이션, usenavigate, 화면이동, 페이지이동, 뒤로가기, 루트로이동, 메인으로이동, 버튼추가, 이동코드, router.push]
+  files: [patterns/navigation.md]
 - keywords: [page-generation, createpage, newpage, addpage, page, screen, router, route, path, kebab-case, 페이지생성, 페이지추가, 화면생성, 라우터생성]
   files: [patterns/page-generation.md, patterns/router.md]
 - keywords: [provider, 프로바이더, appproviders, queryprovider, context, 컨텍스트, 상태, state, tanstack, devtools, sidebar, 레이아웃]

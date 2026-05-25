@@ -1,21 +1,58 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MessageItem } from './MessageItem';
 import type { Message } from '../hooks/useChat';
 
 interface Props {
   messages: Message[];
   isStreaming: boolean;
+  isWaiting: boolean;
 }
 
-export function MessageList({ messages, isStreaming }: Props): React.ReactElement {
+const BOTTOM_THRESHOLD = 100;
+
+export function MessageList({ messages, isStreaming, isWaiting }: Props): React.ReactElement {
+  const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+
+  const handleScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = dist <= BOTTOM_THRESHOLD;
+    isNearBottomRef.current = nearBottom;
+    if (nearBottom) setShowScrollBtn(false);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    isNearBottomRef.current = true;
+    setShowScrollBtn(false);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const last = messages[messages.length - 1];
+    if (last?.role === 'user') {
+      isNearBottomRef.current = true;
+      setShowScrollBtn(false);
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    if (isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else if (isStreaming) {
+      setShowScrollBtn(true);
+    }
+  }, [messages, isStreaming]);
+
+  // 스트리밍 종료 시 버튼 숨김
+  useEffect(() => {
+    if (!isStreaming) setShowScrollBtn(false);
+  }, [isStreaming]);
 
   return (
-    <div className="message-list">
+    <div className="message-list" ref={listRef} onScroll={handleScroll}>
       {messages.length === 0 && (
         <div className="empty-state">
           <div className="empty-state__icon">
@@ -30,12 +67,24 @@ export function MessageList({ messages, isStreaming }: Props): React.ReactElemen
       {messages.map((msg) => (
         <MessageItem key={msg.id} message={msg} />
       ))}
-      {isStreaming && (
+      {(isWaiting || isStreaming) && (
         <div className="typing-indicator">
           <span /><span /><span />
         </div>
       )}
       <div ref={bottomRef} />
+      {showScrollBtn && (
+        <button
+          className="scroll-to-bottom-btn"
+          onClick={scrollToBottom}
+          aria-label="새 메시지로 이동"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          새 메시지
+        </button>
+      )}
     </div>
   );
 }

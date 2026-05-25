@@ -17,7 +17,8 @@
       "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Directory)",
       "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\\\\src\\\\spec\")",
       "Bash(Select-Object -ExpandProperty Name)",
-      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Include \"*.md\", \"SpecScaffolder.ts\", \"AxiomIndexTracker.ts\", \"SddPanelProvider.ts\", \"index.ts\", \"package.json\")"
+      "Bash(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\" -Recurse -Include \"*.md\", \"SpecScaffolder.ts\", \"AxiomIndexTracker.ts\", \"SddPanelProvider.ts\", \"index.ts\", \"package.json\")",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\work\\\\2026\\\\vscode-extension\\\\axiom-ai-vsix\\\\src\" -Recurse -File | Select-Object -First 30 | ForEach-Object { $_.FullName })"
     ]
   }
 }

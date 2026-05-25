@@ -3,9 +3,11 @@ import { vscode } from '../vscodeApi';
 import { useChat } from './hooks/useChat';
 import { MessageList } from './components/MessageList';
 import { InputBar } from './components/InputBar';
+import { ClearWarningBanner } from './components/ClearWarningBanner';
+import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, isStreaming, sendMessage, clearHistory, stopStreaming } = useChat();
+  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming } = useChat();
   const [prefillText, setPrefillText] = useState('');
 
   const handlePrefill = useCallback((text: string) => {
@@ -15,6 +17,15 @@ export function ChatApp(): React.ReactElement {
   const handlePrefillConsumed = useCallback(() => {
     setPrefillText('');
   }, []);
+
+  const handleSend = useCallback((text: string) => {
+    const cmd = isExactSlashCommand(text);
+    if (cmd?.type === 'local') {
+      if (cmd.syntax === '/clear') clearHistory();
+      return;
+    }
+    sendMessage(text);
+  }, [sendMessage, clearHistory]);
 
   return (
     <div className="chat-app">
@@ -45,10 +56,11 @@ export function ChatApp(): React.ReactElement {
         </div>
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} />
+      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} />
+      <ClearWarningBanner messages={messages} isStreaming={isStreaming} onClear={clearHistory} />
       <SpecQuickBar onPrefill={handlePrefill} onSend={sendMessage} isStreaming={isStreaming} />
       <InputBar
-        onSend={sendMessage}
+        onSend={handleSend}
         onStop={stopStreaming}
         isStreaming={isStreaming}
         prefillText={prefillText}

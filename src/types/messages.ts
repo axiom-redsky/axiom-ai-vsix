@@ -66,6 +66,13 @@ export type WebviewToHostMessage =
   | { type: 'saveProjectConfig'; config: ProjectConfig }
   | { type: 'testConnection'; llm: AxiomSettings['llm'] };
 
+export interface DiffLine {
+  type: 'ctx' | 'add' | 'del' | 'sep';
+  oldNo?: number;
+  newNo?: number;
+  content: string;
+}
+
 // Extension Host → WebView
 export type HostToWebviewMessage =
   | { type: 'token'; content: string }
@@ -73,7 +80,7 @@ export type HostToWebviewMessage =
   | { type: 'error'; message: string }
   | { type: 'status'; text: string }
   | { type: 'fileCreated'; filePath: string }
-  | { type: 'fileUpdated'; filePath: string }
+  | { type: 'fileUpdated'; filePath: string; diff?: DiffLine[] }
   | { type: 'fileError'; message: string }
   | { type: 'fileCancelled' }
   | { type: 'settingsLoaded'; settings: AxiomSettings }

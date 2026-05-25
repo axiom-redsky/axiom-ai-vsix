@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
-import type { HostToWebviewMessage } from '../../../types/messages';
+import type { HostToWebviewMessage, DiffLine } from '../../../types/messages';
 
 export interface Message {
   id: string;
@@ -9,12 +9,14 @@ export interface Message {
   isStreaming?: boolean;
   isError?: boolean;
   subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled';
+  diff?: DiffLine[];
 }
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<string>('연결 중…');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(false);
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -28,6 +30,7 @@ export function useChat() {
           if (!streamingIdRef.current) {
             const id = Date.now().toString();
             streamingIdRef.current = id;
+            setIsWaiting(false);
             setIsStreaming(true);
             setMessages((prev) => [
               ...prev,
@@ -43,6 +46,7 @@ export function useChat() {
         }
         case 'done': {
           const id = streamingIdRef.current;
+          setIsWaiting(false);
           if (id) {
             setMessages((prev) =>
               prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),
@@ -54,6 +58,7 @@ export function useChat() {
         }
         case 'error': {
           const id = streamingIdRef.current;
+          setIsWaiting(false);
           setMessages((prev) => {
             if (id) {
               return prev.map((m) =>
@@ -98,6 +103,7 @@ export function useChat() {
               role: 'system',
               subtype: 'file-updated',
               content: msg.filePath,
+              diff: msg.diff,
             },
           ]);
           break;
@@ -133,14 +139,15 @@ export function useChat() {
 
   const sendMessage = useCallback(
     (text: string) => {
-      if (!text.trim() || isStreaming) return;
+      if (!text.trim() || isStreaming || isWaiting) return;
       setMessages((prev) => [
         ...prev,
         { id: Date.now().toString(), role: 'user', content: text },
       ]);
+      setIsWaiting(true);
       vscode.postMessage({ type: 'sendMessage', text });
     },
-    [isStreaming],
+    [isStreaming, isWaiting],
   );
 
   const clearHistory = useCallback(() => {
@@ -152,5 +159,5 @@ export function useChat() {
     vscode.postMessage({ type: 'stopMessage' });
   }, []);
 
-  return { messages, status, isStreaming, sendMessage, clearHistory, stopStreaming };
+  return { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming };
 }

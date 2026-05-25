@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { matchSlashCommands } from '../slashCommands';
+import type { SlashCommand } from '../slashCommands';
 
 interface Props {
   onSend: (text: string) => void;
@@ -10,6 +12,8 @@ interface Props {
 
 export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed }: Props): React.ReactElement {
   const [value, setValue] = useState('');
+  const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const focusTextarea = useCallback(() => {
@@ -41,17 +45,59 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     }
   }, [isStreaming, focusTextarea]);
 
-  const submit = () => {
+  const closePalette = useCallback(() => {
+    setCmdMatches([]);
+    setSelectedIdx(0);
+  }, []);
+
+  const selectCommand = useCallback((syntax: string) => {
+    setValue(syntax);
+    closePalette();
+    focusTextarea();
+  }, [closePalette, focusTextarea]);
+
+  const submit = useCallback(() => {
     if (!value.trim() || isStreaming) return;
+
+    // 팔레트에서 선택된 명령어가 있으면 그걸 먼저 적용
+    if (cmdMatches.length > 0) {
+      selectCommand(cmdMatches[selectedIdx]?.syntax ?? cmdMatches[0].syntax);
+      return;
+    }
+
     onSend(value.trim());
     setValue('');
+    closePalette();
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
     focusTextarea();
-  };
+  }, [value, isStreaming, cmdMatches, selectedIdx, onSend, closePalette, selectCommand, focusTextarea]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (cmdMatches.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIdx((i) => (i - 1 + cmdMatches.length) % cmdMatches.length);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIdx((i) => (i + 1) % cmdMatches.length);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePalette();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        selectCommand(cmdMatches[selectedIdx]?.syntax ?? cmdMatches[0].syntax);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -59,13 +105,39 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value);
+    const newValue = e.target.value;
+    setValue(newValue);
     e.target.style.height = 'auto';
     e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+
+    const matches = matchSlashCommands(newValue);
+    setCmdMatches(matches);
+    setSelectedIdx(0);
   };
+
+  const showPalette = cmdMatches.length > 0;
 
   return (
     <div className="input-bar">
+      {showPalette && (
+        <div className="slash-palette" role="listbox" aria-label="명령어 목록">
+          {cmdMatches.map((cmd, i) => (
+            <button
+              key={cmd.syntax}
+              role="option"
+              aria-selected={i === selectedIdx}
+              className={`slash-palette__item${i === selectedIdx ? ' slash-palette__item--active' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault(); // blur 방지
+                selectCommand(cmd.syntax);
+              }}
+            >
+              <span className="slash-palette__syntax">{cmd.syntax}</span>
+              <span className="slash-palette__desc">{cmd.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="input-bar__inner">
         <textarea
           ref={textareaRef}
@@ -107,7 +179,7 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
           )}
         </div>
       </div>
-      <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈</p>
+      <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈 · /명령어</p>
     </div>
   );
 }

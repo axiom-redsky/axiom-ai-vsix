@@ -152,16 +152,19 @@ export default function App() {
 
 ## 전역 $router 객체
 
-컴포넌트 외부(유틸 함수, 서비스 등)에서 라우팅이 필요할 때 `$router`를 사용한다.
+`$router`는 **컴포넌트 내·외부 어디서나** 사용할 수 있는 전역 객체다. import 불필요.
 
 ```typescript
-// 컴포넌트 외부에서 이동
+// 컴포넌트 내부 JSX에서 인라인으로 사용
+<Button onClick={() => $router.push('/my-feature/list')}>이동</Button>
+
+// 컴포넌트 외부(유틸, 서비스)에서도 동일하게 사용
 $router.push('/my-feature/list');
 $router.replace('/login');
 $router.back();
 ```
 
-컴포넌트 내부에서는 React Router의 `useNavigate()`를 사용한다.
+> ⚠️ `useNavigate()` 사용 금지. scaffold 프로젝트의 화면 이동은 항상 `$router`를 사용한다.
 
 ---
 

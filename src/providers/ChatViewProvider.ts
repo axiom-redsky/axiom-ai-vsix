@@ -7,6 +7,7 @@ import { EditorContextCollector } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction } from '../ai/FileCreatorService';
+import { computeDiffHunks } from '../ai/DiffUtil';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage } from '../ai/types';
@@ -388,6 +389,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       )) {
         fullResponse += token;
         this._post({ type: 'token', content: token });
+      }
+
+      // 파일 수정 컨텍스트인데 axiom-action 블록이 없으면 유저에게 힌트 표시
+      const hasActionBlock = fullResponse.includes('<axiom-action>');
+      if (!hasActionBlock && this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '')) {
+        const hint = '\n\n> ⚠️ 코드 수정이 파일에 적용되지 않았습니다. "현재 파일을 수정해줘"라고 다시 요청하거나 `/spec update` 명령을 사용해보세요.';
+        this._post({ type: 'token', content: hint });
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] ⚠️ 파일 수정 컨텍스트(시나리오 C)이나 axiom-action 블록 미생성\n응답 앞부분: ${fullResponse.substring(0, 300)}`,
+        );
       }
 
       const cleanedResponse = this._stripActionBlock(fullResponse);
@@ -1114,11 +1125,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _handleAxiomAction(response: string, forcePageAutoWrite = false): Promise<boolean> {
     const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
     const actions: AxiomAction[] = [];
+    const blockMatches = [...response.matchAll(blockRegex)];
+    this._corpusOutputChannel.appendLine(`[Axiom AI] _handleAxiomAction: 블록 수=${blockMatches.length}`);
 
-    for (const blockMatch of response.matchAll(blockRegex)) {
+    for (const blockMatch of blockMatches) {
       const blockContent = blockMatch[1];
       const jsonMatch = blockContent.match(/(\{[^`]*?\})/s);
       if (!jsonMatch) {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ axiom-action JSON 메타데이터 파싱 실패\n블록: ${blockContent.substring(0, 200)}`);
         this._post({ type: 'fileError', message: 'axiom-action JSON 메타데이터를 찾을 수 없습니다.' });
         continue;
       }
@@ -1126,7 +1140,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       let action: AxiomAction;
       try {
         action = JSON.parse(jsonMatch[1].trim()) as AxiomAction;
+        this._corpusOutputChannel.appendLine(`[Axiom AI] axiom-action 파싱 성공: ${JSON.stringify(action)}`);
       } catch {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ axiom-action JSON 파싱 오류: ${jsonMatch[1].substring(0, 200)}`);
         this._post({ type: 'fileError', message: 'axiom-action JSON 파싱에 실패했습니다.' });
         continue;
       }
@@ -1150,15 +1166,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (result.success) {
         if (action.templateType === 'router') routerProcessed = true;
         const isUpdate = action.action === 'updateFile';
-        this._post(
-          isUpdate
-            ? { type: 'fileUpdated', filePath: result.filePath! }
-            : { type: 'fileCreated', filePath: result.filePath! },
-        );
+        this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 ${isUpdate ? '수정' : '생성'} 성공: ${result.filePath}`);
+        if (isUpdate) {
+          const diff = (result.originalContent !== undefined && action.generatedCode)
+            ? computeDiffHunks(result.originalContent, action.generatedCode)
+            : undefined;
+          this._post({ type: 'fileUpdated', filePath: result.filePath!, diff });
+        } else {
+          this._post({ type: 'fileCreated', filePath: result.filePath! });
+        }
       } else if (result.cancelled) {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 작업 취소: ${action.filePath}`);
         this._post({ type: 'fileCancelled' });
         if (action.templateType !== 'router') break;
       } else {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ 파일 작업 실패: ${result.error} (filePath=${action.filePath}, generatedCode 있음=${!!action.generatedCode})`);
         this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
         if (action.templateType !== 'router') break;
       }

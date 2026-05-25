@@ -18,6 +18,7 @@ export interface CreateFileResult {
   cancelled?: boolean;
   filePath?: string;
   error?: string;
+  originalContent?: string;
 }
 
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -58,6 +59,14 @@ export class FileCreatorService {
 
     const targetFileUri = vscode.Uri.joinPath(workspaceRoot, action.filePath);
 
+    let originalContent: string | undefined;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(targetFileUri);
+      originalContent = Buffer.from(bytes).toString('utf-8');
+    } catch {
+      // 파일이 아직 없으면 originalContent는 undefined
+    }
+
     try {
       const dirUri = vscode.Uri.joinPath(workspaceRoot, path.dirname(action.filePath));
       await vscode.workspace.fs.createDirectory(dirUri);
@@ -69,7 +78,7 @@ export class FileCreatorService {
       const doc = await vscode.workspace.openTextDocument(targetFileUri);
       await vscode.window.showTextDocument(doc);
 
-      return { success: true, filePath: action.filePath };
+      return { success: true, filePath: action.filePath, originalContent };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : '알 수 없는 오류' };
     }

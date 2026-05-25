@@ -9,10 +9,20 @@ export interface EditorContext {
 }
 
 export class EditorContextCollector {
-  constructor(private readonly maxLines: number = 200) {}
+  private _lastEditor: vscode.TextEditor | undefined;
+
+  constructor(private readonly maxLines: number = 200) {
+    this._lastEditor = vscode.window.activeTextEditor;
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor) {
+        this._lastEditor = editor;
+      }
+    });
+  }
 
   collect(): EditorContext {
-    const editor = vscode.window.activeTextEditor;
+    // 채팅 웹뷰에 포커스가 가면 activeTextEditor가 undefined가 되므로 마지막 유효한 에디터를 사용
+    const editor = vscode.window.activeTextEditor ?? this._lastEditor;
     if (!editor) return { available: false };
 
     const doc = editor.document;
