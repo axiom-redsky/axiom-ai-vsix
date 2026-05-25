@@ -27,21 +27,46 @@ export class LlmService {
 
   /**
    * LLM 서버가 온라인 상태인지 확인한다.
-   * /v1/models GET 요청을 2초 타임아웃으로 시도한다.
+   * /v1/models가 막힌 OpenAI-compatible proxy도 있어 실제 생성 라우트까지 확인한다.
    */
   async checkHealth(config: LlmConfig): Promise<boolean> {
-    const url = new URL('/v1/models', config.endpoint).toString();
+    const modelsUrl = new URL('/v1/models', config.endpoint).toString();
+    const chatUrl = new URL('/v1/chat/completions', config.endpoint).toString();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2000);
+    const timer = setTimeout(() => controller.abort(), 5000);
 
     try {
-      const res = await fetch(url, {
+      const headers = this._buildAuthHeaders(config);
+      const chatRes = await fetch(chatUrl, {
         method: 'GET',
-        headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
+        headers,
         signal: controller.signal,
       });
-      return res.ok || res.status === 401; // 401도 서버는 살아있음
-    } catch {
+      console.log(`[Axiom AI] 헬스체크 /v1/chat/completions → ${chatRes.status}`);
+      if (chatRes.status === 401 || chatRes.status === 403) {
+        console.warn(`[Axiom AI] LLM chat route auth failed: ${chatRes.status} ${chatRes.statusText}`);
+        return false;
+      }
+
+      // GET /v1/chat/completions returns 405 (method not allowed) or 404 on most servers — both mean the server is alive.
+      if (chatRes.ok || chatRes.status === 404 || chatRes.status === 405) {
+        return true;
+      }
+
+      const modelsRes = await fetch(modelsUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      console.log(`[Axiom AI] 헬스체크 /v1/models → ${modelsRes.status}`);
+      if (modelsRes.status === 401 || modelsRes.status === 403) {
+        console.warn(`[Axiom AI] LLM health check auth failed: ${modelsRes.status} ${modelsRes.statusText}`);
+        return false;
+      }
+
+      return modelsRes.ok;
+    } catch (err) {
+      console.warn(`[Axiom AI] 헬스체크 실패: ${(err as Error).message}`);
       return false;
     } finally {
       clearTimeout(timer);
@@ -65,9 +90,7 @@ export class LlmService {
       'Accept': 'text/event-stream',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     };
-    if (config.apiKey) {
-      headers['Authorization'] = `Bearer ${config.apiKey}`;
-    }
+    Object.assign(headers, this._buildAuthHeaders(config));
 
     console.log(`[Axiom AI] → 요청 URL: ${url}`);
     console.log(`[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}`);
@@ -108,7 +131,7 @@ export class LlmService {
     }
 
     if (!response.ok) {
-      throw new Error(`sLLM 서버 오류: ${response.status} ${response.statusText}`);
+      throw new Error(await this._formatHttpError(response, config));
     }
     if (!response.body) {
       throw new Error('응답 스트림을 받을 수 없습니다');
@@ -142,5 +165,33 @@ export class LlmService {
         }
       }
     }
+  }
+
+  private async _formatHttpError(response: Response, config: LlmConfig): Promise<string> {
+    const details = await response.text().catch(() => '');
+    const suffix = details.trim() ? ` (${details.trim().slice(0, 300)})` : '';
+
+    if (response.status === 401 || response.status === 403) {
+      const keyState = config.apiKey.trim()
+        ? '설정된 인증 헤더가 서버에서 거부되었습니다'
+        : 'API 키/인증 헤더가 비어 있습니다';
+      const authHint = response.headers.get('www-authenticate')?.includes('Basic')
+        ? ' 서버가 Basic Auth를 요구합니다. API 키 칸에 Basic 인증 헤더 값을 입력해주세요.'
+        : ' axiom-ai.llm.apiKey 설정과 서버 인증 설정을 확인해주세요.';
+      return `sLLM 인증 오류: ${response.status} ${response.statusText}. ${keyState}.${authHint}${suffix}`;
+    }
+
+    return `sLLM 서버 오류: ${response.status} ${response.statusText}${suffix}`;
+  }
+
+  private _buildAuthHeaders(config: LlmConfig): Record<string, string> {
+    const apiKey = config.apiKey.trim();
+    if (!apiKey) return {};
+
+    if (/^(Bearer|Basic)\s+/i.test(apiKey)) {
+      return { Authorization: apiKey };
+    }
+
+    return { Authorization: `Bearer ${apiKey}` };
   }
 }

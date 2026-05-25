@@ -65,6 +65,10 @@ const MyPage = loadable(() => import('@/domains/my-feature/pages/MyPage'));
 
 ### 도메인 라우터 (`src/domains/{name}/router/index.tsx`)
 
+라우터 `path`는 kebab-case로 작성한다. `element`, `children`, 페이지 컴포넌트 식별자는 PascalCase를 유지한다.
+페이지 컴포넌트를 `loadable()`로 등록할 때 파일에 `import loadable from '@loadable/component';`가 없으면 함께 추가한다.
+예: `AccountListPage` → `path: 'account-list'`, `element: <AccountListPage />`
+
 ```typescript
 import type { TAppRoute } from '@/types/router';
 import loadable from '@loadable/component';

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ExtensionConfig } from '../config/ExtensionConfig';
+import { LlmService } from '../ai/LlmService';
 import type { WebviewToHostMessage, HostToWebviewMessage, AxiomSettings } from '../types/messages';
 
 export class ChatPanelProvider implements vscode.WebviewViewProvider {
@@ -52,6 +53,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         case 'clearRagFolder':
           await this._handleClearRagFolder();
           break;
+        case 'testConnection':
+          await this._handleTestConnection(msg.llm);
+          break;
       }
     });
   }
@@ -84,7 +88,10 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
     if (partial.llm) {
       const llm = partial.llm;
-      if (llm.endpoint   !== undefined) await cfg.update('llm.endpoint',    llm.endpoint,    vscode.ConfigurationTarget.Global);
+      if (llm.endpoint   !== undefined) {
+        await cfg.update('llm.endpoint',    llm.endpoint,    vscode.ConfigurationTarget.Global);
+        await cfg.update('server.endpoint', '',              vscode.ConfigurationTarget.Global);
+      }
       if (llm.model      !== undefined) await cfg.update('llm.model',       llm.model,       vscode.ConfigurationTarget.Global);
       if (llm.apiKey     !== undefined) await cfg.update('llm.apiKey',      llm.apiKey,      vscode.ConfigurationTarget.Global);
       if (llm.temperature !== undefined) await cfg.update('llm.temperature', llm.temperature, vscode.ConfigurationTarget.Global);
@@ -152,6 +159,59 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const cfg = vscode.workspace.getConfiguration('axiom-ai');
     await cfg.update('rag.userRagFolder', '', vscode.ConfigurationTarget.Global);
     this._post({ type: 'ragFolderSet', folderPath: '' });
+  }
+
+  private async _handleTestConnection(llm: AxiomSettings['llm']): Promise<void> {
+    const chatUrl = new URL('/v1/chat/completions', llm.endpoint).toString();
+    const modelsUrl = new URL('/v1/models', llm.endpoint).toString();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    const apiKey = llm.apiKey.trim();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['Authorization'] = /^(Bearer|Basic)\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
+    }
+
+    try {
+      // POST 미니 요청으로 실제 응답 확인
+      const res = await fetch(chatUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ model: llm.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1, stream: false }),
+        signal: controller.signal,
+      });
+
+      if (res.ok || res.status === 200) {
+        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+        return;
+      }
+      if (res.status === 401 || res.status === 403) {
+        const wwwAuth = res.headers.get('www-authenticate') ?? '';
+        const authType = wwwAuth.includes('Basic') ? 'Basic Auth' : wwwAuth.includes('Bearer') ? 'Bearer Token' : '인증';
+        this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
+          detail: `서버 연결됨 — ${authType} 필요 (${res.status}). API 키 칸에 인증 값을 입력하거나, 서버 인증 설정을 확인해주세요.` });
+        return;
+      }
+
+      // GET /v1/models fallback
+      const modelsRes = await fetch(modelsUrl, { method: 'GET', headers, signal: controller.signal });
+      if (modelsRes.ok) {
+        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+        return;
+      }
+
+      this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
+        detail: `서버 응답 오류: ${res.status} ${res.statusText}` });
+
+    } catch (err) {
+      const msg = (err as Error).name === 'AbortError'
+        ? `연결 시간 초과 (5초) — 엔드포인트 URL과 네트워크를 확인해주세요`
+        : `연결 실패: ${(err as Error).message}`;
+      this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint, detail: msg });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ─── 내부 유틸 ──────────────────────────────────────────────────

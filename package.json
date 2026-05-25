@@ -132,7 +132,7 @@
         "axiom-ai.server.endpoint": {
           "type": "string",
           "default": "",
-          "description": "내부 AI 서버 엔드포인트 (폐쇄망용). 설정 시 llm.endpoint보다 우선 적용됩니다."
+          "description": "Deprecated. LLM 서버 주소는 Axiom AI 설정 화면의 llm.endpoint를 사용하세요."
         },
         "axiom-ai.server.offlineFallback": {
           "type": "boolean",

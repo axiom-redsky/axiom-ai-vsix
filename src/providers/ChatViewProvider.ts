@@ -341,7 +341,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     this._history.push({ role: 'user', content: text });
 
-    const config = ExtensionConfig.getLlmConfig();
+    const config = ExtensionConfig.getEffectiveLlmConfig();
     this._postStatus(`${config.model} 응답 중…`);
 
     try {
@@ -399,7 +399,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         this._post({ type: 'done' });
-        this._postStatus(ExtensionConfig.getLlmConfig().model);
+        this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
         return;
       }
       const message = err instanceof Error ? err.message : '알 수 없는 오류';
@@ -1403,15 +1403,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       content: `\`${resolvedDomain}\` 도메인에 **${pageName}** 페이지를 생성합니다...\n\n`,
     });
 
-    // vLLM 헬스체크
-    const config = ExtensionConfig.getLlmConfig();
-    const isOnline = await this._llm.checkHealth(config);
-
-    if (isOnline) {
-      await this._createPageWithLlm(pageName, resolvedDomain);
-    } else {
-      await this._createPageOffline(pageName, resolvedDomain);
-    }
+    // 헬스체크 없이 바로 LLM 호출 시도 — _createPageWithLlm 내부에 자동 폴백 포함
+    await this._createPageWithLlm(pageName, resolvedDomain);
 
     this._pageCreationState = null;
   }
@@ -1423,7 +1416,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._abortController?.abort();
     this._abortController = new AbortController();
 
-    const config = ExtensionConfig.getLlmConfig();
+    const config = ExtensionConfig.getEffectiveLlmConfig();
     this._postStatus(`${config.model} 생성 중…`);
 
     // 페이지 생성 전에 도메인 존재 여부를 미리 캡처한다 (LLM이 파일을 생성하면 달라지므로)
@@ -1485,7 +1478,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         this._post({ type: 'done' });
-        this._postStatus(ExtensionConfig.getLlmConfig().model);
+        this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
         return;
       }
       const message = err instanceof Error ? err.message : '알 수 없는 오류';
@@ -1504,9 +1497,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     domainExistedBefore: boolean,
     wsRoot: string | null,
   ): Promise<void> {
-    const routePath = pageName
-      .replace(/Page$/, '')
-      .replace(/^[A-Z]/, (c) => c.toLowerCase());
+    const routePath = this._toRoutePath(pageName);
 
     const allActions = this._buildOfflinePageActions(
       pageName,
@@ -1543,10 +1534,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ? fs.existsSync(path.join(wsRoot, 'src', 'domains', domain))
       : false;
 
-    // camelCase 라우트 경로 생성 (예: AccountListPage → accountList)
-    const routePath = pageName
-      .replace(/Page$/, '')
-      .replace(/^[A-Z]/, (c) => c.toLowerCase());
+    const routePath = this._toRoutePath(pageName);
 
     const actions = this._buildOfflinePageActions(pageName, domain, routePath, domainExists, wsRoot);
 
@@ -1728,20 +1716,40 @@ export default routes;`;
     domain: string,
     routePath: string,
   ): string {
+    const loadableImportLine = `import loadable from '@loadable/component';`;
     const importLine = `const ${pageName} = loadable(() => import('@/domains/${domain}/pages/${pageName}'));`;
 
+    let withLoadableImport: string;
+    if (existing.includes(loadableImportLine)) {
+      withLoadableImport = existing;
+    } else {
+      withLoadableImport = existing.replace(
+        /^(import type \{ TAppRoute \} from ['"]@\/types\/router['"];?\r?\n)/m,
+        `$1\n${loadableImportLine}\n`,
+      );
+      if (withLoadableImport === existing) {
+        withLoadableImport = existing.replace(
+          /^((?:import[^\n]*\n)+)/m,
+          `$1${loadableImportLine}\n`,
+        );
+      }
+      if (withLoadableImport === existing) {
+        withLoadableImport = `${loadableImportLine}\n${existing}`;
+      }
+    }
+
     let withImport: string;
-    if (existing.includes(importLine)) {
-      withImport = existing;
+    if (withLoadableImport.includes(importLine)) {
+      withImport = withLoadableImport;
     } else {
       // 1순위: 마지막 loadable import 뒤
-      withImport = existing.replace(
+      withImport = withLoadableImport.replace(
         /(\nconst \w+ = loadable[^\n]+\n)(?!const \w+ = loadable)/,
         `$1${importLine}\n`,
       );
-      if (withImport === existing) {
+      if (withImport === withLoadableImport) {
         // 2순위: const routes 선언 바로 앞
-        withImport = existing.replace(/^(const routes\b)/m, `${importLine}\n\n$1`);
+        withImport = withLoadableImport.replace(/^(const routes\b)/m, `${importLine}\n\n$1`);
       }
     }
 
@@ -1846,6 +1854,15 @@ export default routes;`;
   private _getWorkspaceRoot(): string | null {
     const folders = vscode.workspace.workspaceFolders;
     return folders && folders.length > 0 ? folders[0].uri.fsPath : null;
+  }
+
+  private _toRoutePath(pageName: string): string {
+    return pageName
+      .replace(/Page$/, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+      .replace(/[_\s]+/g, '-')
+      .toLowerCase();
   }
 
   private _postStatus(text: string): void {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 interface Props {
   onSend: (text: string) => void;
@@ -12,11 +12,19 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const focusTextarea = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el || el.disabled) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
+
   useEffect(() => {
     if (!prefillText) return;
     setValue(prefillText);
     onPrefillConsumed?.();
-    // height 재계산 후 포커스
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -27,6 +35,12 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     });
   }, [prefillText, onPrefillConsumed]);
 
+  useEffect(() => {
+    if (!isStreaming) {
+      focusTextarea();
+    }
+  }, [isStreaming, focusTextarea]);
+
   const submit = () => {
     if (!value.trim() || isStreaming) return;
     onSend(value.trim());
@@ -34,6 +48,7 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
+    focusTextarea();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

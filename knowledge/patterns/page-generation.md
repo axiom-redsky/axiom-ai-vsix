@@ -13,7 +13,8 @@ related: [patterns/domain-structure.md, patterns/router.md]
 
 - 모든 파일 경로는 `src/domains/{domain}/` 하위
 - 페이지 컴포넌트명: PascalCase (예: `AccountMain`)
-- 라우터 경로(path): camelCase 소문자 (예: `accountMain`)
+- 라우터 경로(path): kebab-case (예: `AccountMainPage` → `account-main`)
+- 도메인 라우터에서 `loadable()`을 처음 사용한다면 `import loadable from '@loadable/component';`를 반드시 추가
 - JSON 메타데이터와 코드 블록을 **분리**하여 작성 (JSON 안에 코드를 넣지 말 것)
 - axiom-action 블록은 응답 끝에 추가
 
@@ -69,7 +70,7 @@ const {ComponentName} = loadable(() => import('@/domains/{domain}/pages/{Compone
 
 const routes: TAppRoute[] = [
   { path: 'existing', element: <ExistingPage />, name: '기존 페이지' },
-  { path: '{componentName}', element: <{ComponentName} />, name: '{ComponentName}' },
+  { path: '{route-path}', element: <{ComponentName} />, name: '{ComponentName}' },
 ];
 
 export default routes;
@@ -115,7 +116,7 @@ const {ComponentName} = loadable(() => import('@/domains/{domain}/pages/{Compone
 
 const routes: TAppRoute[] = [
   {
-    path: '{componentName}',
+    path: '{route-path}',
     element: <{ComponentName} />,
     name: '{ComponentName}',
   },

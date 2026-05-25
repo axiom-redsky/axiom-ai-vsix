@@ -789,6 +789,53 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   color: var(--vscode-button-foreground, #fff);
 }
 
+.settings__actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.settings__test-btn {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--vscode-widget-border, #454545);
+  border-radius: 3px;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.settings__test-btn:hover:not(:disabled) {
+  border-color: var(--vscode-focusBorder);
+  opacity: 1;
+}
+
+.settings__test-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings__conn-result {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  font-size: 11.5px;
+  border-left: 3px solid;
+}
+
+.settings__conn-result--ok {
+  border-color: var(--vscode-testing-iconPassed, #4caf50);
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #4caf50) 10%, transparent);
+  color: var(--vscode-testing-iconPassed, #4caf50);
+}
+
+.settings__conn-result--fail {
+  border-color: var(--vscode-testing-iconFailed, #f44336);
+  background: color-mix(in srgb, var(--vscode-testing-iconFailed, #f44336) 10%, transparent);
+  color: var(--vscode-testing-iconFailed, #f44336);
+}
+
 .settings__hint {
   font-size: 10.5px;
   opacity: 0.45;

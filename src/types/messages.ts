@@ -63,7 +63,8 @@ export type WebviewToHostMessage =
   | { type: 'removeRagFile'; filePath: string }
   | { type: 'clearRagFolder' }
   | { type: 'loadProjectConfig' }
-  | { type: 'saveProjectConfig'; config: ProjectConfig };
+  | { type: 'saveProjectConfig'; config: ProjectConfig }
+  | { type: 'testConnection'; llm: AxiomSettings['llm'] };
 
 // Extension Host → WebView
 export type HostToWebviewMessage =
@@ -81,4 +82,5 @@ export type HostToWebviewMessage =
   | { type: 'ragFolderSet'; folderPath: string }
   | { type: 'projectConfigLoaded'; config: ProjectConfig | null }
   | { type: 'projectConfigSaved' }
-  | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string };
+  | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string }
+  | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string };

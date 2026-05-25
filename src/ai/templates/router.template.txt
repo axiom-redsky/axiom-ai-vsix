@@ -5,7 +5,7 @@ const {{ComponentName}} = loadable(() => import('@/domains/{{componentName}}/pag
 
 const routes: TAppRoute[] = [
   {
-    path: '{{componentName}}',
+    path: '{{routePath}}',
     element: <{{ComponentName}} />,
     name: '{{ComponentName}}',
   },

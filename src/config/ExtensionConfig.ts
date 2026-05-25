@@ -76,7 +76,7 @@ export class ExtensionConfig {
 
   // ─── 서버 설정 (폐쇄망 지원) ──────────────────────────────────────────────
 
-  /** 내부 AI 서버 엔드포인트. 설정 있으면 llm.endpoint보다 우선 */
+  /** @deprecated LLM 요청 엔드포인트는 axiom-ai.llm.endpoint를 사용한다. */
   static getServerEndpoint(): string {
     return ExtensionConfig._cfg().get<string>('server.endpoint', '');
   }
@@ -86,10 +86,8 @@ export class ExtensionConfig {
     return ExtensionConfig._cfg().get<boolean>('server.offlineFallback', true);
   }
 
-  /** 실제 LLM 요청에 사용할 엔드포인트 (server.endpoint 우선, 없으면 llm.endpoint) */
+  /** 실제 LLM 요청에 사용할 설정. 확장 설정 UI의 LLM 서버 설정을 단일 source of truth로 사용한다. */
   static getEffectiveLlmConfig(): LlmConfig {
-    const base = ExtensionConfig.getLlmConfig();
-    const serverEndpoint = ExtensionConfig.getServerEndpoint();
-    return serverEndpoint ? { ...base, endpoint: serverEndpoint } : base;
+    return ExtensionConfig.getLlmConfig();
   }
 }

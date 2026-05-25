@@ -15,6 +15,8 @@ export function LauncherApp(): React.ReactElement {
   const [settings, setSettings] = useState<AxiomSettings>(DEFAULT_SETTINGS);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [connTest, setConnTest] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     vscode.postMessage({ type: 'ready' });
@@ -56,6 +58,10 @@ export function LauncherApp(): React.ReactElement {
             rag: { ...prev.rag, userRagFolder: msg.folderPath },
           }));
           break;
+        case 'connectionTestResult':
+          setTesting(false);
+          setConnTest({ ok: msg.ok, detail: msg.detail });
+          break;
       }
     };
     window.addEventListener('message', handler);
@@ -75,9 +81,16 @@ export function LauncherApp(): React.ReactElement {
     vscode.postMessage({ type: 'updateSettings', settings });
     setDirty(false);
     setSaved(true);
+    setConnTest(null);
     setTimeout(() => setSaved(false), 2000);
     setModel(settings.llm.model || '연결 중…');
   }, [settings]);
+
+  const handleTestConnection = useCallback(() => {
+    setTesting(true);
+    setConnTest(null);
+    vscode.postMessage({ type: 'testConnection', llm: settings.llm });
+  }, [settings.llm]);
 
   const handlePickRagFile = () => vscode.postMessage({ type: 'pickRagFile' });
   const handlePickRagFolder = () => vscode.postMessage({ type: 'pickRagFolder' });
@@ -109,8 +122,11 @@ export function LauncherApp(): React.ReactElement {
           settings={settings}
           dirty={dirty}
           saved={saved}
+          connTest={connTest}
+          testing={testing}
           onLlmChange={handleLlmChange}
           onSave={handleSave}
+          onTestConnection={handleTestConnection}
           onPickRagFile={handlePickRagFile}
           onPickRagFolder={handlePickRagFolder}
           onRemoveRagFile={handleRemoveRagFile}
@@ -208,8 +224,11 @@ interface SettingsTabProps {
   settings: AxiomSettings;
   dirty: boolean;
   saved: boolean;
+  connTest: { ok: boolean; detail: string } | null;
+  testing: boolean;
   onLlmChange: (field: keyof AxiomSettings['llm'], value: string | number) => void;
   onSave: () => void;
+  onTestConnection: () => void;
   onPickRagFile: () => void;
   onPickRagFolder: () => void;
   onRemoveRagFile: (fp: string) => void;
@@ -220,8 +239,11 @@ function SettingsTab({
   settings,
   dirty,
   saved,
+  connTest,
+  testing,
   onLlmChange,
   onSave,
+  onTestConnection,
   onPickRagFile,
   onPickRagFolder,
   onRemoveRagFile,
@@ -293,13 +315,28 @@ function SettingsTab({
           </label>
         </div>
 
-        <button
-          className={`settings__save-btn${dirty ? ' settings__save-btn--active' : ''}`}
-          onClick={onSave}
-          disabled={!dirty}
-        >
-          {saved ? '저장 완료 ✓' : '저장'}
-        </button>
+        <div className="settings__actions-row">
+          <button
+            className={`settings__save-btn${dirty ? ' settings__save-btn--active' : ''}`}
+            onClick={onSave}
+            disabled={!dirty}
+          >
+            {saved ? '저장 완료 ✓' : '저장'}
+          </button>
+          <button
+            className="settings__test-btn"
+            onClick={onTestConnection}
+            disabled={testing}
+          >
+            {testing ? '테스트 중…' : '연결 테스트'}
+          </button>
+        </div>
+
+        {connTest && (
+          <div className={`settings__conn-result settings__conn-result--${connTest.ok ? 'ok' : 'fail'}`}>
+            {connTest.ok ? '✓' : '✗'} {connTest.detail}
+          </div>
+        )}
       </section>
 
       {/* RAG 파일 관리 */}

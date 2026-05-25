@@ -120,7 +120,8 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 
 ### 파일명 규칙
 - 컴포넌트(page, component): PascalCase (예: AccountList)
-- 일반 파일(store, api): camelCase (예: accountList)
+- 일반 파일(store, api): camelCase (예: accountStore)
+- 라우터 path: kebab-case (예: AccountListPage → account-list). element/children/component는 PascalCase 유지
 
 ### 중요: axiom-action 블록 형식 규칙
 - JSON 메타데이터와 코드를 **분리**하여 작성한다 (JSON 안에 코드를 넣지 말 것)
@@ -236,7 +237,7 @@ ${domainSection}${scaffoldSection}${fileSection}`;
       lines.push('```tsx');
       lines.push(ctx.domainRouterContent);
       lines.push('```');
-      lines.push('\n위 파일에 신규 페이지 loadable import와 routes 배열 항목을 추가하여 updateFile 블록의 generatedCode를 작성하세요.');
+      lines.push('\n위 파일에 신규 페이지 loadable import와 routes 배열 항목을 추가하여 updateFile 블록의 generatedCode를 작성하세요. `loadable()`을 처음 사용하는 파일이면 `import loadable from \'@loadable/component\';`도 함께 추가하세요.');
     } else if (ctx.domainExists && !ctx.domainRouterContent) {
       lines.push(`\n도메인 폴더는 존재하지만 router/index.tsx 파일이 없습니다. createFile로 라우터도 새로 생성하세요 (시나리오 B 적용).`);
     }

@@ -146,8 +146,16 @@ export class FileCreatorService {
 
   private _applyTemplate(template: string, componentName: string): string {
     const lowerFirst = componentName.charAt(0).toLowerCase() + componentName.slice(1);
+    const routePath = componentName
+      .replace(/Page$/, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+      .replace(/[_\s]+/g, '-')
+      .toLowerCase();
+
     return template
       .replace(/\{\{ComponentName\}\}/g, componentName)
-      .replace(/\{\{componentName\}\}/g, lowerFirst);
+      .replace(/\{\{componentName\}\}/g, lowerFirst)
+      .replace(/\{\{routePath\}\}/g, routePath);
   }
 }
