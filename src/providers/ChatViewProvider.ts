@@ -419,7 +419,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'done' });
       this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
 
-      await this._handleAxiomAction(fullResponse);
+      await this._handleAxiomAction(fullResponse, true);
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         this._post({ type: 'done' });

@@ -111,7 +111,7 @@ export class ScaffoldContextBuilder {
 - 모든 코드는 아래 scaffold 문서의 패턴을 따라야 합니다
 - createBrowserRouter 사용 금지 → 항상 createHashRouter (createAppRouter() 경유)
 - useQuery/useMutation 직접 사용 금지 → 항상 @axiom/hooks의 useApi 사용
-- 상대경로 임포트 금지 → @axiom/components/ui, @axiom/hooks, @/ 앨리어스 사용
+- 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
 - scaffold의 package.json에 없는 라이브러리 제안 금지
 - 코드 주석은 한국어로 작성
 - **화면 이동 금지 패턴**: useNavigate(), useHistory() 등 react-router 훅 사용 금지

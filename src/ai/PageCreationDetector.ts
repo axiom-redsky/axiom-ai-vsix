@@ -55,9 +55,13 @@ export class PageCreationDetector {
 
   private _isPageCreationRequest(input: string): boolean {
     const lower = input.toLowerCase();
-    return PageCreationDetector.CREATION_KEYWORDS.some((kw) =>
-      lower.includes(kw.toLowerCase()),
-    );
+    if (PageCreationDetector.CREATION_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()))) {
+      return true;
+    }
+    // "LoginPage를 auth 도메인에 만들어줘" 처럼 Page 식별자와 생성 동사가 분리된 경우
+    const hasPageIdentifier = /\b[A-Z][a-zA-Z0-9]*Page\b/.test(input);
+    const hasCreationVerb = /만들어|생성해|추가해|create|make|add/.test(lower);
+    return hasPageIdentifier && hasCreationVerb;
   }
 
   /**
