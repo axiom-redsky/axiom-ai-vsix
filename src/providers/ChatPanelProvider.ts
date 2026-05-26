@@ -162,8 +162,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private async _handleTestConnection(llm: AxiomSettings['llm']): Promise<void> {
-    const chatUrl = new URL('/v1/chat/completions', llm.endpoint).toString();
     const modelsUrl = new URL('/v1/models', llm.endpoint).toString();
+    const chatUrl = new URL('/v1/chat/completions', llm.endpoint).toString();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
 
@@ -174,35 +174,42 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      // POST 미니 요청으로 실제 응답 확인
-      const res = await fetch(chatUrl, {
+      // 1단계: GET /v1/models 로 서버 생존 확인 (인증 없이 동작하는 서버 포함)
+      const modelsRes = await fetch(modelsUrl, { method: 'GET', headers, signal: controller.signal });
+      if (modelsRes.ok) {
+        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+        return;
+      }
+      if (modelsRes.status === 401 || modelsRes.status === 403) {
+        const wwwAuth = modelsRes.headers.get('www-authenticate') ?? '';
+        const authType = wwwAuth.includes('Basic') ? 'Basic Auth' : wwwAuth.includes('Bearer') ? 'Bearer Token' : '인증';
+        this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
+          detail: `서버 연결됨 — ${authType} 필요 (${modelsRes.status}). API 키 칸에 인증 값을 입력하거나, 서버 인증 설정을 확인해주세요.` });
+        return;
+      }
+
+      // 2단계: POST /v1/chat/completions 로 실제 추론 가능 여부 확인
+      const chatRes = await fetch(chatUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({ model: llm.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1, stream: false }),
         signal: controller.signal,
       });
 
-      if (res.ok || res.status === 200) {
+      if (chatRes.ok || chatRes.status === 200) {
         this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
         return;
       }
-      if (res.status === 401 || res.status === 403) {
-        const wwwAuth = res.headers.get('www-authenticate') ?? '';
+      if (chatRes.status === 401 || chatRes.status === 403) {
+        const wwwAuth = chatRes.headers.get('www-authenticate') ?? '';
         const authType = wwwAuth.includes('Basic') ? 'Basic Auth' : wwwAuth.includes('Bearer') ? 'Bearer Token' : '인증';
         this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
-          detail: `서버 연결됨 — ${authType} 필요 (${res.status}). API 키 칸에 인증 값을 입력하거나, 서버 인증 설정을 확인해주세요.` });
-        return;
-      }
-
-      // GET /v1/models fallback
-      const modelsRes = await fetch(modelsUrl, { method: 'GET', headers, signal: controller.signal });
-      if (modelsRes.ok) {
-        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+          detail: `서버 연결됨 — ${authType} 필요 (${chatRes.status}). API 키 칸에 인증 값을 입력하거나, 서버 인증 설정을 확인해주세요.` });
         return;
       }
 
       this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
-        detail: `서버 응답 오류: ${res.status} ${res.statusText}` });
+        detail: `서버 응답 오류: ${chatRes.status} ${chatRes.statusText}` });
 
     } catch (err) {
       const msg = (err as Error).name === 'AbortError'

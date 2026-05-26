@@ -391,14 +391,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._post({ type: 'token', content: token });
       }
 
-      // 파일 수정 컨텍스트인데 axiom-action 블록이 없으면 유저에게 힌트 표시
       const hasActionBlock = fullResponse.includes('<axiom-action>');
-      if (!hasActionBlock && this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '')) {
-        const hint = '\n\n> ⚠️ 코드 수정이 파일에 적용되지 않았습니다. "현재 파일을 수정해줘"라고 다시 요청하거나 `/spec update` 명령을 사용해보세요.';
-        this._post({ type: 'token', content: hint });
+      const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
+
+      if (!hasActionBlock && isFileCtx) {
+        // axiom-action 누락: 원래 응답을 히스토리에 저장 후 자동 재시도
         this._corpusOutputChannel.appendLine(
-          `[Axiom AI] ⚠️ 파일 수정 컨텍스트(시나리오 C)이나 axiom-action 블록 미생성\n응답 앞부분: ${fullResponse.substring(0, 300)}`,
+          `[Axiom AI] ⚠️ 시나리오 C axiom-action 누락, 자동 재시도\n응답 앞부분: ${fullResponse.substring(0, 300)}`,
         );
+        const cleanedFirst = this._stripActionBlock(fullResponse);
+        this._history.push({ role: 'assistant', content: cleanedFirst });
+
+        const retryResult = await this._retryForAxiomAction(
+          systemPrompt, editorCtx.filePath ?? '', config,
+        );
+
+        this._post({ type: 'done' });
+        this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
+        if (retryResult) {
+          await this._handleAxiomAction(retryResult);
+        }
+        return;
       }
 
       const cleanedResponse = this._stripActionBlock(fullResponse);
@@ -1157,11 +1170,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       actions.push(action);
     }
 
-    if (actions.length === 0) return false;
+    // 같은 filePath에 대한 중복 블록 제거: 첫 번째 action 타입 유지, 마지막 코드 사용
+    const deduped = new Map<string, AxiomAction>();
+    for (const action of actions) {
+      const existing = deduped.get(action.filePath);
+      if (existing) {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ 중복 axiom-action 감지 (${action.filePath}), 두 번째 블록 코드만 반영`);
+        deduped.set(action.filePath, { ...existing, generatedCode: action.generatedCode });
+      } else {
+        deduped.set(action.filePath, action);
+      }
+    }
+    const uniqueActions = [...deduped.values()];
+
+    if (uniqueActions.length === 0) return false;
 
     let routerProcessed = false;
 
-    for (const action of actions) {
+    for (const action of uniqueActions) {
       const result = await this._fileCreator.createFile(action);
       if (result.success) {
         if (action.templateType === 'router') routerProcessed = true;
@@ -1191,6 +1217,72 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private _stripActionBlock(text: string): string {
     return text.replace(/<axiom-action>[\s\S]*?<\/axiom-action>/g, '').trim();
+  }
+
+  /**
+   * 시나리오 C 응답에서 axiom-action 블록이 누락된 경우 자동 재시도.
+   * 대화 히스토리에 재시도 요청을 추가하고 LLM에 다시 요청한다.
+   * @returns 재시도 응답 전체 문자열, 실패 시 null
+   */
+  private async _retryForAxiomAction(
+    systemPrompt: string,
+    filePath: string,
+    config: ReturnType<typeof ExtensionConfig.getEffectiveLlmConfig>,
+  ): Promise<string | null> {
+    this._post({ type: 'token', content: '\n\n---\n*파일 수정 블록 자동 재시도 중…*\n\n' });
+
+    const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
+    const retryMsg = `코드 수정 블록(axiom-action)이 응답에 포함되지 않았습니다.
+위에서 설명한 수정 내용을 아래 형식으로만 출력해주세요 (추가 설명 없이 블록만):
+
+<axiom-action>
+{"action":"updateFile","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+\`\`\`tsx
+// 기존 코드 전체 + 요청된 변경사항이 반영된 완전한 파일 내용
+\`\`\`
+</axiom-action>`;
+
+    this._history.push({ role: 'user', content: retryMsg });
+
+    const retryMessages: import('../ai/types').ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...this._history,
+    ];
+
+    let retryResponse = '';
+    try {
+      for await (const token of this._llm.streamChat(
+        retryMessages,
+        config,
+        this._abortController?.signal,
+      )) {
+        retryResponse += token;
+        this._post({ type: 'token', content: token });
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] 재시도 스트림 오류: ${(err as Error).message}`);
+      }
+      return null;
+    }
+
+    const hasBlock = retryResponse.includes('<axiom-action>');
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 재시도 결과: axiom-action ${hasBlock ? '포함' : '여전히 누락'}`,
+    );
+
+    const cleanedRetry = this._stripActionBlock(retryResponse);
+    this._history.push({ role: 'assistant', content: cleanedRetry });
+
+    if (!hasBlock) {
+      this._post({
+        type: 'token',
+        content: '\n\n> ⚠️ 재시도 후에도 파일 수정 블록이 생성되지 않았습니다. `/spec update` 명령을 사용해보세요.',
+      });
+      return null;
+    }
+
+    return retryResponse;
   }
 
   // ─── .axiom/ watcher ─────────────────────────────────────────────────────────

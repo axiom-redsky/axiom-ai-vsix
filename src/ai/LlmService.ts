@@ -30,41 +30,30 @@ export class LlmService {
    * /v1/models가 막힌 OpenAI-compatible proxy도 있어 실제 생성 라우트까지 확인한다.
    */
   async checkHealth(config: LlmConfig): Promise<boolean> {
-    const modelsUrl = new URL('/v1/models', config.endpoint).toString();
-    const chatUrl = new URL('/v1/chat/completions', config.endpoint).toString();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
 
+    // 서버 종류별 헬스체크 엔드포인트 우선순위
+    // GET 요청만 사용: POST /v1/chat/completions 는 인증 정책이 엔드포인트마다 달라 오탐 발생
+    const probeUrls = [
+      new URL('/v1/models', config.endpoint).toString(),  // OpenAI 호환 (LM Studio, vLLM, LocalAI, Ollama)
+      new URL('/api/tags', config.endpoint).toString(),   // Ollama 네이티브
+    ];
+
     try {
       const headers = this._buildAuthHeaders(config);
-      const chatRes = await fetch(chatUrl, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-      console.log(`[Axiom AI] 헬스체크 /v1/chat/completions → ${chatRes.status}`);
-      if (chatRes.status === 401 || chatRes.status === 403) {
-        console.warn(`[Axiom AI] LLM chat route auth failed: ${chatRes.status} ${chatRes.statusText}`);
-        return false;
+      for (const url of probeUrls) {
+        const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+        console.log(`[Axiom AI] 헬스체크 ${url} → ${res.status}`);
+        if (res.status === 401 || res.status === 403) {
+          console.warn(`[Axiom AI] 헬스체크 인증 실패: ${res.status}`);
+          return false;
+        }
+        if (res.ok) {
+          return true;
+        }
       }
-
-      // GET /v1/chat/completions returns 405 (method not allowed) or 404 on most servers — both mean the server is alive.
-      if (chatRes.ok || chatRes.status === 404 || chatRes.status === 405) {
-        return true;
-      }
-
-      const modelsRes = await fetch(modelsUrl, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-      console.log(`[Axiom AI] 헬스체크 /v1/models → ${modelsRes.status}`);
-      if (modelsRes.status === 401 || modelsRes.status === 403) {
-        console.warn(`[Axiom AI] LLM health check auth failed: ${modelsRes.status} ${modelsRes.statusText}`);
-        return false;
-      }
-
-      return modelsRes.ok;
+      return false;
     } catch (err) {
       console.warn(`[Axiom AI] 헬스체크 실패: ${(err as Error).message}`);
       return false;

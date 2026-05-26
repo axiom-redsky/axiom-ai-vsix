@@ -102,11 +102,10 @@ export class ScaffoldContextBuilder {
         ].join('\n')
       : '';
 
-    // 도메인 컨텍스트 감지 및 라우터 파일 내용 주입
     const domainCtx = this._getDomainContext(userQuery, ctx.filePath ?? '');
     const domainSection = this._buildDomainSection(domainCtx, userQuery);
 
-    return `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
+    const coreRules = `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
 
 ## 핵심 규칙
 - 모든 코드는 아래 scaffold 문서의 패턴을 따라야 합니다
@@ -120,7 +119,17 @@ export class ScaffoldContextBuilder {
 
 ## 프로젝트 스택
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
-해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)
+해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)`;
+
+    // 시나리오 C: 현재 열린 파일 수정 — A/B 예시 없이 C 전용 프롬프트 사용
+    if (domainCtx.isCurrentFileContext) {
+      return this._buildScenarioCPrompt(
+        coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
+      );
+    }
+
+    // 시나리오 A / B: 새 파일 생성 흐름
+    return `${coreRules}
 
 ## 파일 생성 기능 (DDD 구조)
 이 프로젝트는 DDD(Domain Driven Design) 패턴을 사용하며 업무별 코드는 src/domains/{domain}/ 하위에 위치합니다.
@@ -189,24 +198,70 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 \`\`\`
 </axiom-action>
 
-### 시나리오 C: 현재 열린 파일 코드 수정 요청 (axiom-action 1개)
-"현재 페이지", "현재 파일", "이 파일", "열린 파일" 등 **기존 파일에 코드를 추가/수정**하는 경우:
-- 새 페이지 생성이 아니므로 **라우터 수정 불필요** — router/index.tsx axiom-action 절대 생성 금지
-- 해당 파일만 updateFile 1개 생성
-
-<axiom-action>
-{"action":"updateFile","templateType":"page","domain":"{domain}","componentName":"{ComponentName}","filePath":"{현재 열린 파일 경로}"}
-\`\`\`tsx
-// 기존 코드를 유지하면서 요청된 코드가 추가된 전체 파일 내용
-\`\`\`
-</axiom-action>
-
 ### 도메인 라우터 파일 규칙 (중요)
 - \`src/domains/{domain}/router/index.tsx\`에서 **createHashRouter 직접 사용 금지**
 - 도메인 라우터는 \`TAppRoute[]\` 배열만 export (createHashRouter는 루트 App.tsx에서만 사용)
 - 올바른 패턴: \`const routes: TAppRoute[] = [...]; export default routes;\`
 
 ${domainSection}${scaffoldSection}${fileSection}`;
+  }
+
+  /**
+   * 시나리오 C 전용 시스템 프롬프트.
+   * A/B 시나리오 예시를 제외하고 현재 파일 수정에만 집중하도록 구성한다.
+   */
+  private _buildScenarioCPrompt(
+    coreRules: string,
+    domainCtx: DomainContext,
+    userQuery: string,
+    domainSection: string,
+    scaffoldSection: string,
+    fileSection: string,
+  ): string {
+    const filePath = domainCtx.domainName
+      ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
+      : '[현재 열린 파일 경로]';
+
+    const templateType = 'page';
+
+    const navigationHint = this._hasNavigationIntent(userQuery)
+      ? `
+### 화면 이동 구현 지침
+react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다 (import 불필요):
+- **이동 버튼**: \`<Button onClick={() => $router.push('/이동경로')}>텍스트</Button>\`
+- **Button 컴포넌트**: \`import { Button } from '@axiom/components/ui';\`
+- **뒤로가기**: \`<Button onClick={() => $router.back()}>뒤로가기</Button>\`
+- **히스토리 교체**: \`$router.replace('/path')\`
+
+> ⚠️ \`useNavigate()\` 및 \`react-router\` 훅 사용 **절대 금지**. 항상 \`$router\`를 사용한다.
+> onClick은 인라인 화살표 함수로 작성. 별도 핸들러 함수 선언 불필요.`
+      : '';
+
+    return `${coreRules}
+
+## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
+현재 열린 파일에 코드 추가/수정 요청입니다. 아래 규칙을 반드시 따르세요:
+
+1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
+2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
+3. 코드 블록에는 기존 코드 전체 + 요청된 변경사항이 모두 포함된 **완전한 파일**을 작성하세요 (일부 발췌 금지)
+4. JSON 메타데이터와 코드 블록을 분리하여 작성하세요 (JSON 안에 코드를 넣지 말 것)
+
+### 필수 출력 형식
+<axiom-action>
+{"action":"updateFile","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+\`\`\`tsx
+// 기존 코드를 유지하면서 요청된 변경사항이 반영된 전체 파일 내용
+\`\`\`
+</axiom-action>
+${navigationHint}
+
+${domainSection}${scaffoldSection}${fileSection}`;
+  }
+
+  /** 파일 경로에서 도메인명을 추출한다 (public 노출). */
+  extractDomainFromFilePath(filePath: string): string | null {
+    return this._extractDomainFromFilePath(filePath);
   }
 
   /** .rag/ 파일이 변경된 경우 캐시를 초기화하고 엔진을 재빌드한다. */
@@ -282,31 +337,10 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     lines.push(`\n---\n\n## 파일 컨텍스트`);
     lines.push(`- 감지된 도메인: **${ctx.domainName}**`);
 
-    // 시나리오 C: 현재 열린 파일 수정 요청
+    // 시나리오 C: 도메인 정보만 표기 (axiom-action 지시문은 _buildScenarioCPrompt에서 처리)
     if (ctx.isCurrentFileContext) {
-      lines.push(`- 요청 유형: **현재 파일 코드 수정 (시나리오 C 적용)**`);
-      lines.push(`- ⚠️ **라우터(router/index.tsx) 수정 금지** — 현재 파일에만 코드를 추가/수정하세요`);
-      lines.push(`\n### ⚠️ 필수: axiom-action 블록 출력 의무 (미준수 시 코드가 실제 파일에 반영되지 않음)`);
-      lines.push(`코드 수정 요청입니다. 설명 텍스트 작성 후 **응답 마지막에 반드시 아래 형식의 axiom-action 블록을 출력**해야 합니다:`);
-      lines.push(`- action: "updateFile"`);
-      lines.push(`- domain: "${ctx.domainName}"`);
-      lines.push(`- templateType: 해당 파일 유형 (page / component / router 등)`);
-      lines.push(`- filePath: 현재 열린 파일의 정확한 경로`);
-      lines.push(`- 코드 블록 내용: **기존 파일 전체 내용에 수정사항이 반영된 완전한 코드** (일부 발췌 금지)`);
-      lines.push(`- router/index.tsx 관련 axiom-action 생성 절대 금지`);
-
-      // 화면 이동 의도 감지 시 구체적인 구현 지침 주입
-      if (this._hasNavigationIntent(userQuery)) {
-        lines.push(`\n### 화면 이동 버튼 구현 지침`);
-        lines.push(`react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다 (import 불필요):`);
-        lines.push(`- **이동 버튼**: \`<Button onClick={() => $router.push('/이동경로')}>텍스트</Button>\``);
-        lines.push(`- **Button 컴포넌트**: \`import { Button } from '@axiom/components/ui';\``);
-        lines.push(`- **뒤로가기**: \`<Button onClick={() => $router.back()}>뒤로가기</Button>\``);
-        lines.push(`- **히스토리 교체**: \`$router.replace('/path')\``);
-        lines.push(`\n> ⚠️ \`useNavigate()\` 및 \`react-router\` 훅 사용 **절대 금지**. 항상 \`$router\`를 사용한다.`);
-        lines.push(`> onClick은 인라인 화살표 함수로 작성. 별도 핸들러 함수 선언 불필요.`);
-      }
-
+      lines.push(`- 요청 유형: **현재 파일 코드 수정 (시나리오 C)**`);
+      lines.push(`- 감지 도메인: **${ctx.domainName}**`);
       lines.push('\n---\n');
       return lines.join('\n');
     }
