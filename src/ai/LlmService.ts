@@ -71,6 +71,7 @@ export class LlmService {
     config: LlmConfig,
     signal?: AbortSignal,
     onFallback?: (reason: string) => void,
+    onServerConnected?: () => void,
   ): AsyncGenerator<string> {
     const url = new URL('/v1/chat/completions', config.endpoint).toString();
 
@@ -126,6 +127,7 @@ export class LlmService {
       throw new Error('응답 스트림을 받을 수 없습니다');
     }
 
+    onServerConnected?.();
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';

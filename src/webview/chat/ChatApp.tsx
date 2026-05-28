@@ -62,7 +62,7 @@ export function ChatApp(): React.ReactElement {
       <InputBar
         onSend={handleSend}
         onStop={stopStreaming}
-        isStreaming={isStreaming}
+        isStreaming={isStreaming || isWaiting}
         prefillText={prefillText}
         onPrefillConsumed={handlePrefillConsumed}
       />

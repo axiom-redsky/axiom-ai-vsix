@@ -395,6 +395,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
 
       const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text);
+      const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
 
       const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
@@ -403,23 +404,65 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       let fullResponse = '';
       let wasFallback = false;
 
-      this._postStatus(`${config.model} 응답 중…`);
+      this._postStatus(`${config.model} 연결 중…`);
 
-      for await (const token of this._llm.streamChat(
-        messages,
-        config,
-        this._abortController.signal,
-        (reason) => {
-          wasFallback = true;
-          console.warn(`[Axiom AI] 오프라인 폴백 활성화: ${reason}`);
-        },
-      )) {
-        fullResponse += token;
-        this._post({ type: 'token', content: token });
+      if (isFileCtx) {
+        this._post({ type: 'token', content: '읽는 중…\n' });
+      }
+
+      let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+      let elapsedSec = 0;
+
+      const startElapsedTimer = (phase: string) => {
+        elapsedSec = 0;
+        this._postStatus(`${config.model} ${phase} (0초)`);
+        elapsedTimer = setInterval(() => {
+          elapsedSec++;
+          this._postStatus(`${config.model} ${phase} (${elapsedSec}초)`);
+        }, 1000);
+      };
+
+      const clearElapsedTimer = () => {
+        if (elapsedTimer) {
+          clearInterval(elapsedTimer);
+          elapsedTimer = null;
+        }
+      };
+
+      try {
+        let firstToken = true;
+        for await (const token of this._llm.streamChat(
+          messages,
+          config,
+          this._abortController.signal,
+          (reason) => {
+            wasFallback = true;
+            console.warn(`[Axiom AI] 오프라인 폴백 활성화: ${reason}`);
+          },
+          () => startElapsedTimer('AI 생성 중…'),
+        )) {
+          if (firstToken) {
+            clearElapsedTimer();
+            this._postStatus(`${config.model} 스트리밍 중…`);
+            firstToken = false;
+          }
+          fullResponse += token;
+          if (!isFileCtx) {
+            this._post({ type: 'token', content: token });
+          }
+        }
+      } finally {
+        clearElapsedTimer();
       }
 
       const hasActionBlock = fullResponse.includes('<axiom-action>');
-      const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
+
+      if (isFileCtx) {
+        const explanation = this._stripActionBlock(fullResponse).trim();
+        if (explanation) {
+          this._post({ type: 'token', content: explanation + '\n' });
+        }
+      }
 
       if (!hasActionBlock && isFileCtx) {
         // axiom-action 누락: 원래 응답을 히스토리에 저장 후 자동 재시도
@@ -433,20 +476,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           systemPrompt, editorCtx.filePath ?? '', config,
         );
 
-        this._post({ type: 'done' });
-        this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
         if (retryResult) {
           await this._handleAxiomAction(retryResult);
         }
+        this._post({ type: 'done' });
+        this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
         return;
       }
 
       const cleanedResponse = this._stripActionBlock(fullResponse);
       this._history.push({ role: 'assistant', content: cleanedResponse });
+
+      await this._handleAxiomAction(fullResponse);
       this._post({ type: 'done' });
       this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
-
-      await this._handleAxiomAction(fullResponse, true);
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         this._post({ type: 'done' });
@@ -1324,7 +1367,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._abortController?.signal,
       )) {
         retryResponse += token;
-        this._post({ type: 'token', content: token });
+        // 재시도 응답은 전체 파일 코드가 포함되므로 채팅에 스트리밍하지 않는다
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
