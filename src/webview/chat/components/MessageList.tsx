@@ -6,12 +6,13 @@ interface Props {
   messages: Message[];
   isStreaming: boolean;
   isWaiting: boolean;
+  status?: string;
   onConfirm?: (actionId: string, approved: boolean) => void;
 }
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, onConfirm }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, onConfirm }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -70,7 +71,12 @@ export function MessageList({ messages, isStreaming, isWaiting, onConfirm }: Pro
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">
-          <span /><span /><span />
+          <span className="typing-indicator__dot" />
+          <span className="typing-indicator__dot" />
+          <span className="typing-indicator__dot" />
+          {isWaiting && status && (
+            <span className="typing-indicator__status">{status}</span>
+          )}
         </div>
       )}
       <div ref={bottomRef} />

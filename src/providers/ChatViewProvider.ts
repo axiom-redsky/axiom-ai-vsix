@@ -98,6 +98,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
       }
     });
+
+    // 에디터 선택 영역 변경 시 웹뷰에 알림
+    let selectionDebounce: ReturnType<typeof setTimeout> | null = null;
+    const selectionDisposable = vscode.window.onDidChangeTextEditorSelection((e) => {
+      if (selectionDebounce) clearTimeout(selectionDebounce);
+      selectionDebounce = setTimeout(() => {
+        if (!this._view) return;
+        const sel = e.selections[0];
+        if (!sel || sel.isEmpty) {
+          this._post({ type: 'selectionContext', filePath: '', startLine: 0, endLine: 0, selectedText: '' });
+          return;
+        }
+        const doc = e.textEditor.document;
+        const selectedText = doc.getText(sel).trim();
+        if (!selectedText) return;
+        this._post({
+          type: 'selectionContext',
+          filePath: vscode.workspace.asRelativePath(doc.uri),
+          startLine: sel.start.line + 1,
+          endLine: sel.end.line + 1,
+          selectedText,
+        });
+      }, 150);
+    });
+    webviewView.onDidDispose(() => selectionDisposable.dispose());
   }
 
   private _requestFileConfirmation(
@@ -1222,6 +1247,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         action.autoWrite = true;
       }
 
+      const searchMatch = blockContent.match(/<search>\n?([\s\S]*?)<\/search>/);
+      const replaceMatch = blockContent.match(/<replace>\n?([\s\S]*?)<\/replace>/);
+      if (searchMatch?.[1] !== undefined) action.searchCode = searchMatch[1].replace(/\n$/, '');
+      if (replaceMatch?.[1] !== undefined) action.replaceCode = replaceMatch[1].replace(/\n$/, '');
+
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
       if (codeMatch?.[1]) action.generatedCode = codeMatch[1].trimEnd();
       actions.push(action);
@@ -1257,6 +1287,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._post({ type: 'fileError', message: readError });
           break;
         }
+
+        // patch 모드: search/replace를 적용해 generatedCode를 미리 계산
+        if (action.mode === 'patch' && action.searchCode !== undefined && action.replaceCode !== undefined) {
+          if (!originalContent) {
+            this._post({ type: 'fileError', message: `파일을 읽을 수 없습니다: ${action.filePath}` });
+            break;
+          }
+          const patched = this._fileCreator.computePatch(originalContent, action.searchCode, action.replaceCode);
+          if (patched === null) {
+            this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ patch 실패: search 코드를 찾을 수 없습니다 (${action.filePath})`);
+            this._post({ type: 'fileError', message: `수정 위치를 파일에서 찾을 수 없습니다. 다시 요청해주세요: ${action.filePath}` });
+            break;
+          }
+          action.generatedCode = patched;
+        }
+
         const diff =
           originalContent !== undefined && action.generatedCode
             ? computeDiffHunks(originalContent, action.generatedCode)
@@ -1283,6 +1329,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
       } else {
+        // patch 모드 (router/autoWrite 경우)
+        if (action.action === 'updateFile' && action.mode === 'patch' && action.searchCode !== undefined && action.replaceCode !== undefined) {
+          const { originalContent } = await this._fileCreator.readFileContent(action);
+          if (originalContent) {
+            const patched = this._fileCreator.computePatch(originalContent, action.searchCode, action.replaceCode);
+            if (patched === null) {
+              this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ patch 실패: search 코드를 찾을 수 없습니다 (${action.filePath})`);
+              this._post({ type: 'fileError', message: `수정 위치를 파일에서 찾을 수 없습니다. 다시 요청해주세요: ${action.filePath}` });
+              if (action.templateType !== 'router') break;
+            } else {
+              action.generatedCode = patched;
+            }
+          }
+        }
+
         // router / autoWrite / createFile → 기존 경로
         const result = await this._fileCreator.createFile(action);
         if (result.success) {

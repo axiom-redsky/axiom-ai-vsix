@@ -81,6 +81,7 @@ export type HostToWebviewMessage =
   | { type: 'done' }
   | { type: 'error'; message: string }
   | { type: 'status'; text: string }
+  | { type: 'selectionContext'; filePath: string; startLine: number; endLine: number; selectedText: string }
   | { type: 'fileCreated'; filePath: string }
   | { type: 'fileUpdated'; filePath: string; diff?: DiffLine[] }
   | { type: 'fileError'; message: string }

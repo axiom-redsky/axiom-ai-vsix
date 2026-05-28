@@ -8,7 +8,11 @@ export interface AxiomAction {
   domain: string;
   componentName: string;
   filePath: string;
+  /** 'patch': search/replace 부분 교체, 'full': 전체 파일 재작성 (기본값) */
+  mode?: 'full' | 'patch';
   generatedCode?: string;
+  searchCode?: string;
+  replaceCode?: string;
   /** true이면 InputBox 없이 자동 저장 (페이지 생성 플로우에서 도메인 이미 확인된 경우) */
   autoWrite?: boolean;
 }
@@ -58,6 +62,80 @@ export class FileCreatorService {
     } catch {
       return { originalContent: undefined };
     }
+  }
+
+  /**
+   * patch 모드: original에서 searchCode를 찾아 replaceCode로 교체한 결과를 반환한다.
+   * Pass 1: CRLF 정규화 후 exact match
+   * Pass 2: 각 줄 trimEnd (줄 끝 공백 차이)
+   * Pass 3: 각 줄 trim (들여쓰기·탭↔스페이스 차이)
+   * 찾지 못하면 null을 반환한다.
+   */
+  computePatch(original: string, searchCode: string, replaceCode: string): string | null {
+    // CRLF 정규화 (비교·교체는 LF 기준으로 수행, 결과 복원)
+    const hasCRLF = original.includes('\r\n');
+    const normOrig = hasCRLF ? original.replace(/\r\n/g, '\n') : original;
+    const normSearch = searchCode.replace(/\r\n/g, '\n');
+    const normReplace = replaceCode.replace(/\r\n/g, '\n');
+
+    // Pass 1: exact match
+    if (normOrig.includes(normSearch)) {
+      const result = normOrig.replace(normSearch, normReplace);
+      return hasCRLF ? result.replace(/\n/g, '\r\n') : result;
+    }
+
+    // Pass 2 & 3: 라인 단위 fuzzy
+    const result = this._fuzzySearchReplace(normOrig, normSearch, normReplace);
+    if (result === null) return null;
+    return hasCRLF ? result.replace(/\n/g, '\r\n') : result;
+  }
+
+  private _fuzzySearchReplace(original: string, search: string, replace: string): string | null {
+    const originalLines = original.split('\n');
+    const rawSearch = search.split('\n');
+
+    // search 블록 앞뒤 빈 줄 제거
+    let s = 0;
+    let e = rawSearch.length - 1;
+    while (s <= e && rawSearch[s].trim() === '') s++;
+    while (e >= s && rawSearch[e].trim() === '') e--;
+    const searchLines = rawSearch.slice(s, e + 1).map((l) => l.trimEnd());
+
+    if (searchLines.length === 0) return null;
+
+    const oLen = originalLines.length;
+    const sLen = searchLines.length;
+
+    // Pass 2: trimEnd 비교 (줄 끝 공백 차이)
+    for (let i = 0; i <= oLen - sLen; i++) {
+      let match = true;
+      for (let j = 0; j < sLen; j++) {
+        if (originalLines[i + j].trimEnd() !== searchLines[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        return [...originalLines.slice(0, i), replace, ...originalLines.slice(i + sLen)].join('\n');
+      }
+    }
+
+    // Pass 3: trim 비교 (들여쓰기·탭↔스페이스 차이)
+    const trimmedSearch = searchLines.map((l) => l.trim());
+    for (let i = 0; i <= oLen - sLen; i++) {
+      let match = true;
+      for (let j = 0; j < sLen; j++) {
+        if (originalLines[i + j].trim() !== trimmedSearch[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        return [...originalLines.slice(0, i), replace, ...originalLines.slice(i + sLen)].join('\n');
+      }
+    }
+
+    return null;
   }
 
   /** 디렉터리 생성 + 파일 쓰기 + 에디터 열기. 컨펌 승인 후 실제 저장에 사용. */

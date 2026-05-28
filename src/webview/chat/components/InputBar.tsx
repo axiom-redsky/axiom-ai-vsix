@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { matchSlashCommands } from '../slashCommands';
 import type { SlashCommand } from '../slashCommands';
+import type { SelectionContext } from '../hooks/useChat';
 
 interface Props {
   onSend: (text: string) => void;
@@ -8,9 +9,11 @@ interface Props {
   isStreaming: boolean;
   prefillText?: string;
   onPrefillConsumed?: () => void;
+  selectionContext?: SelectionContext | null;
+  onDismissSelection?: () => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, selectionContext, onDismissSelection }: Props): React.ReactElement {
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -117,8 +120,35 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
 
   const showPalette = cmdMatches.length > 0;
 
+  const lineLabel = selectionContext
+    ? selectionContext.startLine === selectionContext.endLine
+      ? `${selectionContext.filePath}:${selectionContext.startLine}`
+      : `${selectionContext.filePath}:${selectionContext.startLine}-${selectionContext.endLine}`
+    : null;
+
   return (
     <div className="input-bar">
+      {selectionContext && lineLabel && (
+        <div className="input-bar__selection-badge">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M3.5 4h5M3.5 6h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+          </svg>
+          <span className="input-bar__selection-label" title={selectionContext.selectedText}>
+            {lineLabel}
+          </span>
+          <button
+            className="input-bar__selection-dismiss"
+            onClick={onDismissSelection}
+            title="선택 참조 해제"
+            aria-label="선택 참조 해제"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      )}
       {showPalette && (
         <div className="slash-palette" role="listbox" aria-label="명령어 목록">
           {cmdMatches.map((cmd, i) => (

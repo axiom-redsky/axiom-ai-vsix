@@ -7,7 +7,7 @@ import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation } = useChat();
+  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, selectionContext, dismissSelection } = useChat();
   const [prefillText, setPrefillText] = useState('');
 
   const handlePrefill = useCallback((text: string) => {
@@ -56,7 +56,7 @@ export function ChatApp(): React.ReactElement {
         </div>
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} onConfirm={sendConfirmation} />
+      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} onConfirm={sendConfirmation} />
       <ClearWarningBanner messages={messages} isStreaming={isStreaming} onClear={clearHistory} />
       <SpecQuickBar onPrefill={handlePrefill} onSend={sendMessage} isStreaming={isStreaming} />
       <InputBar
@@ -65,6 +65,8 @@ export function ChatApp(): React.ReactElement {
         isStreaming={isStreaming || isWaiting}
         prefillText={prefillText}
         onPrefillConsumed={handlePrefillConsumed}
+        selectionContext={selectionContext}
+        onDismissSelection={dismissSelection}
       />
     </div>
   );

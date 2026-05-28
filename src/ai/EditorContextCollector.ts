@@ -3,9 +3,11 @@ import * as vscode from 'vscode';
 export interface EditorContext {
   available: boolean;
   filePath?: string;
+  absoluteFilePath?: string;
   language?: string;
   content?: string;
   selectedText?: string;
+  isTruncated?: boolean;
 }
 
 export class EditorContextCollector {
@@ -40,9 +42,11 @@ export class EditorContextCollector {
     return {
       available: true,
       filePath: vscode.workspace.asRelativePath(doc.uri),
+      absoluteFilePath: doc.uri.fsPath,
       language: doc.languageId,
       content,
       selectedText: selectedText || undefined,
+      isTruncated: totalLines > this.maxLines,
     };
   }
 }

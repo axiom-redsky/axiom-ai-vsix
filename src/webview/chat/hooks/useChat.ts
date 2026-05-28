@@ -2,6 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
 import type { HostToWebviewMessage, DiffLine } from '../../../types/messages';
 
+export interface SelectionContext {
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  selectedText: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -19,6 +26,7 @@ export function useChat() {
   const [status, setStatus] = useState<string>('연결 중…');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
+  const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -85,6 +93,13 @@ export function useChat() {
         }
         case 'status':
           setStatus(msg.text);
+          break;
+        case 'selectionContext':
+          if (msg.filePath && msg.selectedText) {
+            setSelectionContext({ filePath: msg.filePath, startLine: msg.startLine, endLine: msg.endLine, selectedText: msg.selectedText });
+          } else {
+            setSelectionContext(null);
+          }
           break;
         case 'fileCreated':
           setMessages((prev) => [
@@ -186,5 +201,7 @@ export function useChat() {
     );
   }, []);
 
-  return { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation };
+  const dismissSelection = useCallback(() => setSelectionContext(null), []);
+
+  return { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, selectionContext, dismissSelection };
 }

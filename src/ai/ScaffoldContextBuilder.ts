@@ -90,11 +90,20 @@ export class ScaffoldContextBuilder {
         '(scaffold 지식 문서를 찾을 수 없습니다. axiom-ai.ragPath 설정을 확인하세요.)';
     }
 
+    let fileContent = ctx.content ?? '';
+    if (ctx.isTruncated && ctx.absoluteFilePath) {
+      try {
+        fileContent = fs.readFileSync(ctx.absoluteFilePath, 'utf-8');
+      } catch {
+        // 읽기 실패 시 잘린 컨텍스트 유지
+      }
+    }
+
     const fileSection = ctx.available
       ? [
           '\n\n---\n\n## 현재 열린 파일: ' + ctx.filePath,
           '```' + ctx.language,
-          ctx.content,
+          fileContent,
           '```',
           ctx.selectedText
             ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
@@ -121,6 +130,7 @@ export class ScaffoldContextBuilder {
 - 코드 주석은 한국어로 작성
 - **화면 이동 금지 패턴**: useNavigate(), useHistory() 등 react-router 훅 사용 금지
 - **화면 이동 올바른 패턴**: 전역 $router 객체 사용 (import 불필요) — $router.push('/path'), $router.replace('/path'), $router.back()
+- **⚠️ 파일 생성 범위 엄수**: 사용자가 명시적으로 요청한 파일(페이지)만 생성할 것. FormPage, DetailPage, StatusPage 등 관련 페이지를 임의로 추가 생성하는 것은 절대 금지. 요청 = 1개 페이지이면 axiom-action의 createFile(page) 블록도 반드시 1개만 출력할 것.
 ${routerImportRule}
 
 ## 프로젝트 스택
@@ -158,7 +168,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 - JSON 한 줄 다음에 코드 블록(\`\`\`tsx)을 바로 이어서 작성
 - updateFile 액션의 코드 블록은 수정된 **전체 파일 내용**이어야 함
 
-### 시나리오 A: 도메인이 이미 존재하는 경우 (axiom-action 2개)
+### 시나리오 A: 도메인이 이미 존재하는 경우 (axiom-action 정확히 2개만 출력 — 페이지 createFile 1개 + 라우터 updateFile 1개)
 응답 끝에 아래 2개의 블록을 순서대로 포함:
 
 블록 1 — 페이지 파일 생성:
@@ -177,7 +187,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 \`\`\`
 </axiom-action>
 
-### 시나리오 B: 도메인이 존재하지 않는 경우 / 신규 도메인 (axiom-action 3개)
+### 시나리오 B: 도메인이 존재하지 않는 경우 / 신규 도메인 (axiom-action 정확히 3개만 출력 — 페이지 createFile 1개 + 라우터 createFile 1개 + 루트 라우터 updateFile 1개)
 응답 끝에 아래 3개의 블록을 순서대로 포함:
 
 블록 1 — 페이지 파일 생성:
@@ -250,12 +260,35 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 
 1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
 2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
-3. 코드 블록에는 기존 코드 전체 + 요청된 변경사항이 모두 포함된 **완전한 파일**을 작성하세요 (일부 발췌 금지)
-4. JSON 메타데이터와 코드 블록을 분리하여 작성하세요 (JSON 안에 코드를 넣지 말 것)
+3. 수정 범위에 따라 아래 두 모드 중 하나를 선택하세요
+4. JSON 메타데이터와 코드 블록(또는 search/replace 블록)을 분리하여 작성하세요
 
-### 필수 출력 형식
+### 출력 모드 선택
+
+> ⚠️ **모드 선택 핵심 규칙**: 변경이 파일의 **여러 위치**에 걸치면(예: import 추가 + 함수 본문 수정, useRef 선언 추가 + 이벤트 핸들러 수정 등) 반드시 **full 모드**를 사용하세요. patch 모드는 **연속된 한 블록**만 바꿀 때만 사용합니다.
+
+**patch 모드** — 연속된 단일 블록(함수 1개·JSX 1개·스타일 1개)만 수정할 때:
+- import 변경이 없고, 수정 위치가 파일에서 **1곳뿐**인 경우에만 사용
+- \`<search>\` 블록: 원본 파일에서 찾을 코드를 **정확히** 작성 (공백·들여쓰기 포함, 전후 맥락 2~3줄 포함 권장)
+- \`<replace>\` 블록: 교체할 새 코드
+
 <axiom-action>
-{"action":"updateFile","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+{"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<search>
+원본 파일에서 찾을 코드 블록 (정확히 일치해야 함)
+</search>
+<replace>
+교체할 새 코드 블록
+</replace>
+</axiom-action>
+
+**full 모드** — 아래 중 하나라도 해당하면 반드시 full 모드 사용:
+- import 추가/변경이 필요한 경우 (예: useRef, useCallback 등 새 훅 추가)
+- 수정 위치가 파일의 **2곳 이상**인 경우 (예: 상태 추가 + 핸들러 수정)
+- 전체 재작성이 필요한 경우
+
+<axiom-action>
+{"action":"updateFile","mode":"full","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
 \`\`\`tsx
 // 기존 코드를 유지하면서 요청된 변경사항이 반영된 전체 파일 내용
 \`\`\`
