@@ -204,7 +204,15 @@ export function MessageItem({ message, onConfirm }: Props): React.ReactElement {
 
   const assistantContent = isUser
     ? message.content
-    : message.content.replace(ACTION_BLOCK_RE, '').trim();
+    : (() => {
+        const stripped = message.content.replace(ACTION_BLOCK_RE, '');
+        // 스트리밍 중 미완성 <axiom-action> 블록 숨김
+        if (message.isStreaming) {
+          const idx = stripped.indexOf('<axiom-action>');
+          if (idx !== -1) return stripped.slice(0, idx).trim();
+        }
+        return stripped.trim();
+      })();
 
   return (
     <div className={`message ${isUser ? 'message--user' : 'message--assistant'}${message.isError ? ' message--error' : ''}`}>

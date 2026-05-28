@@ -406,10 +406,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       this._postStatus(`${config.model} 연결 중…`);
 
-      if (isFileCtx) {
-        this._post({ type: 'token', content: '읽는 중…\n' });
-      }
-
       let elapsedTimer: ReturnType<typeof setInterval> | null = null;
       let elapsedSec = 0;
 
@@ -447,22 +443,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             firstToken = false;
           }
           fullResponse += token;
-          if (!isFileCtx) {
-            this._post({ type: 'token', content: token });
-          }
+          this._post({ type: 'token', content: token });
         }
       } finally {
         clearElapsedTimer();
       }
 
       const hasActionBlock = fullResponse.includes('<axiom-action>');
-
-      if (isFileCtx) {
-        const explanation = this._stripActionBlock(fullResponse).trim();
-        if (explanation) {
-          this._post({ type: 'token', content: explanation + '\n' });
-        }
-      }
 
       if (!hasActionBlock && isFileCtx) {
         // axiom-action 누락: 원래 응답을 히스토리에 저장 후 자동 재시도
