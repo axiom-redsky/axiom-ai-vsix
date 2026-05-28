@@ -8,8 +8,10 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
-  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled';
+  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request';
   diff?: DiffLine[];
+  actionId?: string;
+  confirmPending?: boolean;
 }
 
 export function useChat() {
@@ -130,6 +132,20 @@ export function useChat() {
             },
           ]);
           break;
+        case 'fileConfirmRequest':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              subtype: 'file-confirm-request',
+              content: msg.filePath,
+              diff: msg.diff,
+              actionId: msg.actionId,
+              confirmPending: true,
+            },
+          ]);
+          break;
       }
     };
 
@@ -159,5 +175,16 @@ export function useChat() {
     vscode.postMessage({ type: 'stopMessage' });
   }, []);
 
-  return { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming };
+  const sendConfirmation = useCallback((actionId: string, approved: boolean) => {
+    vscode.postMessage(
+      approved
+        ? { type: 'fileConfirmApprove', actionId }
+        : { type: 'fileConfirmReject', actionId },
+    );
+    setMessages((prev) =>
+      prev.map((m) => (m.actionId === actionId ? { ...m, confirmPending: false } : m)),
+    );
+  }, []);
+
+  return { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation };
 }

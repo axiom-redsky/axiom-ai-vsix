@@ -11,7 +11,7 @@ import { computeDiffHunks } from '../ai/DiffUtil';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage } from '../ai/types';
-import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState } from '../types/messages';
+import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
 import { ContextCollector } from '../spec/ContextCollector';
 import { SpecGenerator } from '../spec/SpecGenerator';
 import { SpecFileWriter } from '../spec/SpecFileWriter';
@@ -47,6 +47,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
+  private readonly _pendingConfirmations = new Map<string, { resolve: (approved: boolean) => void }>();
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._llm = new LlmService(_extensionUri);
@@ -79,11 +80,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'stopMessage':
           this._abortController?.abort();
+          for (const [, entry] of this._pendingConfirmations) entry.resolve(false);
+          this._pendingConfirmations.clear();
           break;
+        case 'fileConfirmApprove': {
+          const entry = this._pendingConfirmations.get(msg.actionId);
+          if (entry) { this._pendingConfirmations.delete(msg.actionId); entry.resolve(true); }
+          break;
+        }
+        case 'fileConfirmReject': {
+          const entry = this._pendingConfirmations.get(msg.actionId);
+          if (entry) { this._pendingConfirmations.delete(msg.actionId); entry.resolve(false); }
+          break;
+        }
         case 'clearHistory':
           this._history = [];
           break;
       }
+    });
+  }
+
+  private _requestFileConfirmation(
+    actionId: string,
+    filePath: string,
+    diff: DiffLine[],
+    generatedCode: string,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      this._pendingConfirmations.set(actionId, { resolve });
+      this._post({ type: 'fileConfirmRequest', actionId, filePath, diff, generatedCode });
     });
   }
 
@@ -343,7 +368,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._history.push({ role: 'user', content: text });
 
     const config = ExtensionConfig.getEffectiveLlmConfig();
-    this._postStatus(`${config.model} 응답 중…`);
+    this._postStatus('컨텍스트 분석 중…');
 
     try {
       const editorCtx = this._editorCollector.collect();
@@ -377,6 +402,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ];
       let fullResponse = '';
       let wasFallback = false;
+
+      this._postStatus(`${config.model} 응답 중…`);
 
       for await (const token of this._llm.streamChat(
         messages,
@@ -1188,27 +1215,67 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let routerProcessed = false;
 
     for (const action of uniqueActions) {
-      const result = await this._fileCreator.createFile(action);
-      if (result.success) {
-        if (action.templateType === 'router') routerProcessed = true;
-        const isUpdate = action.action === 'updateFile';
-        this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 ${isUpdate ? '수정' : '생성'} 성공: ${result.filePath}`);
-        if (isUpdate) {
-          const diff = (result.originalContent !== undefined && action.generatedCode)
-            ? computeDiffHunks(result.originalContent, action.generatedCode)
-            : undefined;
-          this._post({ type: 'fileUpdated', filePath: result.filePath!, diff });
-        } else {
-          this._post({ type: 'fileCreated', filePath: result.filePath! });
+      // updateFile 중 router/autoWrite 아닌 경우 → 컨펌 플로우
+      const needsConfirm =
+        action.action === 'updateFile' &&
+        action.templateType !== 'router' &&
+        !action.autoWrite;
+
+      if (needsConfirm) {
+        const { originalContent, error: readError } = await this._fileCreator.readFileContent(action);
+        if (readError) {
+          this._post({ type: 'fileError', message: readError });
+          break;
         }
-      } else if (result.cancelled) {
-        this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 작업 취소: ${action.filePath}`);
-        this._post({ type: 'fileCancelled' });
-        if (action.templateType !== 'router') break;
+        const diff =
+          originalContent !== undefined && action.generatedCode
+            ? computeDiffHunks(originalContent, action.generatedCode)
+            : [];
+        const actionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+        const approved = await this._requestFileConfirmation(
+          actionId,
+          action.filePath,
+          diff,
+          action.generatedCode ?? '',
+        );
+        if (!approved) {
+          this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 수정 거부됨: ${action.filePath}`);
+          this._post({ type: 'fileCancelled' });
+          break;
+        }
+        const result = await this._fileCreator.applyUpdate(action);
+        if (result.success) {
+          this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 수정 완료: ${result.filePath}`);
+          this._post({ type: 'fileUpdated', filePath: result.filePath!, diff: diff.length ? diff : undefined });
+        } else {
+          this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ 파일 수정 실패: ${result.error}`);
+          this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
+          break;
+        }
       } else {
-        this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ 파일 작업 실패: ${result.error} (filePath=${action.filePath}, generatedCode 있음=${!!action.generatedCode})`);
-        this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
-        if (action.templateType !== 'router') break;
+        // router / autoWrite / createFile → 기존 경로
+        const result = await this._fileCreator.createFile(action);
+        if (result.success) {
+          if (action.templateType === 'router') routerProcessed = true;
+          const isUpdate = action.action === 'updateFile';
+          this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 ${isUpdate ? '수정' : '생성'} 성공: ${result.filePath}`);
+          if (isUpdate) {
+            const diff = (result.originalContent !== undefined && action.generatedCode)
+              ? computeDiffHunks(result.originalContent, action.generatedCode)
+              : undefined;
+            this._post({ type: 'fileUpdated', filePath: result.filePath!, diff });
+          } else {
+            this._post({ type: 'fileCreated', filePath: result.filePath! });
+          }
+        } else if (result.cancelled) {
+          this._corpusOutputChannel.appendLine(`[Axiom AI] 파일 작업 취소: ${action.filePath}`);
+          this._post({ type: 'fileCancelled' });
+          if (action.templateType !== 'router') break;
+        } else {
+          this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ 파일 작업 실패: ${result.error} (filePath=${action.filePath}, generatedCode 있음=${!!action.generatedCode})`);
+          this._post({ type: 'fileError', message: result.error ?? '알 수 없는 오류' });
+          if (action.templateType !== 'router') break;
+        }
       }
     }
 

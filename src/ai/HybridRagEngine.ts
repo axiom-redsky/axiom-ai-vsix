@@ -14,6 +14,9 @@ export interface RagContext {
 /** 프롬프트에 삽입할 최대 문서 수 */
 const MAX_DOCS = 3;
 
+/** 임베딩 검색 최대 대기 시간(ms) — 초과 시 결과 없이 진행 */
+const EMBEDDING_TIMEOUT_MS = 2000;
+
 /**
  * 3-레이어 하이브리드 RAG 엔진.
  *
@@ -27,6 +30,8 @@ export class HybridRagEngine {
   private readonly _keywordRetriever = new KeywordRetriever();
   private readonly _fileContextRetriever = new FileContextRetriever();
   private readonly _ragRetriever = new RagRetriever();
+  /** Method 3 결과 캐시: 동일 파일 반복 질문 시 .rag/ 재탐색 생략 */
+  private readonly _fileContextCache = new Map<string, string[]>();
 
   /**
    * .rag/ 디렉터리를 기준으로 각 Retriever를 초기화하고
@@ -64,6 +69,7 @@ export class HybridRagEngine {
   /** 임베딩 인덱스를 초기화하고 다음 initialize() 시 재빌드하도록 한다. */
   invalidate(): void {
     this._ragRetriever.reset();
+    this._fileContextCache.clear();
   }
 
   /**
@@ -85,17 +91,30 @@ export class HybridRagEngine {
     const kwDocs = this._keywordRetriever.readFiles(kwFiles);
     if (kwDocs.length > 0) methods.push('keyword');
 
-    // Method 3: 파일 컨텍스트 분석
-    const ctxFiles = this._fileContextRetriever.matchedFiles(filePath, fileContent);
-    const ctxDocs = this._fileContextRetriever.readFiles(ctxFiles);
+    // Method 3: 파일 컨텍스트 분석 (동일 파일 반복 요청 시 캐시 재사용)
+    const cacheKey = `${filePath}:${fileContent.length}:${fileContent.slice(0, 80)}`;
+    let ctxDocs: string[];
+    if (this._fileContextCache.has(cacheKey)) {
+      ctxDocs = this._fileContextCache.get(cacheKey)!;
+    } else {
+      const ctxFiles = this._fileContextRetriever.matchedFiles(filePath, fileContent);
+      ctxDocs = this._fileContextRetriever.readFiles(ctxFiles);
+      if (this._fileContextCache.size >= 8) {
+        this._fileContextCache.delete(this._fileContextCache.keys().next().value!);
+      }
+      this._fileContextCache.set(cacheKey, ctxDocs);
+    }
     if (ctxDocs.length > 0) methods.push('context');
 
     // 중복 제거 (동일 문서 헤더 기준)
     const combined = this._dedupe([...kwDocs, ...ctxDocs]).slice(0, MAX_DOCS);
 
-    // Method 2 폴백: Method 1 + 3 결과가 부족할 때만 사용
+    // Method 2 폴백: Method 1 + 3 결과가 부족할 때만 사용 (타임아웃 적용)
     if (combined.length < MAX_DOCS) {
-      const embeddingResult = await this._ragRetriever.retrieve(userQuery);
+      const embeddingResult = await Promise.race([
+        this._ragRetriever.retrieve(userQuery),
+        new Promise<string>((resolve) => setTimeout(() => resolve(''), EMBEDDING_TIMEOUT_MS)),
+      ]);
       if (embeddingResult) {
         methods.push('embedding');
         // 임베딩 결과를 빈 슬롯에 추가 (이미 추가된 doc와 중복 없이)

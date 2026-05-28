@@ -36,6 +36,7 @@ const MARKDOWN_COMPONENTS = { code: CodeBlock } as const;
 
 interface Props {
   message: Message;
+  onConfirm?: (actionId: string, approved: boolean) => void;
 }
 
 const ACTION_BLOCK_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
@@ -58,7 +59,13 @@ function DiffView({ diff }: { diff: DiffLine[] }): React.ReactElement {
   );
 }
 
-function FileResultCard({ message }: { message: Message }): React.ReactElement {
+function FileResultCard({
+  message,
+  onConfirm,
+}: {
+  message: Message;
+  onConfirm?: (actionId: string, approved: boolean) => void;
+}): React.ReactElement {
   const { subtype, content } = message;
 
   if (subtype === 'file-created') {
@@ -112,6 +119,49 @@ function FileResultCard({ message }: { message: Message }): React.ReactElement {
     );
   }
 
+  if (subtype === 'file-confirm-request') {
+    const hasDiff = message.diff && message.diff.length > 0;
+    return (
+      <div className={`file-result file-result--confirm${hasDiff ? ' file-result--has-diff' : ''}`}>
+        <div className="file-result__header">
+          <span className="file-result__icon">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M2 2h7l3 3v9H2V2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
+              <path d="M9 2v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+              <path d="M5 8h4M5 11h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
+              <path d="M11 12l1 1 1.5-1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="file-result__label">수정 대기</span>
+          <span className="file-result__path">{content}</span>
+        </div>
+        {hasDiff && <DiffView diff={message.diff!} />}
+        {message.confirmPending && (
+          <div className="file-confirm-actions">
+            <button
+              className="file-confirm-btn file-confirm-btn--apply"
+              onClick={() => onConfirm?.(message.actionId!, true)}
+            >
+              적용
+            </button>
+            <button
+              className="file-confirm-btn file-confirm-btn--discard"
+              onClick={() => onConfirm?.(message.actionId!, false)}
+            >
+              취소
+            </button>
+          </div>
+        )}
+        {!message.confirmPending && (
+          <div className="file-confirm-actions file-confirm-actions--resolved">
+            결정 완료
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (subtype === 'file-cancelled') {
     return (
       <div className="file-result file-result--cancelled">
@@ -140,14 +190,14 @@ function FileResultCard({ message }: { message: Message }): React.ReactElement {
   );
 }
 
-export function MessageItem({ message }: Props): React.ReactElement {
+export function MessageItem({ message, onConfirm }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
   if (isSystem) {
     return (
       <div className="message message--system">
-        <FileResultCard message={message} />
+        <FileResultCard message={message} onConfirm={onConfirm} />
       </div>
     );
   }

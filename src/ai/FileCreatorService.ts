@@ -45,6 +45,44 @@ export class FileCreatorService {
       : this._createNewFile(action, workspaceRoot);
   }
 
+  /** 파일 내용만 읽는다. 쓰지 않음. 컨펌 플로우에서 원본 확보용으로 사용. */
+  async readFileContent(action: AxiomAction): Promise<{ originalContent?: string; error?: string }> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return { error: '열린 워크스페이스가 없습니다.' };
+    }
+    const targetFileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, action.filePath);
+    try {
+      const bytes = await vscode.workspace.fs.readFile(targetFileUri);
+      return { originalContent: Buffer.from(bytes).toString('utf-8') };
+    } catch {
+      return { originalContent: undefined };
+    }
+  }
+
+  /** 디렉터리 생성 + 파일 쓰기 + 에디터 열기. 컨펌 승인 후 실제 저장에 사용. */
+  async applyUpdate(action: AxiomAction): Promise<CreateFileResult> {
+    if (!action.generatedCode) {
+      return { success: false, error: `${action.filePath}: 수정할 코드가 없습니다.` };
+    }
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return { success: false, error: '열린 워크스페이스가 없습니다.' };
+    }
+    const workspaceRoot = workspaceFolders[0].uri;
+    const targetFileUri = vscode.Uri.joinPath(workspaceRoot, action.filePath);
+    try {
+      const dirUri = vscode.Uri.joinPath(workspaceRoot, path.dirname(action.filePath));
+      await vscode.workspace.fs.createDirectory(dirUri);
+      await vscode.workspace.fs.writeFile(targetFileUri, Buffer.from(action.generatedCode, 'utf-8'));
+      const doc = await vscode.workspace.openTextDocument(targetFileUri);
+      await vscode.window.showTextDocument(doc);
+      return { success: true, filePath: action.filePath };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : '알 수 없는 오류' };
+    }
+  }
+
   /**
    * updateFile: 기존 파일을 InputBox 없이 즉시 덮어쓴다.
    * 라우터 등록처럼 자동화된 파일 수정에 사용된다.

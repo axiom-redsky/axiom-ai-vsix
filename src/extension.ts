@@ -6,6 +6,7 @@ import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { registerCommands } from './commands/index';
 import { ExtensionConfig } from './config/ExtensionConfig';
 import { AxiomIndexTracker } from './spec/AxiomIndexTracker';
+import { initEmbeddingPipeline } from './ai/EmbeddingService';
 import * as path from 'path';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -64,6 +65,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // RAG 임베딩 인덱스를 백그라운드에서 미리 빌드 시작
   chatProvider.startIndexBuild();
+  // 임베딩 모델 콜드 스타트 방지 — buildIndex 완료 여부와 무관하게 파이프라인 워밍업
+  initEmbeddingPipeline().catch(() => {});
 
   // 설정 변경 시 SDD 패널 + 프로젝트 설정 패널 재초기화
   context.subscriptions.push(

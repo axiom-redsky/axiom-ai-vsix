@@ -105,6 +105,11 @@ export class ScaffoldContextBuilder {
     const domainCtx = this._getDomainContext(userQuery, ctx.filePath ?? '');
     const domainSection = this._buildDomainSection(domainCtx, userQuery);
 
+    const routerInfo = this._getRouterImportSource();
+    const routerImportRule = routerInfo.version
+      ? `- **react-router import**: 이 프로젝트는 react-router ${routerInfo.version}을 사용합니다. useParams 등 react-router 관련 훅은 반드시 \`'${routerInfo.source}'\`에서 import 하세요 (예: \`import { useParams } from '${routerInfo.source}';\`)`
+      : `- **react-router import**: useParams 등 react-router 관련 훅은 \`'${routerInfo.source}'\`에서 import 하세요`;
+
     const coreRules = `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
 
 ## 핵심 규칙
@@ -116,6 +121,7 @@ export class ScaffoldContextBuilder {
 - 코드 주석은 한국어로 작성
 - **화면 이동 금지 패턴**: useNavigate(), useHistory() 등 react-router 훅 사용 금지
 - **화면 이동 올바른 패턴**: 전역 $router 객체 사용 (import 불필요) — $router.push('/path'), $router.replace('/path'), $router.back()
+${routerImportRule}
 
 ## 프로젝트 스택
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
@@ -439,6 +445,54 @@ ${domainSection}${scaffoldSection}${fileSection}`;
   private _getWorkspaceRoot(): string | null {
     const folders = vscode.workspace.workspaceFolders;
     return folders && folders.length > 0 ? folders[0].uri.fsPath : null;
+  }
+
+  /**
+   * 워크스페이스 package.json에서 react-router 버전을 감지하여
+   * 올바른 import 경로를 반환한다.
+   *
+   * React Router v7부터 react-router-dom이 react-router로 통합되었으므로
+   * v7 이상이면 'react-router', 미만이면 'react-router-dom'을 반환한다.
+   */
+  private _getRouterImportSource(): { source: string; version: string | null } {
+    const wsRoot = this._getWorkspaceRoot();
+    if (!wsRoot) return { source: 'react-router-dom', version: null };
+
+    const pkgPath = path.join(wsRoot, 'package.json');
+    if (!fs.existsSync(pkgPath)) return { source: 'react-router-dom', version: null };
+
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+      const rrVersion = deps['react-router'];
+      const rrdVersion = deps['react-router-dom'];
+
+      // v7+: react-router-dom이 react-router로 통합됨
+      if (rrVersion) {
+        const major = parseInt(rrVersion.replace(/^[^0-9]*/, ''), 10);
+        if (major >= 7) {
+          return { source: 'react-router', version: rrVersion };
+        }
+      }
+
+      // v6 이하: react-router-dom 사용
+      if (rrdVersion) {
+        return { source: 'react-router-dom', version: rrdVersion };
+      }
+
+      // react-router만 있고 v7 미만인 경우 (드문 케이스)
+      if (rrVersion) {
+        return { source: 'react-router', version: rrVersion };
+      }
+
+      return { source: 'react-router-dom', version: null };
+    } catch {
+      return { source: 'react-router-dom', version: null };
+    }
   }
 
   /**

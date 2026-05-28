@@ -64,7 +64,9 @@ export type WebviewToHostMessage =
   | { type: 'clearRagFolder' }
   | { type: 'loadProjectConfig' }
   | { type: 'saveProjectConfig'; config: ProjectConfig }
-  | { type: 'testConnection'; llm: AxiomSettings['llm'] };
+  | { type: 'testConnection'; llm: AxiomSettings['llm'] }
+  | { type: 'fileConfirmApprove'; actionId: string }
+  | { type: 'fileConfirmReject'; actionId: string };
 
 export interface DiffLine {
   type: 'ctx' | 'add' | 'del' | 'sep';
@@ -83,6 +85,7 @@ export type HostToWebviewMessage =
   | { type: 'fileUpdated'; filePath: string; diff?: DiffLine[] }
   | { type: 'fileError'; message: string }
   | { type: 'fileCancelled' }
+  | { type: 'fileConfirmRequest'; actionId: string; filePath: string; diff: DiffLine[]; generatedCode: string }
   | { type: 'settingsLoaded'; settings: AxiomSettings }
   | { type: 'ragFileAdded'; filePath: string }
   | { type: 'ragFileRemoved'; filePath: string }

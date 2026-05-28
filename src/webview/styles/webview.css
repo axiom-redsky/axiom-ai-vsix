@@ -468,6 +468,61 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   color: var(--vscode-disabledForeground, rgba(204,204,204,0.5));
 }
 
+.file-result--confirm {
+  background: rgba(160, 100, 0, 0.10);
+  border-color: rgba(200, 140, 0, 0.40);
+  color: var(--vscode-terminal-ansiYellow, #c8a000);
+}
+
+.file-confirm-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid rgba(200, 140, 0, 0.20);
+}
+
+.file-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s, opacity 0.12s;
+}
+
+.file-confirm-btn--apply {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.file-confirm-btn--apply:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.file-confirm-btn--discard {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  opacity: 0.75;
+}
+
+.file-confirm-btn--discard:hover {
+  opacity: 1;
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+}
+
+.file-confirm-actions--resolved {
+  opacity: 0.45;
+  font-size: 10px;
+  padding: 4px 8px;
+  border-top: 1px solid rgba(128, 128, 128, 0.15);
+  color: var(--vscode-foreground);
+}
+
 .file-result--has-diff {
   flex-direction: column;
   align-items: stretch;
