@@ -39,7 +39,8 @@ interface Props {
   onConfirm?: (actionId: string, approved: boolean) => void;
 }
 
-const ACTION_BLOCK_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
+const ACTION_BLOCK_COMPLETE_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
+const ACTION_BLOCK_PARTIAL_RE = /<axiom-action>[\s\S]*$/;
 
 function DiffView({ diff }: { diff: DiffLine[] }): React.ReactElement {
   return (
@@ -204,15 +205,10 @@ export function MessageItem({ message, onConfirm }: Props): React.ReactElement {
 
   const assistantContent = isUser
     ? message.content
-    : (() => {
-        const stripped = message.content.replace(ACTION_BLOCK_RE, '');
-        // 스트리밍 중 미완성 <axiom-action> 블록 숨김
-        if (message.isStreaming) {
-          const idx = stripped.indexOf('<axiom-action>');
-          if (idx !== -1) return stripped.slice(0, idx).trim();
-        }
-        return stripped.trim();
-      })();
+    : message.content
+        .replace(ACTION_BLOCK_COMPLETE_RE, '')
+        .replace(ACTION_BLOCK_PARTIAL_RE, '')
+        .trim();
 
   return (
     <div className={`message ${isUser ? 'message--user' : 'message--assistant'}${message.isError ? ' message--error' : ''}`}>

@@ -474,7 +474,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         clearElapsedTimer();
       }
 
-      const hasActionBlock = fullResponse.includes('<axiom-action>');
+      const hasActionBlock = /<axiom-action>[\s\S]*?<\/axiom-action>/.test(fullResponse);
 
       if (!hasActionBlock && isFileCtx) {
         // axiom-action 누락: 원래 응답을 히스토리에 저장 후 자동 재시도

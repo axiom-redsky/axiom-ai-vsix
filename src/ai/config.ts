@@ -8,7 +8,7 @@ export const AI_DEFAULTS = {
   apiKey: '',
   model: 'qwen2.5-coder:14b',
   temperature: 0.2,
-  maxTokens: 4096,
+  maxTokens: 8192,
   /** scaffold 컨벤션·패턴·문서 통합 지식 폴더 (.rag/ + corpus/ 통합) */
   knowledgePath: 'knowledge',
   maxFileLines: 200,

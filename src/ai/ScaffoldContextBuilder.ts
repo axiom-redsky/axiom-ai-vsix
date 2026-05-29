@@ -133,6 +133,13 @@ export class ScaffoldContextBuilder {
 - **⚠️ 파일 생성 범위 엄수**: 사용자가 명시적으로 요청한 파일(페이지)만 생성할 것. FormPage, DetailPage, StatusPage 등 관련 페이지를 임의로 추가 생성하는 것은 절대 금지. 요청 = 1개 페이지이면 axiom-action의 createFile(page) 블록도 반드시 1개만 출력할 것.
 ${routerImportRule}
 
+## TypeScript 타입 네이밍 컨벤션 (반드시 준수)
+- **일반 타입**: \`type\` 키워드 + \`T\` 접두사 → \`type TUser = { ... }\`, \`type TBenchMember = { ... }\`
+- **인터페이스**: \`interface\` 키워드 + \`I\` 접두사 → \`interface IApiConfig { ... }\`
+- **API 응답/요청 타입**: \`type\` 키워드 + \`T\` 접두사 사용 (interface 사용 금지)
+- **Props 타입**: \`type\` 키워드, 접두사 없음 → \`type UserCardProps = { ... }\`
+- **접두사 없는 interface/type 선언 절대 금지** → \`interface BenchMember\`, \`type BenchMember\` 형식 금지
+
 ## 프로젝트 스택
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
 해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)`;

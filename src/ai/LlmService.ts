@@ -65,6 +65,7 @@ export class LlmService {
   /**
    * OpenAI 호환 /v1/chat/completions SSE 스트리밍.
    * Ollama, vLLM, LocalAI 모두 동일한 스키마를 사용한다.
+   * 네트워크 오류 또는 5xx 응답 시 2초 후 1회 재시도한다.
    */
   async *streamChat(
     messages: ChatMessage[],
@@ -82,29 +83,55 @@ export class LlmService {
     };
     Object.assign(headers, this._buildAuthHeaders(config));
 
+    const requestBody = JSON.stringify({
+      model: config.model,
+      messages,
+      stream: true,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+    });
+
     console.log(`[Axiom AI] → 요청 URL: ${url}`);
     console.log(`[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}`);
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: config.model,
-          messages,
-          stream: true,
-          temperature: config.temperature,
-          max_tokens: config.maxTokens,
-        }),
-        signal,
-      });
-    } catch (fetchErr) {
-      if ((fetchErr as Error).name === 'AbortError') {
-        throw fetchErr;
+    // fetch 1회 시도 — 네트워크 에러 시 null 반환, AbortError는 그대로 throw
+    const attemptFetch = async (): Promise<Response | null> => {
+      try {
+        return await fetch(url, { method: 'POST', headers, body: requestBody, signal });
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') throw err;
+        return null;
       }
-      const reason = (fetchErr as Error).message;
-      console.warn(`[Axiom AI] 네트워크 오류, 폴백 모드: ${reason}`);
+    };
+
+    // signal 중단을 인식하는 delay (abort 시 AbortError throw)
+    const retryDelay = (ms: number): Promise<void> => new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        const err = new Error('Aborted');
+        err.name = 'AbortError';
+        reject(err);
+      }, { once: true });
+    });
+
+    // 첫 번째 시도
+    let response = await attemptFetch();
+
+    // 네트워크 에러 또는 5xx → 2초 후 1회 재시도
+    if (response === null || response.status >= 500) {
+      const firstFailMsg = response === null
+        ? '네트워크 오류'
+        : `서버 오류 ${response.status} ${response.statusText}`;
+      console.warn(`[Axiom AI] ${firstFailMsg} — 2초 후 재시도합니다`);
+      await retryDelay(2000);
+      response = await attemptFetch();
+    }
+
+    // 재시도 후에도 네트워크 에러 → 폴백
+    if (response === null) {
+      const reason = '네트워크 오류 (재시도 후에도 연결 실패)';
+      console.warn(`[Axiom AI] ${reason}, 폴백 모드`);
       onFallback?.(reason);
       yield* this._stub.stream(FallbackStubService.extractUserText(messages));
       return;
@@ -112,8 +139,9 @@ export class LlmService {
 
     console.log(`[Axiom AI] ← 응답 상태: ${response.status} ${response.statusText}`);
 
+    // 재시도 후에도 5xx → 폴백
     if (response.status >= 500) {
-      const reason = `서버 오류 ${response.status} ${response.statusText}`;
+      const reason = `서버 오류 ${response.status} ${response.statusText} (재시도 후에도 실패)`;
       console.warn(`[Axiom AI] ${reason}, 폴백 모드 활성화`);
       onFallback?.(reason);
       yield* this._stub.stream(FallbackStubService.extractUserText(messages));
