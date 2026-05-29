@@ -6,6 +6,15 @@ import { HybridRagEngine } from './HybridRagEngine';
 import { ExternalCorpusLoader } from './ExternalCorpusLoader';
 import type { ExternalCorpus } from './ExternalCorpusLoader';
 import type { EditorContext } from './EditorContextCollector';
+import type { ContextBreakdown } from '../types/messages';
+import { extractRelevantTsSlice } from './CodeSectionExtractor';
+import { tokenizeQuery } from './SectionExtractor';
+
+/** 코드 슬라이싱 적용 대상 언어 ID */
+const SLICEABLE_LANGUAGES = new Set(['typescript', 'typescriptreact', 'javascript', 'javascriptreact']);
+
+/** 슬라이싱 결과 글자 수 상한 — 파일이 이보다 작으면 그대로, 크면 함수 단위 필터링 */
+const FILE_SLICE_BUDGET = 3000;
 
 interface DomainContext {
   domainName: string | null;
@@ -21,11 +30,20 @@ interface DomainContext {
 export class ScaffoldContextBuilder {
   private readonly _engine = new HybridRagEngine();
   private _ragDir: string | null | undefined = undefined; // undefined = 아직 탐색 전
+  /** buildSystemPrompt 가장 최근 호출의 구성 요소별 글자 수 */
+  private _lastBreakdown: ContextBreakdown = {
+    rulesChars: 0, fileChars: 0, ragChars: 0, sddChars: 0, domainChars: 0,
+  };
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly _outputChannel?: vscode.OutputChannel
   ) {}
+
+  /** 가장 최근 buildSystemPrompt 호출의 컨텍스트 구성 요소별 글자 수를 반환한다. */
+  lastBreakdown(): ContextBreakdown {
+    return this._lastBreakdown;
+  }
 
   /**
    * knowledge/ 디렉터리를 확인하고 HybridRagEngine을 초기화한다.
@@ -99,9 +117,34 @@ export class ScaffoldContextBuilder {
       }
     }
 
+    // TS/TSX 등 코드 파일이면 함수 단위로 슬라이싱 — 쿼리와 무관한 함수는 stub으로 대체
+    let sliceNotice = '';
+    if (
+      ctx.available &&
+      ctx.language &&
+      SLICEABLE_LANGUAGES.has(ctx.language) &&
+      fileContent.length > FILE_SLICE_BUDGET
+    ) {
+      const sliced = extractRelevantTsSlice(
+        fileContent,
+        tokenizeQuery(userQuery),
+        FILE_SLICE_BUDGET,
+      );
+      fileContent = sliced.text;
+      if (sliced.skippedCount > 0) {
+        sliceNotice =
+          `\n> ⚠️ 파일이 커서 쿼리와 무관한 ${sliced.skippedCount}개 선언은 \`// ... [kind name] 원본 NN줄 보존 (자리 표시자)\` 형식의 stub 라인으로 대체했습니다.\n` +
+          `> - **stub 라인은 자리 표시자**입니다. 디스크에는 원본 코드가 그대로 있고, 응답에 stub을 그대로 포함하면 서버가 쓰기 직전에 원본으로 복원합니다.\n` +
+          `> - ⚠️ **stub에 적힌 이름(kpiCards, useFoo 등)을 새 코드에서 이미 선언된 변수·hook처럼 참조하지 마세요.** 사용자가 새 API/데이터 소스 추가를 요청했다면 별도의 \`const\` 선언과 \`import\`를 응답에 명시적으로 추가해야 합니다.\n` +
+          `> - 모드 선택은 위의 "출력 모드 선택" 규칙을 따르세요(import 추가·여러 위치 변경이면 full). stub의 존재가 모드 선택을 바꾸지는 않습니다.\n` +
+          `> - full 모드로 응답할 때 stub 라인은 **한 글자도 바꾸지 말고 그대로** 포함하세요.\n`;
+      }
+    }
+
     const fileSection = ctx.available
       ? [
           '\n\n---\n\n## 현재 열린 파일: ' + ctx.filePath,
+          sliceNotice,
           '```' + ctx.language,
           fileContent,
           '```',
@@ -114,6 +157,16 @@ export class ScaffoldContextBuilder {
     const domainCtx = this._getDomainContext(userQuery, ctx.filePath ?? '');
     const domainSection = this._buildDomainSection(domainCtx, userQuery);
 
+    // SDD 컨텍스트는 _handleMessage가 ctx.content에 append하므로 파일 섹션에 포함된다.
+    // 별도 분리가 필요하면 EditorContext에 sddChars를 추가하는 추가 작업이 필요.
+    this._lastBreakdown = {
+      rulesChars: 0, // coreRules는 시나리오 분기 뒤 합산 — _buildScenarioCPrompt / 시나리오 A·B 반환 직전에 갱신
+      fileChars: fileSection.length,
+      ragChars: scaffoldSection.length,
+      sddChars: 0,
+      domainChars: domainSection.length,
+    };
+
     const routerInfo = this._getRouterImportSource();
     const routerImportRule = routerInfo.version
       ? `- **react-router import**: 이 프로젝트는 react-router ${routerInfo.version}을 사용합니다. useParams 등 react-router 관련 훅은 반드시 \`'${routerInfo.source}'\`에서 import 하세요 (예: \`import { useParams } from '${routerInfo.source}';\`)`
@@ -125,6 +178,7 @@ export class ScaffoldContextBuilder {
 - 모든 코드는 아래 scaffold 문서의 패턴을 따라야 합니다
 - createBrowserRouter 사용 금지 → 항상 createHashRouter (createAppRouter() 경유)
 - useQuery/useMutation 직접 사용 금지 → 항상 @axiom/hooks의 useApi 사용
+- **⚠️ React Rules of Hooks 절대 준수**: \`use\`로 시작하는 모든 훅(useApi, useState, useEffect, useMemo, useCallback, useRef, useParams 등)은 반드시 **React 함수 컴포넌트 본문 또는 커스텀 훅(\`use*\`) 함수 본문의 최상위**에서만 호출. 다음 위치에서 호출 절대 금지: ① 모듈 최상위(import 아래·\`export default function\` 위), ② 조건문/반복문/일반 \`if·for·try\` 블록 안, ③ 일반 함수(컴포넌트가 아닌 \`calculateXxx\`, \`formatXxx\` 등 유틸 함수)나 콜백 안, ④ class 컴포넌트 안. 새 \`useApi\` 호출을 추가할 때는 반드시 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 위에 위치시킬 것.
 - 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
 - scaffold의 package.json에 없는 라이브러리 제안 금지
 - 코드 주석은 한국어로 작성
@@ -146,13 +200,19 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 
     // 시나리오 C: 현재 열린 파일 수정 — A/B 예시 없이 C 전용 프롬프트 사용
     if (domainCtx.isCurrentFileContext) {
-      return this._buildScenarioCPrompt(
+      const cPrompt = this._buildScenarioCPrompt(
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
       );
+      // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 합산)
+      this._lastBreakdown.rulesChars = Math.max(
+        0,
+        cPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length,
+      );
+      return cPrompt;
     }
 
     // 시나리오 A / B: 새 파일 생성 흐름
-    return `${coreRules}
+    const abPrompt = `${coreRules}
 
 ## 파일 생성 기능 (DDD 구조)
 이 프로젝트는 DDD(Domain Driven Design) 패턴을 사용하며 업무별 코드는 src/domains/{domain}/ 하위에 위치합니다.
@@ -227,6 +287,11 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 - 올바른 패턴: \`const routes: TAppRoute[] = [...]; export default routes;\`
 
 ${domainSection}${scaffoldSection}${fileSection}`;
+    this._lastBreakdown.rulesChars = Math.max(
+      0,
+      abPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length,
+    );
+    return abPrompt;
   }
 
   /**
@@ -269,6 +334,13 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
 3. 수정 범위에 따라 아래 두 모드 중 하나를 선택하세요
 4. JSON 메타데이터와 코드 블록(또는 search/replace 블록)을 분리하여 작성하세요
+
+### ⚠️ 훅(useApi 등) 삽입 위치 규칙 — 위반 시 런타임 즉시 크래시
+새로운 \`useApi\` / \`useState\` / \`useEffect\` 등 \`use*\` 훅 호출을 추가할 때:
+- **반드시** 기존 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 **위**에 위치시킬 것
+- **절대 금지 위치**: ① 파일 상단 import 아래, ② \`type\` / \`interface\` / 상수 선언 옆, ③ \`calculateXxx\`, \`formatXxx\` 같은 일반 유틸 함수 안, ④ \`if·for·try\` 블록 안
+- 현재 파일에 \`const calculateTenure = ...\` 같은 유틸 const가 함수 컴포넌트 위에 선언되어 있어도, **그 옆에 \`useApi\` 호출을 넣지 마세요** — 함수 컴포넌트 본문 안으로 들어가야 합니다
+- patch 모드 사용 시: \`<search>\`에 컴포넌트 함수 본문 안의 기존 훅 선언 라인을 포함해 그 바로 아래에 새 훅을 삽입하도록 작성
 
 ### 출력 모드 선택
 

@@ -26,7 +26,7 @@ project: react-app-scaffold
 - keywords: [useapi, use-api, 소스, source, 구현, implementation, overload, iuseapiqueryoptions, iuseapimutationoptions, normalizebody, formdata]
   files: [patterns/use-api-source.md]
 - keywords: [useapi, use-api, @axiom/hooks, query, mutation, get, post, put, delete, patch, 조회, 생성, 수정, 삭제, cache, 캐시, invalidate, enabled, 조건부, tanstack, usequery, usemutation, 훅]
-  files: [patterns/use-api.md]
+  files: [patterns/use-api.md, patterns/use-api-example.md]
 - keywords: [architecture, 아키텍처, 구조, 폴더, 레이어, folder, structure, directory, 디렉터리, layer, alias, 앨리어스, @axiom, @/, import, 임포트, stack, 스택, react, typescript, vite, tanstack]
   files: [scaffold/project-structure.md]
 

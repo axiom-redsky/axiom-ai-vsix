@@ -8,11 +8,12 @@ interface Props {
   isWaiting: boolean;
   status?: string;
   onConfirm?: (actionId: string, approved: boolean) => void;
+  onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
 }
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, status, onConfirm }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, onConfirm, onPatchRecovery }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -67,7 +68,7 @@ export function MessageList({ messages, isStreaming, isWaiting, status, onConfir
         </div>
       )}
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} />
+        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} />
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">

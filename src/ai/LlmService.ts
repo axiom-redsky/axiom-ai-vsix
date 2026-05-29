@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import type { ChatMessage, LlmConfig } from './types';
+import type { ChatMessage, LlmConfig, LlmUsage } from './types';
 import { FallbackStubService } from './FallbackStubService';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 
@@ -73,6 +73,7 @@ export class LlmService {
     signal?: AbortSignal,
     onFallback?: (reason: string) => void,
     onServerConnected?: () => void,
+    onUsage?: (usage: LlmUsage) => void,
   ): AsyncGenerator<string> {
     const url = new URL('/v1/chat/completions', config.endpoint).toString();
 
@@ -89,6 +90,9 @@ export class LlmService {
       stream: true,
       temperature: config.temperature,
       max_tokens: config.maxTokens,
+      // OpenAI/vLLM 호환: 스트림 마지막 chunk에 usage를 포함시킨다.
+      // 미지원 서버는 무시하므로 동작에 영향 없음.
+      stream_options: { include_usage: true },
     });
 
     console.log(`[Axiom AI] → 요청 URL: ${url}`);
@@ -176,9 +180,20 @@ export class LlmService {
         if (data === '[DONE]') return;
 
         try {
-          const parsed = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+          const parsed = JSON.parse(data) as {
+            choices?: { delta?: { content?: string } }[];
+            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+          };
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) yield content;
+          // 마지막 chunk에 usage가 들어오는 서버(vLLM, OpenAI 등) 지원
+          if (parsed.usage && onUsage) {
+            onUsage({
+              promptTokens: parsed.usage.prompt_tokens,
+              completionTokens: parsed.usage.completion_tokens,
+              totalTokens: parsed.usage.total_tokens,
+            });
+          }
         } catch {
           // JSON 파싱 실패 시 무시
         }

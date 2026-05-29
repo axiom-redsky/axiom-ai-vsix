@@ -89,9 +89,15 @@
         },
         "axiom-ai.llm.maxTokens": {
           "type": "integer",
-          "default": 4096,
+          "default": 8192,
           "minimum": 256,
           "description": "LLM 최대 출력 토큰 수"
+        },
+        "axiom-ai.llm.contextWindow": {
+          "type": "integer",
+          "default": 32768,
+          "minimum": 2048,
+          "description": "모델의 컨텍스트 윈도우 크기(토큰). 사이트별 모델에 맞춰 조정하세요. 응답에 usage가 포함되면 실측치를 우선합니다."
         },
         "axiom-ai.rag.userRagFolder": {
           "type": "string",

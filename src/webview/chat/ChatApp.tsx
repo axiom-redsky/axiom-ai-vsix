@@ -7,7 +7,7 @@ import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, selectionContext, dismissSelection } = useChat();
+  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, usage } = useChat();
   const [prefillText, setPrefillText] = useState('');
 
   const totalChars = useMemo(
@@ -47,7 +47,6 @@ export function ChatApp(): React.ReactElement {
             className="chat-header__btn"
             onClick={clearHistory}
             title="대화 초기화"
-            disabled={isStreaming}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path
@@ -61,8 +60,15 @@ export function ChatApp(): React.ReactElement {
         </div>
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} onConfirm={sendConfirmation} />
-      <ClearWarningBanner messages={messages} isStreaming={isStreaming} onClear={clearHistory} />
+      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} />
+      <ClearWarningBanner
+        messages={messages}
+        isStreaming={isStreaming}
+        onClear={clearHistory}
+        systemPromptChars={systemPromptChars}
+        contextWindow={contextWindow}
+        usage={usage}
+      />
       <SpecQuickBar onPrefill={handlePrefill} onSend={sendMessage} isStreaming={isStreaming} />
       <InputBar
         onSend={handleSend}
@@ -73,6 +79,10 @@ export function ChatApp(): React.ReactElement {
         selectionContext={selectionContext}
         onDismissSelection={dismissSelection}
         contextTotalChars={totalChars}
+        systemPromptChars={systemPromptChars}
+        contextWindow={contextWindow}
+        usage={usage}
+        breakdown={breakdown}
       />
     </div>
   );

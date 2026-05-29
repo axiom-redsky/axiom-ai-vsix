@@ -22,6 +22,7 @@ export class ExtensionConfig {
       model:       cfg.get<string>('llm.model',       AI_DEFAULTS.model),
       temperature: cfg.get<number>('llm.temperature', AI_DEFAULTS.temperature),
       maxTokens:   cfg.get<number>('llm.maxTokens',   AI_DEFAULTS.maxTokens),
+      contextWindow: cfg.get<number>('llm.contextWindow', AI_DEFAULTS.contextWindow),
     };
   }
 

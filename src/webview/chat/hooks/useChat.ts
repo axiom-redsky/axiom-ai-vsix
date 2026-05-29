@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
-import type { HostToWebviewMessage, DiffLine } from '../../../types/messages';
+import type { HostToWebviewMessage, DiffLine, ContextBreakdown } from '../../../types/messages';
+
+export interface ContextUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  contextWindow: number;
+}
 
 export interface SelectionContext {
   filePath: string;
@@ -15,10 +22,16 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
-  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request';
+  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed';
   diff?: DiffLine[];
   actionId?: string;
   confirmPending?: boolean;
+  /** patch 실패 복구용 — patchFailed 메시지에서 발급된 ID */
+  recoveryId?: string;
+  /** patch 실패 시 LLM이 제시했던 search 코드 앞부분(가독성용) */
+  searchPreview?: string;
+  /** 사용자 선택 대기 중 여부 */
+  recoveryPending?: boolean;
 }
 
 export function useChat() {
@@ -27,6 +40,10 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
+  const [systemPromptChars, setSystemPromptChars] = useState<number>(0);
+  const [breakdown, setBreakdown] = useState<ContextBreakdown | null>(null);
+  const [contextWindow, setContextWindow] = useState<number>(32_768);
+  const [usage, setUsage] = useState<ContextUsage | null>(null);
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -161,6 +178,36 @@ export function useChat() {
             },
           ]);
           break;
+        case 'patchFailed':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              subtype: 'patch-failed',
+              content: msg.filePath,
+              recoveryId: msg.recoveryId,
+              searchPreview: msg.searchPreview,
+              recoveryPending: true,
+            },
+          ]);
+          break;
+        case 'contextInfo':
+          setSystemPromptChars(msg.systemPromptChars);
+          if (msg.breakdown) setBreakdown(msg.breakdown);
+          if (msg.contextWindow) setContextWindow(msg.contextWindow);
+          // 새 턴 시작 시 이전 usage 측정값 초기화 (이번 턴에 새로 받기 전까지 추정치 사용)
+          setUsage(null);
+          break;
+        case 'usage':
+          setUsage({
+            promptTokens: msg.promptTokens,
+            completionTokens: msg.completionTokens,
+            totalTokens: msg.totalTokens,
+            contextWindow: msg.contextWindow,
+          });
+          if (msg.contextWindow) setContextWindow(msg.contextWindow);
+          break;
       }
     };
 
@@ -182,7 +229,14 @@ export function useChat() {
   );
 
   const clearHistory = useCallback(() => {
+    streamingIdRef.current = null;
+    setIsStreaming(false);
+    setIsWaiting(false);
+    setSystemPromptChars(0);
+    setBreakdown(null);
+    setUsage(null);
     setMessages([]);
+    vscode.postMessage({ type: 'stopMessage' });
     vscode.postMessage({ type: 'clearHistory' });
   }, []);
 
@@ -201,7 +255,24 @@ export function useChat() {
     );
   }, []);
 
+  const sendPatchRecovery = useCallback((recoveryId: string, action: 'retry' | 'cancel') => {
+    vscode.postMessage(
+      action === 'retry'
+        ? { type: 'patchRetryFull', recoveryId }
+        : { type: 'patchRetryCancel', recoveryId },
+    );
+    setMessages((prev) =>
+      prev.map((m) => (m.recoveryId === recoveryId ? { ...m, recoveryPending: false } : m)),
+    );
+    if (action === 'retry') setIsWaiting(true);
+  }, []);
+
   const dismissSelection = useCallback(() => setSelectionContext(null), []);
 
-  return { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, selectionContext, dismissSelection };
+  return {
+    messages, status, isStreaming, isWaiting,
+    sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
+    selectionContext, dismissSelection,
+    systemPromptChars, breakdown, contextWindow, usage,
+  };
 }

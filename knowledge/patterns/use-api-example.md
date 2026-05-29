@@ -2,7 +2,7 @@
 title: "useApi 훅 실사용 예제 (ExUseApi.tsx)"
 category: source
 tags: [useApi, 예제, example, get, post, invalidateQueries, refetch, reset, 사용예, 실사용, 코드예제]
-priority: 2
+priority: 1
 language: ko
 scope: source
 related: [patterns/api-call.md, patterns/use-api-source.md]

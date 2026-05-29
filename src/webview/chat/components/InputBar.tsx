@@ -1,16 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { matchSlashCommands } from '../slashCommands';
 import type { SlashCommand } from '../slashCommands';
-import type { SelectionContext } from '../hooks/useChat';
-
-/** 추정 컨텍스트 창 크기 (qwen2.5-coder:14b 기본 배포 기준) */
-const CONTEXT_WINDOW_TOKENS = 32_768;
-/** 시스템 프롬프트 고정 오버헤드 (RAG 문서 + 코어 룰 + 파일 컨텍스트 추정) */
-const SYSTEM_OVERHEAD_TOKENS = 5_000;
+import type { SelectionContext, ContextUsage } from '../hooks/useChat';
+import type { ContextBreakdown } from '../../../types/messages';
 
 function getContextLevel(pct: number): 'ok' | 'warn' | 'danger' {
   if (pct >= 90) return 'danger';
-  if (pct >= 50) return 'warn';
+  if (pct >= 70) return 'warn';
   return 'ok';
 }
 
@@ -23,9 +19,14 @@ interface Props {
   selectionContext?: SelectionContext | null;
   onDismissSelection?: () => void;
   contextTotalChars?: number;
+  systemPromptChars?: number;
+  contextWindow: number;
+  usage?: ContextUsage | null;
+  breakdown?: ContextBreakdown | null;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, selectionContext, onDismissSelection, contextTotalChars }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, usage, breakdown }: Props): React.ReactElement {
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -224,26 +225,96 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
       <div className="input-bar__footer">
         <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈 · /명령어</p>
         {contextTotalChars !== undefined && (() => {
-          const estimatedTokens = SYSTEM_OVERHEAD_TOKENS + Math.round(contextTotalChars / 3);
-          const pct = Math.min(100, Math.round(estimatedTokens / CONTEXT_WINDOW_TOKENS * 100));
+          // 서버 보고 usage가 있으면 실측치 우선, 아니면 문자 수 추정
+          const measuredTokens = usage?.promptTokens ?? usage?.totalTokens;
+          const estimatedTokens = measuredTokens ?? (
+            Math.round((systemPromptChars ?? 0) / 3) + Math.round(contextTotalChars / 3)
+          );
+          const pct = Math.min(100, Math.round((estimatedTokens / contextWindow) * 100));
           const level = getContextLevel(pct);
-          const remaining = Math.max(0, CONTEXT_WINDOW_TOKENS - estimatedTokens);
+          const remaining = Math.max(0, contextWindow - estimatedTokens);
+          const source = measuredTokens !== undefined ? '실측' : '추정';
+          const hasBreakdown = breakdown && (
+            breakdown.rulesChars + breakdown.fileChars + breakdown.ragChars +
+            breakdown.sddChars + breakdown.domainChars
+          ) > 0;
           return (
-            <div className="input-bar__context-meter" title={`추정 ${estimatedTokens.toLocaleString()} / ${CONTEXT_WINDOW_TOKENS.toLocaleString()} 토큰 사용 중`}>
-              <div className="input-bar__context-bar">
-                <div
-                  className="input-bar__context-fill"
-                  data-level={level}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="input-bar__context-label">
-                {pct}% · 잔여 ~{remaining >= 1000 ? `${Math.round(remaining / 1000)}K` : remaining} 토큰
-              </span>
+            <div className="input-bar__context-meter">
+              <button
+                type="button"
+                className="input-bar__context-toggle"
+                onClick={() => setBreakdownOpen((v) => !v)}
+                title={`${source} ${estimatedTokens.toLocaleString()} / ${contextWindow.toLocaleString()} 토큰 사용 중 — 클릭하여 상세 보기`}
+                disabled={!hasBreakdown}
+              >
+                <div className="input-bar__context-bar">
+                  <div
+                    className="input-bar__context-fill"
+                    data-level={level}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="input-bar__context-label">
+                  {pct}% · 잔여 ~{remaining >= 1000 ? `${Math.round(remaining / 1000)}K` : remaining} 토큰
+                  {hasBreakdown && (
+                    <span className="input-bar__context-chevron" aria-hidden="true">
+                      {breakdownOpen ? ' ▾' : ' ▸'}
+                    </span>
+                  )}
+                </span>
+              </button>
+              {breakdownOpen && hasBreakdown && breakdown && (
+                <ContextBreakdownPanel breakdown={breakdown} />
+              )}
             </div>
           );
         })()}
       </div>
+    </div>
+  );
+}
+
+/** 시스템 프롬프트 구성 요소별 비중을 막대로 표시한다. */
+function ContextBreakdownPanel({ breakdown }: { breakdown: ContextBreakdown }): React.ReactElement {
+  const rows: Array<{ label: string; chars: number; color: string }> = [
+    { label: '규칙·가이드', chars: breakdown.rulesChars, color: 'var(--vscode-charts-blue, #4FC1FF)' },
+    { label: '현재 파일', chars: breakdown.fileChars, color: 'var(--vscode-charts-green, #89D185)' },
+    { label: 'RAG 문서', chars: breakdown.ragChars, color: 'var(--vscode-charts-orange, #E8B568)' },
+    { label: 'SDD 스펙', chars: breakdown.sddChars, color: 'var(--vscode-charts-purple, #B180D7)' },
+    { label: '도메인 컨텍스트', chars: breakdown.domainChars, color: 'var(--vscode-charts-yellow, #DDB100)' },
+  ];
+  const total = rows.reduce((sum, r) => sum + r.chars, 0);
+  if (total === 0) {
+    return (
+      <div className="input-bar__context-breakdown" role="region" aria-label="컨텍스트 구성">
+        <p style={{ opacity: 0.7, margin: 0, fontSize: '11px' }}>아직 컨텍스트가 구성되지 않았습니다.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="input-bar__context-breakdown" role="region" aria-label="컨텍스트 구성">
+      {rows.map((row) => {
+        const pct = total > 0 ? Math.round((row.chars / total) * 100) : 0;
+        if (row.chars === 0) return null;
+        return (
+          <div key={row.label} className="input-bar__breakdown-row">
+            <span className="input-bar__breakdown-label">{row.label}</span>
+            <div className="input-bar__breakdown-bar">
+              <div
+                className="input-bar__breakdown-fill"
+                style={{ width: `${pct}%`, background: row.color }}
+              />
+            </div>
+            <span className="input-bar__breakdown-value">
+              {row.chars.toLocaleString()}자 ({pct}%)
+            </span>
+          </div>
+        );
+      })}
+      <p className="input-bar__breakdown-hint">
+        💡 '현재 파일'이 크면 함수 단위 슬라이싱이, 'RAG 문서'가 크면 검색 결과가 차지하는 비중입니다.
+      </p>
     </div>
   );
 }

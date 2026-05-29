@@ -9,6 +9,8 @@ export const AI_DEFAULTS = {
   model: 'qwen2.5-coder:14b',
   temperature: 0.2,
   maxTokens: 8192,
+  /** 모델 컨텍스트 윈도우(토큰). 사이트별로 다른 모델이 들어오므로 설정으로 override 가능. */
+  contextWindow: 32_768,
   /** scaffold 컨벤션·패턴·문서 통합 지식 폴더 (.rag/ + corpus/ 통합) */
   knowledgePath: 'knowledge',
   maxFileLines: 200,

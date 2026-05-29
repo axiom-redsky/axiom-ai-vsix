@@ -5,7 +5,7 @@ import type { HostToWebviewMessage, AxiomSettings } from '../../types/messages';
 type Tab = 'home' | 'settings';
 
 const DEFAULT_SETTINGS: AxiomSettings = {
-  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 4096 },
+  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192 },
   rag: { userRagFolder: '', additionalFiles: [] },
 };
 

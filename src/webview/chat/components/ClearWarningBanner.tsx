@@ -1,21 +1,33 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Message } from '../hooks/useChat';
+import type { Message, ContextUsage } from '../hooks/useChat';
 
 interface Props {
   messages: Message[];
   isStreaming: boolean;
   onClear: () => void;
+  systemPromptChars?: number;
+  contextWindow: number;
+  usage?: ContextUsage | null;
 }
 
 type BannerLevel = 'soft' | 'strong' | null;
 
-function getBannerLevel(messageCount: number, totalChars: number): BannerLevel {
-  if (messageCount >= 80 || totalChars >= 50000) return 'strong';
-  if (messageCount >= 30 || totalChars >= 15000) return 'soft';
+function getBannerLevel(
+  systemPromptChars: number,
+  totalChars: number,
+  contextWindow: number,
+  usage?: ContextUsage | null,
+): BannerLevel {
+  // 서버가 usage를 보고하면 실측치 우선, 아니면 문자 수 추정 (1토큰 ≈ 3자)
+  const measuredTokens = usage?.promptTokens ?? usage?.totalTokens;
+  const estimatedTokens = measuredTokens ?? (Math.round(systemPromptChars / 3) + Math.round(totalChars / 3));
+  const pct = Math.round((estimatedTokens / contextWindow) * 100);
+  if (pct >= 90) return 'strong';
+  if (pct >= 70) return 'soft';
   return null;
 }
 
-export function ClearWarningBanner({ messages, isStreaming, onClear }: Props): React.ReactElement | null {
+export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromptChars = 0, contextWindow, usage }: Props): React.ReactElement | null {
   const [dismissedLevel, setDismissedLevel] = useState<BannerLevel>(null);
 
   const totalChars = useMemo(
@@ -23,7 +35,7 @@ export function ClearWarningBanner({ messages, isStreaming, onClear }: Props): R
     [messages],
   );
 
-  const level = getBannerLevel(messages.length, totalChars);
+  const level = getBannerLevel(systemPromptChars, totalChars, contextWindow, usage);
 
   useEffect(() => {
     if (messages.length === 0) setDismissedLevel(null);

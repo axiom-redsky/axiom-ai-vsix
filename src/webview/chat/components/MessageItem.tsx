@@ -37,6 +37,7 @@ const MARKDOWN_COMPONENTS = { code: CodeBlock } as const;
 interface Props {
   message: Message;
   onConfirm?: (actionId: string, approved: boolean) => void;
+  onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
 }
 
 const ACTION_BLOCK_COMPLETE_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
@@ -63,9 +64,11 @@ function DiffView({ diff }: { diff: DiffLine[] }): React.ReactElement {
 function FileResultCard({
   message,
   onConfirm,
+  onPatchRecovery,
 }: {
   message: Message;
   onConfirm?: (actionId: string, approved: boolean) => void;
+  onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
 }): React.ReactElement {
   const { subtype, content } = message;
 
@@ -163,6 +166,51 @@ function FileResultCard({
     );
   }
 
+  if (subtype === 'patch-failed') {
+    const preview = (message.searchPreview ?? '').trimEnd();
+    return (
+      <div className="file-result file-result--patch-failed">
+        <div className="file-result__header">
+          <span className="file-result__icon">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
+              <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </span>
+          <span className="file-result__label">patch 매칭 실패</span>
+          <span className="file-result__path">{content}</span>
+        </div>
+        <p className="patch-failed__hint">
+          AI가 제시한 search 코드가 현재 파일과 정확히 일치하지 않습니다.
+          전체 파일을 다시 받아 적용할지, 입력을 직접 수정할지 선택하세요.
+        </p>
+        {preview && (
+          <pre className="patch-failed__preview">{preview}</pre>
+        )}
+        {message.recoveryPending ? (
+          <div className="file-confirm-actions">
+            <button
+              className="file-confirm-btn file-confirm-btn--apply"
+              onClick={() => onPatchRecovery?.(message.recoveryId!, 'retry')}
+            >
+              Full로 재시도
+            </button>
+            <button
+              className="file-confirm-btn file-confirm-btn--discard"
+              onClick={() => onPatchRecovery?.(message.recoveryId!, 'cancel')}
+            >
+              입력 수정
+            </button>
+          </div>
+        ) : (
+          <div className="file-confirm-actions file-confirm-actions--resolved">
+            결정 완료
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (subtype === 'file-cancelled') {
     return (
       <div className="file-result file-result--cancelled">
@@ -191,14 +239,14 @@ function FileResultCard({
   );
 }
 
-export function MessageItem({ message, onConfirm }: Props): React.ReactElement {
+export function MessageItem({ message, onConfirm, onPatchRecovery }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
   if (isSystem) {
     return (
       <div className="message message--system">
-        <FileResultCard message={message} onConfirm={onConfirm} />
+        <FileResultCard message={message} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} />
       </div>
     );
   }

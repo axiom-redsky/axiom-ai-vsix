@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { IndexEntry } from './ExternalCorpusLoader';
+import { loadAndScoreSections, type MdSection } from './SectionExtractor';
 
 /**
  * .rag/_index.md 를 파싱해 키워드→파일 매핑을 메모리에 로드한다.
@@ -68,6 +69,22 @@ export class KeywordRetriever {
       }
     }
     return results;
+  }
+
+  /**
+   * matchedFiles()로 얻은 경로들을 섹션 단위로 분할하고 쿼리 점수를 부여해 반환한다.
+   * 파일 전체를 통째로 읽는 readFiles() 와 달리,
+   * 호출자가 토큰 예산에 맞춰 상위 섹션만 선별할 수 있게 한다.
+   */
+  readSections(filePaths: string[], queryTokens: string[]): MdSection[] {
+    const sections: MdSection[] = [];
+    for (const p of filePaths) {
+      const abs = path.isAbsolute(p) ? p : path.join(this._ragDir, p);
+      if (!fs.existsSync(abs)) continue;
+      const label = path.isAbsolute(p) ? path.basename(p) : p;
+      sections.push(...loadAndScoreSections(abs, label, queryTokens));
+    }
+    return sections;
   }
 
   /**

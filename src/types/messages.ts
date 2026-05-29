@@ -66,7 +66,9 @@ export type WebviewToHostMessage =
   | { type: 'saveProjectConfig'; config: ProjectConfig }
   | { type: 'testConnection'; llm: AxiomSettings['llm'] }
   | { type: 'fileConfirmApprove'; actionId: string }
-  | { type: 'fileConfirmReject'; actionId: string };
+  | { type: 'fileConfirmReject'; actionId: string }
+  | { type: 'patchRetryFull'; recoveryId: string }
+  | { type: 'patchRetryCancel'; recoveryId: string };
 
 export interface DiffLine {
   type: 'ctx' | 'add' | 'del' | 'sep';
@@ -86,6 +88,7 @@ export type HostToWebviewMessage =
   | { type: 'fileUpdated'; filePath: string; diff?: DiffLine[] }
   | { type: 'fileError'; message: string }
   | { type: 'fileCancelled' }
+  | { type: 'patchFailed'; recoveryId: string; filePath: string; searchPreview: string }
   | { type: 'fileConfirmRequest'; actionId: string; filePath: string; diff: DiffLine[]; generatedCode: string }
   | { type: 'settingsLoaded'; settings: AxiomSettings }
   | { type: 'ragFileAdded'; filePath: string }
@@ -94,4 +97,15 @@ export type HostToWebviewMessage =
   | { type: 'projectConfigLoaded'; config: ProjectConfig | null }
   | { type: 'projectConfigSaved' }
   | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string }
-  | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string };
+  | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string }
+  | { type: 'contextInfo'; systemPromptChars: number; breakdown?: ContextBreakdown; contextWindow: number }
+  | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number };
+
+/** 시스템 프롬프트 구성 요소별 글자 수. UI 브레이크다운 표시용. */
+export interface ContextBreakdown {
+  rulesChars: number;
+  fileChars: number;
+  ragChars: number;
+  sddChars: number;
+  domainChars: number;
+}

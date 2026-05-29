@@ -474,6 +474,33 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   color: var(--vscode-terminal-ansiYellow, #c8a000);
 }
 
+.file-result--patch-failed {
+  background: rgba(160, 100, 0, 0.10);
+  border-color: rgba(200, 140, 0, 0.40);
+  color: var(--vscode-terminal-ansiYellow, #c8a000);
+  display: flex;
+  flex-direction: column;
+}
+
+.patch-failed__hint {
+  margin: 6px 8px 4px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.patch-failed__preview {
+  margin: 4px 8px 6px 8px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 96px;
+}
+
 .file-confirm-actions {
   display: flex;
   gap: 6px;
@@ -876,15 +903,92 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 
 .input-bar__context-meter {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   padding: 0 2px;
-  opacity: 0.45;
+  opacity: 0.6;
   transition: opacity 0.2s;
 }
 
 .input-bar__context-meter:hover {
+  opacity: 0.95;
+}
+
+.input-bar__context-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.input-bar__context-toggle:hover:not(:disabled) {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.input-bar__context-toggle:disabled {
+  cursor: default;
+}
+
+.input-bar__context-chevron {
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
+.input-bar__context-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px 6px 6px;
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 4px;
+}
+
+.input-bar__breakdown-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 96px;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.input-bar__breakdown-label {
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.input-bar__breakdown-bar {
+  height: 4px;
+  background: rgba(128, 128, 128, 0.18);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.input-bar__breakdown-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.input-bar__breakdown-value {
+  text-align: right;
   opacity: 0.75;
+  white-space: nowrap;
+}
+
+.input-bar__breakdown-hint {
+  margin: 4px 0 0 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(128, 128, 128, 0.15);
+  font-size: 10px;
+  line-height: 1.4;
+  opacity: 0.7;
 }
 
 .input-bar__context-bar {

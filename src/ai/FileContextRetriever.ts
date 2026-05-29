@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { loadAndScoreSections, type MdSection } from './SectionExtractor';
 
 /**
  * 현재 편집 중인 파일의 경로와 내용을 분석해
@@ -57,6 +58,25 @@ export class FileContextRetriever {
       }
     }
     return results;
+  }
+
+  /**
+   * matchedFiles()로 얻은 경로를 섹션 단위로 분할하고 쿼리 점수를 부여해 반환한다.
+   * 호출자가 토큰 예산 기반 선택을 적용할 수 있게 한다.
+   */
+  readSections(relativePaths: string[], queryTokens: string[]): MdSection[] {
+    const sections: MdSection[] = [];
+    for (const rel of relativePaths) {
+      const dirs = [this._ragDir, ...this._extraDirs];
+      for (const dir of dirs) {
+        const abs = path.join(dir, rel);
+        if (fs.existsSync(abs)) {
+          sections.push(...loadAndScoreSections(abs, rel, queryTokens));
+          break;
+        }
+      }
+    }
+    return sections;
   }
 
   /** 파일 경로 패턴으로 관련 문서를 감지한다. */

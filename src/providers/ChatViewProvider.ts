@@ -7,6 +7,7 @@ import { EditorContextCollector } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction } from '../ai/FileCreatorService';
+import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
@@ -48,6 +49,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
   private readonly _pendingConfirmations = new Map<string, { resolve: (approved: boolean) => void }>();
+  /** patch 매칭 실패 후 사용자 선택 대기 — filePath 단위로 보관 */
+  private readonly _pendingPatchRecovery = new Map<string, { filePath: string }>();
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._llm = new LlmService(_extensionUri);
@@ -82,6 +85,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._abortController?.abort();
           for (const [, entry] of this._pendingConfirmations) entry.resolve(false);
           this._pendingConfirmations.clear();
+          this._pendingPatchRecovery.clear();
           break;
         case 'fileConfirmApprove': {
           const entry = this._pendingConfirmations.get(msg.actionId);
@@ -93,6 +97,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (entry) { this._pendingConfirmations.delete(msg.actionId); entry.resolve(false); }
           break;
         }
+        case 'patchRetryFull':
+          await this._handlePatchRetryFull(msg.recoveryId);
+          break;
+        case 'patchRetryCancel':
+          this._pendingPatchRecovery.delete(msg.recoveryId);
+          this._corpusOutputChannel.appendLine(`[Axiom AI] patch 복구 취소됨 [${msg.recoveryId}]`);
+          break;
         case 'clearHistory':
           this._history = [];
           break;
@@ -397,6 +408,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._history = this._history.slice(this._history.length - 20);
     }
 
+    // 누적 글자 수가 일정 한도(28K자 ≈ 9K토큰)를 넘으면 가장 오래된 메시지부터 제거
+    // 시스템 프롬프트는 매 호출 새로 구성되므로 history 한도는 그것을 뺀 잔여 분만 차지하면 된다.
+    const HISTORY_CHAR_BUDGET = 28_000;
+    let total = this._history.reduce((sum, m) => sum + m.content.length, 0);
+    while (total > HISTORY_CHAR_BUDGET && this._history.length > 2) {
+      const removed = this._history.shift();
+      if (removed) total -= removed.content.length;
+    }
+
     const config = ExtensionConfig.getEffectiveLlmConfig();
     this._postStatus('컨텍스트 분석 중…');
 
@@ -406,6 +426,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const editorCtx = this._editorCollector.collect();
 
       // .axiom/ SDD 스펙을 일반 채팅 컨텍스트에도 주입
+      let sddChars = 0;
       const axiomDir = this._resolveAxiomDir();
       if (axiomDir) {
         const currentFile = editorCtx.filePath
@@ -421,12 +442,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             .slice(0, 3)
             .map((e) => e.content)
             .join('\n\n---\n\n');
-          editorCtx.content = (editorCtx.content ?? '') +
-            `\n\n<!-- SDD 스펙 컨텍스트 -->\n${sddSection}`;
+          const sddAppended = `\n\n<!-- SDD 스펙 컨텍스트 -->\n${sddSection}`;
+          editorCtx.content = (editorCtx.content ?? '') + sddAppended;
+          sddChars = sddAppended.length;
         }
       }
 
       const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text);
+      const rawBreakdown = this._scaffoldBuilder.lastBreakdown();
+      // SDD는 fileSection에 append되므로 fileChars에서 분리해 별도 표기
+      const breakdown = {
+        ...rawBreakdown,
+        fileChars: Math.max(0, rawBreakdown.fileChars - sddChars),
+        sddChars,
+      };
+      this._post({
+        type: 'contextInfo',
+        systemPromptChars: systemPrompt.length,
+        breakdown,
+        contextWindow: config.contextWindow,
+      });
       const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
 
       const messages: ChatMessage[] = [
@@ -479,6 +514,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             console.warn(`[Axiom AI] 오프라인 폴백 활성화: ${reason}`);
           },
           () => startElapsedTimer('AI 생성 중…'),
+          (usage) => {
+            this._post({
+              type: 'usage',
+              promptTokens: usage.promptTokens,
+              completionTokens: usage.completionTokens,
+              totalTokens: usage.totalTokens,
+              contextWindow: config.contextWindow,
+            });
+          },
         )) {
           if (firstToken) {
             clearElapsedTimer();
@@ -497,15 +541,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const hasActionBlock = /<axiom-action>[\s\S]*?<\/axiom-action>/.test(fullResponse);
 
       if (!hasActionBlock && isFileCtx) {
-        // axiom-action 누락: 원래 응답을 히스토리에 저장 후 자동 재시도
-        this._corpusOutputChannel.appendLine(
-          `[Axiom AI] ⚠️ 시나리오 C axiom-action 누락, 자동 재시도\n응답 앞부분: ${fullResponse.substring(0, 300)}`,
+        // 1차 시도: 로컬 후처리 — 응답 본문에 코드 블록이 있으면 LLM 재호출 없이 axiom-action으로 래핑
+        const locallyWrapped = this._wrapCodeBlockAsAxiomAction(
+          fullResponse, editorCtx.filePath ?? '',
         );
-        const cleanedFirst = this._stripActionBlock(fullResponse);
+
+        if (locallyWrapped) {
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] axiom-action 누락 → 로컬에서 코드 블록을 래핑하여 처리`,
+          );
+          this._post({
+            type: 'token',
+            content: '\n\n---\n> ℹ️ axiom-action 래핑이 누락되어 응답의 코드 블록을 자동 추출했습니다.\n',
+          });
+          const cleanedFirst = this._compressForHistory(fullResponse);
+          this._history.push({ role: 'assistant', content: cleanedFirst });
+          await this._handleAxiomAction(locallyWrapped);
+          this._post({ type: 'done' });
+          this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
+          return;
+        }
+
+        // 2차 시도: 코드 블록도 없음 → 짧은 보강 요청 (system prompt 재전송 X)
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] ⚠️ 시나리오 C axiom-action·코드 블록 모두 누락, 보강 요청\n응답 앞부분: ${fullResponse.substring(0, 300)}`,
+        );
+        const cleanedFirst = this._compressForHistory(fullResponse);
         this._history.push({ role: 'assistant', content: cleanedFirst });
 
         const retryResult = await this._retryForAxiomAction(
-          systemPrompt, editorCtx.filePath ?? '', config,
+          editorCtx.filePath ?? '', config,
         );
 
         if (retryResult) {
@@ -516,7 +581,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const cleanedResponse = this._stripActionBlock(fullResponse);
+      const cleanedResponse = this._compressForHistory(fullResponse);
       this._history.push({ role: 'assistant', content: cleanedResponse });
 
       await this._handleAxiomAction(fullResponse);
@@ -1319,11 +1384,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
           const patched = this._fileCreator.computePatch(originalContent, action.searchCode, action.replaceCode);
           if (patched === null) {
-            this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ patch 실패: search 코드를 찾을 수 없습니다 (${action.filePath})`);
-            this._post({ type: 'fileError', message: `수정 위치를 파일에서 찾을 수 없습니다. 다시 요청해주세요: ${action.filePath}` });
+            this._reportPatchFailure(action.filePath, action.searchCode);
             break;
           }
           action.generatedCode = patched;
+        }
+
+        // full 모드: 컨텍스트가 sliced되어 LLM이 stub 라인(`// ... (kind name 생략, NN줄)`)을
+        // 그대로 출력했다면, 디스크에 쓰기 전에 원본 섹션 본문으로 복원한다 (코드 손실 방지).
+        if (
+          action.mode !== 'patch' &&
+          originalContent !== undefined &&
+          action.generatedCode
+        ) {
+          const restored = restoreSlicedStubs(action.generatedCode, originalContent);
+          if (restored.restoredCount > 0) {
+            action.generatedCode = restored.text;
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] full 모드 응답의 stub ${restored.restoredCount}개를 원본 코드로 복원 (${action.filePath})`,
+            );
+          }
+          if (restored.unmatched.length > 0) {
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⚠️ 원본에서 찾지 못한 stub: ${restored.unmatched.join(', ')}`,
+            );
+          }
         }
 
         const diff =
@@ -1358,8 +1443,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (originalContent) {
             const patched = this._fileCreator.computePatch(originalContent, action.searchCode, action.replaceCode);
             if (patched === null) {
-              this._corpusOutputChannel.appendLine(`[Axiom AI] ⚠️ patch 실패: search 코드를 찾을 수 없습니다 (${action.filePath})`);
-              this._post({ type: 'fileError', message: `수정 위치를 파일에서 찾을 수 없습니다. 다시 요청해주세요: ${action.filePath}` });
+              this._reportPatchFailure(action.filePath, action.searchCode);
               if (action.templateType !== 'router') break;
             } else {
               action.generatedCode = patched;
@@ -1401,32 +1485,134 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * 시나리오 C 응답에서 axiom-action 블록이 누락된 경우 자동 재시도.
-   * 대화 히스토리에 재시도 요청을 추가하고 LLM에 다시 요청한다.
-   * @returns 재시도 응답 전체 문자열, 실패 시 null
+   * patch 매칭 실패 시 — 자동 full 재시도로 토큰을 또 쓰는 대신
+   * 사용자에게 "Full로 재시도" / "입력 수정" 선택권을 제공한다.
+   * webview의 patchFailed 메시지가 두 버튼을 그려 사용자 응답을 받는다.
+   */
+  private _reportPatchFailure(filePath: string, searchCode: string | undefined): void {
+    const recoveryId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    this._pendingPatchRecovery.set(recoveryId, { filePath });
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] ⚠️ patch 매칭 실패 (${filePath}) — 사용자 선택 대기 [${recoveryId}]`,
+    );
+    const preview = (searchCode ?? '').split('\n').slice(0, 6).join('\n');
+    this._post({
+      type: 'patchFailed',
+      recoveryId,
+      filePath,
+      searchPreview: preview,
+    });
+  }
+
+  /**
+   * 사용자가 "Full로 재시도"를 선택한 경우 호출된다.
+   * system prompt 재전송 없이 누적 히스토리에 짧은 보강 메시지만 추가해 LLM 호출.
+   */
+  private async _handlePatchRetryFull(recoveryId: string): Promise<void> {
+    const entry = this._pendingPatchRecovery.get(recoveryId);
+    if (!entry) return;
+    this._pendingPatchRecovery.delete(recoveryId);
+
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const result = await this._retryForAxiomAction(entry.filePath, config);
+    if (result) {
+      await this._handleAxiomAction(result);
+    }
+    this._post({ type: 'done' });
+    this._postStatus(config.model);
+  }
+
+  /**
+   * assistant 응답을 히스토리에 저장하기 직전 호출.
+   * `<axiom-action>` 제거 + 본문에 남은 큰 코드 펜스(```lang ... ```)를
+   * `[코드 블록 N줄 — 파일에 반영됨]` stub으로 치환해 누적 토큰을 줄인다.
+   *
+   * 작은 인라인 스니펫(8줄 이하)은 설명 맥락 유지를 위해 그대로 둔다.
+   */
+  private _compressForHistory(text: string): string {
+    const withoutAction = this._stripActionBlock(text);
+    return withoutAction.replace(
+      /```([a-zA-Z0-9]*)\n([\s\S]*?)```/g,
+      (_full, lang: string, body: string) => {
+        const lineCount = body.split('\n').length;
+        if (lineCount <= 8) return _full; // 짧은 스니펫은 유지
+        const label = lang ? `${lang} ` : '';
+        return `\`[${label}코드 블록 ${lineCount}줄 — 파일에 반영됨]\``;
+      },
+    );
+  }
+
+  /**
+   * 응답 본문에서 마지막 코드 블록(```tsx / ```ts / ```jsx / ```js)을 찾아
+   * axiom-action(updateFile, full 모드)으로 래핑한다. 코드 블록이 없으면 null.
+   *
+   * "설명만 출력하고 axiom-action 래핑은 깜빡한" 케이스를 LLM 재호출 없이 처리.
+   */
+  private _wrapCodeBlockAsAxiomAction(response: string, filePath: string): string | null {
+    if (!filePath) return null;
+
+    // 모든 ```tsx/ts/jsx/js 코드 블록을 찾는다. 마지막 것이 보통 최종 결과.
+    const codeBlockRegex = /```(?:tsx|ts|jsx|js|typescript|javascript)\n([\s\S]*?)```/g;
+    let lastMatch: RegExpExecArray | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = codeBlockRegex.exec(response)) !== null) {
+      lastMatch = m;
+    }
+    if (!lastMatch) return null;
+
+    const code = lastMatch[1].trimEnd();
+    // 너무 짧은 스니펫은 전체 파일이 아닐 가능성 — 래핑 보류
+    if (code.length < 80) return null;
+
+    const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
+    const meta = JSON.stringify({
+      action: 'updateFile',
+      mode: 'full',
+      templateType: 'page',
+      domain: domain ?? '',
+      filePath,
+    });
+
+    return `<axiom-action>\n${meta}\n\`\`\`tsx\n${code}\n\`\`\`\n</axiom-action>`;
+  }
+
+  /**
+   * 시나리오 C 응답에서 axiom-action·코드 블록 모두 누락된 경우 보강 요청.
+   *
+   * **system prompt를 재전송하지 않는다** — 누적된 히스토리에 짧은 가이드만 덧붙여
+   * 새로운 호출의 토큰 비용을 최소화한다.
+   *
+   * @returns 보강 응답 전체 문자열, 실패 시 null
    */
   private async _retryForAxiomAction(
-    systemPrompt: string,
     filePath: string,
     config: ReturnType<typeof ExtensionConfig.getEffectiveLlmConfig>,
   ): Promise<string | null> {
-    this._post({ type: 'token', content: '\n\n---\n*파일 수정 블록 자동 재시도 중…*\n\n' });
+    this._post({ type: 'token', content: '\n\n---\n> 🔄 **파일 수정 코드 보강 요청…** (설명만 받아서 수정 코드를 별도 요청합니다)\n\n' });
 
     const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
-    const retryMsg = `코드 수정 블록(axiom-action)이 응답에 포함되지 않았습니다.
-위에서 설명한 수정 내용을 아래 형식으로만 출력해주세요 (추가 설명 없이 블록만):
+    // 짧고 명확한 보강 메시지 — 전체 파일 강제 X. patch 가능하면 patch, 아니면 full.
+    const retryMsg = `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
 
+연속된 한 블록만 바뀌면:
 <axiom-action>
-{"action":"updateFile","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+{"action":"updateFile","mode":"patch","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+<search>원본에서 찾을 코드(공백·들여쓰기 포함, 전후 맥락 2~3줄)</search>
+<replace>교체할 새 코드</replace>
+</axiom-action>
+
+import 변경 또는 2곳 이상 수정이면:
+<axiom-action>
+{"action":"updateFile","mode":"full","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
 \`\`\`tsx
-// 기존 코드 전체 + 요청된 변경사항이 반영된 완전한 파일 내용
+// 변경사항이 반영된 전체 파일 내용
 \`\`\`
 </axiom-action>`;
 
     this._history.push({ role: 'user', content: retryMsg });
 
+    // system prompt 재전송 없이 누적 히스토리만으로 호출
     const retryMessages: import('../ai/types').ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
       ...this._history,
     ];
 
@@ -1443,10 +1629,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     mainSignal?.addEventListener('abort', mainAbortHandler, { once: true });
 
     let elapsedSec = 0;
-    this._postStatus(`재시도 중… (0초)`);
+    this._postStatus(`파일 수정 재요청 중… (0초)`);
     const elapsedTimer = setInterval(() => {
       elapsedSec++;
-      this._postStatus(`재시도 중… (${elapsedSec}초)`);
+      this._postStatus(`파일 수정 재요청 중… (${elapsedSec}초)`);
     }, 1000);
 
     let retryResponse = '';
@@ -1481,7 +1667,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       `[Axiom AI] 재시도 결과: axiom-action ${hasBlock ? '포함' : '여전히 누락'}`,
     );
 
-    const cleanedRetry = this._stripActionBlock(retryResponse);
+    const cleanedRetry = this._compressForHistory(retryResponse);
     this._history.push({ role: 'assistant', content: cleanedRetry });
 
     if (!hasBlock) {
@@ -1786,7 +1972,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const cleanedResponse = this._stripActionBlock(fullResponse);
+      const cleanedResponse = this._compressForHistory(fullResponse);
       this._history.push({ role: 'assistant', content: cleanedResponse });
       this._post({ type: 'done' });
       this._postStatus(config.model);

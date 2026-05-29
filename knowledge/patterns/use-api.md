@@ -18,6 +18,46 @@ TanStack Query의 `useQuery` / `useMutation`을 단일 훅으로 통합한 범�
 
 ---
 
+## ⚠️ 호출 위치 규칙 (가장 중요 — React Rules of Hooks)
+
+`useApi`는 **React 함수 컴포넌트 또는 커스텀 훅(`use*`) 함수 본문의 최상위**에서만 호출할 수 있다.
+
+**❌ 절대 금지 — 함수 바깥(모듈 최상위) 호출:**
+```tsx
+// ❌ 이렇게 작성하면 런타임 즉시 크래시 — Rules of Hooks 위반
+const calculateTenure = (hireDate: string) => { /* ... */ };
+
+const { data } = useApi<TUser[]>('/api/users'); // ← 함수 바깥! 금지
+
+export default function MyPage(): React.ReactNode {
+  return <div>...</div>;
+}
+```
+
+**❌ 절대 금지 — 일반 유틸 함수 안 호출:**
+```tsx
+// ❌ 컴포넌트가 아닌 일반 함수 내부 → 금지
+function fetchAndFormat() {
+  const { data } = useApi<TUser[]>('/api/users'); // ← 일반 함수 안! 금지
+  return data;
+}
+```
+
+**✅ 올바른 위치 — 컴포넌트 본문 최상위:**
+```tsx
+export default function MyPage(): React.ReactNode {
+  // ✅ 함수 본문 안, return 위, 다른 훅과 같은 레벨
+  const { data, isPending, error } = useApi<TUser[]>('/api/users');
+
+  if (isPending) return <div>로딩...</div>;
+  return <div>{data?.length}건</div>;
+}
+```
+
+요약: `useApi`를 포함한 모든 `use*` 훅은 반드시 `export default function ComponentName() { ... }` 블록 **안쪽**, `return` 문 위에 작성한다. import 아래·일반 const 옆·유틸 함수 안에 작성하면 React 앱이 즉시 깨진다.
+
+---
+
 ## 타입 자동 결정 규칙
 
 `type` 옵션을 명시하지 않아도 `method` 값으로 자동 결정된다.
@@ -42,53 +82,70 @@ function useApi<TData>(
 
 컴포넌트 마운트 시 **자동 실행**되고, 결과가 TanStack Query 캐시에 저장된다.
 
+> 아래 모든 예제의 `useApi` 호출은 반드시 컴포넌트 함수 본문 안에 위치해야 한다. 코드 한 줄만 발췌해 import 아래나 일반 const 옆에 붙여 넣지 말 것.
+
 ### 기본 GET
 
-```typescript
-const { data, isLoading, error } = useApi<Post[]>('/api/posts');
+```tsx
+export default function PostList(): React.ReactNode {
+  const { data, isLoading, error } = useApi<Post[]>('/api/posts');
+  return <div>{data?.length}건</div>;
+}
 ```
 
 ### GET + query string params
 
-```typescript
-const { data } = useApi<User>('/api/users', {
-  params: { id: 1, status: 'active' },
-});
-// 실제 요청: GET /api/users?id=1&status=active
+```tsx
+export default function UserDetail(): React.ReactNode {
+  // 실제 요청: GET /api/users?id=1&status=active
+  const { data } = useApi<User>('/api/users', {
+    params: { id: 1, status: 'active' },
+  });
+  return <div>{data?.name}</div>;
+}
 ```
 
 ### POST이지만 조회 목적 (type 명시)
 
-```typescript
-const { data } = useApi<SearchResult>('/api/search', {
-  method: 'POST',
-  body: { keyword: 'react' },
-  type: 'query',
-});
+```tsx
+export default function SearchPage(): React.ReactNode {
+  const { data } = useApi<SearchResult>('/api/search', {
+    method: 'POST',
+    body: { keyword: 'react' },
+    type: 'query',
+  });
+  return <div>{data?.total}</div>;
+}
 ```
 
 ### queryOptions 전달 (staleTime, enabled 등)
 
-```typescript
-const { data } = useApi<Config>('/api/config', {
-  queryOptions: {
-    staleTime: 1000 * 60 * 5, // 5분
-    enabled: !!userId,         // 조건부 실행
-  },
-});
+```tsx
+export default function ConfigView({ userId }: { userId?: string }): React.ReactNode {
+  const { data } = useApi<Config>('/api/config', {
+    queryOptions: {
+      staleTime: 1000 * 60 * 5, // 5분
+      enabled: !!userId,         // 조건부 실행 (훅 자체를 조건문으로 감싸면 안 됨)
+    },
+  });
+  return <pre>{JSON.stringify(data)}</pre>;
+}
 ```
 
 ### 반환값 주요 필드
 
-```typescript
-const {
-  data,        // TData | undefined
-  isLoading,   // 최초 로딩
-  isPending,   // 데이터 없는 로딩 상태
-  isFetching,  // 백그라운드 재조회 포함
-  error,       // Error | null
-  refetch,     // 수동 재조회 함수
-} = useApi<Post[]>('/api/posts');
+```tsx
+export default function PostList(): React.ReactNode {
+  const {
+    data,        // TData | undefined
+    isLoading,   // 최초 로딩
+    isPending,   // 데이터 없는 로딩 상태
+    isFetching,  // 백그라운드 재조회 포함
+    error,       // Error | null
+    refetch,     // 수동 재조회 함수
+  } = useApi<Post[]>('/api/posts');
+  return <div>{data?.length}</div>;
+}
 ```
 
 ---
@@ -106,67 +163,88 @@ function useApi<TData, TVariables>(
 
 ### POST 생성
 
-```typescript
-const { mutate, isPending } = useApi<User, CreateUserDto>('/api/users', {
-  method: 'POST',
-});
+```tsx
+export default function UserCreatePage(): React.ReactNode {
+  const { mutate, isPending } = useApi<User, CreateUserDto>('/api/users', {
+    method: 'POST',
+  });
 
-mutate({ name: '홍길동', email: 'hong@example.com' });
+  const handleCreate = () => {
+    mutate({ name: '홍길동', email: 'hong@example.com' });
+  };
+
+  return <button onClick={handleCreate} disabled={isPending}>생성</button>;
+}
 ```
 
 ### PUT 수정
 
-```typescript
-const { mutate } = useApi<User, UpdateUserDto>('/api/users/1', {
-  method: 'PUT',
-});
+```tsx
+export default function UserEditPage(): React.ReactNode {
+  const { mutate } = useApi<User, UpdateUserDto>('/api/users/1', {
+    method: 'PUT',
+  });
+  return <button onClick={() => mutate({ name: '신규' })}>수정</button>;
+}
 ```
 
 ### DELETE + 캐시 무효화
 
-```typescript
-const { mutate, invalidateQueries } = useApi('/api/users/1', {
-  method: 'DELETE',
-});
+```tsx
+export default function UserDeleteButton(): React.ReactNode {
+  const { mutate, invalidateQueries } = useApi('/api/users/1', {
+    method: 'DELETE',
+  });
 
-mutate(
-  {},
-  {
-    onSuccess: async () => {
-      await invalidateQueries('/api/users'); // GET /api/users 캐시 갱신
-    },
-  }
-);
+  const handleDelete = () => {
+    mutate(
+      {},
+      {
+        onSuccess: async () => {
+          await invalidateQueries('/api/users'); // GET /api/users 캐시 갱신
+        },
+      }
+    );
+  };
+
+  return <button onClick={handleDelete}>삭제</button>;
+}
 ```
 
 ### mutationOptions 전달 (onSuccess, onError)
 
-```typescript
-const { mutate } = useApi<User, CreateUserDto>('/api/users', {
-  method: 'POST',
-  mutationOptions: {
-    onSuccess: (data) => {
-      console.log('생성 완료:', data);
+```tsx
+export default function UserCreatePage(): React.ReactNode {
+  const { mutate } = useApi<User, CreateUserDto>('/api/users', {
+    method: 'POST',
+    mutationOptions: {
+      onSuccess: (data) => {
+        console.log('생성 완료:', data);
+      },
+      onError: (error) => {
+        console.error('생성 실패:', error.message);
+      },
     },
-    onError: (error) => {
-      console.error('생성 실패:', error.message);
-    },
-  },
-});
+  });
+  return <button onClick={() => mutate({ name: '신규' })}>생성</button>;
+}
 ```
 
 ### 반환값 주요 필드
 
-```typescript
-const {
-  mutate,            // (variables: TVariables) => void
-  mutateAsync,       // Promise 반환 버전
-  isPending,         // 요청 진행 중
-  data,              // TData | undefined (성공 응답)
-  error,             // Error | null
-  reset,             // 상태 초기화
-  invalidateQueries, // (endpoint: string) => Promise<void>
-} = useApi<User, CreateUserDto>('/api/users', { method: 'POST' });
+```tsx
+export default function UserCreatePage(): React.ReactNode {
+  const {
+    mutate,            // (variables: TVariables) => void
+    mutateAsync,       // Promise 반환 버전
+    isPending,         // 요청 진행 중
+    data,              // TData | undefined (성공 응답)
+    error,             // Error | null
+    reset,             // 상태 초기화
+    invalidateQueries, // (endpoint: string) => Promise<void>
+  } = useApi<User, CreateUserDto>('/api/users', { method: 'POST' });
+  return <div>{isPending ? '전송 중' : '대기'}</div>;
+}
 ```
 
 ---
@@ -175,19 +253,25 @@ const {
 
 mutation 성공 후 다른 query의 캐시를 무효화(재조회 트리거)한다.
 
-```typescript
-const { mutate, invalidateQueries } = useApi<void, { id: number }>('/api/posts', {
-  method: 'DELETE',
-});
+```tsx
+export default function PostDeleteButton(): React.ReactNode {
+  const { mutate, invalidateQueries } = useApi<void, { id: number }>('/api/posts', {
+    method: 'DELETE',
+  });
 
-mutate(
-  { id: 5 },
-  {
-    onSuccess: async () => {
-      await invalidateQueries('/api/posts'); // POST 목록 캐시 무효화
-    },
-  }
-);
+  const handleDelete = () => {
+    mutate(
+      { id: 5 },
+      {
+        onSuccess: async () => {
+          await invalidateQueries('/api/posts'); // POST 목록 캐시 무효화
+        },
+      }
+    );
+  };
+
+  return <button onClick={handleDelete}>삭제</button>;
+}
 ```
 
 `invalidateQueries`는 `@axiom/hooks`의 `useApi`가 반환하는 확장 필드다.
@@ -204,24 +288,33 @@ mutate(
 
 ## 에러 처리
 
-```typescript
-const { error } = useApi<Post[]>('/api/posts');
+```tsx
+export default function PostList(): React.ReactNode {
+  const { data, error } = useApi<Post[]>('/api/posts');
 
-if (error) {
-  // error.message — 서버 응답 메시지 또는 '요청 시간이 초과되었습니다'
-  console.error(error.message);
+  if (error) {
+    // error.message — 서버 응답 메시지 또는 '요청 시간이 초과되었습니다'
+    return <p className="text-red-600">에러: {error.message}</p>;
+  }
+  return <ul>{data?.map((p) => <li key={p.id}>{p.title}</li>)}</ul>;
 }
 ```
 
 mutation 에러:
 
-```typescript
-const { mutate, error } = useApi<User, CreateUserDto>('/api/users', {
-  method: 'POST',
-});
+```tsx
+export default function UserCreatePage(): React.ReactNode {
+  const { mutate, error } = useApi<User, CreateUserDto>('/api/users', {
+    method: 'POST',
+  });
 
-// JSX에서
-{error && <p>에러: {error.message}</p>}
+  return (
+    <>
+      <button onClick={() => mutate({ name: '신규', email: 'a@b.c' })}>생성</button>
+      {error && <p>에러: {error.message}</p>}
+    </>
+  );
+}
 ```
 
 ---
