@@ -51,6 +51,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _pendingConfirmations = new Map<string, { resolve: (approved: boolean) => void }>();
   /** patch 매칭 실패 후 사용자 선택 대기 — filePath 단위로 보관 */
   private readonly _pendingPatchRecovery = new Map<string, { filePath: string }>();
+  /**
+   * 마지막 _handleMessage가 수집한 선택 영역의 라인 범위.
+   * _handleAxiomAction → computeMultiPatch까지 thread하기 위한 캐시.
+   * 새 메시지 처리 시작 시 갱신, 선택 없으면 undefined.
+   */
+  private _lastSelectionLineRange: { startLine: number; endLine: number } | undefined;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._llm = new LlmService(_extensionUri);
@@ -424,6 +430,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const editorCtx = this._editorCollector.collect();
+      this._lastSelectionLineRange = editorCtx.selection
+        ? { startLine: editorCtx.selection.startLine, endLine: editorCtx.selection.endLine }
+        : undefined;
 
       // .axiom/ SDD 스펙을 일반 채팅 컨텍스트에도 주입
       let sddChars = 0;
@@ -563,9 +572,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
 
         // 2차 시도: 코드 블록도 없음 → 짧은 보강 요청 (system prompt 재전송 X)
+        const respLen = fullResponse.length;
+        const isEmpty = respLen === 0;
         this._corpusOutputChannel.appendLine(
-          `[Axiom AI] ⚠️ 시나리오 C axiom-action·코드 블록 모두 누락, 보강 요청\n응답 앞부분: ${fullResponse.substring(0, 300)}`,
+          `[Axiom AI] ⚠️ 시나리오 C axiom-action·코드 블록 모두 누락 (응답 길이=${respLen}자${isEmpty ? ', EMPTY' : ''})\n` +
+          `시스템 프롬프트 ${systemPrompt.length}자, 히스토리 ${this._history.length}개 메시지\n` +
+          `응답 앞부분: ${fullResponse.substring(0, 300)}`,
         );
+        if (isEmpty) {
+          this._post({
+            type: 'token',
+            content:
+              '\n\n> ⚠️ **모델이 빈 응답을 반환했습니다** (content 토큰 0개). ' +
+              '시스템 프롬프트가 너무 길거나 모델이 즉시 EOS를 발사한 경우입니다. ' +
+              '대화 기록 초기화 후 재시도하거나, `axiom-ai.multiPatch.enabled=false` 로 설정해 단일 patch 모드로 폴백해보세요. ' +
+              '자세한 진단은 DevTools 콘솔의 `[Axiom AI] ← 스트림 종료` 로그를 확인하세요.\n',
+          });
+        }
         const cleanedFirst = this._compressForHistory(fullResponse);
         this._history.push({ role: 'assistant', content: cleanedFirst });
 
@@ -1335,10 +1358,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         action.autoWrite = true;
       }
 
-      const searchMatch = blockContent.match(/<search>\n?([\s\S]*?)<\/search>/);
-      const replaceMatch = blockContent.match(/<replace>\n?([\s\S]*?)<\/replace>/);
-      if (searchMatch?.[1] !== undefined) action.searchCode = searchMatch[1].replace(/\n$/, '');
-      if (replaceMatch?.[1] !== undefined) action.replaceCode = replaceMatch[1].replace(/\n$/, '');
+      // 1차: <patch> 래핑된 다중 쌍 파싱
+      const patchBlockMatches = [...blockContent.matchAll(/<patch>\s*([\s\S]*?)\s*<\/patch>/g)];
+      if (patchBlockMatches.length > 0) {
+        const patches: { search: string; replace: string }[] = [];
+        for (const pb of patchBlockMatches) {
+          const inner = pb[1];
+          const s = inner.match(/<search>\n?([\s\S]*?)<\/search>/);
+          const r = inner.match(/<replace>\n?([\s\S]*?)<\/replace>/);
+          if (s?.[1] !== undefined && r?.[1] !== undefined) {
+            patches.push({
+              search: s[1].replace(/\n$/, ''),
+              replace: r[1].replace(/\n$/, ''),
+            });
+          }
+        }
+        if (patches.length > 0) {
+          action.patches = patches;
+        }
+      }
+
+      // 2차: <patch> 래핑이 없으면 bare <search>/<replace> 단일 쌍 (구 포맷 하위 호환)
+      if (!action.patches) {
+        const searchMatch = blockContent.match(/<search>\n?([\s\S]*?)<\/search>/);
+        const replaceMatch = blockContent.match(/<replace>\n?([\s\S]*?)<\/replace>/);
+        if (searchMatch?.[1] !== undefined && replaceMatch?.[1] !== undefined) {
+          action.patches = [{
+            search: searchMatch[1].replace(/\n$/, ''),
+            replace: replaceMatch[1].replace(/\n$/, ''),
+          }];
+        }
+      }
 
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
       if (codeMatch?.[1]) action.generatedCode = codeMatch[1].trimEnd();
@@ -1376,18 +1426,112 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
 
-        // patch 모드: search/replace를 적용해 generatedCode를 미리 계산
-        if (action.mode === 'patch' && action.searchCode !== undefined && action.replaceCode !== undefined) {
+        // patch 모드: 다중 patch를 원본 파일에 동시 적용해 generatedCode를 미리 계산
+        if (action.mode === 'patch' && action.patches && action.patches.length > 0) {
           if (!originalContent) {
             this._post({ type: 'fileError', message: `파일을 읽을 수 없습니다: ${action.filePath}` });
             break;
           }
-          const patched = this._fileCreator.computePatch(originalContent, action.searchCode, action.replaceCode);
-          if (patched === null) {
-            this._reportPatchFailure(action.filePath, action.searchCode);
+          const mp = this._fileCreator.computeMultiPatch(originalContent, action.patches, this._lastSelectionLineRange);
+          if (mp.text === null) {
+            const failureSummary = mp.results
+              .filter((r) => !r.success)
+              .map((r) => `#${r.index + 1}:${r.reason}`)
+              .join(', ');
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⚠️ multi-patch 실패 (${action.filePath}): ${failureSummary}`,
+            );
+            // 진단: 실패한 patch별로 search 내용과 선택 영역 주변 원본을 diff용으로 dump
+            const origLines = originalContent.replace(/\r\n/g, '\n').split('\n');
+            const sel = this._lastSelectionLineRange;
+            for (const r of mp.results.filter((x) => !x.success)) {
+              const p = action.patches?.[r.index];
+              if (!p) continue;
+              this._corpusOutputChannel.appendLine(
+                `\n[Axiom AI] === patch #${r.index + 1} ${r.reason} 진단 ===`,
+              );
+              this._corpusOutputChannel.appendLine(`--- 모델이 출력한 <search> (${p.search.split('\n').length}줄) ---`);
+              p.search.split('\n').forEach((ln, idx) => {
+                this._corpusOutputChannel.appendLine(`SEARCH[${idx + 1}]: ${JSON.stringify(ln)}`);
+              });
+              if (sel) {
+                const from = Math.max(0, sel.startLine - 5);
+                const to = Math.min(origLines.length - 1, sel.endLine + 5);
+                this._corpusOutputChannel.appendLine(
+                  `--- 원본 파일 라인 ${from + 1}~${to + 1} (선택 영역 ${sel.startLine}~${sel.endLine} 주변) ---`,
+                );
+                for (let i = from; i <= to; i++) {
+                  this._corpusOutputChannel.appendLine(`ORIG[${i + 1}]: ${JSON.stringify(origLines[i])}`);
+                }
+              }
+            }
+            const failedSearches = mp.results
+              .filter((r) => !r.success)
+              .map((r) => {
+                const p = action.patches?.[r.index];
+                return p ? `[#${r.index + 1} ${r.reason}]\n${p.search}` : `[#${r.index + 1} ${r.reason}]`;
+              });
+            this._reportPatchFailure(action.filePath, failedSearches);
             break;
           }
-          action.generatedCode = patched;
+          // 선택 영역 가드: 실제로 변경된 라인을 diff로 추출해 검사한다.
+          // patch의 search 범위가 아닌 "실제 변경된 라인"이 기준 — 모델이 search에
+          // 선택 라인을 포함시켜놓고 다른 라인만 변경하는 케이스도 잡는다.
+          // 변경 라인이 (선택 영역 ±1) 밖이고 import 라인이 아니면 거부한다.
+          if (this._lastSelectionLineRange) {
+            const sel = this._lastSelectionLineRange;
+            const PADDING = 1;
+            const diff = computeDiffHunks(originalContent, mp.text);
+            // LCS-diff의 false-positive 필터: del 라인의 trimmed 내용이 result에 그대로
+            // 존재하면 "실제 변경"이 아니라 indent/순서 시프트로 간주 (예: <div> 들여쓰기 변경).
+            const resultTrimmedSet = new Set(
+              mp.text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0),
+            );
+            // 'del' 라인의 oldNo가 "원본에서 변경된 라인"의 번호 (1-based)
+            const violatingLines: Array<{ line: number; content: string }> = [];
+            for (const d of diff) {
+              if (d.type !== 'del' || typeof d.oldNo !== 'number') continue;
+              // import 라인 변경은 면제 (예: 기존 import 옆에 새 import 추가)
+              if (/^[ \t]*import\s/.test(d.content)) continue;
+              // 선택 영역 ±PADDING 안이면 OK
+              if (d.oldNo >= sel.startLine - PADDING && d.oldNo <= sel.endLine + PADDING) continue;
+              // trimmed 내용이 결과에 그대로 존재 → 위치 시프트일 뿐 실제 변경 아님
+              const trimmed = d.content.trim();
+              if (trimmed.length > 0 && resultTrimmedSet.has(trimmed)) continue;
+              violatingLines.push({ line: d.oldNo, content: d.content });
+            }
+
+            if (violatingLines.length > 0) {
+              const lineNums = [...new Set(violatingLines.map((v) => v.line))].sort((a, b) => a - b);
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ❌ 선택 영역 위반 거부 (선택 ${sel.startLine}~${sel.endLine}): ` +
+                `실제 변경 라인 ${lineNums.join(', ')}가 선택 영역 밖`,
+              );
+              violatingLines.slice(0, 5).forEach((v) => {
+                this._corpusOutputChannel.appendLine(
+                  `  - 라인 ${v.line}: ${v.content.trim().slice(0, 100)}`,
+                );
+              });
+              const failedSearches = action.patches.map((p, idx) => {
+                return `[#${idx + 1} selection-mismatch] 모델이 선택 영역(${sel.startLine}~${sel.endLine}) 밖 라인 ${lineNums.join(', ')}을 변경하려 함\n${p.search}`;
+              });
+              this._post({
+                type: 'token',
+                content:
+                  `\n\n> ❌ **선택 영역 위반으로 거부됨**: 사용자가 선택한 라인은 **${sel.startLine}~${sel.endLine}** 인데, ` +
+                  `모델이 제시한 patch는 라인 **${lineNums.join(', ')}** 를 변경하려 했습니다. ` +
+                  `같은 토큰이 다른 위치에도 있어 모델이 잘못된 위치를 선택했습니다. ` +
+                  `**Full로 재시도**를 선택하거나, 라인 번호를 명시해서 다시 요청하세요 (예: "라인 ${sel.startLine}의 \`u.end_date\`만 변경해줘").\n`,
+              });
+              this._reportPatchFailure(action.filePath, failedSearches);
+              break;
+            }
+          }
+
+          action.generatedCode = mp.text;
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] multi-patch 적용 완료 (${action.filePath}, ${action.patches.length}개 블록)`,
+          );
         }
 
         // full 모드: 컨텍스트가 sliced되어 LLM이 stub 라인(`// ... (kind name 생략, NN줄)`)을
@@ -1437,16 +1581,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
       } else {
-        // patch 모드 (router/autoWrite 경우)
-        if (action.action === 'updateFile' && action.mode === 'patch' && action.searchCode !== undefined && action.replaceCode !== undefined) {
+        // patch 모드 (router/autoWrite 경우) — 다중 patch도 동일 경로로 처리
+        if (action.action === 'updateFile' && action.mode === 'patch' && action.patches && action.patches.length > 0) {
           const { originalContent } = await this._fileCreator.readFileContent(action);
           if (originalContent) {
-            const patched = this._fileCreator.computePatch(originalContent, action.searchCode, action.replaceCode);
-            if (patched === null) {
-              this._reportPatchFailure(action.filePath, action.searchCode);
+            const mp = this._fileCreator.computeMultiPatch(originalContent, action.patches, this._lastSelectionLineRange);
+            if (mp.text === null) {
+              const failureSummary = mp.results
+                .filter((r) => !r.success)
+                .map((r) => `#${r.index + 1}:${r.reason}`)
+                .join(', ');
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ⚠️ multi-patch 실패 (${action.filePath}): ${failureSummary}`,
+              );
+              const failedSearches = mp.results
+                .filter((r) => !r.success)
+                .map((r) => {
+                  const p = action.patches?.[r.index];
+                  return p ? `[#${r.index + 1} ${r.reason}]\n${p.search}` : `[#${r.index + 1} ${r.reason}]`;
+                });
+              this._reportPatchFailure(action.filePath, failedSearches);
               if (action.templateType !== 'router') break;
             } else {
-              action.generatedCode = patched;
+              action.generatedCode = mp.text;
             }
           }
         }
@@ -1488,14 +1645,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * patch 매칭 실패 시 — 자동 full 재시도로 토큰을 또 쓰는 대신
    * 사용자에게 "Full로 재시도" / "입력 수정" 선택권을 제공한다.
    * webview의 patchFailed 메시지가 두 버튼을 그려 사용자 응답을 받는다.
+   *
+   * 다중 patch에서는 여러 search가 실패할 수 있으므로 string[]을 받아
+   * 사유 라벨과 함께 미리보기로 합친다.
    */
-  private _reportPatchFailure(filePath: string, searchCode: string | undefined): void {
+  private _reportPatchFailure(filePath: string, failedSearches: string[]): void {
     const recoveryId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     this._pendingPatchRecovery.set(recoveryId, { filePath });
     this._corpusOutputChannel.appendLine(
       `[Axiom AI] ⚠️ patch 매칭 실패 (${filePath}) — 사용자 선택 대기 [${recoveryId}]`,
     );
-    const preview = (searchCode ?? '').split('\n').slice(0, 6).join('\n');
+    const preview = failedSearches
+      .map((s) => s.split('\n').slice(0, 6).join('\n'))
+      .join('\n---\n');
     this._post({
       type: 'patchFailed',
       recoveryId,
@@ -1543,15 +1705,43 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * 응답 본문에서 마지막 코드 블록(```tsx / ```ts / ```jsx / ```js)을 찾아
-   * axiom-action(updateFile, full 모드)으로 래핑한다. 코드 블록이 없으면 null.
-   *
    * "설명만 출력하고 axiom-action 래핑은 깜빡한" 케이스를 LLM 재호출 없이 처리.
+   *
+   * 두 가지 누락 패턴을 감지하여 axiom-action으로 래핑한다:
+   *   1. bare `<patch>...</patch>` 블록 (외곽 `<axiom-action>` 누락) → patch 모드로 래핑
+   *   2. ```tsx/ts/jsx/js 코드 블록 → full 모드로 래핑 (마지막 큰 블록)
+   *
+   * patch 패턴이 먼저 우선 — 다중 patch 시나리오에서 모델이 가장 자주 흘리는 케이스.
    */
   private _wrapCodeBlockAsAxiomAction(response: string, filePath: string): string | null {
     if (!filePath) return null;
 
-    // 모든 ```tsx/ts/jsx/js 코드 블록을 찾는다. 마지막 것이 보통 최종 결과.
+    const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
+
+    // 1차: bare <patch>...</patch> 블록 감지. 외곽 <axiom-action>이 없을 때만.
+    if (!/<axiom-action>/.test(response)) {
+      const patchMatches = [...response.matchAll(/<patch>\s*([\s\S]*?)\s*<\/patch>/g)];
+      if (patchMatches.length > 0) {
+        // 유효한 search/replace 쌍이 있는지 검증 — 어느 하나라도 통과하면 래핑
+        const valid = patchMatches.some((pm) => {
+          const inner = pm[1];
+          return /<search>[\s\S]*?<\/search>/.test(inner) && /<replace>[\s\S]*?<\/replace>/.test(inner);
+        });
+        if (valid) {
+          const meta = JSON.stringify({
+            action: 'updateFile',
+            mode: 'patch',
+            templateType: 'page',
+            domain: domain ?? '',
+            filePath,
+          });
+          const patchBody = patchMatches.map((pm) => `<patch>\n${pm[1]}\n</patch>`).join('\n');
+          return `<axiom-action>\n${meta}\n${patchBody}\n</axiom-action>`;
+        }
+      }
+    }
+
+    // 2차: ```tsx/ts/jsx/js 코드 블록 → full 모드 래핑 (기존 동작)
     const codeBlockRegex = /```(?:tsx|ts|jsx|js|typescript|javascript)\n([\s\S]*?)```/g;
     let lastMatch: RegExpExecArray | null = null;
     let m: RegExpExecArray | null;
@@ -1564,7 +1754,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 너무 짧은 스니펫은 전체 파일이 아닐 가능성 — 래핑 보류
     if (code.length < 80) return null;
 
-    const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
     const meta = JSON.stringify({
       action: 'updateFile',
       mode: 'full',
@@ -1591,14 +1780,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._post({ type: 'token', content: '\n\n---\n> 🔄 **파일 수정 코드 보강 요청…** (설명만 받아서 수정 코드를 별도 요청합니다)\n\n' });
 
     const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
-    // 짧고 명확한 보강 메시지 — 전체 파일 강제 X. patch 가능하면 patch, 아니면 full.
-    const retryMsg = `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
+    const mp = ExtensionConfig.getMultiPatchConfig();
+    // 짧고 명확한 보강 메시지 — 전체 파일 강제 X. patch 가능하면 patch(N쌍), 아니면 full.
+    const retryMsg = mp.enabled
+      ? `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
+
+국소 수정(선택 영역·import 추가 등) — \`<patch>\` 블록을 1~${mp.maxPatches}개 출력:
+<axiom-action>
+{"action":"updateFile","mode":"patch","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+<patch>
+<search>원본에서 찾을 코드(공백·들여쓰기 포함, 전후 맥락 ${mp.minContextLines}줄)</search>
+<replace>교체할 새 코드</replace>
+</patch>
+<!-- 필요하면 <patch> 블록을 추가로 더 출력. 각 <search>는 원본 파일 기준. -->
+</axiom-action>
+
+전체 재작성이 필요하면:
+<axiom-action>
+{"action":"updateFile","mode":"full","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+\`\`\`tsx
+// 변경사항이 반영된 전체 파일 내용
+\`\`\`
+</axiom-action>`
+      : `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
 
 연속된 한 블록만 바뀌면:
 <axiom-action>
 {"action":"updateFile","mode":"patch","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
-<search>원본에서 찾을 코드(공백·들여쓰기 포함, 전후 맥락 2~3줄)</search>
+<patch>
+<search>원본에서 찾을 코드(공백·들여쓰기 포함, 전후 맥락 ${mp.minContextLines}줄)</search>
 <replace>교체할 새 코드</replace>
+</patch>
 </axiom-action>
 
 import 변경 또는 2곳 이상 수정이면:

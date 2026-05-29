@@ -149,6 +149,25 @@
           "type": "string",
           "default": "developer",
           "description": "스펙 승인/감사 로그에 기록할 사용자 이름"
+        },
+        "axiom-ai.multiPatch.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "다중 patch 출력 허용 여부. true이면 한 응답에 <patch> 블록을 N개 받아 부분 수정 N곳을 한 번에 처리합니다. false면 단일 patch + full 모드만 사용합니다."
+        },
+        "axiom-ai.multiPatch.maxPatches": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 16,
+          "description": "한 응답에 허용할 최대 <patch> 블록 수. 모델 역량에 맞춰 조정하세요 (qwen 35B급: 3, 70B급: 6, 클라우드급: 8 이상)."
+        },
+        "axiom-ai.multiPatch.minContextLines": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "<search> 블록 작성 시 LLM에게 안내할 권장 전후 맥락 라인 수. 작을수록 매칭 모호성 증가."
         }
       }
     },

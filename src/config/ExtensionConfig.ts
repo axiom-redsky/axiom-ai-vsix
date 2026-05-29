@@ -9,6 +9,12 @@ export interface RagConfig {
   topK: number;
 }
 
+export interface MultiPatchConfig {
+  enabled: boolean;
+  maxPatches: number;
+  minContextLines: number;
+}
+
 export class ExtensionConfig {
   private static _cfg() {
     return vscode.workspace.getConfiguration('axiom-ai');
@@ -47,6 +53,21 @@ export class ExtensionConfig {
 
   static getRagConfig(): RagConfig {
     return { ...AI_DEFAULTS.rag };
+  }
+
+  /**
+   * 다중 patch 설정. 사이트별 모델 역량에 맞춰 maxPatches를 조정한다.
+   * - qwen3.5-35B급(최저 사양): 3
+   * - 70B급: 6
+   * - 클라우드급: 8 이상
+   */
+  static getMultiPatchConfig(): MultiPatchConfig {
+    const cfg = ExtensionConfig._cfg();
+    return {
+      enabled:         cfg.get<boolean>('multiPatch.enabled',         AI_DEFAULTS.multiPatch.enabled),
+      maxPatches:      cfg.get<number>('multiPatch.maxPatches',       AI_DEFAULTS.multiPatch.maxPatches),
+      minContextLines: cfg.get<number>('multiPatch.minContextLines',  AI_DEFAULTS.multiPatch.minContextLines),
+    };
   }
 
   /** 사용자가 설정한 오프라인 stubs 보강 폴더 */

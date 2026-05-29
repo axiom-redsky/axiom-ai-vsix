@@ -164,39 +164,66 @@ export class LlmService {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    // 진단용 카운터 — 빈 응답이 모델 출력 0인지 파싱 실패인지 구분하기 위함
+    let chunksReceived = 0;
+    let contentChunks = 0;
+    let totalContentChars = 0;
+    let finishReason: string | null = null;
+    let parseErrors = 0;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
-        const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') return;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
 
-        try {
-          const parsed = JSON.parse(data) as {
-            choices?: { delta?: { content?: string } }[];
-            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-          };
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) yield content;
-          // 마지막 chunk에 usage가 들어오는 서버(vLLM, OpenAI 등) 지원
-          if (parsed.usage && onUsage) {
-            onUsage({
-              promptTokens: parsed.usage.prompt_tokens,
-              completionTokens: parsed.usage.completion_tokens,
-              totalTokens: parsed.usage.total_tokens,
-            });
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]') return;
+
+          chunksReceived++;
+          try {
+            const parsed = JSON.parse(data) as {
+              choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
+              usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+            };
+            const choice = parsed.choices?.[0];
+            const content = choice?.delta?.content;
+            if (content) {
+              contentChunks++;
+              totalContentChars += content.length;
+              yield content;
+            }
+            if (choice?.finish_reason) finishReason = choice.finish_reason;
+            // 마지막 chunk에 usage가 들어오는 서버(vLLM, OpenAI 등) 지원
+            if (parsed.usage && onUsage) {
+              onUsage({
+                promptTokens: parsed.usage.prompt_tokens,
+                completionTokens: parsed.usage.completion_tokens,
+                totalTokens: parsed.usage.total_tokens,
+              });
+            }
+          } catch {
+            parseErrors++;
           }
-        } catch {
-          // JSON 파싱 실패 시 무시
         }
+      }
+    } finally {
+      console.log(
+        `[Axiom AI] ← 스트림 종료: chunks=${chunksReceived}, contentChunks=${contentChunks}, ` +
+        `chars=${totalContentChars}, finish_reason=${finishReason ?? 'null'}, parseErrors=${parseErrors}`,
+      );
+      if (totalContentChars === 0) {
+        console.warn(
+          `[Axiom AI] ⚠️ 모델이 content 토큰을 0개 출력. finish_reason=${finishReason ?? 'null'}. ` +
+          `프롬프트가 너무 길거나 모델이 EOS를 즉시 발사한 가능성. /clear 후 더 짧은 요청으로 재시도하거나 axiom-ai.multiPatch.enabled=false 로 폴백.`,
+        );
       }
     }
   }

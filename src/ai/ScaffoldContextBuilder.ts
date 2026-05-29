@@ -129,6 +129,9 @@ export class ScaffoldContextBuilder {
         fileContent,
         tokenizeQuery(userQuery),
         FILE_SLICE_BUDGET,
+        ctx.selection
+          ? { startLine: ctx.selection.startLine, endLine: ctx.selection.endLine }
+          : undefined,
       );
       fileContent = sliced.text;
       if (sliced.skippedCount > 0) {
@@ -141,6 +144,50 @@ export class ScaffoldContextBuilder {
       }
     }
 
+    const selectionSection = ctx.selection
+      ? (() => {
+          // contextWindow에 라인 번호를 부여한다 — 모델이 "라인 349"를 코드 안의 정확한
+          // 위치로 매핑할 수 있게 함. qwen-class 약한 모델은 줄 세기를 못해서 같은 토큰이
+          // 여러 곳에 있을 때 잘못된 위치를 고르기 쉬움.
+          const windowLines = ctx.selection!.contextWindow.split('\n');
+          const startLineNo = ctx.selection!.contextStartLine;
+          const selStart = ctx.selection!.startLine;
+          const selEnd = ctx.selection!.endLine;
+          const maxWidth = String(startLineNo + windowLines.length - 1).length;
+          const numbered = windowLines
+            .map((line, i) => {
+              const lineNo = startLineNo + i;
+              const marker = lineNo >= selStart && lineNo <= selEnd ? ' ← 선택됨' : '';
+              return `${String(lineNo).padStart(maxWidth, ' ')}| ${line}${marker}`;
+            })
+            .join('\n');
+          return [
+            '',
+            `### 🎯 선택 영역 (라인 ${selStart}~${selEnd})`,
+            '선택된 텍스트:',
+            '```',
+            ctx.selection!.text,
+            '```',
+            '',
+            `**선택 영역 주변 코드 (라인 ${ctx.selection!.contextStartLine}~${ctx.selection!.contextEndLine}, ` +
+              '실제 파일 원본 / 각 줄 앞에 라인 번호 부여):**',
+            '```',
+            numbered,
+            '```',
+            '',
+            '⚠️ **수정 범위 규칙 — 위반 시 거부됨**:',
+            `1. 수정 대상은 라인 **${selStart}~${selEnd}** 안의 토큰 정확히 1곳뿐. 같은 변수명/표현식이 다른 라인(예: 위 코드의 다른 \`← 선택됨\` 표시 없는 라인)에 또 있어도 **절대 건드리지 마세요**.`,
+            `2. \`<search>\`/\`<replace>\`는 라인 ${selStart}~${selEnd}만 포함. 양쪽 1줄 정도까지 맥락으로 확장 허용.`,
+            '3. `<search>` 코드는 위 코드 블록에서 그대로 복사하되 **앞의 `NNN| ` 라인 번호 prefix는 절대 포함하지 마세요**. 라인 번호는 위치 파악용일 뿐 실제 파일 내용이 아닙니다.',
+            '4. import 추가는 별도 `<patch>` 블록으로 분리.',
+            '',
+            `**예시**: 위 코드에 \`u.end_date\`가 라인 ${selStart}과 다른 라인 두 곳에 있어도, \`← 선택됨\` 표시가 있는 **라인 ${selStart}만** 변경하세요.`,
+          ].join('\n');
+        })()
+      : ctx.selectedText
+        ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
+        : '';
+
     const fileSection = ctx.available
       ? [
           '\n\n---\n\n## 현재 열린 파일: ' + ctx.filePath,
@@ -148,9 +195,7 @@ export class ScaffoldContextBuilder {
           '```' + ctx.language,
           fileContent,
           '```',
-          ctx.selectedText
-            ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
-            : '',
+          selectionSection,
         ].join('\n')
       : '';
 
@@ -312,6 +357,34 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 
     const templateType = 'page';
 
+    const mp = ExtensionConfig.getMultiPatchConfig();
+
+    const patchModeBlock = mp.enabled
+      ? `**patch 모드** — 국소 변경. \`<patch>\` 블록을 1~${mp.maxPatches}개 출력 가능. 각 \`<search>\`는 **원본 파일 기준**(이전 patch 결과 반영 금지), 라인 범위 **겹침 금지**, 전후 맥락 **${mp.minContextLines}줄 이상** 포함.
+
+<axiom-action>
+{"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<patch>
+<search>
+원본 파일의 정확한 코드 (전후 맥락 ${mp.minContextLines}줄 포함)
+</search>
+<replace>
+교체할 새 코드
+</replace>
+</patch>
+</axiom-action>
+
+여러 위치 수정 시 \`<patch>\` 블록을 N개 나열. import 추가는 별도 \`<patch>\`로 분리.`
+      : `**patch 모드** — 단일 블록 수정. \`<search>\`에 원본 코드 정확히, 전후 맥락 ${mp.minContextLines}줄 포함:
+
+<axiom-action>
+{"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<patch>
+<search>원본 파일의 코드 (정확히 일치)</search>
+<replace>교체할 새 코드</replace>
+</patch>
+</axiom-action>`;
+
     const navigationHint = this._hasNavigationIntent(userQuery)
       ? `
 ### 화면 이동 구현 지침
@@ -344,27 +417,14 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 
 ### 출력 모드 선택
 
-> ⚠️ **모드 선택 핵심 규칙**: 변경이 파일의 **여러 위치**에 걸치면(예: import 추가 + 함수 본문 수정, useRef 선언 추가 + 이벤트 핸들러 수정 등) 반드시 **full 모드**를 사용하세요. patch 모드는 **연속된 한 블록**만 바꿀 때만 사용합니다.
+> ⚠️ **모드 선택 핵심 규칙**:
+> - **patch 모드 (기본·권장)**: 국소 변경(선택 영역 수정, import 추가, 1~여러 위치 수정)은 \`<patch>\` 블록 N개로 표현. import 추가 + 본문 1곳 같은 경우 \`<patch>\` 2개를 한 응답에 출력.
+> - **full 모드**: 파일 절반 이상을 재작성하거나, ${mp.maxPatches}개를 초과하는 위치를 동시에 수정해야 할 때만 사용.
+> - 선택 영역이 위에 제시되어 있으면 patch 모드를 사용하고, 수정은 그 영역과 import 추가에만 한정하세요.
 
-**patch 모드** — 연속된 단일 블록(함수 1개·JSX 1개·스타일 1개)만 수정할 때:
-- import 변경이 없고, 수정 위치가 파일에서 **1곳뿐**인 경우에만 사용
-- \`<search>\` 블록: 원본 파일에서 찾을 코드를 **정확히** 작성 (공백·들여쓰기 포함, 전후 맥락 2~3줄 포함 권장)
-- \`<replace>\` 블록: 교체할 새 코드
+${patchModeBlock}
 
-<axiom-action>
-{"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
-<search>
-원본 파일에서 찾을 코드 블록 (정확히 일치해야 함)
-</search>
-<replace>
-교체할 새 코드 블록
-</replace>
-</axiom-action>
-
-**full 모드** — 아래 중 하나라도 해당하면 반드시 full 모드 사용:
-- import 추가/변경이 필요한 경우 (예: useRef, useCallback 등 새 훅 추가)
-- 수정 위치가 파일의 **2곳 이상**인 경우 (예: 상태 추가 + 핸들러 수정)
-- 전체 재작성이 필요한 경우
+**full 모드** — 전체 파일 재작성이 필요할 때만:
 
 <axiom-action>
 {"action":"updateFile","mode":"full","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}

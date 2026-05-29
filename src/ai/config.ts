@@ -25,4 +25,16 @@ export const AI_DEFAULTS = {
     /** 프롬프트에 삽입할 상위 청크 수 */
     topK: 5,
   },
+  /**
+   * 다중 patch (한 응답에 여러 <patch> 블록) 지원 기본값.
+   * 모델 역량에 따라 사이트별 설정으로 override 한다.
+   */
+  multiPatch: {
+    /** 다중 patch 출력을 허용할지 여부. false면 모델에 단일 patch만 안내한다. */
+    enabled: true,
+    /** 한 응답에 허용할 최대 <patch> 블록 수. qwen-35B 기준 3, 상위 모델은 6~8 권장. */
+    maxPatches: 3,
+    /** <search> 블록 작성 시 권장하는 전후 맥락 라인 수 */
+    minContextLines: 3,
+  },
 } as const;
