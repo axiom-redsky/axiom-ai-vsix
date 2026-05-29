@@ -860,12 +860,60 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   opacity: 0.85;
 }
 
+.input-bar__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 5px;
+}
+
 .input-bar__hint {
   font-size: 10px;
   opacity: 0.35;
-  margin-top: 5px;
   padding: 0 2px;
   text-align: right;
+}
+
+.input-bar__context-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+
+.input-bar__context-meter:hover {
+  opacity: 0.75;
+}
+
+.input-bar__context-bar {
+  flex: 1;
+  height: 2px;
+  background: rgba(128,128,128,0.2);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.input-bar__context-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 0.4s ease, background-color 0.4s ease;
+  background: var(--vscode-charts-green, #4ec9b0);
+}
+
+.input-bar__context-fill[data-level="warn"] {
+  background: var(--vscode-terminal-ansiYellow, #c8a000);
+}
+
+.input-bar__context-fill[data-level="danger"] {
+  background: var(--vscode-terminal-ansiRed, #e05555);
+}
+
+.input-bar__context-label {
+  font-size: 10px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .input-bar__selection-badge {

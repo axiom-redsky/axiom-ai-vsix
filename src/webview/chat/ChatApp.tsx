@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { vscode } from '../vscodeApi';
 import { useChat } from './hooks/useChat';
 import { MessageList } from './components/MessageList';
@@ -9,6 +9,11 @@ import { isExactSlashCommand } from './slashCommands';
 export function ChatApp(): React.ReactElement {
   const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, selectionContext, dismissSelection } = useChat();
   const [prefillText, setPrefillText] = useState('');
+
+  const totalChars = useMemo(
+    () => messages.reduce((sum, m) => sum + m.content.length, 0),
+    [messages],
+  );
 
   const handlePrefill = useCallback((text: string) => {
     setPrefillText(text);
@@ -67,6 +72,7 @@ export function ChatApp(): React.ReactElement {
         onPrefillConsumed={handlePrefillConsumed}
         selectionContext={selectionContext}
         onDismissSelection={dismissSelection}
+        contextTotalChars={totalChars}
       />
     </div>
   );

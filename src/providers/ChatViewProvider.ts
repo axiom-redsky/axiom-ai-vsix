@@ -392,8 +392,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     this._history.push({ role: 'user', content: text });
 
+    // 히스토리가 너무 길면 오래된 메시지 제거 (최신 20개 유지)
+    if (this._history.length > 20) {
+      this._history = this._history.slice(this._history.length - 20);
+    }
+
     const config = ExtensionConfig.getEffectiveLlmConfig();
     this._postStatus('컨텍스트 분석 중…');
+
+    let mainTimedOut = false;
 
     try {
       const editorCtx = this._editorCollector.collect();
@@ -450,12 +457,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       };
 
+      // 메인 요청 타임아웃 (5분) — 히스토리가 길거나 LLM 응답 지연 시 무한 대기 방지
+      const MAIN_TIMEOUT_MS = 300_000;
+      const mainTimeoutAbort = new AbortController();
+      const mainTimeoutId = setTimeout(() => {
+        mainTimedOut = true;
+        mainTimeoutAbort.abort();
+      }, MAIN_TIMEOUT_MS);
+      const mainParentSignal = this._abortController?.signal;
+      const mainAbortRelay = () => mainTimeoutAbort.abort();
+      mainParentSignal?.addEventListener('abort', mainAbortRelay, { once: true });
+
       try {
         let firstToken = true;
         for await (const token of this._llm.streamChat(
           messages,
           config,
-          this._abortController.signal,
+          mainTimeoutAbort.signal,
           (reason) => {
             wasFallback = true;
             console.warn(`[Axiom AI] 오프라인 폴백 활성화: ${reason}`);
@@ -471,6 +489,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._post({ type: 'token', content: token });
         }
       } finally {
+        clearTimeout(mainTimeoutId);
+        mainParentSignal?.removeEventListener('abort', mainAbortRelay);
         clearElapsedTimer();
       }
 
@@ -504,6 +524,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
+        if (mainTimedOut) {
+          this._post({ type: 'token', content: '\n\n> ⚠️ 응답 시간이 초과되었습니다 (5분). 대화 기록을 초기화하거나 더 간단한 요청을 입력해보세요.' });
+        }
         this._post({ type: 'done' });
         this._postStatus(ExtensionConfig.getEffectiveLlmConfig().model);
         return;
@@ -1407,21 +1430,50 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ...this._history,
     ];
 
+    // 재시도 전용 AbortController: 메인 중단 또는 3분 타임아웃 시 중단
+    const retryAbort = new AbortController();
+    const RETRY_TIMEOUT_MS = 180_000;
+    let timedOut = false;
+    const retryTimeoutId = setTimeout(() => {
+      timedOut = true;
+      retryAbort.abort();
+    }, RETRY_TIMEOUT_MS);
+    const mainSignal = this._abortController?.signal;
+    const mainAbortHandler = () => retryAbort.abort();
+    mainSignal?.addEventListener('abort', mainAbortHandler, { once: true });
+
+    let elapsedSec = 0;
+    this._postStatus(`재시도 중… (0초)`);
+    const elapsedTimer = setInterval(() => {
+      elapsedSec++;
+      this._postStatus(`재시도 중… (${elapsedSec}초)`);
+    }, 1000);
+
     let retryResponse = '';
     try {
       for await (const token of this._llm.streamChat(
         retryMessages,
         config,
-        this._abortController?.signal,
+        retryAbort.signal,
       )) {
         retryResponse += token;
-        // 재시도 응답은 전체 파일 코드가 포함되므로 채팅에 스트리밍하지 않는다
+        this._post({ type: 'token', content: token });
       }
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
+      if (timedOut) {
+        this._corpusOutputChannel.appendLine(`[Axiom AI] 재시도 타임아웃 (${RETRY_TIMEOUT_MS / 1000}초 초과)`);
+        this._post({
+          type: 'token',
+          content: `\n\n> ⚠️ 재시도 응답 시간이 초과되었습니다 (${RETRY_TIMEOUT_MS / 1000}초). 파일이 너무 크거나 모델이 느립니다. \`/spec update\` 명령을 사용해보세요.`,
+        });
+      } else if ((err as Error).name !== 'AbortError') {
         this._corpusOutputChannel.appendLine(`[Axiom AI] 재시도 스트림 오류: ${(err as Error).message}`);
       }
       return null;
+    } finally {
+      clearTimeout(retryTimeoutId);
+      mainSignal?.removeEventListener('abort', mainAbortHandler);
+      clearInterval(elapsedTimer);
     }
 
     const hasBlock = retryResponse.includes('<axiom-action>');

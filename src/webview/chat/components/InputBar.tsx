@@ -3,6 +3,17 @@ import { matchSlashCommands } from '../slashCommands';
 import type { SlashCommand } from '../slashCommands';
 import type { SelectionContext } from '../hooks/useChat';
 
+/** 추정 컨텍스트 창 크기 (qwen2.5-coder:14b 기본 배포 기준) */
+const CONTEXT_WINDOW_TOKENS = 32_768;
+/** 시스템 프롬프트 고정 오버헤드 (RAG 문서 + 코어 룰 + 파일 컨텍스트 추정) */
+const SYSTEM_OVERHEAD_TOKENS = 5_000;
+
+function getContextLevel(pct: number): 'ok' | 'warn' | 'danger' {
+  if (pct >= 90) return 'danger';
+  if (pct >= 50) return 'warn';
+  return 'ok';
+}
+
 interface Props {
   onSend: (text: string) => void;
   onStop: () => void;
@@ -11,9 +22,10 @@ interface Props {
   onPrefillConsumed?: () => void;
   selectionContext?: SelectionContext | null;
   onDismissSelection?: () => void;
+  contextTotalChars?: number;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, selectionContext, onDismissSelection }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, selectionContext, onDismissSelection, contextTotalChars }: Props): React.ReactElement {
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -209,7 +221,29 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
           )}
         </div>
       </div>
-      <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈 · /명령어</p>
+      <div className="input-bar__footer">
+        <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈 · /명령어</p>
+        {contextTotalChars !== undefined && (() => {
+          const estimatedTokens = SYSTEM_OVERHEAD_TOKENS + Math.round(contextTotalChars / 3);
+          const pct = Math.min(100, Math.round(estimatedTokens / CONTEXT_WINDOW_TOKENS * 100));
+          const level = getContextLevel(pct);
+          const remaining = Math.max(0, CONTEXT_WINDOW_TOKENS - estimatedTokens);
+          return (
+            <div className="input-bar__context-meter" title={`추정 ${estimatedTokens.toLocaleString()} / ${CONTEXT_WINDOW_TOKENS.toLocaleString()} 토큰 사용 중`}>
+              <div className="input-bar__context-bar">
+                <div
+                  className="input-bar__context-fill"
+                  data-level={level}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="input-bar__context-label">
+                {pct}% · 잔여 ~{remaining >= 1000 ? `${Math.round(remaining / 1000)}K` : remaining} 토큰
+              </span>
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }

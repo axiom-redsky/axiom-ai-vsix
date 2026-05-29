@@ -326,7 +326,7 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     let domainName = this._extractDomainFromQuery(userQuery);
     let isCurrentFileContext = false;
 
-    // 쿼리에서 도메인을 못 찾으면 현재 열린 파일 경로에서 추출 → Scenario C
+    // 쿼리에서 도메인을 못 찾은 경우에만 현재 열린 파일 경로에서 추출 → Scenario C
     if (!domainName && currentFilePath) {
       domainName = this._extractDomainFromFilePath(currentFilePath);
       if (domainName) {
