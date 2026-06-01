@@ -101,14 +101,16 @@ export class HybridRagEngine {
   async buildContext(
     userQuery: string,
     filePath: string,
-    fileContent: string
+    fileContent: string,
+    budgetOverride?: number
   ): Promise<RagContext> {
     const methods: RagContext['methods'] = [];
     const queryTokens = tokenizeQuery(userQuery);
 
     // 예산 상한과 관련도 하한은 config 단일 소스에서 읽는다(사이트별 override 가능).
+    // budgetOverride가 주어지면 적응형 예산(ScaffoldContextBuilder)으로 계산된 값을 우선한다.
     const ragCfg = ExtensionConfig.getRagConfig();
-    const budget = ragCfg.charBudget;
+    const budget = budgetOverride ?? ragCfg.charBudget;
 
     // Method 1: 키워드 라우팅 → 섹션 단위로 분할 + 점수
     const kwFiles = this._keywordRetriever.matchedFiles(userQuery);

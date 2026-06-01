@@ -160,6 +160,41 @@
           "default": "developer",
           "description": "스펙 승인/감사 로그에 기록할 사용자 이름"
         },
+        "axiom-ai.debug.logSystemPrompt": {
+          "type": "boolean",
+          "default": false,
+          "description": "AI 서버로 전송하는 시스템 프롬프트(규칙·가이드 + RAG 문서 + 현재 파일) 전문을 'axiom-ai: Prompt' 출력 채널에 기록합니다. 보낸 내용을 직접 확인할 때 켜세요(평소에는 끄는 것을 권장)."
+        },
+        "axiom-ai.promptDiet.qnaGating": {
+          "type": "boolean",
+          "default": true,
+          "description": "조회·설명형(Q&A) 질문에서는 파일 생성·편집 지시문(출력 모드 설명 등)을 생략하고 핵심 규칙만 주입해 프롬프트를 경량화합니다. false면 종전처럼 파일이 열려 있으면 항상 편집 지시문을 주입합니다."
+        },
+        "axiom-ai.promptDiet.adaptiveBudget.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "규칙·가이드 + 현재 파일이 이미 클 때 RAG 문서 상한(charBudget)을 남은 컨텍스트에 비례해 동적으로 줄여 전체 프롬프트가 무한정 커지지 않게 합니다. false면 항상 고정 charBudget을 사용합니다."
+        },
+        "axiom-ai.promptDiet.adaptiveBudget.floorChars": {
+          "type": "integer",
+          "default": 1800,
+          "minimum": 0,
+          "description": "적응형 예산에서 RAG에 최소한 보장하는 글자 수. 이 아래로는 줄이지 않습니다."
+        },
+        "axiom-ai.promptDiet.adaptiveBudget.targetRatio": {
+          "type": "number",
+          "default": 0.45,
+          "minimum": 0.1,
+          "maximum": 1,
+          "description": "전체 프롬프트 목표 상한 비율. 목표 글자 수 = contextWindow(토큰) × charsPerToken × 이 값. 이 상한에서 규칙·파일·도메인을 뺀 만큼만 RAG에 할당합니다."
+        },
+        "axiom-ai.promptDiet.adaptiveBudget.charsPerToken": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 6,
+          "description": "토큰당 대략 글자 수(혼합 한/영 보수적 추정). 적응형 예산의 전체 상한 환산에만 사용합니다."
+        },
         "axiom-ai.multiPatch.enabled": {
           "type": "boolean",
           "default": true,

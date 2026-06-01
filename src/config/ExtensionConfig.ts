@@ -14,6 +14,16 @@ export interface RagConfig {
   minEmbedScore: number;
 }
 
+export interface PromptDietConfig {
+  qnaGating: boolean;
+  adaptiveBudget: {
+    enabled: boolean;
+    floorChars: number;
+    targetRatio: number;
+    charsPerToken: number;
+  };
+}
+
 export interface MultiPatchConfig {
   enabled: boolean;
   maxPatches: number;
@@ -69,6 +79,23 @@ export class ExtensionConfig {
   }
 
   /**
+   * 프롬프트 다이어트 설정. 품질 저하가 감지되면 사이트별로 qnaGating / adaptiveBudget을 끈다.
+   */
+  static getPromptDietConfig(): PromptDietConfig {
+    const cfg = ExtensionConfig._cfg();
+    const ab = AI_DEFAULTS.promptDiet.adaptiveBudget;
+    return {
+      qnaGating: cfg.get<boolean>('promptDiet.qnaGating', AI_DEFAULTS.promptDiet.qnaGating),
+      adaptiveBudget: {
+        enabled:       cfg.get<boolean>('promptDiet.adaptiveBudget.enabled',       ab.enabled),
+        floorChars:    cfg.get<number>('promptDiet.adaptiveBudget.floorChars',     ab.floorChars),
+        targetRatio:   cfg.get<number>('promptDiet.adaptiveBudget.targetRatio',    ab.targetRatio),
+        charsPerToken: cfg.get<number>('promptDiet.adaptiveBudget.charsPerToken',  ab.charsPerToken),
+      },
+    };
+  }
+
+  /**
    * 다중 patch 설정. 사이트별 모델 역량에 맞춰 maxPatches를 조정한다.
    * - qwen3.5-35B급(최저 사양): 3
    * - 70B급: 6
@@ -95,6 +122,11 @@ export class ExtensionConfig {
       requireAnchor:      cfg.get<boolean>('lineEdit.requireAnchor',      AI_DEFAULTS.lineEdit.requireAnchor),
       anchorSearchRadius: cfg.get<number>('lineEdit.anchorSearchRadius',  AI_DEFAULTS.lineEdit.anchorSearchRadius),
     };
+  }
+
+  /** 시스템 프롬프트 전문을 'axiom-ai: Prompt' 출력 채널에 기록할지 여부(디버그). */
+  static isLogSystemPromptEnabled(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('debug.logSystemPrompt', AI_DEFAULTS.debug.logSystemPrompt);
   }
 
   /** 사용자가 설정한 오프라인 stubs 보강 폴더 */

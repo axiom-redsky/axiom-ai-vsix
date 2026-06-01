@@ -49,6 +49,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
+  /** 디버그: AI로 전송하는 시스템 프롬프트 전문을 기록하는 전용 채널 (lazy 생성) */
+  private _promptOutputChannel: vscode.OutputChannel | undefined;
   private readonly _pendingConfirmations = new Map<string, { resolve: (approved: boolean) => void }>();
   /**
    * patch 매칭 실패·React 규칙 위반 후 사용자 선택 대기 — recoveryId 단위로 보관.
@@ -68,6 +70,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._editorCollector = new EditorContextCollector(ExtensionConfig.getMaxFileLines());
     this._corpusOutputChannel = vscode.window.createOutputChannel('axiom-ai: Corpus');
     this._scaffoldBuilder = new ScaffoldContextBuilder(_extensionUri, this._corpusOutputChannel);
+  }
+
+  /**
+   * 디버그 플래그(axiom-ai.debug.logSystemPrompt)가 켜져 있으면, AI 서버로 전송하는
+   * 시스템 프롬프트(규칙·가이드 + RAG + 현재 파일) 전문을 'axiom-ai: Prompt' 채널에 기록한다.
+   * 채널은 처음 필요할 때만 생성한다.
+   */
+  private _logSystemPrompt(
+    query: string,
+    systemPrompt: string,
+    breakdown?: { rulesChars: number; fileChars: number; ragChars: number; sddChars: number; domainChars: number },
+  ): void {
+    if (!ExtensionConfig.isLogSystemPromptEnabled()) return;
+    if (!this._promptOutputChannel) {
+      this._promptOutputChannel = vscode.window.createOutputChannel('axiom-ai: Prompt');
+    }
+    const ch = this._promptOutputChannel;
+    const ts = new Date().toLocaleTimeString();
+    ch.appendLine('═'.repeat(80));
+    ch.appendLine(`[${ts}] 질문: ${query}`);
+    if (breakdown) {
+      ch.appendLine(
+        `구성(자): 규칙·가이드 ${breakdown.rulesChars} / 현재파일 ${breakdown.fileChars} / RAG ${breakdown.ragChars} / SDD ${breakdown.sddChars} / 도메인 ${breakdown.domainChars} · 전체 ${systemPrompt.length}`,
+      );
+    } else {
+      ch.appendLine(`전체 ${systemPrompt.length}자`);
+    }
+    ch.appendLine('─'.repeat(80));
+    ch.appendLine(systemPrompt);
+    ch.appendLine('');
+    ch.show(true);
   }
 
   resolveWebviewView(
@@ -595,6 +628,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         breakdown,
         contextWindow: config.contextWindow,
       });
+      this._logSystemPrompt(text, systemPrompt, breakdown);
       const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         ...this._history,
@@ -2632,6 +2666,11 @@ import 변경 또는 2곳 이상 수정이면:
       const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(
         editorCtx,
         `${domain} 도메인에 ${pageName} 페이지를 만들어줘`,
+      );
+      this._logSystemPrompt(
+        `${domain} 도메인에 ${pageName} 페이지를 만들어줘`,
+        systemPrompt,
+        this._scaffoldBuilder.lastBreakdown(),
       );
 
       const userMessage = `${domain} 도메인에 ${pageName} 페이지를 react-app-scaffold 컨벤션에 맞게 만들어줘. 컴포넌트 함수명은 반드시 ${pageName}으로 작성해줘. axiom-action 블록을 포함해줘.`;

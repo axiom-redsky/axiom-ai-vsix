@@ -10,6 +10,7 @@ import type { ContextBreakdown } from '../types/messages';
 import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
 import { scanLibraryVersions } from './PackageVersionScanner';
+import { PageCreationDetector } from './PageCreationDetector';
 
 /** 코드 슬라이싱 적용 대상 언어 ID */
 const SLICEABLE_LANGUAGES = new Set(['typescript', 'typescriptreact', 'javascript', 'javascriptreact']);
@@ -90,8 +91,120 @@ export class ScaffoldContextBuilder {
     return patterns.some((p) => q.includes(p));
   }
 
+  /**
+   * 파일 생성/수정 의도가 명시적으로 드러나는지 판단한다(보수적: 동사·생성 패턴 기반).
+   * 하나라도 걸리면 Q&A 게이팅을 적용하지 않고 기존 시나리오 지시문을 그대로 주입한다.
+   */
+  private _isExplicitEditOrCreate(query: string): boolean {
+    if (new PageCreationDetector().detect(query).isPageCreation) return true;
+    const q = query.toLowerCase();
+    const editVerbs = [
+      '만들', '생성', '추가', '수정', '고쳐', '바꿔', '변경', '구현', '작성',
+      '리팩', '삭제', '제거', '연동', '연결', '적용', '넣어', '붙여', '교체', '업데이트',
+      '옮겨', '이동시', '바인딩', 'refactor', 'implement', 'create', 'make',
+      'fix', 'change', 'update', 'remove', 'delete', 'rename',
+    ];
+    return editVerbs.some((v) => q.includes(v));
+  }
+
+  /**
+   * 조회·설명형(Q&A) 질문인지 판단한다. 코드를 보여달라거나 개념·사용법을 묻는 질문.
+   * 게이팅은 _isExplicitEditOrCreate가 false일 때만 적용되므로 여기서는 신호만 본다.
+   */
+  private _isQnAQuery(query: string): boolean {
+    const q = query.toLowerCase();
+    const signals = [
+      '보여줘', '보여 줘', '보여줄', '보여주', '알려줘', '알려 줘', '알려주',
+      '설명', '뭐야', '뭔가', '무엇', '머야', '차이', '어떻게', '어떤', '왜',
+      '예시', 'example', '사용법', '쓰는 법', '쓰는법', '하는 법', '하는법', '방법',
+      '이란', '란?', '문서', '정의', '리스트', '목록 보여', '가능해', '가능한가',
+      '있어?', '있나',
+    ];
+    if (signals.some((s) => q.includes(s))) return true;
+    return q.trim().endsWith('?');
+  }
+
+  /**
+   * 고정 스캐폴딩(규칙·가이드 + 현재 파일)의 보수적 추정 글자 수.
+   * 적응형 예산 계산의 상수로만 쓰인다(정밀 측정 아님 — 소형 윈도우 보호용 안전 마진).
+   */
+  private static readonly ESTIMATED_RULES_CHARS = 6000;
+
+  /**
+   * 적응형 RAG 예산을 계산한다. 비활성이면 undefined를 반환해 엔진이 고정 charBudget을 쓰게 한다.
+   *
+   * 목표 전체 글자 수 = contextWindow(토큰) × charsPerToken × targetRatio.
+   * 여기서 규칙·가이드 추정 + 현재 파일 추정을 뺀 만큼만 RAG에 할당하되,
+   * floorChars ~ charBudget 범위로 clamp 한다. 윈도우가 넉넉하면 charBudget 그대로(no-op).
+   */
+  private _computeRagBudget(
+    diet: ReturnType<typeof ExtensionConfig.getPromptDietConfig>,
+    ctx: EditorContext,
+  ): number | undefined {
+    const ab = diet.adaptiveBudget;
+    if (!ab.enabled) return undefined;
+
+    const charBudget = ExtensionConfig.getRagConfig().charBudget;
+    const contextWindow = ExtensionConfig.getLlmConfig().contextWindow;
+    const targetChars = contextWindow * ab.charsPerToken * ab.targetRatio;
+
+    const estFileChars = Math.min(ctx.content?.length ?? 0, FILE_SLICE_BUDGET);
+    const estFixed = ScaffoldContextBuilder.ESTIMATED_RULES_CHARS + estFileChars;
+
+    const available = Math.floor(targetChars - estFixed);
+    return Math.max(ab.floorChars, Math.min(charBudget, available));
+  }
+
+  /**
+   * 코어 규칙 문자열을 조립한다.
+   * - 가드레일(라우터·useApi·Rules of Hooks·import 경로·타입 네이밍·스택)은 항상 포함.
+   * - 상황별 가이드(화면 이동 패턴, 파일 생성 범위)는 opts로 게이팅한다.
+   * A/B/C 시나리오 경로는 opts 둘 다 true로 호출해 종전 동작과 바이트 단위로 동일하다.
+   */
+  private _buildCoreRules(opts: { includeNavigation: boolean; includeFileScope: boolean }): string {
+    const routerInfo = this._getRouterImportSource();
+    const routerImportRule = routerInfo.version
+      ? `- **react-router import**: 이 프로젝트는 react-router ${routerInfo.version}을 사용합니다. useParams 등 react-router 관련 훅은 반드시 \`'${routerInfo.source}'\`에서 import 하세요 (예: \`import { useParams } from '${routerInfo.source}';\`)`
+      : `- **react-router import**: useParams 등 react-router 관련 훅은 \`'${routerInfo.source}'\`에서 import 하세요`;
+
+    const navRules = opts.includeNavigation
+      ? `\n- **화면 이동 금지 패턴**: useNavigate(), useHistory() 등 react-router 훅 사용 금지\n- **화면 이동 올바른 패턴**: 전역 $router 객체 사용 (import 불필요) — $router.push('/path'), $router.replace('/path'), $router.back()`
+      : '';
+    const fileScopeRule = opts.includeFileScope
+      ? `\n- **⚠️ 파일 생성 범위 엄수**: 사용자가 명시적으로 요청한 파일(페이지)만 생성할 것. FormPage, DetailPage, StatusPage 등 관련 페이지를 임의로 추가 생성하는 것은 절대 금지. 요청 = 1개 페이지이면 axiom-action의 createFile(page) 블록도 반드시 1개만 출력할 것.`
+      : '';
+
+    return `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
+
+## 핵심 규칙
+- 모든 코드는 아래 scaffold 문서의 패턴을 따라야 합니다
+- createBrowserRouter 사용 금지 → 항상 createHashRouter (createAppRouter() 경유)
+- useQuery/useMutation 직접 사용 금지 → 항상 @axiom/hooks의 useApi 사용
+- **⚠️ React Rules of Hooks 절대 준수**: \`use\`로 시작하는 모든 훅(useApi, useState, useEffect, useMemo, useCallback, useRef, useParams 등)은 반드시 **React 함수 컴포넌트 본문 또는 커스텀 훅(\`use*\`) 함수 본문의 최상위**에서만 호출. 다음 위치에서 호출 절대 금지: ① 모듈 최상위(import 아래·\`export default function\` 위), ② 조건문/반복문/일반 \`if·for·try\` 블록 안, ③ 일반 함수(컴포넌트가 아닌 \`calculateXxx\`, \`formatXxx\` 등 유틸 함수)나 콜백 안, ④ class 컴포넌트 안. 새 \`useApi\` 호출을 추가할 때는 반드시 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 위에 위치시킬 것.
+- 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
+- scaffold의 package.json에 없는 라이브러리 제안 금지
+- 코드 주석은 한국어로 작성${navRules}${fileScopeRule}
+${routerImportRule}
+
+## TypeScript 타입 네이밍 컨벤션 (반드시 준수)
+- **일반 타입**: \`type\` 키워드 + \`T\` 접두사 → \`type TUser = { ... }\`, \`type TBenchMember = { ... }\`
+- **인터페이스**: \`interface\` 키워드 + \`I\` 접두사 → \`interface IApiConfig { ... }\`
+- **API 응답/요청 타입**: \`type\` 키워드 + \`T\` 접두사 사용 (interface 사용 금지)
+- **Props 타입**: \`type\` 키워드, 접두사 없음 → \`type UserCardProps = { ... }\`
+- **접두사 없는 interface/type 선언 절대 금지** → \`interface BenchMember\`, \`type BenchMember\` 형식 금지
+
+## 프로젝트 스택
+React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
+해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)${this._libraryVersions ? `\n\n## 설치된 라이브러리 버전\n${this._libraryVersions}` : ''}`;
+  }
+
   async buildSystemPrompt(ctx: EditorContext, userQuery: string): Promise<string> {
     const ragDir = this._getRagDir();
+    const diet = ExtensionConfig.getPromptDietConfig();
+
+    // 적응형 RAG 예산: 규칙·가이드 + 현재 파일이 이미 크면 RAG 상한을 남은 컨텍스트에 비례해 줄인다.
+    // 컨텍스트 윈도우가 넉넉하면(예: 32K) 사실상 charBudget 그대로다(축소는 소형 윈도우 모델 보호용).
+    const budgetOverride = this._computeRagBudget(diet, ctx);
 
     let scaffoldSection = '';
 
@@ -99,7 +212,8 @@ export class ScaffoldContextBuilder {
       const ragCtx = await this._engine.buildContext(
         userQuery,
         ctx.filePath ?? '',
-        ctx.content ?? ''
+        ctx.content ?? '',
+        budgetOverride
       );
 
       if (ragCtx.docs.length > 0) {
@@ -234,36 +348,35 @@ export class ScaffoldContextBuilder {
       domainChars: domainSection.length,
     };
 
-    const routerInfo = this._getRouterImportSource();
-    const routerImportRule = routerInfo.version
-      ? `- **react-router import**: 이 프로젝트는 react-router ${routerInfo.version}을 사용합니다. useParams 등 react-router 관련 훅은 반드시 \`'${routerInfo.source}'\`에서 import 하세요 (예: \`import { useParams } from '${routerInfo.source}';\`)`
-      : `- **react-router import**: useParams 등 react-router 관련 훅은 \`'${routerInfo.source}'\`에서 import 하세요`;
+    // Q&A 게이팅(프롬프트 다이어트): 조회·설명형 질문이면 파일이 열려 있어도 시나리오 C로 가지 않고
+    // 출력 모드·생성 지시문을 통째로 생략한다. 의도 분류를 파일 열림 기반 시나리오 추론보다 우선시킨다.
+    // 보수적: 생성/수정 신호가 조금이라도 있으면(_isExplicitEditOrCreate) 게이팅하지 않는다.
+    if (
+      diet.qnaGating &&
+      this._isQnAQuery(userQuery) &&
+      !this._isExplicitEditOrCreate(userQuery)
+    ) {
+      const qnaRules = this._buildCoreRules({
+        includeNavigation: this._hasNavigationIntent(userQuery),
+        includeFileScope: false,
+      });
+      const qnaPrompt = `${qnaRules}
 
-    const coreRules = `당신은 Axiom AI입니다. react-app-scaffold 전용 코딩 어시스턴트입니다.
+## 현재 작업: 질문 답변 (조회·설명)
+사용자의 질문에 답하세요. 코드 예시가 필요하면 위 scaffold 문서의 패턴을 따른 코드 블록으로 보여주되,
+**파일을 생성·수정하는 axiom-action 블록은 출력하지 마세요** — 이 요청은 파일 변경이 아니라 설명 요청입니다.
+${scaffoldSection}${fileSection}`;
+      // 도메인 섹션은 Q&A 프롬프트에 포함하지 않으므로 0으로 보정
+      this._lastBreakdown.domainChars = 0;
+      this._lastBreakdown.rulesChars = Math.max(
+        0,
+        qnaPrompt.length - fileSection.length - scaffoldSection.length,
+      );
+      return qnaPrompt;
+    }
 
-## 핵심 규칙
-- 모든 코드는 아래 scaffold 문서의 패턴을 따라야 합니다
-- createBrowserRouter 사용 금지 → 항상 createHashRouter (createAppRouter() 경유)
-- useQuery/useMutation 직접 사용 금지 → 항상 @axiom/hooks의 useApi 사용
-- **⚠️ React Rules of Hooks 절대 준수**: \`use\`로 시작하는 모든 훅(useApi, useState, useEffect, useMemo, useCallback, useRef, useParams 등)은 반드시 **React 함수 컴포넌트 본문 또는 커스텀 훅(\`use*\`) 함수 본문의 최상위**에서만 호출. 다음 위치에서 호출 절대 금지: ① 모듈 최상위(import 아래·\`export default function\` 위), ② 조건문/반복문/일반 \`if·for·try\` 블록 안, ③ 일반 함수(컴포넌트가 아닌 \`calculateXxx\`, \`formatXxx\` 등 유틸 함수)나 콜백 안, ④ class 컴포넌트 안. 새 \`useApi\` 호출을 추가할 때는 반드시 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 위에 위치시킬 것.
-- 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
-- scaffold의 package.json에 없는 라이브러리 제안 금지
-- 코드 주석은 한국어로 작성
-- **화면 이동 금지 패턴**: useNavigate(), useHistory() 등 react-router 훅 사용 금지
-- **화면 이동 올바른 패턴**: 전역 $router 객체 사용 (import 불필요) — $router.push('/path'), $router.replace('/path'), $router.back()
-- **⚠️ 파일 생성 범위 엄수**: 사용자가 명시적으로 요청한 파일(페이지)만 생성할 것. FormPage, DetailPage, StatusPage 등 관련 페이지를 임의로 추가 생성하는 것은 절대 금지. 요청 = 1개 페이지이면 axiom-action의 createFile(page) 블록도 반드시 1개만 출력할 것.
-${routerImportRule}
-
-## TypeScript 타입 네이밍 컨벤션 (반드시 준수)
-- **일반 타입**: \`type\` 키워드 + \`T\` 접두사 → \`type TUser = { ... }\`, \`type TBenchMember = { ... }\`
-- **인터페이스**: \`interface\` 키워드 + \`I\` 접두사 → \`interface IApiConfig { ... }\`
-- **API 응답/요청 타입**: \`type\` 키워드 + \`T\` 접두사 사용 (interface 사용 금지)
-- **Props 타입**: \`type\` 키워드, 접두사 없음 → \`type UserCardProps = { ... }\`
-- **접두사 없는 interface/type 선언 절대 금지** → \`interface BenchMember\`, \`type BenchMember\` 형식 금지
-
-## 프로젝트 스택
-React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
-해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)${this._libraryVersions ? `\n\n## 설치된 라이브러리 버전\n${this._libraryVersions}` : ''}`;
+    // 코어 규칙 = 가드레일(항상) + 상황별 가이드(옵션). A/B/C 경로는 종전과 동일하게 모두 포함한다.
+    const coreRules = this._buildCoreRules({ includeNavigation: true, includeFileScope: true });
 
     // 시나리오 C: 현재 열린 파일 수정 — A/B 예시 없이 C 전용 프롬프트 사용
     if (domainCtx.isCurrentFileContext) {

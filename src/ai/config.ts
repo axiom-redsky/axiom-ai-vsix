@@ -63,6 +63,31 @@ export const AI_DEFAULTS = {
     minEmbedScore: 3,
   },
   /**
+   * 프롬프트 다이어트 — 질문 의도에 맞지 않는 고정 지시문을 줄여 프롬프트를 경량화한다.
+   * 모든 항목은 토글 가능하며, 품질 저하가 감지되면 사이트별로 끌 수 있다.
+   */
+  promptDiet: {
+    /**
+     * Q&A(조회·설명형) 질문에서 출력 모드·시나리오 지시문을 생략하고 핵심 규칙만 주입할지 여부.
+     * false면 종전처럼 파일 열림 시 항상 시나리오 C 편집 지시문을 주입한다(현행 동작).
+     */
+    qnaGating: true,
+    /**
+     * 적응형 RAG 예산 — 규칙·가이드 + 현재 파일이 이미 클 때 RAG 상한(charBudget)을
+     * 남은 컨텍스트에 비례해 동적으로 줄여 전체 프롬프트가 무한정 커지지 않게 한다.
+     */
+    adaptiveBudget: {
+      /** 적응형 예산 사용 여부. false면 항상 rag.charBudget 고정 사용(현행 동작). */
+      enabled: true,
+      /** RAG에 최소한 보장하는 글자 수. 이 아래로는 줄이지 않는다. */
+      floorChars: 1800,
+      /** 전체 프롬프트 목표 상한 = contextWindow(토큰) × charsPerToken × targetRatio. */
+      targetRatio: 0.45,
+      /** 토큰당 대략 글자 수(혼합 한/영 보수적 추정). 전체 상한 환산에만 사용. */
+      charsPerToken: 3,
+    },
+  },
+  /**
    * 다중 patch (한 응답에 여러 <patch> 블록) 지원 기본값.
    * 모델 역량에 따라 사이트별 설정으로 override 한다.
    */
@@ -89,5 +114,15 @@ export const AI_DEFAULTS = {
     requireAnchor: true,
     /** anchor 불일치 시 기준 라인 주변 ±N줄까지 탐색해 라인번호를 자동 보정한다. */
     anchorSearchRadius: 3,
+  },
+  /**
+   * 디버그용 기본값.
+   */
+  debug: {
+    /**
+     * AI 서버로 전송하는 시스템 프롬프트(규칙·가이드 + RAG + 파일) 전문을
+     * 'axiom-ai: Prompt' 출력 채널에 기록할지 여부. 기본 off(노이즈·성능).
+     */
+    logSystemPrompt: false,
   },
 } as const;
