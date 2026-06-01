@@ -66,6 +66,11 @@ export class LlmService {
    * OpenAI 호환 /v1/chat/completions SSE 스트리밍.
    * Ollama, vLLM, LocalAI 모두 동일한 스키마를 사용한다.
    * 네트워크 오류 또는 5xx 응답 시 2초 후 1회 재시도한다.
+   *
+   * 폐쇄망 SI는 사이트마다 모델이 다르므로 thinking 억제를 설정(injectNoThink/sendThinkingParams)으로 받고,
+   * 두 가지 자동 폴백을 둔다.
+   *  - 400 Bad Request(엄격한 게이트웨이가 미지 필드 거부) → thinking 파라미터를 빼고 1회 재시도.
+   *  - 빈 응답(추론 토큰이 max_tokens 소진) → max_tokens를 16384로 올려 1회 재시도.
    */
   async *streamChat(
     messages: ChatMessage[],
@@ -84,24 +89,22 @@ export class LlmService {
     };
     Object.assign(headers, this._buildAuthHeaders(config));
 
-    const requestBody = JSON.stringify({
-      model: config.model,
-      messages,
-      stream: true,
-      temperature: config.temperature,
-      max_tokens: config.maxTokens,
-      // OpenAI/vLLM 호환: 스트림 마지막 chunk에 usage를 포함시킨다.
-      // 미지원 서버는 무시하므로 동작에 영향 없음.
-      stream_options: { include_usage: true },
-    });
+    // 현재 시도에 적용할 thinking 억제 옵션·토큰 (자동 폴백에서 조정됨)
+    let sendThinkingParams = config.sendThinkingParams;
+    let maxTokens = config.maxTokens;
+    const buildBody = (): string =>
+      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens });
 
     console.log(`[Axiom AI] → 요청 URL: ${url}`);
-    console.log(`[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}`);
+    console.log(
+      `[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}, ` +
+      `thinking 억제(noThink=${config.injectNoThink}, params=${sendThinkingParams})`,
+    );
 
     // fetch 1회 시도 — 네트워크 에러 시 null 반환, AbortError는 그대로 throw
     const attemptFetch = async (): Promise<Response | null> => {
       try {
-        return await fetch(url, { method: 'POST', headers, body: requestBody, signal });
+        return await fetch(url, { method: 'POST', headers, body: buildBody(), signal });
       } catch (err) {
         if ((err as Error).name === 'AbortError') throw err;
         return null;
@@ -143,7 +146,27 @@ export class LlmService {
 
     console.log(`[Axiom AI] ← 응답 상태: ${response.status} ${response.statusText}`);
 
-    // 재시도 후에도 5xx → 폴백
+    // 자동 폴백 ①: 엄격한 게이트웨이가 미지(未知) JSON 필드를 거부(400)한 경우,
+    // thinking 파라미터를 빼고 1회 재시도한다. (/no_think 텍스트는 무해하므로 유지)
+    if (response.status === 400 && sendThinkingParams) {
+      const detail = (await response.text().catch(() => '')).trim().slice(0, 200);
+      console.warn(
+        `[Axiom AI] 400 Bad Request — thinking 파라미터를 제거하고 1회 재시도합니다. ` +
+        `(서버가 미지 필드를 거부하는 듯합니다${detail ? `: ${detail}` : ''})`,
+      );
+      sendThinkingParams = false;
+      response = await attemptFetch();
+      if (response === null) {
+        const reason = '네트워크 오류 (thinking 파라미터 제거 재시도 중 연결 실패)';
+        console.warn(`[Axiom AI] ${reason}, 폴백 모드`);
+        onFallback?.(reason);
+        yield* this._stub.stream(FallbackStubService.extractUserText(messages));
+        return;
+      }
+      console.log(`[Axiom AI] ← (재시도) 응답 상태: ${response.status} ${response.statusText}`);
+    }
+
+    // 5xx → 폴백
     if (response.status >= 500) {
       const reason = `서버 오류 ${response.status} ${response.statusText} (재시도 후에도 실패)`;
       console.warn(`[Axiom AI] ${reason}, 폴백 모드 활성화`);
@@ -160,16 +183,64 @@ export class LlmService {
     }
 
     onServerConnected?.();
-    const reader = response.body.getReader();
+
+    // 스트림 소비 → content 누적치를 stats로 받는다
+    const stats = LlmService._newStreamStats();
+    yield* this._consumeStream(response, stats, maxTokens, onUsage);
+
+    // 자동 폴백 ②: 빈 응답 + thinking 오버플로 → max_tokens를 올려 1회 재시도.
+    // content를 한 글자도 내보내지 않았으므로 안전하게 재요청할 수 있다.
+    const thinkingOverflow =
+      stats.contentChars === 0 &&
+      (stats.reasoningChars > 0 || (stats.finishReason === 'length' && stats.chunksReceived > 100));
+    if (thinkingOverflow && maxTokens < 16384) {
+      const boosted = 16384;
+      console.warn(
+        `[Axiom AI] 빈 응답(thinking 오버플로) 자동 복구: max_tokens ${maxTokens} → ${boosted} 로 1회 재시도합니다.`,
+      );
+      maxTokens = boosted;
+      const retry = await attemptFetch();
+      if (retry?.ok && retry.body) {
+        const stats2 = LlmService._newStreamStats();
+        yield* this._consumeStream(retry, stats2, maxTokens, onUsage);
+      } else {
+        console.warn(`[Axiom AI] max_tokens 증액 재시도 실패 (status=${retry?.status ?? 'network'})`);
+      }
+    }
+  }
+
+  /** 스트림 진단 카운터 초기값 */
+  private static _newStreamStats(): {
+    chunksReceived: number;
+    contentChunks: number;
+    contentChars: number;
+    reasoningChars: number;
+    finishReason: string | null;
+    parseErrors: number;
+  } {
+    return {
+      chunksReceived: 0,
+      contentChunks: 0,
+      contentChars: 0,
+      reasoningChars: 0,
+      finishReason: null,
+      parseErrors: 0,
+    };
+  }
+
+  /**
+   * SSE 응답 본문을 파싱해 content 델타를 yield 한다.
+   * 진단 카운터는 stats에 누적하고, 종료 시 로그를 남긴다(빈 응답이면 원인 분류 경고).
+   */
+  private async *_consumeStream(
+    response: Response,
+    stats: ReturnType<typeof LlmService._newStreamStats>,
+    effectiveMaxTokens: number,
+    onUsage?: (usage: LlmUsage) => void,
+  ): AsyncGenerator<string> {
+    const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-
-    // 진단용 카운터 — 빈 응답이 모델 출력 0인지 파싱 실패인지 구분하기 위함
-    let chunksReceived = 0;
-    let contentChunks = 0;
-    let totalContentChars = 0;
-    let finishReason: string | null = null;
-    let parseErrors = 0;
 
     try {
       while (true) {
@@ -187,20 +258,26 @@ export class LlmService {
           const data = trimmed.slice(5).trim();
           if (data === '[DONE]') return;
 
-          chunksReceived++;
+          stats.chunksReceived++;
           try {
             const parsed = JSON.parse(data) as {
-              choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
+              choices?: {
+                delta?: { content?: string; reasoning_content?: string };
+                finish_reason?: string | null;
+              }[];
               usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
             };
             const choice = parsed.choices?.[0];
             const content = choice?.delta?.content;
+            // thinking 모드 서버는 추론 토큰을 별도 필드로 흘려보낸다. 출력하지 않고 진단용으로만 집계한다.
+            const reasoning = choice?.delta?.reasoning_content;
+            if (reasoning) stats.reasoningChars += reasoning.length;
             if (content) {
-              contentChunks++;
-              totalContentChars += content.length;
+              stats.contentChunks++;
+              stats.contentChars += content.length;
               yield content;
             }
-            if (choice?.finish_reason) finishReason = choice.finish_reason;
+            if (choice?.finish_reason) stats.finishReason = choice.finish_reason;
             // 마지막 chunk에 usage가 들어오는 서버(vLLM, OpenAI 등) 지원
             if (parsed.usage && onUsage) {
               onUsage({
@@ -210,22 +287,59 @@ export class LlmService {
               });
             }
           } catch {
-            parseErrors++;
+            stats.parseErrors++;
           }
         }
       }
     } finally {
       console.log(
-        `[Axiom AI] ← 스트림 종료: chunks=${chunksReceived}, contentChunks=${contentChunks}, ` +
-        `chars=${totalContentChars}, finish_reason=${finishReason ?? 'null'}, parseErrors=${parseErrors}`,
+        `[Axiom AI] ← 스트림 종료: chunks=${stats.chunksReceived}, contentChunks=${stats.contentChunks}, ` +
+        `chars=${stats.contentChars}, reasoningChars=${stats.reasoningChars}, ` +
+        `finish_reason=${stats.finishReason ?? 'null'}, parseErrors=${stats.parseErrors}`,
       );
-      if (totalContentChars === 0) {
+      if (stats.contentChars === 0) {
+        // reasoning 토큰이 들어왔거나, length로 끊겼는데 청크가 많으면 thinking 오버플로로 판정한다.
+        const isThinkingOverflow =
+          stats.reasoningChars > 0 || (stats.finishReason === 'length' && stats.chunksReceived > 100);
         console.warn(
-          `[Axiom AI] ⚠️ 모델이 content 토큰을 0개 출력. finish_reason=${finishReason ?? 'null'}. ` +
-          `프롬프트가 너무 길거나 모델이 EOS를 즉시 발사한 가능성. /clear 후 더 짧은 요청으로 재시도하거나 axiom-ai.multiPatch.enabled=false 로 폴백.`,
+          `[Axiom AI] ⚠️ 모델이 content 토큰을 0개 출력. finish_reason=${stats.finishReason ?? 'null'}. ` +
+          (isThinkingOverflow
+            ? `reasoningChars=${stats.reasoningChars}, chunksReceived=${stats.chunksReceived} — thinking 모드가 ` +
+              `max_tokens(${effectiveMaxTokens})를 전부 소비한 것으로 보입니다. 추론 토큰이 계속 나온다면 ` +
+              `axiom-ai.llm.maxTokens를 16384 이상으로 늘리거나, 비-Qwen 모델이면 ` +
+              `axiom-ai.llm.thinking.injectNoThink 를 점검하세요.`
+            : `프롬프트가 너무 길거나 모델이 EOS를 즉시 발사한 가능성. /clear 후 더 짧은 요청으로 재시도하거나 axiom-ai.multiPatch.enabled=false 로 폴백.`),
         );
       }
     }
+  }
+
+  /**
+   * /v1/chat/completions 요청 본문을 만든다.
+   * thinking 억제 옵션(injectNoThink / sendThinkingParams)과 max_tokens를 호출 시점에 반영한다.
+   */
+  private _buildRequestBody(
+    messages: ChatMessage[],
+    config: LlmConfig,
+    opts: { sendThinkingParams: boolean; maxTokens: number },
+  ): string {
+    const body: Record<string, unknown> = {
+      model: config.model,
+      // qwen3 계열은 JSON 파라미터를 무시하는 서버가 있어, 모델 레벨에서 인식하는 /no_think 소프트 스위치를 함께 쓴다.
+      messages: config.injectNoThink ? LlmService._applyNoThink(messages) : messages,
+      stream: true,
+      temperature: config.temperature,
+      max_tokens: opts.maxTokens,
+      // OpenAI/vLLM 호환: 스트림 마지막 chunk에 usage를 포함시킨다. 미지원 서버는 무시한다.
+      stream_options: { include_usage: true },
+    };
+    if (opts.sendThinkingParams) {
+      // qwen3 계열 thinking 모드 비활성화. 미지원 모델은 무시하지만, 엄격한 게이트웨이는 400을 낼 수 있어 옵션으로 둔다.
+      body.enable_thinking = false;
+      // vLLM qwen3 배포 환경에서 사용하는 추가 파라미터 경로
+      body.chat_template_kwargs = { enable_thinking: false };
+    }
+    return JSON.stringify(body);
   }
 
   private async _formatHttpError(response: Response, config: LlmConfig): Promise<string> {
@@ -243,6 +357,27 @@ export class LlmService {
     }
 
     return `sLLM 서버 오류: ${response.status} ${response.statusText}${suffix}`;
+  }
+
+  /**
+   * Qwen3 계열의 thinking 모드 소프트 스위치(/no_think)를 시스템 메시지에 주입한다.
+   * enable_thinking JSON 파라미터를 무시하는 서버에서도 모델이 직접 인식하므로,
+   * thinking 토큰이 max_tokens를 소진해 content가 0이 되는 문제를 방지한다.
+   * - 이미 /no_think 가 있으면 중복 추가하지 않는다.
+   * - 시스템 메시지가 없으면 맨 앞에 새로 추가한다.
+   * - qwen3 미지원 모델은 일반 텍스트로 취급해 무시한다.
+   */
+  private static _applyNoThink(messages: ChatMessage[]): ChatMessage[] {
+    const SWITCH = '/no_think';
+    if (messages.some((m) => m.content.includes(SWITCH))) return messages;
+
+    const sysIndex = messages.findIndex((m) => m.role === 'system');
+    if (sysIndex === -1) {
+      return [{ role: 'system', content: SWITCH }, ...messages];
+    }
+    return messages.map((m, i) =>
+      i === sysIndex ? { ...m, content: `${m.content}\n\n${SWITCH}` } : m,
+    );
   }
 
   private _buildAuthHeaders(config: LlmConfig): Record<string, string> {

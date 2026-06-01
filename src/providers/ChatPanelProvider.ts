@@ -74,6 +74,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         apiKey:      llm.apiKey,
         temperature: llm.temperature,
         maxTokens:   llm.maxTokens,
+        contextWindow: llm.contextWindow,
       },
       rag: {
         userRagFolder:   rag.folder,
@@ -96,6 +97,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       if (llm.apiKey     !== undefined) await cfg.update('llm.apiKey',      llm.apiKey,      vscode.ConfigurationTarget.Global);
       if (llm.temperature !== undefined) await cfg.update('llm.temperature', llm.temperature, vscode.ConfigurationTarget.Global);
       if (llm.maxTokens  !== undefined) await cfg.update('llm.maxTokens',   llm.maxTokens,   vscode.ConfigurationTarget.Global);
+      if (llm.contextWindow !== undefined) await cfg.update('llm.contextWindow', llm.contextWindow, vscode.ConfigurationTarget.Global);
     }
 
     if (partial.rag) {

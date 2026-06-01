@@ -5,7 +5,7 @@ import type { HostToWebviewMessage, AxiomSettings } from '../../types/messages';
 type Tab = 'home' | 'settings';
 
 const DEFAULT_SETTINGS: AxiomSettings = {
-  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192 },
+  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768 },
   rag: { userRagFolder: '', additionalFiles: [] },
 };
 
@@ -314,6 +314,18 @@ function SettingsTab({
             />
           </label>
         </div>
+
+        <label className="settings__label">
+          Context Window (토큰 메터 분모 · 모델 컨텍스트 한도)
+          <input
+            className="settings__input"
+            type="number"
+            step="1024"
+            min="1024"
+            value={settings.llm.contextWindow}
+            onChange={(e) => onLlmChange('contextWindow', parseInt(e.target.value, 10))}
+          />
+        </label>
 
         <div className="settings__actions-row">
           <button

@@ -364,13 +364,19 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     const mp = ExtensionConfig.getMultiPatchConfig();
 
     const patchModeBlock = mp.enabled
-      ? `**patch 모드** — 국소 변경. \`<patch>\` 블록을 1~${mp.maxPatches}개 출력 가능. 각 \`<search>\`는 **원본 파일 기준**(이전 patch 결과 반영 금지), 라인 범위 **겹침 금지**, 전후 맥락 **${mp.minContextLines}줄 이상** 포함.
+      ? `**patch 모드** — 국소 변경. \`<patch>\` 블록을 1~${mp.maxPatches}개 출력 가능.
+
+⚠️ **\`<search>\` 필수 규칙: 원본 파일에 지금 존재하는 코드만 작성. 아직 없는 코드를 \`<search>\`에 넣으면 매칭 실패.**
+- **코드 추가(import·state·hook 등)**: 기존 인접 라인을 앵커로 \`<search>\`에 넣고, \`<replace>\`에 기존 라인 + 새 라인을 함께 출력
+- import 추가 예: \`<search>import { useState } from 'react';</search><replace>import { useState } from 'react';\nimport { getXxx } from '@/api/xxx';</replace>\`
+- state 추가 예: \`<search>const [existingState, setExistingState] = useState(X);</search><replace>const [existingState, setExistingState] = useState(X);\n  const [newState, setNewState] = useState([]);</replace>\`
+- 각 \`<search>\`는 **원본 파일 기준**(이전 patch 적용 결과 반영 금지), 라인 범위 **겹침 금지**, 전후 맥락 **${mp.minContextLines}줄 이상** 포함.
 
 <axiom-action>
 {"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
 <patch>
 <search>
-원본 파일의 정확한 코드 (전후 맥락 ${mp.minContextLines}줄 포함)
+원본 파일에 현재 존재하는 코드 (전후 맥락 ${mp.minContextLines}줄 포함)
 </search>
 <replace>
 교체할 새 코드
@@ -379,12 +385,14 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 </axiom-action>
 
 여러 위치 수정 시 \`<patch>\` 블록을 N개 나열. import 추가는 별도 \`<patch>\`로 분리.`
-      : `**patch 모드** — 단일 블록 수정. \`<search>\`에 원본 코드 정확히, 전후 맥락 ${mp.minContextLines}줄 포함:
+      : `**patch 모드** — 단일 블록 수정.
+
+⚠️ **\`<search>\`에는 원본 파일에 지금 존재하는 코드만. 추가할 코드를 \`<search>\`에 넣으면 매칭 실패.**
 
 <axiom-action>
 {"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
 <patch>
-<search>원본 파일의 코드 (정확히 일치)</search>
+<search>원본 파일에 현재 존재하는 코드 (정확히 일치)</search>
 <replace>교체할 새 코드</replace>
 </patch>
 </axiom-action>`;

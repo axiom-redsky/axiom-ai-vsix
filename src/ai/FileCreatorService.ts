@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { splitTsSections } from './CodeSectionExtractor';
 
 /**
  * 한 응답 안에 들어가는 patch 단위. 모델이 출력한 `<patch><search>...</search><replace>...</replace></patch>`
@@ -284,6 +285,31 @@ export class FileCreatorService {
 
     const replaceLinesDefault = replace.split('\n');
 
+    // Pass 0: stub 자리표시자 감지 — LLM이 슬라이싱된 뷰에서
+    // `// ... [kind name] 원본 NN줄 보존 ...` 라인을 <search>로 사용한 케이스.
+    // 실제 파일엔 stub이 없으므로 원본 섹션 본문의 라인 범위로 교체한다.
+    if (sLen === 1) {
+      const stubMatch = searchLines[0].match(
+        /\/\/\s*\.\.\.\s*(?:\[\s*([a-zA-Z]+)\s+([\w$]+)\s*\]|\(\s*([a-zA-Z]+)\s+([\w$]+)\s*생략)/,
+      );
+      if (stubMatch) {
+        const kind = (stubMatch[1] ?? stubMatch[3] ?? '').trim();
+        const name = (stubMatch[2] ?? stubMatch[4] ?? '').trim();
+        if (kind && name) {
+          const sections = splitTsSections(originalLines.join('\n'));
+          const found = sections.find((s) => s.kind === kind && s.name === name);
+          if (found) {
+            return {
+              kind: 'ok',
+              start: found.startLine - 1,
+              end: found.endLine - 1,
+              replaceLines: replaceLinesDefault,
+            };
+          }
+        }
+      }
+    }
+
     // Pass 1~3: 줄 단위 비교 (multi-line search 또는 한 줄 전체 일치)
     if (sLen <= oLen) {
       // Pass 1: exact
@@ -543,6 +569,356 @@ export class FileCreatorService {
       throw new Error(`템플릿 파일을 찾을 수 없습니다: ${templateType}.template.txt`);
     }
     return fs.readFileSync(templatePath, 'utf-8');
+  }
+
+  /**
+   * 생성된 TSX/TS 코드에서 React 규칙 위반을 종합 감지한다.
+   *
+   * LLM이 자주 범하는 패턴만 차단하는 "쓰기 전 마지막 방어선"이다. 완전한 정적 분석이 아니며,
+   * 의존성 배열 누락·state 직접 변이 등 AST가 필요해 false positive가 많은 검사는 ESLint
+   * (react-hooks/rules-of-hooks, exhaustive-deps)에 위임한다.
+   *
+   * 감지 항목:
+   *  1. 모듈 최상위(컴포넌트 함수 밖)에서 use* 훅 호출
+   *  2. 조건문/반복문(if·else·for·while·switch·try) 블록 안에서 훅 호출
+   *  3. 콜백(.map/.forEach/setTimeout 등) 안에서 훅 호출
+   *  4. useEffect/useLayoutEffect 콜백을 async로 선언
+   *
+   * @returns 첫 번째 위반 설명 문자열, 위반 없으면 null
+   */
+  static detectReactRuleViolations(code: string): string | null {
+    return (
+      this.detectModuleScopeHookViolation(code) ??
+      this._detectAsyncEffect(code) ??
+      this._detectNestedHookCall(code)
+    );
+  }
+
+  /**
+   * useEffect/useLayoutEffect 콜백이 async로 선언된 경우를 감지한다.
+   * effect는 cleanup 함수만 반환해야 하므로 async 콜백은 안티패턴이다.
+   */
+  private static _detectAsyncEffect(code: string): string | null {
+    const lines = code.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (/\buse(Effect|LayoutEffect)\s*\(\s*async\b/.test(lines[i])) {
+        return `라인 ${i + 1}에서 useEffect 콜백이 async로 선언됨 (effect는 cleanup 함수만 반환해야 하므로 내부에서 async 함수를 정의해 호출할 것)`;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 조건문/반복문/콜백 블록 안에서 훅을 호출하는 경우를 감지한다.
+   *
+   * 라인 단위로 중괄호 스택을 추적하며, 각 블록을 여는 종류(fn/control/callback/other)를
+   * 기록한다. 훅 호출을 만나면 가장 가까운 함수 경계(fn)보다 안쪽에 control/callback 블록이
+   * 있는지 확인해 위반 여부를 판단한다.
+   *
+   * 보수적 설계: 분류가 애매한 블록은 'other'로 두어 위반을 트리거하지 않는다
+   * (JSX 조건부 렌더 `{cond && ...}` 등에서의 false positive 방지).
+   */
+  private static _detectNestedHookCall(code: string): string | null {
+    type BlockKind = 'fn' | 'control' | 'callback' | 'other';
+    const lines = code.split('\n');
+    const stack: BlockKind[] = [];
+
+    const isSkippable = (t: string): boolean =>
+      t === '' ||
+      t.startsWith('//') ||
+      t.startsWith('/*') ||
+      t.startsWith('*') ||
+      t.startsWith('import ') ||
+      t.startsWith('type ') ||
+      t.startsWith('export type ') ||
+      t.startsWith('interface ') ||
+      t.startsWith('export interface ');
+
+    // 라인의 중괄호를 스택에 반영한다. 첫 여는 중괄호만 분류된 kind, 나머지는 'other'.
+    const applyBraces = (line: string, kind: BlockKind): void => {
+      let first = true;
+      for (const ch of line) {
+        if (ch === '{') {
+          stack.push(first ? kind : 'other');
+          first = false;
+        } else if (ch === '}') {
+          stack.pop();
+        }
+      }
+    };
+
+    // 라인이 여는 블록의 종류를 추정한다.
+    const classify = (t: string): BlockKind => {
+      // 조건문/반복문 — `} else {`, `} catch {` 형태 포함
+      if (
+        /^\}?\s*(else\b|else\s+if\b)/.test(t) ||
+        /^(if|for|while|switch|do|try|catch|finally)\b/.test(t) ||
+        /^\}\s*(catch|finally)\b/.test(t)
+      ) {
+        return 'control';
+      }
+      // 배열 메서드 콜백 / 타이머 콜백
+      if (
+        /\.(map|forEach|filter|reduce|reduceRight|find|findIndex|some|every|sort|flatMap)\s*\(/.test(t) ||
+        /\b(setTimeout|setInterval)\s*\(/.test(t) ||
+        /\.addEventListener\s*\(/.test(t)
+      ) {
+        return 'callback';
+      }
+      // 함수 정의(컴포넌트/일반 함수/핸들러) — 안전지대
+      if (
+        /\bfunction\b/.test(t) ||
+        /=>\s*\{?\s*$/.test(t) ||
+        /^(export\s+)?(default\s+)?(const|let|var)\s+\w+\s*=\s*(async\s+)?\(/.test(t)
+      ) {
+        return 'fn';
+      }
+      return 'other';
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (isSkippable(trimmed)) {
+        applyBraces(line, 'other');
+        continue;
+      }
+
+      // use*(...) 또는 use*<Generic>(...) 모두 매칭 — 제네릭 타입 인자가 끼어도 놓치지 않는다.
+      const hookMatch = trimmed.match(/\b(use[A-Z]\w*)\s*(?:<[^()]*>)?\s*\(/);
+      const isHookDef =
+        /^(export\s+)?(default\s+)?function\s+use[A-Z]/.test(trimmed) ||
+        /^(export\s+)?const\s+use[A-Z]\w*\s*=/.test(trimmed);
+
+      if (hookMatch && !isHookDef) {
+        const hookName = hookMatch[1];
+
+        // 인라인 조건부 호출: `if (cond) useFoo()` — 같은 줄, 블록 없음
+        if (/^(if|else|for|while|switch)\b/.test(trimmed) && !trimmed.includes('{')) {
+          return `라인 ${i + 1}에서 \`${hookName}\`이 조건문/반복문 안에서 호출됨 (인라인)`;
+        }
+
+        // 스택 검사: 가장 가까운 함수 경계 이후에 control/callback 블록이 있으면 위반
+        const lastFn = stack.lastIndexOf('fn');
+        for (let d = lastFn + 1; d < stack.length; d++) {
+          if (stack[d] === 'control') {
+            return `라인 ${i + 1}에서 \`${hookName}\`이 조건문/반복문 블록 안에서 호출됨`;
+          }
+          if (stack[d] === 'callback') {
+            return `라인 ${i + 1}에서 \`${hookName}\`이 콜백(.map/.forEach 등) 안에서 호출됨`;
+          }
+        }
+      }
+
+      applyBraces(line, classify(trimmed));
+    }
+
+    return null;
+  }
+
+  /**
+   * 생성된 TSX/TS 코드에서 React Hooks 규칙 위반을 감지한다.
+   * 모듈 최상위(함수 컴포넌트 본문 밖)에서 use* 훅을 호출하는 코드를 탐지한다.
+   * @returns 위반 설명 문자열, 위반 없으면 null
+   */
+  static detectModuleScopeHookViolation(code: string): string | null {
+    const lines = code.split('\n');
+    let braceDepth = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // 빈 줄, import, 주석, type/interface 선언은 brace만 카운트하고 건너뜀
+      if (
+        trimmed === '' ||
+        trimmed.startsWith('import ') ||
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('type ') ||
+        trimmed.startsWith('export type ') ||
+        trimmed.startsWith('interface ') ||
+        trimmed.startsWith('export interface ')
+      ) {
+        for (const ch of line) {
+          if (ch === '{') braceDepth++;
+          else if (ch === '}') braceDepth--;
+        }
+        continue;
+      }
+
+      // 커스텀 훅 정의(function useXxx / const useXxx =)는 호출이 아니므로 건너뜀
+      if (
+        trimmed.match(/^(export\s+)?(default\s+)?function\s+use[A-Z]/) ||
+        trimmed.match(/^(export\s+)?const\s+use[A-Z]\w*\s*=/)
+      ) {
+        for (const ch of line) {
+          if (ch === '{') braceDepth++;
+          else if (ch === '}') braceDepth--;
+        }
+        continue;
+      }
+
+      const depthBefore = braceDepth;
+      for (const ch of line) {
+        if (ch === '{') braceDepth++;
+        else if (ch === '}') braceDepth--;
+      }
+
+      // 모듈 최상위(depth 0)에서 훅 호출 패턴 감지
+      if (depthBefore === 0) {
+        // use*(...) 또는 use*<Generic>(...) 모두 매칭 (제네릭 타입 인자 포함)
+        const hookCallMatch = trimmed.match(/\b(use[A-Z]\w*)\s*(?:<[^()]*>)?\s*\(/);
+        if (hookCallMatch) {
+          const hookName = hookCallMatch[1];
+          return `라인 ${i + 1}에서 \`${hookName}\`이 모듈 최상위(컴포넌트 함수 밖)에서 호출됨`;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 모듈 최상위(컴포넌트 함수 밖)에 잘못 선언된 use* 훅 호출을 컴포넌트 본문 최상위로
+   * **결정적으로** 이동시킨다. 같은 선언이 컴포넌트 본문에 이미 있으면(중복) 모듈 스코프
+   * 쪽은 삭제만 한다.
+   *
+   * 약한 모델에게 전체 파일을 다시 생성시키지 않고(토큰 0) React Rules of Hooks 위반을
+   * 교정하기 위한 변환이다. 구조 파싱이 애매하거나(컴포넌트 함수 못 찾음, 문장 경계 불명확)
+   * 변환 후에도 위반이 남으면 null을 반환해 호출부가 모델 재시도로 폴백하게 한다.
+   *
+   * @returns 교정된 코드와 이동한 훅 목록, 안전하게 교정할 수 없으면 null
+   */
+  static hoistModuleScopeHooks(code: string): { text: string; hoisted: string[] } | null {
+    // 위반이 없으면 변환 불필요
+    if (!this.detectModuleScopeHookViolation(code)) return null;
+
+    const hasCRLF = code.includes('\r\n');
+    const lines = (hasCRLF ? code.replace(/\r\n/g, '\n') : code).split('\n');
+
+    // 1) 컴포넌트 함수 본문 시작 라인
+    const compOpenIdx = this._findComponentOpenLine(lines);
+    if (compOpenIdx === -1) return null;
+
+    // 2) 모듈 스코프(depth 0) 훅 호출 문장 수집
+    const blocks = this._collectModuleScopeHookStatements(lines);
+    if (blocks.length === 0) return null;
+
+    // 3) 컴포넌트 본문(트림 정규화)에 이미 존재하는 중복 판정
+    const bodyNorm = lines
+      .slice(compOpenIdx + 1)
+      .map((l) => l.trim())
+      .join('\n');
+
+    const removeIdx = new Set<number>();
+    const moves: string[][] = [];
+    const hoisted: string[] = [];
+    for (const b of blocks) {
+      for (let i = b.start; i <= b.end; i++) removeIdx.add(i);
+      const stmtNorm = lines.slice(b.start, b.end + 1).map((l) => l.trim()).join('\n');
+      hoisted.push(lines[b.start].trim());
+      // 컴포넌트 본문에 동일 문장이 이미 있으면 모듈 스코프 쪽은 삭제만 (중복 제거)
+      if (bodyNorm.includes(stmtNorm)) continue;
+      // 모듈 스코프는 0-indent 가정 → 2칸 들여쓰기로 본문에 맞춰 재구성
+      moves.push(lines.slice(b.start, b.end + 1).map((l) => (l.trim() === '' ? '' : '  ' + l)));
+    }
+
+    // 4) 재구성: 모듈 스코프 훅 라인 제거 + 컴포넌트 여는 줄 다음에 이동 문장 삽입
+    const out: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (removeIdx.has(i)) continue;
+      out.push(lines[i]);
+      if (i === compOpenIdx) {
+        for (const mv of moves) out.push(...mv);
+      }
+    }
+
+    let text = out.join('\n');
+    // 5) 변환 결과가 여전히 위반(다른 종류 포함)이면 안전하게 폴백
+    if (this.detectReactRuleViolations(text)) return null;
+    if (hasCRLF) text = text.replace(/\n/g, '\r\n');
+    return { text, hoisted };
+  }
+
+  /**
+   * 컴포넌트 함수 본문이 시작되는(여는 `{`가 있는) 라인 인덱스를 찾는다.
+   * `export default function ...` 우선, 없으면 PascalCase 화살표 컴포넌트.
+   * 못 찾으면 -1 (호출부가 폴백).
+   */
+  private static _findComponentOpenLine(lines: string[]): number {
+    const openFrom = (i: number): number => {
+      if (lines[i].includes('{')) return i;
+      for (let j = i + 1; j < lines.length && j < i + 5; j++) {
+        if (lines[j].includes('{')) return j;
+      }
+      return -1;
+    };
+    for (let i = 0; i < lines.length; i++) {
+      if (/^export\s+default\s+function\b/.test(lines[i].trim())) return openFrom(i);
+    }
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (/^(?:export\s+default\s+)?const\s+[A-Z]\w*\s*[:=][^=]*=>/.test(t)) return openFrom(i);
+    }
+    return -1;
+  }
+
+  /**
+   * 모듈 최상위(brace depth 0)의 use* 훅 호출 문장을 수집한다.
+   * 멀티라인 문장은 괄호·중괄호·대괄호 밸런스가 0이 되고 `;`가 나오는 줄까지 한 문장으로 묶는다.
+   * 문장 경계를 못 찾으면(불균형) 빈 배열을 반환해 호출부가 폴백하게 한다.
+   */
+  private static _collectModuleScopeHookStatements(
+    lines: string[],
+  ): Array<{ start: number; end: number }> {
+    const blocks: Array<{ start: number; end: number }> = [];
+    // const/let/var ... = [await] useXxx[<...>](  — 훅 호출 대입
+    const hookStart = /^(?:export\s+)?(?:const|let|var)\s+[^=]+=\s*(?:await\s+)?use[A-Z]\w*\s*(?:<[^()]*>)?\s*\(/;
+    // const useXxx = ...  (커스텀 훅 정의) 는 호출이 아니므로 제외
+    const isHookDef = /^(?:export\s+)?const\s+use[A-Z]/;
+
+    let depth = 0;
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const t = line.trim();
+      const skippable =
+        t === '' ||
+        t.startsWith('//') ||
+        t.startsWith('/*') ||
+        t.startsWith('*') ||
+        t.startsWith('import ') ||
+        t.startsWith('type ') ||
+        t.startsWith('export type ') ||
+        t.startsWith('interface ') ||
+        t.startsWith('export interface ');
+
+      if (!skippable && depth === 0 && hookStart.test(t) && !isHookDef.test(t)) {
+        let bal = 0;
+        let end = -1;
+        for (let j = i; j < lines.length && j < i + 50; j++) {
+          for (const ch of lines[j]) {
+            if (ch === '(' || ch === '[' || ch === '{') bal++;
+            else if (ch === ')' || ch === ']' || ch === '}') bal--;
+          }
+          if (bal === 0 && lines[j].includes(';')) { end = j; break; }
+        }
+        if (end === -1) return []; // 경계 불명확 → 변환 포기
+        blocks.push({ start: i, end });
+        i = end + 1; // 균형 문장이라 depth 불변
+        continue;
+      }
+
+      for (const ch of line) {
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+      }
+      i++;
+    }
+    return blocks;
   }
 
   private _applyTemplate(template: string, componentName: string): string {

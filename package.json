@@ -99,6 +99,16 @@
           "minimum": 2048,
           "description": "모델의 컨텍스트 윈도우 크기(토큰). 사이트별 모델에 맞춰 조정하세요. 응답에 usage가 포함되면 실측치를 우선합니다."
         },
+        "axiom-ai.llm.thinking.injectNoThink": {
+          "type": "boolean",
+          "default": true,
+          "description": "Qwen3 계열의 thinking 모드를 끄기 위해 시스템 프롬프트에 /no_think 소프트 스위치를 주입합니다. Qwen이 아닌 모델에서는 의미 없는 텍스트가 되므로, 비-Qwen 모델 투입 시 false로 끄세요."
+        },
+        "axiom-ai.llm.thinking.sendThinkingParams": {
+          "type": "boolean",
+          "default": true,
+          "description": "요청에 enable_thinking / chat_template_kwargs 파라미터를 포함시켜 thinking 모드를 끕니다. 미지(未知) JSON 필드를 거부하는 엄격한 API 게이트웨이에서 400 오류가 나면 false로 끄세요. (참고: 빈 응답이 감지되면 확장이 1회 자동으로 이 파라미터를 빼고 재시도합니다.)"
+        },
         "axiom-ai.rag.userRagFolder": {
           "type": "string",
           "default": "",

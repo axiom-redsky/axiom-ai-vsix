@@ -49,8 +49,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
   private readonly _pendingConfirmations = new Map<string, { resolve: (approved: boolean) => void }>();
-  /** patch 매칭 실패 후 사용자 선택 대기 — filePath 단위로 보관 */
-  private readonly _pendingPatchRecovery = new Map<string, { filePath: string }>();
+  /**
+   * patch 매칭 실패·React 규칙 위반 후 사용자 선택 대기 — recoveryId 단위로 보관.
+   * reactViolation이 있으면 "Full로 재시도" 시 위반 내용을 프롬프트에 실어 모델이 훅을
+   * 컴포넌트 본문 안으로 옮기도록 유도한다.
+   */
+  private readonly _pendingPatchRecovery = new Map<string, { filePath: string; reactViolation?: string }>();
   /**
    * 마지막 _handleMessage가 수집한 선택 영역의 라인 범위.
    * _handleAxiomAction → computeMultiPatch까지 thread하기 위한 캐시.
@@ -1392,6 +1396,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
       if (codeMatch?.[1]) action.generatedCode = codeMatch[1].trimEnd();
+
+      // full 모드 updateFile TSX/TS → React 규칙 위반 조기 차단
+      if (
+        action.mode !== 'patch' &&
+        action.action === 'updateFile' &&
+        action.generatedCode &&
+        /\.(tsx|ts)$/.test(action.filePath)
+      ) {
+        const violation = FileCreatorService.detectReactRuleViolations(action.generatedCode);
+        if (violation) {
+          // 1차: 모듈 스코프 훅을 컴포넌트 본문으로 결정적 이동(auto-hoist) — 모델 재호출·토큰 0.
+          const hoist = FileCreatorService.hoistModuleScopeHooks(action.generatedCode);
+          if (hoist) {
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] 🔧 auto-hoist (${action.filePath}): 모듈 스코프 훅 ${hoist.hoisted.length}건을 컴포넌트 본문으로 이동`,
+            );
+            this._post({
+              type: 'token',
+              content: `\n\n> 🔧 컴포넌트 함수 밖(모듈 최상위)에 생성된 훅 ${hoist.hoisted.length}건을 본문 안으로 자동 이동하고 중복을 제거했습니다.\n`,
+            });
+            action.generatedCode = hoist.text;
+          } else {
+            // 결정적 교정 불가 → dead-end 대신 "Full로 재시도" 회복 버튼 제공.
+            this._reportReactViolation(action.filePath, violation);
+            continue;
+          }
+        }
+      }
+
       actions.push(action);
     }
 
@@ -1528,6 +1561,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
           }
 
+          // patch 결과 React 규칙 검증 — patch 모드는 full 모드(위 1397행)와 달리
+          // detectReactRuleViolations를 거치지 않아, 모델이 모듈 최상위(컴포넌트 함수 밖)에
+          // 훅을 삽입해도 무방비로 통과했다. 여기서 최종 텍스트를 검사하되, 원본에 이미
+          // 있던 위반은 막지 않도록 "patch가 새로 만든 위반"만 차단한다(오탐 방지).
+          if (/\.(tsx|ts)$/.test(action.filePath)) {
+            const before = FileCreatorService.detectReactRuleViolations(originalContent);
+            const after = FileCreatorService.detectReactRuleViolations(mp.text);
+            if (!before && after) {
+              // 1차: auto-hoist로 결정적 교정. 실패 시 "Full로 재시도" 회복 버튼 제공.
+              const hoist = FileCreatorService.hoistModuleScopeHooks(mp.text);
+              if (hoist) {
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] 🔧 auto-hoist (${action.filePath}): 모듈 스코프 훅 ${hoist.hoisted.length}건을 컴포넌트 본문으로 이동`,
+                );
+                this._post({
+                  type: 'token',
+                  content: `\n\n> 🔧 컴포넌트 함수 밖(모듈 최상위)에 생성된 훅 ${hoist.hoisted.length}건을 본문 안으로 자동 이동하고 중복을 제거했습니다.\n`,
+                });
+                mp.text = hoist.text;
+              } else {
+                this._reportReactViolation(action.filePath, after);
+                break;
+              }
+            }
+          }
+
           action.generatedCode = mp.text;
           this._corpusOutputChannel.appendLine(
             `[Axiom AI] multi-patch 적용 완료 (${action.filePath}, ${action.patches.length}개 블록)`,
@@ -1602,6 +1661,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 });
               this._reportPatchFailure(action.filePath, failedSearches);
               if (action.templateType !== 'router') break;
+            } else if (
+              action.templateType !== 'router' &&
+              /\.(tsx|ts)$/.test(action.filePath) &&
+              !FileCreatorService.detectReactRuleViolations(originalContent) &&
+              FileCreatorService.detectReactRuleViolations(mp.text)
+            ) {
+              // autoWrite patch 경로도 auto-hoist로 결정적 교정 후, 실패 시 회복 버튼 제공.
+              const violation = FileCreatorService.detectReactRuleViolations(mp.text)!;
+              const hoist = FileCreatorService.hoistModuleScopeHooks(mp.text);
+              if (hoist) {
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] 🔧 auto-hoist (${action.filePath}): 모듈 스코프 훅 ${hoist.hoisted.length}건을 컴포넌트 본문으로 이동`,
+                );
+                action.generatedCode = hoist.text;
+              } else {
+                this._reportReactViolation(action.filePath, violation);
+                break;
+              }
             } else {
               action.generatedCode = mp.text;
             }
@@ -1663,6 +1740,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       recoveryId,
       filePath,
       searchPreview: preview,
+      failureKind: 'patch-mismatch',
+    });
+  }
+
+  /**
+   * React 규칙 위반(모듈 최상위 훅 호출 등)으로 저장이 차단됐을 때 — patch 매칭 실패와
+   * 동일하게 "Full로 재시도" / "입력 수정" 선택지를 제공해 dead-end를 막는다.
+   * 재시도 시 위반 메시지를 보강 프롬프트에 실어 모델이 훅을 컴포넌트 본문 안으로 옮기게 한다.
+   */
+  private _reportReactViolation(filePath: string, violation: string): void {
+    const recoveryId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    this._pendingPatchRecovery.set(recoveryId, { filePath, reactViolation: violation });
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] ⚠️ React 규칙 위반 차단 (${filePath}) — 사용자 선택 대기 [${recoveryId}]: ${violation}`,
+    );
+    this._post({
+      type: 'patchFailed',
+      recoveryId,
+      filePath,
+      searchPreview: violation,
+      failureKind: 'react-violation',
     });
   }
 
@@ -1676,7 +1774,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._pendingPatchRecovery.delete(recoveryId);
 
     const config = ExtensionConfig.getEffectiveLlmConfig();
-    const result = await this._retryForAxiomAction(entry.filePath, config);
+    // "Full로 재시도" 버튼 → 이름 그대로 full 모드를 강제하고 현재 파일을 기준으로 재생성한다.
+    const result = await this._retryForAxiomAction(entry.filePath, config, {
+      reactViolation: entry.reactViolation,
+      forceFull: true,
+    });
     if (result) {
       await this._handleAxiomAction(result);
     }
@@ -1776,20 +1878,80 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _retryForAxiomAction(
     filePath: string,
     config: ReturnType<typeof ExtensionConfig.getEffectiveLlmConfig>,
+    opts: { reactViolation?: string; forceFull?: boolean } = {},
   ): Promise<string | null> {
-    this._post({ type: 'token', content: '\n\n---\n> 🔄 **파일 수정 코드 보강 요청…** (설명만 받아서 수정 코드를 별도 요청합니다)\n\n' });
+    const { reactViolation } = opts;
+    // "Full로 재시도" 버튼 또는 React 위반 재시도는 full 모드를 강제한다.
+    // patch 재시도는 약한 모델이 원본에 없는 코드로 <search>를 또 만들어 무한 실패하기 때문이다.
+    const forceFull = opts.forceFull || !!reactViolation;
+
+    this._post({
+      type: 'token',
+      content: reactViolation
+        ? '\n\n---\n> 🔄 **훅 위치를 고쳐서 다시 생성 중…** (전체 파일을 full 모드로 다시 받습니다)\n\n'
+        : forceFull
+        ? '\n\n---\n> 🔄 **전체 파일을 다시 생성 중…** (현재 파일을 기준으로 full 모드로 받습니다)\n\n'
+        : '\n\n---\n> 🔄 **파일 수정 코드 보강 요청…** (설명만 받아서 수정 코드를 별도 요청합니다)\n\n',
+    });
 
     const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
     const mp = ExtensionConfig.getMultiPatchConfig();
-    // 짧고 명확한 보강 메시지 — 전체 파일 강제 X. patch 가능하면 patch(N쌍), 아니면 full.
-    const retryMsg = mp.enabled
-      ? `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
 
-국소 수정(선택 영역·import 추가 등) — \`<patch>\` 블록을 1~${mp.maxPatches}개 출력:
+    // full 모드 강제 시: 히스토리 압축으로 사라진 원본 대신 현재 파일을 다시 읽어 기준으로 제공한다.
+    // patch 실패·위반 차단 시점엔 아직 디스크에 쓰지 않았으므로 "현재 파일 = 수정 대상 원본"이 보장된다.
+    // 이 경로는 항상 기존 파일 수정이다(신규 파일 생성은 이 폴백으로 오지 않음).
+    let currentFileBlock = '';
+    if (forceFull && filePath) {
+      const { originalContent } = await this._fileCreator.readFileContent({
+        action: 'updateFile', templateType: 'page', domain: domain ?? '', componentName: '', filePath,
+      });
+      if (originalContent) {
+        const lang = /\.tsx$/.test(filePath) ? 'tsx' : /\.ts$/.test(filePath) ? 'ts' : '';
+        const sel = this._lastSelectionLineRange;
+        const selNote = sel ? ` (원래 수정 요청 영역: 라인 ${sel.startLine}~${sel.endLine})` : '';
+        currentFileBlock = `\n\n아래는 **현재 \`${filePath}\` 파일의 실제 전체 내용**입니다. 직전 응답을 신뢰하지 말고 반드시 이것을 기준으로 작성하세요.${selNote}\n\`\`\`${lang}\n${originalContent}\n\`\`\`\n`;
+      }
+    }
+
+    const fullActionBlock = `<axiom-action>
+{"action":"updateFile","mode":"full","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+\`\`\`tsx
+// 요청이 반영된 전체 파일 내용
+\`\`\`
+</axiom-action>`;
+
+    let retryMsg: string;
+    if (reactViolation) {
+      // React 규칙 위반 — full 모드로 전체 파일을 다시 받아 훅을 컴포넌트 본문 안으로 옮긴다.
+      retryMsg = `직전 응답이 **React Rules of Hooks 위반**으로 거부되었습니다: ${reactViolation}
+
+원인: \`useState\`/\`useApi\` 등 \`use*\` 훅을 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **바깥**(import 아래·type 선언 옆 등 모듈 최상위)에 두었습니다. 같은 훅이 모듈 스코프와 컴포넌트 본문에 **중복**으로 존재할 수도 있습니다.
+${currentFileBlock}
+아래 규칙으로 **full 모드로 전체 파일만** 출력하세요(patch 금지, 부가 설명 없이 블록만):
+1. 모듈 최상위에 있던 모든 \`use*\` 훅 호출을 컴포넌트 함수 본문 **안쪽 최상위**(다른 훅 옆, \`return\` 위)로 이동
+2. 모듈 스코프에 남은 중복 훅 선언은 **삭제** (컴포넌트 본문 안에 한 벌만 존재)
+3. \`type\` 선언과 순수 상수는 모듈 스코프에 그대로 둠 (훅만 이동)
+
+${fullActionBlock}`;
+    } else if (forceFull) {
+      // patch 매칭 실패 후 "Full로 재시도" — patch를 다시 쓰지 말고 현재 파일 기준 full 전체 출력.
+      retryMsg = `직전 patch가 현재 파일과 매칭되지 않았습니다. 모델이 **원본에 존재하지 않는 코드**를 \`<search>\`에 넣었기 때문입니다(예: 실제로 없는 import·변수). patch를 다시 쓰지 말고 **full 모드로 전체 파일만** 출력하세요.
+${currentFileBlock}
+위 대화의 원래 요청을 반영해, **위 현재 파일 전체를 기준으로** 변경분을 적용한 전체 파일 내용을 출력하세요(부가 설명 없이 블록만). 현재 파일에 없는 import·훅·변수를 임의로 가정하지 말고, 실제 파일 내용만 근거로 하세요:
+
+${fullActionBlock}`;
+    } else if (mp.enabled) {
+      retryMsg = `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
+
+⚠️ **\`<search>\` 규칙: 반드시 원본 파일에 지금 존재하는 코드만. 아직 없는 코드를 \`<search>\`에 넣으면 매칭 실패.**
+- import 추가: \`<search>기존 import 줄</search><replace>기존 import 줄\\n새 import 줄</replace>\`
+- state/hook 추가: \`<search>기존 훅 선언 줄</search><replace>기존 훅 선언 줄\\n새 훅 선언 줄</replace>\`
+
+국소 수정 — \`<patch>\` 블록을 1~${mp.maxPatches}개 출력:
 <axiom-action>
 {"action":"updateFile","mode":"patch","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
 <patch>
-<search>원본에서 찾을 코드(공백·들여쓰기 포함, 전후 맥락 ${mp.minContextLines}줄)</search>
+<search>원본에 존재하는 코드(공백·들여쓰기 포함, 전후 맥락 ${mp.minContextLines}줄)</search>
 <replace>교체할 새 코드</replace>
 </patch>
 <!-- 필요하면 <patch> 블록을 추가로 더 출력. 각 <search>는 원본 파일 기준. -->
@@ -1801,8 +1963,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 \`\`\`tsx
 // 변경사항이 반영된 전체 파일 내용
 \`\`\`
-</axiom-action>`
-      : `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
+</axiom-action>`;
+    } else {
+      retryMsg = `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
 
 연속된 한 블록만 바뀌면:
 <axiom-action>
@@ -1820,6 +1983,7 @@ import 변경 또는 2곳 이상 수정이면:
 // 변경사항이 반영된 전체 파일 내용
 \`\`\`
 </axiom-action>`;
+    }
 
     this._history.push({ role: 'user', content: retryMsg });
 

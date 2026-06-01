@@ -29,6 +29,8 @@ export class ExtensionConfig {
       temperature: cfg.get<number>('llm.temperature', AI_DEFAULTS.temperature),
       maxTokens:   cfg.get<number>('llm.maxTokens',   AI_DEFAULTS.maxTokens),
       contextWindow: cfg.get<number>('llm.contextWindow', AI_DEFAULTS.contextWindow),
+      injectNoThink: cfg.get<boolean>('llm.thinking.injectNoThink', AI_DEFAULTS.injectNoThink),
+      sendThinkingParams: cfg.get<boolean>('llm.thinking.sendThinkingParams', AI_DEFAULTS.sendThinkingParams),
     };
   }
 

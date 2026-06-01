@@ -32,6 +32,8 @@ export interface Message {
   searchPreview?: string;
   /** 사용자 선택 대기 중 여부 */
   recoveryPending?: boolean;
+  /** 회복 카드 종류 — patch 매칭 실패인지 React 규칙 위반인지 구분 */
+  failureKind?: 'patch-mismatch' | 'react-violation';
 }
 
 export function useChat() {
@@ -189,6 +191,7 @@ export function useChat() {
               recoveryId: msg.recoveryId,
               searchPreview: msg.searchPreview,
               recoveryPending: true,
+              failureKind: msg.failureKind,
             },
           ]);
           break;

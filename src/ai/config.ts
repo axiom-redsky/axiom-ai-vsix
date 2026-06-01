@@ -11,6 +11,12 @@ export const AI_DEFAULTS = {
   maxTokens: 8192,
   /** 모델 컨텍스트 윈도우(토큰). 사이트별로 다른 모델이 들어오므로 설정으로 override 가능. */
   contextWindow: 32_768,
+  /**
+   * thinking(추론) 모드 억제 기본값. Qwen3 계열 기준 둘 다 켜둔다.
+   * 사이트 투입 시 모델/게이트웨이에 맞춰 override 한다.
+   */
+  injectNoThink: true,
+  sendThinkingParams: true,
   /** scaffold 컨벤션·패턴·문서 통합 지식 폴더 (.rag/ + corpus/ 통합) */
   knowledgePath: 'knowledge',
   maxFileLines: 200,

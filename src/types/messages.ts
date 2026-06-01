@@ -19,6 +19,8 @@ export interface AxiomSettings {
     apiKey: string;
     temperature: number;
     maxTokens: number;
+    /** 토큰 메터 분모(전체 컨텍스트 한도). 서버 한도가 아니라 표시·히스토리 트리밍 기준. */
+    contextWindow: number;
   };
   rag: {
     userRagFolder: string;
@@ -88,7 +90,7 @@ export type HostToWebviewMessage =
   | { type: 'fileUpdated'; filePath: string; diff?: DiffLine[] }
   | { type: 'fileError'; message: string }
   | { type: 'fileCancelled' }
-  | { type: 'patchFailed'; recoveryId: string; filePath: string; searchPreview: string }
+  | { type: 'patchFailed'; recoveryId: string; filePath: string; searchPreview: string; failureKind?: 'patch-mismatch' | 'react-violation' }
   | { type: 'fileConfirmRequest'; actionId: string; filePath: string; diff: DiffLine[]; generatedCode: string }
   | { type: 'settingsLoaded'; settings: AxiomSettings }
   | { type: 'ragFileAdded'; filePath: string }

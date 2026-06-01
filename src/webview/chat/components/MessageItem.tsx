@@ -168,6 +168,7 @@ function FileResultCard({
 
   if (subtype === 'patch-failed') {
     const preview = (message.searchPreview ?? '').trimEnd();
+    const isReactViolation = message.failureKind === 'react-violation';
     return (
       <div className="file-result file-result--patch-failed">
         <div className="file-result__header">
@@ -177,12 +178,15 @@ function FileResultCard({
               <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
           </span>
-          <span className="file-result__label">patch 매칭 실패</span>
+          <span className="file-result__label">
+            {isReactViolation ? 'React 규칙 위반 — 저장 차단됨' : 'patch 매칭 실패'}
+          </span>
           <span className="file-result__path">{content}</span>
         </div>
         <p className="patch-failed__hint">
-          AI가 제시한 search 코드가 현재 파일과 정확히 일치하지 않습니다.
-          전체 파일을 다시 받아 적용할지, 입력을 직접 수정할지 선택하세요.
+          {isReactViolation
+            ? '훅(useState/useApi 등)이 컴포넌트 함수 밖(모듈 최상위)에 생성되어 저장을 막았습니다. 훅을 컴포넌트 본문 안으로 옮긴 전체 파일을 다시 받을지, 입력을 직접 수정할지 선택하세요.'
+            : 'AI가 제시한 search 코드가 현재 파일과 정확히 일치하지 않습니다. 전체 파일을 다시 받아 적용할지, 입력을 직접 수정할지 선택하세요.'}
         </p>
         {preview && (
           <pre className="patch-failed__preview">{preview}</pre>
