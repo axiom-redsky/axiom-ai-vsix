@@ -2,6 +2,7 @@ import { KeywordRetriever } from './KeywordRetriever';
 import { FileContextRetriever } from './FileContextRetriever';
 import { RagRetriever } from './RagRetriever';
 import type { ExternalCorpus } from './ExternalCorpusLoader';
+import { ExtensionConfig } from '../config/ExtensionConfig';
 import {
   formatSectionsAsDocs,
   selectByBudget,
@@ -16,12 +17,6 @@ export interface RagContext {
   /** 문서 선택에 사용된 방법 (디버깅용) */
   methods: ('keyword' | 'context' | 'embedding')[];
 }
-
-/**
- * 시스템 프롬프트에 주입할 RAG 문서 전체 글자 수 예산.
- * 6500자 ≈ 2.5K~3K 토큰. 라우팅된 핵심 패턴 문서(useApi 예시 등)가 잘리지 않을 정도로 확보한다.
- */
-const RAG_CHAR_BUDGET = 6500;
 
 /** 임베딩 검색 최대 대기 시간(ms) — 초과 시 결과 없이 진행 */
 const EMBEDDING_TIMEOUT_MS = 2000;
@@ -111,6 +106,10 @@ export class HybridRagEngine {
     const methods: RagContext['methods'] = [];
     const queryTokens = tokenizeQuery(userQuery);
 
+    // 예산 상한과 관련도 하한은 config 단일 소스에서 읽는다(사이트별 override 가능).
+    const ragCfg = ExtensionConfig.getRagConfig();
+    const budget = ragCfg.charBudget;
+
     // Method 1: 키워드 라우팅 → 섹션 단위로 분할 + 점수
     const kwFiles = this._keywordRetriever.matchedFiles(userQuery);
     const kwSections = this._keywordRetriever.readSections(kwFiles, queryTokens);
@@ -133,28 +132,46 @@ export class HybridRagEngine {
 
     // 라우팅 신호 보너스 적용 — 새 객체로 복사해 캐시 안전성 보장
     // (ctxSections는 캐시에 보관되므로 in-place 수정 시 누적 가산되는 사고 방지)
+    // 보너스는 score(정렬·예약 우선순위)에만 가산하고 rawScore(순수 쿼리 적합도)는 보존한다.
+    // → 라우팅된 문서의 곁가지 섹션은 자기 자신의 rawScore로만 관련도 하한을 통과해야 한다.
     const boostedKw = kwSections.map((s) => ({ ...s, score: s.score + KEYWORD_ROUTE_BONUS }));
     const boostedCtx = ctxSections.map((s) => ({ ...s, score: s.score + FILE_CONTEXT_ROUTE_BONUS }));
 
     // 동일 (출처+헤더) 중복 제거 — 두 Retriever가 같은 파일을 가리킬 수 있음
     const merged = this._dedupeSections([...boostedKw, ...boostedCtx]);
 
+    // 과다 라우팅 방어: 명세 붙여넣기처럼 토큰이 많은 질문은 _index.md 키워드가 무더기로
+    // 매칭돼 수많은 문서가 라우팅된다. 그러면 'source당 대표 1개'만으로 예산이 꽉 차서
+    // (reservedChars >= budget) 적응형 곁가지 필터가 무력화된다.
+    // → source별 최고 점수 기준 상위 maxSources개 문서만 남겨 라우팅 폭을 제한한다.
+    const limited = this._limitSources(merged, ragCfg.maxSources);
+
     // 라우팅된 source별로 점수 최고 섹션 1개를 우선 확보
     // → useApi 예시 같은 핵심 섹션이 다른 doc의 우연 매칭에 묻혀 사라지는 사고 방지
-    const { reserved, rest } = this._reserveTopPerSource(merged);
+    const { reserved, rest } = this._reserveTopPerSource(limited);
     const reservedChars = reserved.reduce((sum, s) => sum + s.length, 0);
     let selected: MdSection[];
-    if (reservedChars >= RAG_CHAR_BUDGET) {
-      // 예약만으로 예산 초과 → 예약 안에서 점수·길이 기준 재선택
-      selected = selectByBudget(reserved, RAG_CHAR_BUDGET);
+    if (reservedChars >= budget) {
+      // 예약만으로 예산 초과 → 예약 안에서 점수·길이 기준 재선택 (대표 섹션은 하한 면제)
+      selected = selectByBudget(reserved, budget);
     } else {
-      const extra = selectByBudget(rest, RAG_CHAR_BUDGET - reservedChars);
+      // 곁가지(rest)는 관련도 하한을 통과한 섹션만 추가 → 질문 길이와 무관하게 적응적으로 줄어든다.
+      //
+      // 절대 하한(minRestScore)만으로는 API 명세를 통째로 붙여넣은 토큰-풍부 질문에서
+      // 거의 모든 섹션이 토큰 1개는 걸려 무력화된다. 그래서 '최고점 대비 비율'의 상대 하한을
+      // 함께 적용해, 진짜 핵심(헤더 매칭 등 높은 점수) 대비 덜 관련된 곁가지를 떨군다.
+      const maxRestRaw = rest.reduce((m, s) => Math.max(m, s.rawScore), 0);
+      const restFloor = Math.max(
+        ragCfg.minRestScore,
+        Math.ceil(maxRestRaw * ragCfg.restScoreRatio),
+      );
+      const extra = selectByBudget(rest, budget - reservedChars, restFloor);
       selected = [...reserved, ...extra];
     }
     let usedChars = selected.reduce((sum, s) => sum + s.length, 0);
 
     // 예산이 충분히 남아 있으면 Method 2 (임베딩) 폴백으로 보충
-    const remainingBudget = RAG_CHAR_BUDGET - usedChars;
+    const remainingBudget = budget - usedChars;
     if (remainingBudget >= 600) {
       const embeddingResult = await Promise.race([
         this._ragRetriever.retrieve(userQuery),
@@ -166,7 +183,8 @@ export class HybridRagEngine {
         const seen = new Set(selected.map((s) => `${s.source}|${s.header}`));
         const fresh = embeddingSections.filter((s) => !seen.has(`${s.source}|${s.header}`));
         if (fresh.length > 0) {
-          const extra = selectByBudget(fresh, remainingBudget);
+          // 임베딩 청크는 가장 약한 신호 → 쿼리 토큰을 실제로 포함한 것만 추가.
+          const extra = selectByBudget(fresh, remainingBudget, ragCfg.minEmbedScore);
           if (extra.length > 0) {
             selected = [...selected, ...extra];
             usedChars += extra.reduce((sum, s) => sum + s.length, 0);
@@ -208,6 +226,30 @@ export class HybridRagEngine {
       rest.push(...list.slice(1));
     }
     return { reserved, rest };
+  }
+
+  /**
+   * source(문서)별 최고 점수를 기준으로 상위 maxSources개 문서의 섹션만 남긴다.
+   * 토큰-풍부 질문에서 _index.md 키워드가 무더기로 매칭돼 라우팅 폭이 폭발하는 것을 막는다.
+   * maxSources <= 0 이면 제한하지 않는다(종전 동작).
+   */
+  private _limitSources(sections: MdSection[], maxSources: number): MdSection[] {
+    if (maxSources <= 0) return sections;
+
+    const bestBySource = new Map<string, number>();
+    for (const s of sections) {
+      const cur = bestBySource.get(s.source);
+      if (cur === undefined || s.score > cur) bestBySource.set(s.source, s.score);
+    }
+    if (bestBySource.size <= maxSources) return sections;
+
+    const keep = new Set(
+      [...bestBySource.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, maxSources)
+        .map(([source]) => source)
+    );
+    return sections.filter((s) => keep.has(s.source));
   }
 
   /** (출처 + 헤더) 기준으로 중복 섹션을 제거한다. 더 높은 점수의 섹션을 유지한다. */
@@ -256,6 +298,8 @@ export class HybridRagEngine {
         body: truncated,
         length: truncated.length,
         score,
+        // 임베딩 청크는 라우팅 보너스를 받지 않으므로 score == rawScore.
+        rawScore: score,
       });
     }
     return sections;

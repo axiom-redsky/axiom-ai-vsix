@@ -10,8 +10,13 @@ export interface MdSection {
   body: string;
   /** body 길이 (글자 수) */
   length: number;
-  /** 쿼리 기준 적합도 점수 (높을수록 우선) */
+  /** 쿼리 기준 적합도 점수 (높을수록 우선). 라우팅 보너스 등 가산이 반영될 수 있음 */
   score: number;
+  /**
+   * 라우팅 보너스 가산 이전의 순수 쿼리 적합도.
+   * 곁가지·임베딩 섹션을 관련도 하한으로 거를 때 사용한다(score는 보너스로 부풀려질 수 있음).
+   */
+  rawScore: number;
 }
 
 /**
@@ -36,6 +41,7 @@ export function splitIntoSections(source: string, markdown: string): MdSection[]
       body: trimmed,
       length: trimmed.length,
       score: 0,
+      rawScore: 0,
     });
   }
 
@@ -69,6 +75,7 @@ export function scoreSections(sections: MdSection[], queryTokens: string[]): voi
     if (!section.header && section.length < 1500) score += 1;
 
     section.score = score;
+    section.rawScore = score;
   }
 }
 
@@ -110,8 +117,15 @@ export function loadAndScoreSections(
  *
  * 예산을 초과하는 섹션은 건너뛰되, 더 작은 후속 섹션이 들어갈 수 있으면 계속 채운다.
  * 점수가 동일하면 짧은 섹션을 우선해서 다양성을 확보한다.
+ *
+ * @param minRawScore 관련도 하한. rawScore가 이 값 미만인 섹션은 예산이 남아도 제외한다.
+ *                    0(기본)이면 종전처럼 예산이 허락하는 한 모두 채운다.
  */
-export function selectByBudget(sections: MdSection[], maxChars: number): MdSection[] {
+export function selectByBudget(
+  sections: MdSection[],
+  maxChars: number,
+  minRawScore = 0,
+): MdSection[] {
   const sorted = [...sections].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return a.length - b.length;
@@ -120,6 +134,7 @@ export function selectByBudget(sections: MdSection[], maxChars: number): MdSecti
   const selected: MdSection[] = [];
   let remaining = maxChars;
   for (const section of sorted) {
+    if (section.rawScore < minRawScore) continue;
     if (section.length <= remaining) {
       selected.push(section);
       remaining -= section.length;

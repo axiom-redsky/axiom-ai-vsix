@@ -7,6 +7,11 @@ export interface RagConfig {
   chunkSize: number;
   chunkOverlap: number;
   topK: number;
+  charBudget: number;
+  maxSources: number;
+  minRestScore: number;
+  restScoreRatio: number;
+  minEmbedScore: number;
 }
 
 export interface MultiPatchConfig {

@@ -22,7 +22,9 @@
       "Bash(dir /s c:\\\\redsky\\\\work\\\\vscode-extension\\\\axiom-ai-vsix\\\\src)",
       "Bash(Get-ChildItem -Path \"c:\\\\redsky\\\\work\\\\vscode-extension\\\\axiom-ai-vsix\" -Directory)",
       "Bash(node esbuild.extension.js)",
-      "Bash(node esbuild.webview.js)"
+      "Bash(node esbuild.webview.js)",
+      "PowerShell(npm run typecheck)",
+      "PowerShell(npm run compile)"
     ]
   }
 }
