@@ -3,10 +3,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
 import { LlmService } from '../ai/LlmService';
-import { EditorContextCollector } from '../ai/EditorContextCollector';
+import { EditorContextCollector, type EditorContext } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
-import type { AxiomAction } from '../ai/FileCreatorService';
+import type { AxiomAction, LineEdit } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
 import { computeDiffHunks } from '../ai/DiffUtil';
@@ -157,6 +157,107 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._pendingConfirmations.set(actionId, { resolve });
       this._post({ type: 'fileConfirmRequest', actionId, filePath, diff, generatedCode });
     });
+  }
+
+  /**
+   * 수정 대상 파일을 확정한다. 신규 생성이 아닌 수정 요청에서, 코드를 생성하기 전에
+   * "어떤 파일을 고칠지"를 결정론적 휴리스틱으로 판단한다(추가 LLM 호출 없음).
+   * - 줄 선택 있음 또는 쿼리가 현재 파일/컴포넌트명 명시 → 현재 파일로 바로 진행
+   * - 쿼리가 다른 컴포넌트/파일을 지칭, 또는 열린 파일 없음 → 네이티브 QuickPick으로 질문
+   * - 그 외(모순 단서 없음) → 현재 파일로 진행
+   */
+  private async _resolveTargetFile(
+    userQuery: string,
+    editorCtx: EditorContext,
+  ): Promise<{ proceed: boolean; editorCtx: EditorContext }> {
+    // 줄 선택이 있으면 사용자가 현재 파일을 명시적으로 가리킨 것 → 바로 진행
+    if (editorCtx.selection) return { proceed: true, editorCtx };
+
+    const activePath = editorCtx.available ? editorCtx.filePath : undefined;
+    const activeBase = activePath
+      ? (activePath.split(/[/\\]/).pop() ?? '').replace(/\.[tj]sx?$/, '')
+      : '';
+
+    // 쿼리가 현재 파일명/컴포넌트명을 명시 → 확정
+    if (activeBase && userQuery.toLowerCase().includes(activeBase.toLowerCase())) {
+      return { proceed: true, editorCtx };
+    }
+
+    // 쿼리에서 다른 파일/컴포넌트 단서를 추출
+    const otherRef = this._extractOtherFileRef(userQuery, activeBase);
+
+    // 열린 파일이 있고 다른 파일 단서가 없으면 → 현재 파일로 진행 (모순 없음)
+    if (activePath && !otherRef) return { proceed: true, editorCtx };
+
+    // 모호 → 사용자에게 질문
+    return this._askTargetFile(editorCtx, activePath, otherRef);
+  }
+
+  /** 쿼리에서 현재 파일과 다른 *.tsx 파일명 또는 PascalCase 컴포넌트명을 찾는다. */
+  private _extractOtherFileRef(query: string, activeBase: string): string | null {
+    const base = activeBase.toLowerCase();
+    const fileM = query.match(/([A-Za-z0-9_]+)\.(tsx?|jsx?)\b/);
+    if (fileM && fileM[1].toLowerCase() !== base) return fileM[0];
+    const compRe = /\b([A-Z][a-zA-Z0-9]*(?:Page|List|Form|Detail|Modal|View|Table|Card|Panel|Dialog|Screen))\b/g;
+    let m: RegExpExecArray | null;
+    while ((m = compRe.exec(query)) !== null) {
+      if (m[1].toLowerCase() !== base) return m[1];
+    }
+    return null;
+  }
+
+  /** 네이티브 QuickPick으로 수정 대상 파일을 묻는다. */
+  private async _askTargetFile(
+    editorCtx: EditorContext,
+    activePath: string | undefined,
+    otherRef: string | null,
+  ): Promise<{ proceed: boolean; editorCtx: EditorContext }> {
+    const CURRENT = '$(file) 현재 파일 수정';
+    const OTHER = '$(folder) 다른 파일 선택…';
+    const items: vscode.QuickPickItem[] = [];
+    if (activePath) items.push({ label: CURRENT, description: activePath });
+    items.push({ label: OTHER, description: otherRef ? `예: ${otherRef}` : undefined });
+
+    const placeHolder = otherRef
+      ? `요청이 "${otherRef}"을(를) 가리키는 듯합니다. 어떤 파일을 수정할까요?`
+      : '어떤 파일을 수정할까요?';
+    const picked = await vscode.window.showQuickPick(items, { placeHolder, ignoreFocusOut: true });
+    if (!picked) return { proceed: false, editorCtx };
+    if (picked.label === CURRENT) return { proceed: true, editorCtx };
+
+    const newCtx = await this._pickAndCollectFile(otherRef);
+    if (!newCtx) return { proceed: false, editorCtx };
+    return { proceed: true, editorCtx: newCtx };
+  }
+
+  /** 워크스페이스 ts/tsx 파일 목록을 보여주고 선택된 파일을 열어 EditorContext로 재수집한다. */
+  private async _pickAndCollectFile(hint: string | null): Promise<EditorContext | undefined> {
+    const uris = await vscode.workspace.findFiles('src/**/*.{ts,tsx}', '**/node_modules/**', 1000);
+    type FileItem = vscode.QuickPickItem & { uri: vscode.Uri };
+    const h = hint?.toLowerCase();
+    const items: FileItem[] = uris
+      .map((u) => {
+        const rel = vscode.workspace.asRelativePath(u);
+        return { label: rel.split(/[/\\]/).pop() ?? rel, description: rel, uri: u };
+      })
+      .sort((a, b) => {
+        if (h) {
+          const ha = a.label.toLowerCase().includes(h) ? 0 : 1;
+          const hb = b.label.toLowerCase().includes(h) ? 0 : 1;
+          if (ha !== hb) return ha - hb;
+        }
+        return (a.description ?? '').localeCompare(b.description ?? '');
+      });
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: '수정할 파일을 선택하세요',
+      matchOnDescription: true,
+      ignoreFocusOut: true,
+    });
+    if (!picked) return undefined;
+    const doc = await vscode.workspace.openTextDocument(picked.uri);
+    await vscode.window.showTextDocument(doc, { preview: false });
+    // 활성 에디터가 바뀌었으니 컨텍스트 재수집 (새 파일엔 선택 영역 없음)
+    return this._editorCollector.collect();
   }
 
   /** 뷰가 이미 열려 있으면 포커스, 아니면 VS Code가 자동으로 resolveWebviewView를 호출한다. */
@@ -434,7 +535,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let mainTimedOut = false;
 
     try {
-      const editorCtx = this._editorCollector.collect();
+      let editorCtx = this._editorCollector.collect();
+
+      // 대상 파일 선확정 — 신규 생성이 아닌 수정 요청은 코드 생성 전에 "어떤 파일을 고칠지"를
+      // 결정론적 휴리스틱으로 확정한다(잘못된 파일에 라인 splice 방지).
+      const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
+      if (isFileCtx) {
+        const resolved = await this._resolveTargetFile(text, editorCtx);
+        if (!resolved.proceed) {
+          this._post({
+            type: 'token',
+            content: '\n\n> 취소되었습니다. 어떤 파일을 수정할지 정해지면 다시 요청해 주세요.\n',
+          });
+          this._post({ type: 'done' });
+          this._postStatus(config.model);
+          return;
+        }
+        editorCtx = resolved.editorCtx;
+      }
+
       this._lastSelectionLineRange = editorCtx.selection
         ? { startLine: editorCtx.selection.startLine, endLine: editorCtx.selection.endLine }
         : undefined;
@@ -476,8 +595,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         breakdown,
         contextWindow: config.contextWindow,
       });
-      const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
-
       const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         ...this._history,
@@ -1413,12 +1530,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      // 4차: lines 모드 — <edit from/to/after anchor>...</edit> 라인 앵커(출력 최소화).
+      // patch·structural가 없을 때만 시도 (모드 혼용 방지).
+      if (!action.patches && !action.structural) {
+        const editMatches = [...blockContent.matchAll(/<edit\b([^>]*)>\n?([\s\S]*?)<\/edit>/g)];
+        if (editMatches.length > 0) {
+          const lineEdits: LineEdit[] = [];
+          for (const em of editMatches) {
+            const attrs = em[1];
+            const content = em[2].replace(/\n$/, '');
+            const num = (name: string): number | undefined => {
+              const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*["']?(\\d+)`));
+              return m ? parseInt(m[1], 10) : undefined;
+            };
+            const anchorM = attrs.match(/\banchor\s*=\s*"([^"]*)"/) ?? attrs.match(/\banchor\s*=\s*'([^']*)'/);
+            const edit: LineEdit = {
+              from: num('from'),
+              to: num('to'),
+              after: num('after'),
+              content,
+              anchor: anchorM ? anchorM[1] : undefined,
+            };
+            // from(치환) 또는 after(삽입) 중 하나는 있어야 유효
+            if (edit.from !== undefined || edit.after !== undefined) lineEdits.push(edit);
+          }
+          if (lineEdits.length > 0) {
+            action.lineEdits = lineEdits;
+            action.mode = 'lines';
+          }
+        }
+      }
+
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
-      if (codeMatch?.[1]) action.generatedCode = codeMatch[1].trimEnd();
+      // lines 모드면 <edit> 내부에 우연히 들어간 코드펜스를 full 코드로 오인하지 않는다.
+      if (codeMatch?.[1] && action.mode !== 'lines') action.generatedCode = codeMatch[1].trimEnd();
 
       // full 모드 updateFile TSX/TS → React 규칙 위반 조기 차단
       if (
         action.mode !== 'patch' &&
+        action.mode !== 'lines' &&
         action.action === 'updateFile' &&
         action.generatedCode &&
         /\.(tsx|ts)$/.test(action.filePath)
@@ -1518,6 +1668,98 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
           }
           action.generatedCode = finalText;
+        }
+
+        // lines 모드: 라인 앵커 edit을 원본에 적용해 generatedCode를 미리 계산.
+        // 라인번호 드리프트는 anchor로 자동 보정, 적용 실패 시 full 모드로 자동 폴백.
+        if (action.mode === 'lines' && action.lineEdits && action.lineEdits.length > 0) {
+          if (!originalContent) {
+            this._post({ type: 'fileError', message: `파일을 읽을 수 없습니다: ${action.filePath}` });
+            break;
+          }
+          const le = ExtensionConfig.getLineEditConfig();
+          const lr = this._fileCreator.computeLineEdits(originalContent, action.lineEdits, {
+            requireAnchor: le.requireAnchor,
+            anchorSearchRadius: le.anchorSearchRadius,
+          });
+          if (lr.text === null) {
+            const failureSummary = lr.results
+              .filter((r) => !r.success)
+              .map((r) => `#${r.index + 1}:${r.reason}`)
+              .join(', ');
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⚠️ line-edit 실패 (${action.filePath}): ${failureSummary} → full 모드로 자동 폴백`,
+            );
+            this._post({
+              type: 'token',
+              content: `\n\n> ⚠️ **라인 앵커 적용 실패** (${failureSummary}). 현재 파일을 기준으로 전체를 다시 받아 적용합니다.\n`,
+            });
+            // 자동 폴백: 현재 파일 기준 full 모드 재생성 → 재귀 처리.
+            // full은 결정적으로 적용되므로 lines 실패로 재귀가 무한 반복되지 않는다.
+            const fbConfig = ExtensionConfig.getEffectiveLlmConfig();
+            const retry = await this._retryForAxiomAction(action.filePath, fbConfig, { forceFull: true });
+            if (retry) await this._handleAxiomAction(retry);
+            break;
+          }
+
+          // 선택 영역 가드: 변경 라인이 선택 영역 ±1 밖이면 거부 (순수 import 삽입은 면제).
+          if (this._lastSelectionLineRange) {
+            const sel = this._lastSelectionLineRange;
+            const PADDING = 1;
+            const isImportOnly = (c: string) =>
+              c.split('\n').every((l) => l.trim() === '' || /^\s*import\s/.test(l));
+            const violating = lr.results
+              .filter((r) => r.success)
+              .filter((r) => {
+                const edit = action.lineEdits?.[r.index];
+                if (edit && isImportOnly(edit.content)) return false;
+                const s = r.startLine ?? 0;
+                const e = r.endLine ?? s;
+                return e < sel.startLine - PADDING || s > sel.endLine + PADDING;
+              });
+            if (violating.length > 0) {
+              const lineNums = violating
+                .map((r) => `${r.startLine}~${r.endLine}`)
+                .join(', ');
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ❌ 선택 영역 위반 거부 (선택 ${sel.startLine}~${sel.endLine}): line-edit ${lineNums}`,
+              );
+              this._post({
+                type: 'token',
+                content:
+                  `\n\n> ❌ **선택 영역 위반으로 거부됨**: 선택한 라인은 **${sel.startLine}~${sel.endLine}** 인데, ` +
+                  `수정이 라인 **${lineNums}** 에 적용되려 했습니다. **Full로 재시도**를 선택하거나 라인 번호를 명시해 다시 요청하세요.\n`,
+              });
+              this._reportPatchFailure(
+                action.filePath,
+                violating.map((r) => `[#${r.index + 1} selection-mismatch] 라인 ${r.startLine}~${r.endLine}`),
+              );
+              break;
+            }
+          }
+
+          // React 규칙 검증 — patch 분기와 동일하게 "새로 생긴 위반"만 차단.
+          let linesText = lr.text;
+          if (/\.(tsx|ts)$/.test(action.filePath)) {
+            const before = FileCreatorService.detectReactRuleViolations(originalContent);
+            const after = FileCreatorService.detectReactRuleViolations(linesText);
+            if (!before && after) {
+              const hoist = FileCreatorService.hoistModuleScopeHooks(linesText);
+              if (hoist) {
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] 🔧 auto-hoist (${action.filePath}): line-edit 결과의 모듈 스코프 훅 ${hoist.hoisted.length}건 이동`,
+                );
+                linesText = hoist.text;
+              } else {
+                this._reportReactViolation(action.filePath, after);
+                break;
+              }
+            }
+          }
+          action.generatedCode = linesText;
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] line-edit 적용 완료 (${action.filePath}, ${action.lineEdits.length}개 edit)`,
+          );
         }
 
         // patch 모드: 다중 patch를 원본 파일에 동시 적용해 generatedCode를 미리 계산
@@ -1658,6 +1900,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // 그대로 출력했다면, 디스크에 쓰기 전에 원본 섹션 본문으로 복원한다 (코드 손실 방지).
         if (
           action.mode !== 'patch' &&
+          action.mode !== 'lines' &&
           originalContent !== undefined &&
           action.generatedCode
         ) {

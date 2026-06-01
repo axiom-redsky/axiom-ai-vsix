@@ -15,6 +15,12 @@ export interface MultiPatchConfig {
   minContextLines: number;
 }
 
+export interface LineEditConfig {
+  enabled: boolean;
+  requireAnchor: boolean;
+  anchorSearchRadius: number;
+}
+
 export class ExtensionConfig {
   private static _cfg() {
     return vscode.workspace.getConfiguration('axiom-ai');
@@ -69,6 +75,20 @@ export class ExtensionConfig {
       enabled:         cfg.get<boolean>('multiPatch.enabled',         AI_DEFAULTS.multiPatch.enabled),
       maxPatches:      cfg.get<number>('multiPatch.maxPatches',       AI_DEFAULTS.multiPatch.maxPatches),
       minContextLines: cfg.get<number>('multiPatch.minContextLines',  AI_DEFAULTS.multiPatch.minContextLines),
+    };
+  }
+
+  /**
+   * 라인 앵커(diff) 출력 모드 설정. 사이트별 모델 역량에 맞춰 조정한다.
+   * - qwen3.5-35B급: requireAnchor=true (조용한 오적용 차단)
+   * - 상위 모델: requireAnchor=false 로 순수 라인 앵커(출력 최소) 가능
+   */
+  static getLineEditConfig(): LineEditConfig {
+    const cfg = ExtensionConfig._cfg();
+    return {
+      enabled:            cfg.get<boolean>('lineEdit.enabled',            AI_DEFAULTS.lineEdit.enabled),
+      requireAnchor:      cfg.get<boolean>('lineEdit.requireAnchor',      AI_DEFAULTS.lineEdit.requireAnchor),
+      anchorSearchRadius: cfg.get<number>('lineEdit.anchorSearchRadius',  AI_DEFAULTS.lineEdit.anchorSearchRadius),
     };
   }
 

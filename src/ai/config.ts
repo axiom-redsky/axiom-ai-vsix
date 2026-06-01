@@ -43,4 +43,20 @@ export const AI_DEFAULTS = {
     /** <search> 블록 작성 시 권장하는 전후 맥락 라인 수 */
     minContextLines: 3,
   },
+  /**
+   * 라인 앵커(diff) 출력 모드 기본값. 바뀐 줄만 라인번호로 지정해 출력 토큰을 줄인다.
+   * 사이트별 모델 역량에 따라 설정으로 override 한다.
+   */
+  lineEdit: {
+    /** lines 모드를 모델에 안내할지 여부. false면 기존 patch/structural/full만 사용. */
+    enabled: true,
+    /**
+     * 각 edit에 원본 첫 줄 텍스트(anchor)를 동봉시켜 적용 전 검증할지 여부.
+     * true: 라인번호 드리프트를 anchor로 자동 보정 + 조용한 오적용 차단(정확성 우선).
+     * false: 순수 라인 앵커(출력 최소, 검증 없음 — 상위 모델에서만 권장).
+     */
+    requireAnchor: true,
+    /** anchor 불일치 시 기준 라인 주변 ±N줄까지 탐색해 라인번호를 자동 보정한다. */
+    anchorSearchRadius: 3,
+  },
 } as const;

@@ -192,12 +192,30 @@ export class ScaffoldContextBuilder {
         ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
         : '';
 
+    // 라인 앵커(lines) 모드용: 파일이 슬라이싱되지 않은(라인번호가 실제와 1:1로 맞는) 경우에만
+    // 본문에 `NNN| ` prefix를 부여한다. 슬라이싱되면 번호가 어긋나므로 부여하지 않는다.
+    const lineEditCfg = ExtensionConfig.getLineEditConfig();
+    const fileIsSliced = sliceNotice.length > 0;
+    const linesAllowed =
+      ctx.available && lineEditCfg.enabled && !fileIsSliced && ctx.content !== undefined;
+
+    let fileBody = fileContent;
+    let lineNumberNotice = '';
+    if (linesAllowed) {
+      const fl = fileContent.split('\n');
+      const width = String(fl.length).length;
+      fileBody = fl.map((l, i) => `${String(i + 1).padStart(width, ' ')}| ${l}`).join('\n');
+      lineNumberNotice =
+        '> 각 줄 앞 `NNN| `는 **위치 파악용 라인 번호**입니다 — 실제 파일 내용이 아니므로 출력(<edit>·코드)에 절대 포함하지 마세요.';
+    }
+
     const fileSection = ctx.available
       ? [
           '\n\n---\n\n## 현재 열린 파일: ' + ctx.filePath,
           sliceNotice,
+          lineNumberNotice,
           '```' + ctx.language,
-          fileContent,
+          fileBody,
           '```',
           selectionSection,
         ].join('\n')
@@ -251,6 +269,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     if (domainCtx.isCurrentFileContext) {
       const cPrompt = this._buildScenarioCPrompt(
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
+        linesAllowed, lineEditCfg.requireAnchor,
       );
       // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 합산)
       this._lastBreakdown.rulesChars = Math.max(
@@ -354,6 +373,8 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     domainSection: string,
     scaffoldSection: string,
     fileSection: string,
+    linesAllowed: boolean,
+    requireAnchor: boolean,
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
@@ -410,6 +431,27 @@ const { data, isPending, error } = useApi<TResponse>('/api/endpoint');
 <import module="@axiom/hooks" named="useApi" />
 </axiom-action>`;
 
+    // 라인 앵커(lines) 모드 — 파일이 슬라이싱되지 않아 라인번호가 실제와 일치할 때만 제공.
+    const anchorRule = requireAnchor
+      ? `각 \`<edit>\`에는 **\`anchor\` 속성**으로 기준 라인(치환=\`from\`, 삽입=\`after\`)의 **원본 텍스트 1줄을 그대로 복사**(앞의 \`NNN| \` 라인번호 prefix 제외)해 넣으세요. 확장이 이 anchor로 위치를 대조·자동 보정하므로 라인번호가 약간 어긋나도 안전합니다. anchor가 없으면 거부됩니다.`
+      : `각 \`<edit>\`에 기준 라인의 원본 텍스트를 \`anchor\`로 넣으면 위치 검증 정확도가 올라갑니다(선택).`;
+    const lineModeBlock = `**lines 모드 (일반 코드 수정 시 기본 권장)** — 위 파일은 각 줄 앞에 \`NNN| \` 라인 번호가 붙어 있습니다. **바뀐 줄만** \`<edit>\`로 출력하면 확장이 열린 파일에 그대로 적용합니다. 원본을 다시 복사하지 않아 출력이 가장 작습니다.
+- **치환/삭제**: \`<edit from="시작라인" to="끝라인" ...>\` 안에 새 내용을 넣으세요. 내용이 비면 해당 줄 삭제. (한 줄이면 from=to)
+- **삽입**: \`<edit after="기준라인" ...>\` — 기준 라인 **뒤에** 새 내용을 삽입 (최상단 삽입은 after="0").
+- ${anchorRule}
+- 라인 번호(\`NNN| \`)와 anchor는 **위치 지정용**입니다. \`<edit>\` 본문(실제 적용될 코드)에는 라인 번호 prefix를 절대 넣지 마세요.
+- 선택 영역이 제시되어 있으면 그 범위(및 import 추가)에만 한정하세요.
+
+<axiom-action>
+{"action":"updateFile","mode":"lines","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<edit from="44" to="44" anchor="const [age, setAge] = useState(0);">
+  const [age, setAge] = useState(0);
+  const [phone, setPhone] = useState('');
+</edit>
+</axiom-action>
+
+여러 곳을 고치면 \`<edit>\` 블록을 N개 나열하세요 (각 from/to/after·anchor는 **원본 파일 기준**, 범위 겹침 금지).`;
+
     const navigationHint = this._hasNavigationIntent(userQuery)
       ? `
 ### 화면 이동 구현 지침
@@ -430,8 +472,8 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 
 1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
 2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
-3. 수정 범위에 따라 아래 두 모드 중 하나를 선택하세요
-4. JSON 메타데이터와 코드 블록(또는 search/replace 블록)을 분리하여 작성하세요
+3. 수정 범위에 따라 아래 출력 모드 중 하나를 선택하세요 (출력은 작을수록 좋습니다)
+4. JSON 메타데이터와 코드/edit 블록을 분리하여 작성하세요
 
 ### ⚠️ 훅(useApi 등) 삽입 위치 규칙 — 위반 시 런타임 즉시 크래시
 새로운 \`useApi\` / \`useState\` / \`useEffect\` 등 \`use*\` 훅 호출을 추가할 때:
@@ -442,14 +484,20 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 
 ### 출력 모드 선택
 
-> ⚠️ **모드 선택 핵심 규칙**:
-> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.
-> - **patch 모드**: 기존 코드의 특정 부분을 고치는 국소 변경(선택 영역 수정 등)은 \`<patch>\` 블록 N개로 표현.
-> - **full 모드**: 파일 절반 이상을 재작성하거나, ${mp.maxPatches}개를 초과하는 위치를 동시에 수정해야 할 때만 사용.
+> ⚠️ **모드 선택 핵심 규칙** (출력은 작을수록 좋습니다 — 바뀐 부분만 출력):
+> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.${
+  linesAllowed
+    ? `
+> - **lines 모드 (그 외 일반 코드 수정의 기본)**: 위 파일에 붙은 라인 번호를 보고 **바뀐 줄만** \`<edit>\`로 출력하세요. 원본을 다시 복사하지 않아 출력이 가장 작습니다.
+> - **patch 모드**: 라인 번호가 헷갈리거나 lines로 표현하기 어려운 국소 변경에 한해 \`<patch>\` 블록 사용(폴백).`
+    : `
+> - **patch 모드**: 기존 코드의 특정 부분을 고치는 국소 변경(선택 영역 수정 등)은 \`<patch>\` 블록 N개로 표현.`
+}
+> - **full 모드**: 파일 절반 이상을 재작성해야 할 때만 사용(출력이 가장 큼 — 최후의 수단).
 > - 선택 영역이 위에 제시되어 있으면 그 영역과 import 추가에만 한정하세요.
 
 ${structuralModeBlock}
-
+${linesAllowed ? `\n${lineModeBlock}\n` : ''}
 ${patchModeBlock}
 
 **full 모드** — 전체 파일 재작성이 필요할 때만:

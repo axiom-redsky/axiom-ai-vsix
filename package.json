@@ -178,6 +178,23 @@
           "minimum": 1,
           "maximum": 10,
           "description": "<search> 블록 작성 시 LLM에게 안내할 권장 전후 맥락 라인 수. 작을수록 매칭 모호성 증가."
+        },
+        "axiom-ai.lineEdit.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "라인 앵커(diff) 출력 모드 사용 여부. true이면 코드 수정 시 바뀐 줄만 라인번호로 지정(<edit>)해 출력 토큰을 크게 줄입니다. 파일이 슬라이싱되지 않은 경우에만 적용되며, 실패 시 patch/full로 자동 폴백합니다."
+        },
+        "axiom-ai.lineEdit.requireAnchor": {
+          "type": "boolean",
+          "default": true,
+          "description": "각 <edit>에 원본 첫 줄 텍스트(anchor)를 동봉시켜 적용 전 검증합니다. true이면 라인번호 드리프트를 anchor로 자동 보정하고 어긋난 수정을 차단합니다(정확성 우선, qwen 35B급 권장). false이면 순수 라인 앵커로 출력을 최소화합니다(상위 모델 권장)."
+        },
+        "axiom-ai.lineEdit.anchorSearchRadius": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 20,
+          "description": "anchor가 지정 라인번호와 일치하지 않을 때 기준 라인 주변 ±N줄까지 탐색해 위치를 자동 보정합니다. 0이면 보정 없이 정확한 라인번호만 허용합니다."
         }
       }
     },
@@ -329,7 +346,8 @@
     "compile": "node esbuild.extension.js && node esbuild.webview.js",
     "watch": "concurrently \"node esbuild.extension.js --watch\" \"node esbuild.webview.js --watch\"",
     "package": "vsce package --no-dependencies",
-    "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.webview.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.webview.json",
+    "test:line-edits": "node scripts/run-test-line-edits.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

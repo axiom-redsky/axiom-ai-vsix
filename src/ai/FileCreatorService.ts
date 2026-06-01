@@ -13,6 +13,22 @@ export interface PatchBlock {
   replace: string;
 }
 
+/**
+ * 라인 앵커(diff) 모드의 단일 edit. 모델이 출력한 `<edit ...>...</edit>` 한 개에 대응한다.
+ * 출력 토큰을 줄이기 위해 원본을 다시 복사하지 않고, **표시된 라인번호**로 위치를 지정한다.
+ * - 치환: `from`~`to` (1-based, 양끝 포함). 빈 content이면 해당 범위 삭제.
+ * - 삽입: `after` (해당 라인 뒤에 content 삽입, after=0 → 파일 최상단)
+ * - `anchor`: 기준 라인(치환=from, 삽입=after)의 원본 텍스트 1줄. 적용 전 대조해
+ *   라인번호 드리프트를 자동 보정하고, 어긋나면 시끄럽게 실패시킨다(조용한 오적용 방지).
+ */
+export interface LineEdit {
+  from?: number;
+  to?: number;
+  after?: number;
+  content: string;
+  anchor?: string;
+}
+
 export interface AxiomAction {
   action: 'createFile' | 'updateFile';
   templateType: 'page' | 'component' | 'store' | 'api' | 'router';
@@ -24,9 +40,11 @@ export interface AxiomAction {
    * 'structural': <hook>/<import> 조각을 확장이 splitTsSections 기준으로 결정론적 삽입
    * (약한 sLLM이 위치·search 텍스트를 만들지 않아도 되는 경로)
    */
-  mode?: 'full' | 'patch' | 'structural';
+  mode?: 'full' | 'patch' | 'structural' | 'lines';
   /** mode='structural' 일 때 삽입할 훅 코드 + import 목록 */
   structural?: StructuralEdit;
+  /** mode='lines' 일 때 라인 앵커 edit 목록 */
+  lineEdits?: LineEdit[];
   generatedCode?: string;
   /** @deprecated patches[0]로 마이그레이션 — 하위 호환을 위해 단일 patch 출력도 받아들인다 */
   searchCode?: string;
@@ -51,8 +69,10 @@ export interface PatchApplyResult {
    *  - 'overlap': 다른 patch와 라인 범위가 겹침
    *  - 'ambiguous': substring 매칭(Pass 4)에서 파일 내 여러 위치에 매칭됨 + 선택 영역으로도 좁히지 못함
    *  - 'selection-mismatch': patch가 선택 영역과 겹치지 않는 곳에 적용되었음 (import 추가 제외)
+   *  - 'out-of-range': (lines 모드) 지정한 라인번호가 파일 범위(1..N) 밖
+   *  - 'anchor-mismatch': (lines 모드) anchor가 기준 라인 ±N 안에서 매칭되지 않음
    */
-  reason?: 'not-found' | 'overlap' | 'ambiguous' | 'selection-mismatch';
+  reason?: 'not-found' | 'overlap' | 'ambiguous' | 'selection-mismatch' | 'out-of-range' | 'anchor-mismatch';
 }
 
 /**
@@ -252,6 +272,173 @@ export class FileCreatorService {
     let text = lines.join('\n');
     if (hasCRLF) text = text.replace(/\n/g, '\r\n');
     return { text, results };
+  }
+
+  /**
+   * 라인 앵커(diff) 모드: 모델이 출력한 `<edit>` 목록을 원본에 적용한 결과를 반환한다.
+   *
+   * computeMultiPatch와 동일한 atomic·역순 적용 계약을 따른다(하나라도 실패 시 text=null).
+   * 차이점은 위치를 `<search>` 텍스트가 아니라 **라인번호 + anchor 1줄**로 지정한다는 것:
+   *   1. 각 edit의 기준 라인(치환=from, 삽입=after)의 원본 텍스트를 anchor와 trim 대조
+   *   2. 일치하면 그대로, 어긋나면 기준 라인 ±radius 안에서 anchor를 찾아 라인번호 자동 보정
+   *   3. radius 안에서도 못 찾으면 'anchor-mismatch' 실패 → 호출부가 patch/full로 폴백
+   *   4. requireAnchor=true인데 anchor가 없으면 검증 불가이므로 실패 처리
+   * 이로써 라인번호 드리프트(약한 모델의 ±1 오차)를 흡수하고, 범위 안이지만 틀린 줄에
+   * 덮어쓰는 "조용한 오적용"을 차단한다.
+   */
+  computeLineEdits(
+    original: string,
+    edits: LineEdit[],
+    opts: { requireAnchor: boolean; anchorSearchRadius: number },
+  ): MultiPatchResult {
+    if (edits.length === 0) return { text: null, results: [] };
+
+    const hasCRLF = original.includes('\r\n');
+    const normOrig = hasCRLF ? original.replace(/\r\n/g, '\n') : original;
+    const originalLines = normOrig.split('\n');
+
+    type Resolved = {
+      index: number;
+      /** 0-based 시작 인덱스 (splice 위치) */
+      start: number;
+      /** 삭제할 줄 수 (삽입이면 0) */
+      deleteCount: number;
+      /** 겹침 검사용 0-based 끝 인덱스 (삽입이면 start-1 → 빈 구간) */
+      endForOverlap: number;
+      contentLines: string[];
+    };
+    const resolved: Resolved[] = [];
+    const results: PatchApplyResult[] = [];
+
+    for (let i = 0; i < edits.length; i++) {
+      const r = this._resolveLineEdit(originalLines, edits[i], opts);
+      if (r.kind === 'ok') {
+        resolved.push({
+          index: i,
+          start: r.start,
+          deleteCount: r.deleteCount,
+          endForOverlap: r.start + r.deleteCount - 1,
+          contentLines: r.contentLines,
+        });
+        results.push({ index: i, success: true, startLine: r.reportStart, endLine: r.reportEnd });
+      } else {
+        results.push({ index: i, success: false, reason: r.kind });
+      }
+    }
+
+    if (results.some((r) => !r.success)) {
+      return { text: null, results };
+    }
+
+    // 겹침 검출 — start 오름차순 정렬 후 인접 비교 (computeMultiPatch와 동일 규약)
+    const sortedByStart = [...resolved].sort((a, b) => a.start - b.start);
+    for (let i = 1; i < sortedByStart.length; i++) {
+      const prev = sortedByStart[i - 1];
+      const cur = sortedByStart[i];
+      if (cur.start <= prev.endForOverlap) {
+        const overlapEntry = results.find((r) => r.index === cur.index);
+        if (overlapEntry) {
+          overlapEntry.success = false;
+          overlapEntry.reason = 'overlap';
+          delete overlapEntry.startLine;
+          delete overlapEntry.endLine;
+        }
+        return { text: null, results };
+      }
+    }
+
+    // start 큰 것부터 역순 splice — 앞쪽 변경으로 인한 인덱스 시프트 방지.
+    // 동률(같은 start)이면 삭제가 있는 edit을 먼저 적용해 삽입이 그 앞에 오도록 한다.
+    const sortedDesc = [...sortedByStart].sort(
+      (a, b) => b.start - a.start || b.deleteCount - a.deleteCount,
+    );
+    let lines = originalLines.slice();
+    for (const r of sortedDesc) {
+      lines = [
+        ...lines.slice(0, r.start),
+        ...r.contentLines,
+        ...lines.slice(r.start + r.deleteCount),
+      ];
+    }
+
+    let text = lines.join('\n');
+    if (hasCRLF) text = text.replace(/\n/g, '\r\n');
+    return { text, results };
+  }
+
+  /**
+   * 단일 LineEdit을 0-based splice 명세(start/deleteCount/contentLines)로 환산한다.
+   * anchor 검증·자동보정을 거치며, 실패 시 사유를 반환한다.
+   */
+  private _resolveLineEdit(
+    originalLines: string[],
+    e: LineEdit,
+    opts: { requireAnchor: boolean; anchorSearchRadius: number },
+  ):
+    | { kind: 'ok'; start: number; deleteCount: number; contentLines: string[]; reportStart: number; reportEnd: number }
+    | { kind: 'out-of-range' }
+    | { kind: 'anchor-mismatch' } {
+    const oLen = originalLines.length;
+    const contentLines = e.content.length ? e.content.replace(/\r\n/g, '\n').split('\n') : [];
+    const isInsert = e.after !== undefined && e.from === undefined && e.to === undefined;
+
+    // 기준 라인(1-based): 치환은 from, 삽입은 after(=뒤에 삽입할 라인). after=0(최상단)은 기준 라인 없음.
+    let from = e.from;
+    let to = e.to ?? e.from;
+    let after = e.after;
+    const baseLine1 = isInsert ? after! : from;
+
+    // ── anchor 검증·자동보정 ──
+    const anchor = e.anchor?.trim();
+    if (anchor) {
+      const baseIdx = (baseLine1 ?? 0) - 1; // 0-based 기준 줄
+      const inRange = (idx: number) => idx >= 0 && idx < oLen;
+      const eq = (idx: number) => inRange(idx) && originalLines[idx].trim() === anchor;
+      if (baseLine1 !== undefined && baseLine1 >= 1 && eq(baseIdx)) {
+        // 정확히 일치 — 보정 불필요
+      } else {
+        // 기준 줄 주변 ±radius 에서 가장 가까운 일치 라인 탐색 (d=0,1,1,2,2,...)
+        let foundIdx = -1;
+        for (let d = 0; d <= opts.anchorSearchRadius && foundIdx < 0; d++) {
+          if (eq(baseIdx - d)) foundIdx = baseIdx - d;
+          else if (d > 0 && eq(baseIdx + d)) foundIdx = baseIdx + d;
+        }
+        if (foundIdx < 0) return { kind: 'anchor-mismatch' };
+        const delta = foundIdx + 1 - (baseLine1 ?? 1); // 1-based 보정량
+        if (from !== undefined) from += delta;
+        if (to !== undefined) to += delta;
+        if (after !== undefined) after += delta;
+      }
+    } else if (opts.requireAnchor && !(isInsert && after === 0)) {
+      // anchor 없이는 검증 불가 → 폴백 유도 (최상단 삽입 after=0은 기준 줄이 없어 예외)
+      return { kind: 'anchor-mismatch' };
+    }
+
+    if (isInsert) {
+      // after=0 → 최상단, after=oLen → 최하단 뒤
+      if (after! < 0 || after! > oLen) return { kind: 'out-of-range' };
+      return {
+        kind: 'ok',
+        start: after!,
+        deleteCount: 0,
+        contentLines,
+        reportStart: after! + 1,
+        reportEnd: after! + contentLines.length,
+      };
+    }
+
+    // 치환/삭제
+    if (from === undefined) return { kind: 'out-of-range' };
+    const t = to ?? from;
+    if (from < 1 || t < from || t > oLen) return { kind: 'out-of-range' };
+    return {
+      kind: 'ok',
+      start: from - 1,
+      deleteCount: t - from + 1,
+      contentLines,
+      reportStart: from,
+      reportEnd: t,
+    };
   }
 
   /**
