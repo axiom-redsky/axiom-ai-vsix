@@ -9,6 +9,7 @@ import type { EditorContext } from './EditorContextCollector';
 import type { ContextBreakdown } from '../types/messages';
 import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
+import { scanLibraryVersions } from './PackageVersionScanner';
 
 /** 코드 슬라이싱 적용 대상 언어 ID */
 const SLICEABLE_LANGUAGES = new Set(['typescript', 'typescriptreact', 'javascript', 'javascriptreact']);
@@ -34,11 +35,14 @@ export class ScaffoldContextBuilder {
   private _lastBreakdown: ContextBreakdown = {
     rulesChars: 0, fileChars: 0, ragChars: 0, sddChars: 0, domainChars: 0,
   };
+  private readonly _libraryVersions: string;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly _outputChannel?: vscode.OutputChannel
-  ) {}
+  ) {
+    this._libraryVersions = scanLibraryVersions();
+  }
 
   /** 가장 최근 buildSystemPrompt 호출의 컨텍스트 구성 요소별 글자 수를 반환한다. */
   lastBreakdown(): ContextBreakdown {
@@ -241,7 +245,7 @@ ${routerImportRule}
 
 ## 프로젝트 스택
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
-해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)`;
+해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)${this._libraryVersions ? `\n\n## 설치된 라이브러리 버전\n${this._libraryVersions}` : ''}`;
 
     // 시나리오 C: 현재 열린 파일 수정 — A/B 예시 없이 C 전용 프롬프트 사용
     if (domainCtx.isCurrentFileContext) {

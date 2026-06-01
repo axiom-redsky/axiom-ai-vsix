@@ -97,6 +97,42 @@ project: react-app-scaffold
 - keywords: [page-template, 페이지템플릿, 폼화면, form-page, formpage, 폼, form, 등록, 수정, 입력, 저장, 취소, react-hook-form, zod, validation, 유효성]
   files: [page-templates/form-page.md]
 
+## 라이브러리 사용법
+
+- keywords: [dayjs, 날짜, date, format, 포맷, locale, 로케일, 요일, 한글요일, 날짜포맷,
+             상대시간, relativetime, 날짜파싱, 날짜계산, customparsformat, weekday,
+             YYYY, MM, DD, dddd, 날짜라이브러리, 날짜변환, 날짜비교]
+  files: [libraries/dayjs.md]
+
+- keywords: [zustand, 스토어, store, 전역상태, global-state, 상태관리, create, useStore,
+             devtools, 선택자, 전역변수, 공유상태, 글로벌스토어, zustand5]
+  files: [libraries/zustand.md]
+
+- keywords: [date-fns, datefns, format, parse, isvalid, differenceInDays, addDays, addMonths,
+             날짜유틸, 날짜함수, parseISO, formatDistance, formatDistanceToNow]
+  files: [libraries/date-fns.md]
+
+- keywords: [animejs, anime, 애니메이션, animation, animate, timeline, keyframes,
+             자바스크립트애니메이션, 모션, motion, 트랜지션, easing, 스크롤애니메이션]
+  files: [libraries/animejs.md]
+
+- keywords: [react-table, tanstack-table, usereacttable, columndef, columnhelper,
+             테이블정렬, 테이블필터, 페이지네이션, sorting, filtering, pagination,
+             테이블상태, 컬럼정의, 테이블훅]
+  files: [libraries/react-table.md]
+
+- keywords: [react-day-picker, daypicker, 달력, calendar, 날짜선택, datepicker,
+             캘린더, 날짜피커, 달력컴포넌트, 달력선택]
+  files: [libraries/react-day-picker.md]
+
+- keywords: [lodash, debounce, throttle, groupby, pick, omit, clonedeep,
+             flatmap, uniqby, orderby, chunk, flatten, 유틸리티, 헬퍼함수, 배열처리, 객체처리]
+  files: [libraries/lodash.md]
+
+- keywords: [lottie, lottie-react, 애니메이션파일, json애니메이션, LottiePlayer,
+             useLottie, 로티, 로티애니메이션, lottie파일]
+  files: [libraries/lottie-react.md]
+
 ## 스펙 작성 가이드
 
 - keywords: [spec, 스펙, 스펙구조, spec-guide, spec-structure, 섹션, 복잡도, L1, L2, L3,
