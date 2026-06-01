@@ -397,6 +397,19 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 </patch>
 </axiom-action>`;
 
+    const structuralModeBlock = `**structural 모드 (훅·import 추가 시 최우선 권장)** — 위치를 직접 찾지 마세요. "추가할 코드"만 출력하면 확장이 컴포넌트 본문의 정확한 위치(기존 훅 다음, return 위)에 결정론적으로 삽입합니다. \`<search>\`·라인 번호·전체 파일이 전혀 필요 없습니다.
+- useApi/useState/useEffect 등 **훅 추가**, **import 추가**는 이 모드를 쓰세요.
+- \`<hook>\`: 컴포넌트 본문에 추가할 훅/코드 줄만 작성 (들여쓰기 없이 — 확장이 맞춰 넣음).
+- \`<import>\`: 추가할 import. 이미 있으면 자동 무시됩니다. named는 콤마로 구분.
+
+<axiom-action>
+{"action":"updateFile","mode":"structural","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<hook>
+const { data, isPending, error } = useApi<TResponse>('/api/endpoint');
+</hook>
+<import module="@axiom/hooks" named="useApi" />
+</axiom-action>`;
+
     const navigationHint = this._hasNavigationIntent(userQuery)
       ? `
 ### 화면 이동 구현 지침
@@ -430,9 +443,12 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 ### 출력 모드 선택
 
 > ⚠️ **모드 선택 핵심 규칙**:
-> - **patch 모드 (기본·권장)**: 국소 변경(선택 영역 수정, import 추가, 1~여러 위치 수정)은 \`<patch>\` 블록 N개로 표현. import 추가 + 본문 1곳 같은 경우 \`<patch>\` 2개를 한 응답에 출력.
+> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.
+> - **patch 모드**: 기존 코드의 특정 부분을 고치는 국소 변경(선택 영역 수정 등)은 \`<patch>\` 블록 N개로 표현.
 > - **full 모드**: 파일 절반 이상을 재작성하거나, ${mp.maxPatches}개를 초과하는 위치를 동시에 수정해야 할 때만 사용.
-> - 선택 영역이 위에 제시되어 있으면 patch 모드를 사용하고, 수정은 그 영역과 import 추가에만 한정하세요.
+> - 선택 영역이 위에 제시되어 있으면 그 영역과 import 추가에만 한정하세요.
+
+${structuralModeBlock}
 
 ${patchModeBlock}
 

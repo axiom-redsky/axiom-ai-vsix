@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { splitTsSections } from './CodeSectionExtractor';
+import type { StructuralEdit } from './StructuralAnchor';
 
 /**
  * 한 응답 안에 들어가는 patch 단위. 모델이 출력한 `<patch><search>...</search><replace>...</replace></patch>`
@@ -18,8 +19,14 @@ export interface AxiomAction {
   domain: string;
   componentName: string;
   filePath: string;
-  /** 'patch': search/replace 부분 교체, 'full': 전체 파일 재작성 (기본값) */
-  mode?: 'full' | 'patch';
+  /**
+   * 'patch': search/replace 부분 교체, 'full': 전체 파일 재작성 (기본값),
+   * 'structural': <hook>/<import> 조각을 확장이 splitTsSections 기준으로 결정론적 삽입
+   * (약한 sLLM이 위치·search 텍스트를 만들지 않아도 되는 경로)
+   */
+  mode?: 'full' | 'patch' | 'structural';
+  /** mode='structural' 일 때 삽입할 훅 코드 + import 목록 */
+  structural?: StructuralEdit;
   generatedCode?: string;
   /** @deprecated patches[0]로 마이그레이션 — 하위 호환을 위해 단일 patch 출력도 받아들인다 */
   searchCode?: string;

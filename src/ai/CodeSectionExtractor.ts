@@ -43,7 +43,7 @@ const IMPORT_PATTERN = /^import\s/;
  *    depth가 0이 되어 선언이 종료된 것으로 오판된다. `[]` 도 함께 카운트해야 한다.
  *  - `const fn = (a, b) => ({ ... });` 같은 식도 `()` 균형이 맞아야 안전하게 종료 판정.
  */
-function countDelimiters(line: string): { open: number; close: number } {
+export function countDelimiters(line: string): { open: number; close: number } {
   let open = 0;
   let close = 0;
   let inString: '"' | "'" | '`' | null = null;

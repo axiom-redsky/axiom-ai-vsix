@@ -8,6 +8,7 @@ import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
+import { applyStructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
@@ -1394,6 +1395,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      // 3차: structural 모드 — <hook>/<import> 조각 파싱 (약한 모델용 결정론적 삽입)
+      // patch 블록이 없을 때만 시도한다 (모드 혼용 방지).
+      if (!action.patches) {
+        const hookMatches = [...blockContent.matchAll(/<hook>\n?([\s\S]*?)<\/hook>/g)];
+        const importMatches = [...blockContent.matchAll(/<import\b([^>]*?)\/?>/g)];
+        if (hookMatches.length > 0 || importMatches.length > 0) {
+          const hookCode = hookMatches
+            .map((m) => m[1].replace(/\n+$/, ''))
+            .filter((c) => c.trim())
+            .join('\n') || undefined;
+          const imports = importMatches
+            .map((m) => this._parseImportTag(m[1]))
+            .filter((x): x is ImportRequest => x !== null);
+          action.structural = { hookCode, imports: imports.length ? imports : undefined };
+          action.mode = 'structural';
+        }
+      }
+
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
       if (codeMatch?.[1]) action.generatedCode = codeMatch[1].trimEnd();
 
@@ -1457,6 +1476,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (readError) {
           this._post({ type: 'fileError', message: readError });
           break;
+        }
+
+        // structural 모드: <hook>/<import> 조각을 splitTsSections 기준으로 결정론적 삽입.
+        // 모델이 위치·search 텍스트를 만들지 않아도 되므로 약한 sLLM의 매칭 실패가 구조적으로 사라진다.
+        if (action.mode === 'structural' && action.structural) {
+          if (!originalContent) {
+            this._post({ type: 'fileError', message: `파일을 읽을 수 없습니다: ${action.filePath}` });
+            break;
+          }
+          const res = applyStructuralEdit(originalContent, action.structural);
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] structural 적용 (${action.filePath}):\n  ${res.changes.join('\n  ')}`,
+          );
+          if (res.text === originalContent) {
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⚠️ structural no-op (${action.filePath}) — 컴포넌트 미검출 또는 이미 존재`,
+            );
+            this._post({
+              type: 'token',
+              content:
+                '\n\n> ⚠️ **삽입이 적용되지 않았습니다** (변경 없음). export default 컴포넌트를 찾지 못했거나 ' +
+                '추가하려는 항목이 이미 존재합니다. patch 또는 full 모드로 다시 시도해보세요.\n',
+            });
+            this._reportPatchFailure(action.filePath, [`[structural no-op]\n${res.changes.join('\n')}`]);
+            break;
+          }
+          let finalText = res.text;
+          // 삽입 결과가 새 React 규칙 위반을 만들면(이론상 드묾) 결정적 교정 후, 실패 시 회복 버튼.
+          if (/\.(tsx|ts)$/.test(action.filePath)) {
+            const before = FileCreatorService.detectReactRuleViolations(originalContent);
+            const after = FileCreatorService.detectReactRuleViolations(finalText);
+            if (!before && after) {
+              const hoist = FileCreatorService.hoistModuleScopeHooks(finalText);
+              if (hoist) {
+                finalText = hoist.text;
+              } else {
+                this._reportReactViolation(action.filePath, after);
+                break;
+              }
+            }
+          }
+          action.generatedCode = finalText;
         }
 
         // patch 모드: 다중 patch를 원본 파일에 동시 적용해 generatedCode를 미리 계산
@@ -1815,6 +1876,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    *
    * patch 패턴이 먼저 우선 — 다중 patch 시나리오에서 모델이 가장 자주 흘리는 케이스.
    */
+  /** `<import module="..." named="a, b" default="X" />` 속성을 ImportRequest로 파싱한다. */
+  private _parseImportTag(attrs: string): ImportRequest | null {
+    const module = attrs.match(/\bmodule\s*=\s*["']([^"']+)["']/)?.[1];
+    if (!module) return null;
+    const namedRaw = attrs.match(/\bnamed\s*=\s*["']([^"']*)["']/)?.[1];
+    const def = attrs.match(/\bdefault\s*=\s*["']([^"']+)["']/)?.[1];
+    const named = namedRaw
+      ? namedRaw.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined;
+    return { module, named, def };
+  }
+
   private _wrapCodeBlockAsAxiomAction(response: string, filePath: string): string | null {
     if (!filePath) return null;
 
