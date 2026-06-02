@@ -229,6 +229,151 @@ export interface ApplyResult {
   changes: string[];
 }
 
+/** 라인 배열의 앞·뒤 빈 줄을 제거하고 연속 빈 줄을 1줄로 접는다. */
+function tidyBlankLines(lines: string[]): string[] {
+  const collapsed: string[] = [];
+  for (const l of lines) {
+    if (l.trim() === '' && collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === '') {
+      continue; // 연속 빈 줄 접기
+    }
+    collapsed.push(l);
+  }
+  let start = 0;
+  let end = collapsed.length;
+  while (start < end && collapsed[start].trim() === '') start++;
+  while (end > start && collapsed[end - 1].trim() === '') end--;
+  return collapsed.slice(start, end);
+}
+
+/**
+ * 훅 조각에서 top-level type/interface/enum 선언을 분리한다.
+ *
+ * react-app-scaffold 컨벤션: 타입 선언부는 함수 컴포넌트 본문 안이 아니라
+ * 함수 바로 위(모듈 스코프)에 둔다. structural 모드에서 약한 모델이 타입을 훅 조각에
+ * 섞어 내더라도 확장이 결정론적으로 끌어올려 컨벤션을 강제한다.
+ *
+ * splitTsSections 의 kind 'type'(type/enum) · 'interface' 만 분리 대상으로 본다.
+ * 들여쓰기가 붙은 조각은 DECL_PATTERN(라인 시작)이 매칭되지 않아 분리되지 않고
+ * 종전처럼 본문에 들어간다(graceful fallback — 프롬프트는 들여쓰기 없이 안내).
+ */
+function splitTypeDeclarations(hookCode: string): {
+  typeDecls: string;
+  rest: string;
+  typeCount: number;
+} {
+  const sections = splitTsSections(hookCode);
+  const typeSections = sections.filter((s) => s.kind === 'type' || s.kind === 'interface');
+  if (typeSections.length === 0) return { typeDecls: '', rest: hookCode, typeCount: 0 };
+
+  const lines = hookCode.split('\n');
+  const isTypeLine = new Array<boolean>(lines.length).fill(false);
+  for (const s of typeSections) {
+    for (let ln = s.startLine; ln <= s.endLine; ln++) isTypeLine[ln - 1] = true;
+  }
+  const restLines = lines.filter((_, i) => !isTypeLine[i]);
+  // 타입 선언은 섹션 본문을 빈 줄로 구분해 재조립(선언 간 가독성 유지).
+  const typeDecls = typeSections.map((s) => s.body).join('\n\n');
+  return {
+    typeDecls,
+    rest: tidyBlankLines(restLines).join('\n'),
+    typeCount: typeSections.length,
+  };
+}
+
+/**
+ * 구조분해/단순 바인딩 패턴에서 실제로 선언되는 식별자들을 추출한다.
+ * 예) `teamReports` → [teamReports]
+ *     `{ data: teamReports, isPending, error }` → [teamReports, isPending, error]
+ *     `[first, , third]` → [first, third]
+ * 중첩·rename·기본값(`= ...`)·rest(`...x`)를 best-effort로 처리한다(풀 파서 없이).
+ */
+function parseBindingPattern(pattern: string): string[] {
+  const p = pattern.trim();
+  if (!p) return [];
+  if (/^[A-Za-z_$][\w$]*$/.test(p)) return [p];
+  if (!/^[{[]/.test(p)) return [];
+
+  const inner = p.slice(1, -1); // 바깥 {} 또는 [] 제거
+  const parts: string[] = [];
+  let depth = 0;
+  let buf = '';
+  for (const ch of inner) {
+    if (ch === '{' || ch === '[' || ch === '(') depth++;
+    else if (ch === '}' || ch === ']' || ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(buf);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf.trim()) parts.push(buf);
+
+  const names: string[] = [];
+  for (let part of parts) {
+    part = part.trim().replace(/^\.\.\./, ''); // rest 제거
+    if (!part) continue;
+    part = part.split('=')[0].trim(); // 기본값 제거
+    if (part.includes(':')) {
+      // 객체 rename: `key: binding` → binding (binding 자체가 또 구조분해일 수 있음)
+      names.push(...parseBindingPattern(part.slice(part.indexOf(':') + 1).trim()));
+    } else if (/^[{[]/.test(part)) {
+      names.push(...parseBindingPattern(part)); // 중첩 구조분해
+    } else if (/^[A-Za-z_$][\w$]*$/.test(part)) {
+      names.push(part);
+    }
+  }
+  return names;
+}
+
+/**
+ * 코드 조각이 `const`/`let`/`var`로 새로 선언하는 바인딩 이름 집합.
+ * 같은 이름의 기존 모듈 스코프 더미 변수를 대체했는지 판단하는 데 쓴다.
+ *
+ * splitTsSections 대신 직접 스캔한다 — 구조분해 선언(`const { data: x } = ...`)은
+ * DECL_PATTERN(키워드 뒤 식별자)에 매칭되지 않아 섹션으로 잡히지 않기 때문이다.
+ */
+function collectDeclaredBindings(code: string): Set<string> {
+  const out = new Set<string>();
+  // 문장 경계(줄 시작·`;`·`{`) 뒤의 const/let/var 만 선언으로 본다.
+  const re = /(?:^|[\n;{])\s*(?:export\s+)?(?:const|let|var)\s+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code)) !== null) {
+    // 바인딩 패턴 = 키워드 이후 ~ depth0의 첫 할당 '='(==·!=·=>· <=· >= 제외) 또는 ';'
+    let depth = 0;
+    let end = -1;
+    for (let i = re.lastIndex; i < code.length; i++) {
+      const ch = code[i];
+      if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') {
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+        depth--;
+      } else if (
+        depth === 0 &&
+        ch === '=' &&
+        code[i + 1] !== '=' &&
+        code[i + 1] !== '>' &&
+        code[i - 1] !== '=' &&
+        code[i - 1] !== '!' &&
+        code[i - 1] !== '<' &&
+        code[i - 1] !== '>'
+      ) {
+        end = i;
+        break;
+      } else if (depth === 0 && ch === ';') {
+        end = i;
+        break;
+      }
+    }
+    const pattern = (end >= 0 ? code.slice(re.lastIndex, end) : code.slice(re.lastIndex)).trim();
+    for (const n of parseBindingPattern(pattern)) out.add(n);
+  }
+  return out;
+}
+
 /**
  * 구조 앵커를 이용해 모델이 낸 조각을 결정론적으로 적용한다.
  * search/replace, 라인 번호 추측, 전체 파일 재작성 없이 동작한다.
@@ -241,18 +386,50 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
   const lines = norm.split('\n');
   const changes: string[] = [];
 
-  // 삽입 작업을 (삽입 라인 1-based, 내용 라인 배열)로 모은 뒤 라인 내림차순으로 splice
-  const inserts: { atLine: number; content: string[] }[] = [];
+  // 편집 작업을 (시작 라인 1-based, 삭제 줄 수, 삽입 내용)로 모은 뒤 라인 내림차순으로 splice.
+  // removeCount=0 → 순수 삽입, content=[] → 순수 삭제.
+  const ops: { atLine: number; removeCount: number; content: string[] }[] = [];
 
-  // 1) 훅 코드
+  // 1) 훅 코드 — react-app-scaffold 컨벤션: type/interface/enum 선언은 컴포넌트 본문이 아니라
+  //    함수 바로 위(모듈 스코프)에 둔다. 모델이 둘을 섞어 내도 여기서 결정론적으로 분리한다.
   if (edit.hookCode && anchors.component) {
-    const indent = anchors.component.bodyIndent;
-    const content = edit.hookCode.split('\n').map((l) => (l ? indent + l : l));
-    inserts.push({ atLine: anchors.component.hookInsertLine, content });
-    changes.push(
-      `훅 삽입: 컴포넌트 '${anchors.component.name}' 라인 ${anchors.component.hookInsertLine} 앞 ` +
-        `(${anchors.component.hookInsertReason})`,
-    );
+    const { typeDecls, rest, typeCount } = splitTypeDeclarations(edit.hookCode);
+
+    // 1-a) 훅/일반 코드 → 컴포넌트 본문(들여쓰기 부여)
+    if (rest.trim()) {
+      const indent = anchors.component.bodyIndent;
+      const content = rest.split('\n').map((l) => (l ? indent + l : l));
+      ops.push({ atLine: anchors.component.hookInsertLine, removeCount: 0, content });
+      changes.push(
+        `훅 삽입: 컴포넌트 '${anchors.component.name}' 라인 ${anchors.component.hookInsertLine} 앞 ` +
+          `(${anchors.component.hookInsertReason})`,
+      );
+    }
+
+    // 1-c) 더미 변수 정리 — 새 훅이 같은 이름으로 모듈 스코프 더미 변수를 가리는(shadow) 경우,
+    //      이미 죽은 코드가 된 원래 더미 선언을 삭제한다. (예: const teamReports=[...] ↔
+    //      const { data: teamReports } = useApi(...)). 대체되지 않은 더미(recentReports 등)는 유지.
+    const declared = collectDeclaredBindings(rest);
+    if (declared.size > 0) {
+      for (const sec of anchors.sections) {
+        if (sec.kind !== 'const' || !declared.has(sec.name)) continue;
+        // 선언 + 바로 뒤 빈 줄 1개까지 삭제(빈 줄 잔재 방지). sec.endLine 다음 줄 = 0-based 인덱스 sec.endLine.
+        let lastLine = sec.endLine;
+        if (lines[sec.endLine] !== undefined && lines[sec.endLine].trim() === '') lastLine += 1;
+        ops.push({ atLine: sec.startLine, removeCount: lastLine - sec.startLine + 1, content: [] });
+        changes.push(`더미 변수 '${sec.name}' 삭제 — AI 생성 데이터(useApi)로 대체됨`);
+      }
+    }
+
+    // 1-b) 타입 선언 → 함수 컴포넌트 바로 위(모듈 스코프, 들여쓰기 없음)
+    if (typeDecls.trim()) {
+      const content = [...typeDecls.split('\n'), ''];
+      ops.push({ atLine: anchors.component.startLine, removeCount: 0, content });
+      changes.push(
+        `타입 선언 ${typeCount}개를 컴포넌트 '${anchors.component.name}' 바로 위(모듈 스코프)로 ` +
+          `배치 — react-app-scaffold 컨벤션`,
+      );
+    }
   } else if (edit.hookCode && !anchors.component) {
     changes.push('⚠️ 훅 코드가 주어졌으나 export default 컴포넌트를 찾지 못함 — 훅 삽입 건너뜀');
   }
@@ -298,19 +475,143 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
         } else {
           at = 1;
         }
-        inserts.push({ atLine: at, content: [newLine] });
+        ops.push({ atLine: at, removeCount: 0, content: [newLine] });
         changes.push(`import 추가: ${newLine}`);
       }
     }
   }
 
-  // 라인 내림차순 splice (인덱스 밀림 방지)
-  inserts.sort((a, b) => b.atLine - a.atLine);
-  for (const ins of inserts) {
-    lines.splice(ins.atLine - 1, 0, ...ins.content);
+  // 라인 내림차순으로 splice (인덱스 밀림 방지). 삽입·삭제 영역은 서로 겹치지 않으므로
+  // 높은 라인부터 적용하면 낮은 라인의 좌표가 유지된다.
+  ops.sort((a, b) => b.atLine - a.atLine);
+  for (const op of ops) {
+    lines.splice(op.atLine - 1, op.removeCount, ...op.content);
   }
 
   let text = lines.join('\n');
   if (hasCRLF) text = text.replace(/\n/g, '\r\n');
   return { text, changes };
+}
+
+// ─── 의존성 폐쇄(dependency closure) 게이트 ──────────────────────────────────
+
+/**
+ * TS 표준 라이브러리·전역에서 항상 사용 가능한 PascalCase 식별자.
+ * 타입 위치/훅 호출 검사 시 "선언 없음"으로 오판하지 않도록 화이트리스트한다.
+ */
+const GLOBAL_KNOWN = new Set<string>([
+  // 유틸리티/내장 타입
+  'Array', 'ReadonlyArray', 'Record', 'Partial', 'Required', 'Readonly', 'Pick', 'Omit',
+  'Exclude', 'Extract', 'NonNullable', 'Parameters', 'ReturnType', 'InstanceType', 'Awaited',
+  'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Date', 'RegExp', 'Error', 'Object', 'String',
+  'Number', 'Boolean', 'Symbol', 'BigInt', 'Function', 'JSON', 'Math', 'Iterable', 'Iterator',
+  // React/DOM 흔한 전역 (보통 React.X 형태라 안 잡히지만 안전망)
+  'React', 'JSX', 'Element', 'Event', 'Node', 'HTMLElement', 'ReactNode', 'ReactElement',
+]);
+
+export interface DependencyCheckResult {
+  ok: boolean;
+  /** 최종 파일에서 선언/import 어느 쪽으로도 해소되지 않은 심볼(타입·훅) */
+  unresolved: string[];
+}
+
+/** 한 텍스트에서 사용 가능한(선언·import된) 심볼 집합을 모은다. */
+function collectAvailableSymbols(fullText: string): Set<string> {
+  const available = new Set<string>(GLOBAL_KNOWN);
+
+  // import 명세 (named + default)
+  const anchors = computeAnchors(fullText);
+  if (anchors.imports) {
+    for (const entry of anchors.imports.byModule.values()) {
+      for (const n of entry.named) available.add(n);
+      if (entry.def) available.add(entry.def);
+    }
+  }
+  // top-level 선언 이름 (type/interface/const/function/class …)
+  for (const s of splitTsSections(fullText)) {
+    if (s.name && s.name !== 'imports') available.add(s.name);
+  }
+  return available;
+}
+
+/** 삽입 조각이 참조하는 타입·훅 심볼을 추출한다. */
+function collectReferencedSymbols(insertedCode: string): Set<string> {
+  const refs = new Set<string>();
+
+  // 타입 위치: 제네릭 인자(<T> / <A, B>), as / extends / satisfies, 명시적 주석(: T)
+  const typePatterns: RegExp[] = [
+    /<\s*([A-Z][\w$]*)/g,            // useApi<TFoo>
+    /,\s*([A-Z][\w$]*)\s*[,>]/g,     // useApi<A, BType>
+    /\bas\s+([A-Z][\w$]*)/g,
+    /\bextends\s+([A-Z][\w$]*)/g,
+    /\bsatisfies\s+([A-Z][\w$]*)/g,
+    /:\s*([A-Z][\w$]*)/g,            // const x: TFoo / 객체 값이 PascalCase면 그 또한 해소 필요
+  ];
+  for (const re of typePatterns) {
+    for (const m of insertedCode.matchAll(re)) refs.add(m[1]);
+  }
+
+  // 훅 호출: useApi( / useApi< / useState( …
+  for (const m of insertedCode.matchAll(/\b(use[A-Z][\w$]*)\s*[(<]/g)) {
+    refs.add(m[1]);
+  }
+
+  // 조각 내부에서 스스로 선언한 이름은 참조 대상에서 제외(지역 해소)
+  for (const m of insertedCode.matchAll(
+    /\b(?:const|let|var|function|type|interface|class)\s+([A-Za-z_$][\w$]*)/g,
+  )) {
+    refs.delete(m[1]);
+  }
+  return refs;
+}
+
+/**
+ * 삽입된 코드 조각이 참조하는 타입·훅 심볼이 최종 파일에서 전부 해소되는지 검증한다.
+ *
+ * 자기완결성(dependency closure) 불변식의 결정론적 안전망:
+ *  - `useApi<TFoo>()` 를 넣었다면 최종 파일에 `useApi` import 와 `TFoo` 선언이 **반드시** 있어야 한다.
+ *  - 하나라도 없으면 그 편집은 "조금 부족한" 게 아니라 **컴파일이 깨지는, 써서는 안 되는 출력**이다.
+ *
+ * 해소처: import 명세 / top-level 선언 / 조각 내부 지역 선언 / 전역 화이트리스트.
+ * 폐쇄망 의존성 0 — splitTsSections + 정규식만 사용한다.
+ *
+ * @param insertedCode 삽입한 조각(hookCode 등)
+ * @param fullText 삽입이 반영된 **최종** 파일 텍스트(추가된 import 포함)
+ */
+export function findUnresolvedReferences(
+  insertedCode: string,
+  fullText: string,
+): DependencyCheckResult {
+  if (!insertedCode.trim()) return { ok: true, unresolved: [] };
+  const available = collectAvailableSymbols(fullText);
+  const refs = collectReferencedSymbols(insertedCode);
+  const unresolved = [...refs].filter((r) => !available.has(r));
+  return { ok: unresolved.length === 0, unresolved };
+}
+
+/**
+ * 스캐폴드 표준 심볼 → import 명세 매핑.
+ *
+ * import 경로가 **고정**된 항목만 등록한다. 약한 모델이 `<hook>`만 내고 매칭되는
+ * `<import>` 태그를 빠뜨려도, 확장이 결정론적으로 import를 보강해 의존성 게이트를 통과시킨다.
+ * 타입(TFoo 등)은 선언 위치·경로가 가변이라 등록 대상이 아니다 — 게이트가 계속 거부한다.
+ */
+const SCAFFOLD_IMPORTS: ReadonlyMap<string, { module: string; named: string }> = new Map([
+  ['useApi', { module: '@axiom/hooks', named: 'useApi' }],
+]);
+
+/**
+ * 미해소 심볼 중 import 경로가 고정된 스캐폴드 표준 심볼을 ImportRequest 목록으로 변환한다.
+ * 모듈별로 named import를 묶는다. 등록되지 않은 심볼(임의 타입 등)은 무시한다.
+ */
+export function resolveKnownImports(symbols: Iterable<string>): ImportRequest[] {
+  const byModule = new Map<string, Set<string>>();
+  for (const s of symbols) {
+    const known = SCAFFOLD_IMPORTS.get(s);
+    if (!known) continue;
+    const set = byModule.get(known.module) ?? new Set<string>();
+    set.add(known.named);
+    byModule.set(known.module, set);
+  }
+  return [...byModule].map(([module, named]) => ({ module, named: [...named] }));
 }

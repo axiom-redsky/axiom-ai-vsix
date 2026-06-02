@@ -8,7 +8,7 @@ import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
-import { applyStructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
+import { applyStructuralEdit, findUnresolvedReferences, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
@@ -1700,6 +1700,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 break;
               }
             }
+          }
+
+          // 의존성 폐쇄 게이트: 삽입 조각이 참조하는 타입·훅이 최종 파일에서 전부 해소되는지 검증.
+          // 예) useApi<TFoo>를 넣었는데 useApi import·TFoo 선언이 없으면 컴파일이 깨지는 출력이므로
+          //     디스크에 쓰지 않고 거부한다. structural은 top-level 선언을 표현할 수 없어 자주 발생한다.
+          let dep = findUnresolvedReferences(action.structural.hookCode ?? '', finalText);
+          if (!dep.ok) {
+            // 자동 보강: 미해소 심볼 중 import 경로가 고정된 스캐폴드 표준 훅(useApi 등)은
+            // 모델이 <import>를 빠뜨렸어도 확장이 결정론적으로 import를 주입해 통과시킨다.
+            // 임의 타입(TFoo 등)은 보강 불가 — 재검사 후에도 남으면 그대로 거부한다.
+            const autoImports = resolveKnownImports(dep.unresolved);
+            if (autoImports.length > 0) {
+              const patched = applyStructuralEdit(finalText, { imports: autoImports });
+              finalText = patched.text;
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] 🔧 structural import 자동 보강 (${action.filePath}):\n  ${patched.changes.join('\n  ')}`,
+              );
+              dep = findUnresolvedReferences(action.structural.hookCode ?? '', finalText);
+            }
+          }
+          if (!dep.ok) {
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⛔ structural 의존성 미해소 (${action.filePath}): ${dep.unresolved.join(', ')}`,
+            );
+            this._post({
+              type: 'token',
+              content:
+                `\n\n> ⛔ **삽입을 취소했습니다.** 추가하려는 코드가 사용하는 ` +
+                `\`${dep.unresolved.join('`, `')}\` 의 선언/import가 결과 파일에 없어 ` +
+                `그대로 적용하면 컴파일이 깨집니다.\n>\n> 타입 선언과 import까지 함께 넣어야 하므로 ` +
+                `**full 모드로 다시 시도**해 주세요.\n`,
+            });
+            this._reportPatchFailure(action.filePath, [
+              `[structural 의존성 미해소] 미해소 심볼: ${dep.unresolved.join(', ')}`,
+            ]);
+            break;
           }
           action.generatedCode = finalText;
         }

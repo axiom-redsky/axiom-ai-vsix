@@ -6,6 +6,14 @@
 export const AI_DEFAULTS = {
   endpoint: 'https://referral-aerial-than-mathematical.trycloudflare.com',
   apiKey: '',
+  /**
+   * LLM 백엔드 종류. 요청 경로·바디·thinking 억제 방식이 달라진다.
+   * - 'openai': OpenAI 호환(/v1/chat/completions). vLLM·LM Studio·LocalAI 등. (기본)
+   *   thinking 억제는 injectNoThink(/no_think) + sendThinkingParams(enable_thinking)로 시도.
+   * - 'ollama': Ollama 네이티브(/api/chat). thinking은 top-level think:false로만 확실히 꺼진다.
+   *   (Ollama의 /v1 호환 레이어는 enable_thinking·chat_template_kwargs·reasoning_effort를 모두 무시함)
+   */
+  provider: 'openai',
   model: 'qwen2.5-coder:14b',
   temperature: 0.2,
   maxTokens: 8192,

@@ -576,7 +576,10 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11.5px;
   line-height: 1.55;
-  overflow-x: auto;
+  /* 긴 diff는 패널 안에서 세로로도 스크롤되게 한다(이전엔 가로 스크롤만 있어 뒷부분을 볼 수 없었음). */
+  max-height: 60vh;
+  overflow: auto;
+  overscroll-behavior: contain;
   border-top: 1px solid rgba(0, 120, 212, 0.2);
 }
 
@@ -585,6 +588,8 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   align-items: baseline;
   gap: 0;
   white-space: pre;
+  /* 가장 긴 줄에 맞춰 행을 넓혀, 가로 스크롤 시 줄·행 배경이 끝까지 채워지고 거터 정렬이 유지된다. */
+  min-width: max-content;
 }
 
 .diff-line__gutter {
@@ -610,8 +615,7 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .diff-line__content {
   flex: 1;
   padding-right: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 줄을 자르지 않고 그대로 둬서(white-space: pre) 긴 줄은 .diff-view 가로 스크롤로 끝까지 본다. */
 }
 
 .diff-line--add {

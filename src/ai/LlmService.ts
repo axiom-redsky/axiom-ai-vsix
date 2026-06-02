@@ -80,11 +80,16 @@ export class LlmService {
     onServerConnected?: () => void,
     onUsage?: (usage: LlmUsage) => void,
   ): AsyncGenerator<string> {
-    const url = new URL('/v1/chat/completions', config.endpoint).toString();
+    // Ollama 네이티브는 /api/chat(줄단위 JSON), OpenAI 호환은 /v1/chat/completions(SSE).
+    const isOllama = config.provider === 'ollama';
+    const url = new URL(
+      isOllama ? '/api/chat' : '/v1/chat/completions',
+      config.endpoint,
+    ).toString();
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
+      'Accept': isOllama ? 'application/x-ndjson' : 'text/event-stream',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     };
     Object.assign(headers, this._buildAuthHeaders(config));
@@ -95,10 +100,12 @@ export class LlmService {
     const buildBody = (): string =>
       this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens });
 
-    console.log(`[Axiom AI] → 요청 URL: ${url}`);
+    console.log(`[Axiom AI] → 요청 URL: ${url} (provider=${config.provider})`);
     console.log(
       `[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}, ` +
-      `thinking 억제(noThink=${config.injectNoThink}, params=${sendThinkingParams})`,
+      (isOllama
+        ? `thinking 억제(think=false, 네이티브)`
+        : `thinking 억제(noThink=${config.injectNoThink}, params=${sendThinkingParams})`),
     );
 
     // fetch 1회 시도 — 네트워크 에러 시 null 반환, AbortError는 그대로 throw
@@ -148,7 +155,7 @@ export class LlmService {
 
     // 자동 폴백 ①: 엄격한 게이트웨이가 미지(未知) JSON 필드를 거부(400)한 경우,
     // thinking 파라미터를 빼고 1회 재시도한다. (/no_think 텍스트는 무해하므로 유지)
-    if (response.status === 400 && sendThinkingParams) {
+    if (!isOllama && response.status === 400 && sendThinkingParams) {
       const detail = (await response.text().catch(() => '')).trim().slice(0, 200);
       console.warn(
         `[Axiom AI] 400 Bad Request — thinking 파라미터를 제거하고 1회 재시도합니다. ` +
@@ -184,9 +191,11 @@ export class LlmService {
 
     onServerConnected?.();
 
-    // 스트림 소비 → content 누적치를 stats로 받는다
+    // 스트림 소비 → content 누적치를 stats로 받는다 (provider별 포맷 분기)
     const stats = LlmService._newStreamStats();
-    yield* this._consumeStream(response, stats, maxTokens, onUsage);
+    yield* isOllama
+      ? this._consumeOllamaStream(response, stats, maxTokens, onUsage)
+      : this._consumeStream(response, stats, maxTokens, onUsage);
 
     // 자동 폴백 ②: 빈 응답 + thinking 오버플로 → max_tokens를 올려 1회 재시도.
     // content를 한 글자도 내보내지 않았으므로 안전하게 재요청할 수 있다.
@@ -202,7 +211,9 @@ export class LlmService {
       const retry = await attemptFetch();
       if (retry?.ok && retry.body) {
         const stats2 = LlmService._newStreamStats();
-        yield* this._consumeStream(retry, stats2, maxTokens, onUsage);
+        yield* isOllama
+          ? this._consumeOllamaStream(retry, stats2, maxTokens, onUsage)
+          : this._consumeStream(retry, stats2, maxTokens, onUsage);
       } else {
         console.warn(`[Axiom AI] max_tokens 증액 재시도 실패 (status=${retry?.status ?? 'network'})`);
       }
@@ -262,7 +273,7 @@ export class LlmService {
           try {
             const parsed = JSON.parse(data) as {
               choices?: {
-                delta?: { content?: string; reasoning_content?: string };
+                delta?: { content?: string; reasoning_content?: string; reasoning?: string };
                 finish_reason?: string | null;
               }[];
               usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
@@ -270,7 +281,8 @@ export class LlmService {
             const choice = parsed.choices?.[0];
             const content = choice?.delta?.content;
             // thinking 모드 서버는 추론 토큰을 별도 필드로 흘려보낸다. 출력하지 않고 진단용으로만 집계한다.
-            const reasoning = choice?.delta?.reasoning_content;
+            // vLLM은 reasoning_content, Ollama의 /v1 호환 레이어는 reasoning 으로 보낸다(필드명이 다름).
+            const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning;
             if (reasoning) stats.reasoningChars += reasoning.length;
             if (content) {
               stats.contentChunks++;
@@ -292,25 +304,100 @@ export class LlmService {
         }
       }
     } finally {
-      console.log(
-        `[Axiom AI] ← 스트림 종료: chunks=${stats.chunksReceived}, contentChunks=${stats.contentChunks}, ` +
-        `chars=${stats.contentChars}, reasoningChars=${stats.reasoningChars}, ` +
-        `finish_reason=${stats.finishReason ?? 'null'}, parseErrors=${stats.parseErrors}`,
-      );
-      if (stats.contentChars === 0) {
-        // reasoning 토큰이 들어왔거나, length로 끊겼는데 청크가 많으면 thinking 오버플로로 판정한다.
-        const isThinkingOverflow =
-          stats.reasoningChars > 0 || (stats.finishReason === 'length' && stats.chunksReceived > 100);
-        console.warn(
-          `[Axiom AI] ⚠️ 모델이 content 토큰을 0개 출력. finish_reason=${stats.finishReason ?? 'null'}. ` +
-          (isThinkingOverflow
-            ? `reasoningChars=${stats.reasoningChars}, chunksReceived=${stats.chunksReceived} — thinking 모드가 ` +
-              `max_tokens(${effectiveMaxTokens})를 전부 소비한 것으로 보입니다. 추론 토큰이 계속 나온다면 ` +
-              `axiom-ai.llm.maxTokens를 16384 이상으로 늘리거나, 비-Qwen 모델이면 ` +
-              `axiom-ai.llm.thinking.injectNoThink 를 점검하세요.`
-            : `프롬프트가 너무 길거나 모델이 EOS를 즉시 발사한 가능성. /clear 후 더 짧은 요청으로 재시도하거나 axiom-ai.multiPatch.enabled=false 로 폴백.`),
-        );
+      LlmService._logStreamEnd(stats, effectiveMaxTokens);
+    }
+  }
+
+  /**
+   * Ollama 네이티브(/api/chat) 응답 본문을 파싱해 content 델타를 yield 한다.
+   * SSE가 아니라 줄단위 JSON(NDJSON): 각 줄이 {message:{content,thinking}, done, ...} 객체다.
+   * thinking은 별도 필드(message.thinking)로 오므로 출력하지 않고 진단용으로만 집계한다.
+   * usage는 마지막 done:true 객체의 prompt_eval_count / eval_count 로 들어온다.
+   */
+  private async *_consumeOllamaStream(
+    response: Response,
+    stats: ReturnType<typeof LlmService._newStreamStats>,
+    effectiveMaxTokens: number,
+    onUsage?: (usage: LlmUsage) => void,
+  ): AsyncGenerator<string> {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          stats.chunksReceived++;
+          try {
+            const parsed = JSON.parse(trimmed) as {
+              message?: { content?: string; thinking?: string };
+              done?: boolean;
+              done_reason?: string;
+              prompt_eval_count?: number;
+              eval_count?: number;
+            };
+            const content = parsed.message?.content;
+            const thinking = parsed.message?.thinking;
+            if (thinking) stats.reasoningChars += thinking.length;
+            if (content) {
+              stats.contentChunks++;
+              stats.contentChars += content.length;
+              yield content;
+            }
+            if (parsed.done) {
+              stats.finishReason = parsed.done_reason ?? 'stop';
+              if (onUsage) {
+                onUsage({
+                  promptTokens: parsed.prompt_eval_count,
+                  completionTokens: parsed.eval_count,
+                  totalTokens:
+                    (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0) || undefined,
+                });
+              }
+            }
+          } catch {
+            stats.parseErrors++;
+          }
+        }
       }
+    } finally {
+      LlmService._logStreamEnd(stats, effectiveMaxTokens);
+    }
+  }
+
+  /** 스트림 종료 시 진단 로그를 남긴다(빈 응답이면 원인 분류 경고). OpenAI·Ollama 파서 공용. */
+  private static _logStreamEnd(
+    stats: ReturnType<typeof LlmService._newStreamStats>,
+    effectiveMaxTokens: number,
+  ): void {
+    console.log(
+      `[Axiom AI] ← 스트림 종료: chunks=${stats.chunksReceived}, contentChunks=${stats.contentChunks}, ` +
+      `chars=${stats.contentChars}, reasoningChars=${stats.reasoningChars}, ` +
+      `finish_reason=${stats.finishReason ?? 'null'}, parseErrors=${stats.parseErrors}`,
+    );
+    if (stats.contentChars === 0) {
+      // reasoning 토큰이 들어왔거나, length로 끊겼는데 청크가 많으면 thinking 오버플로로 판정한다.
+      const isThinkingOverflow =
+        stats.reasoningChars > 0 || (stats.finishReason === 'length' && stats.chunksReceived > 100);
+      console.warn(
+        `[Axiom AI] ⚠️ 모델이 content 토큰을 0개 출력. finish_reason=${stats.finishReason ?? 'null'}. ` +
+        (isThinkingOverflow
+          ? `reasoningChars=${stats.reasoningChars}, chunksReceived=${stats.chunksReceived} — thinking 모드가 ` +
+            `max_tokens(${effectiveMaxTokens})를 전부 소비한 것으로 보입니다. Ollama 백엔드라면 ` +
+            `axiom-ai.llm.provider 를 'ollama'로 설정해 think:false 로 추론을 끄세요. ` +
+            `그 외에는 axiom-ai.llm.maxTokens를 16384 이상으로 늘리거나 모델의 thinking 설정을 점검하세요.`
+          : `프롬프트가 너무 길거나 모델이 EOS를 즉시 발사한 가능성. /clear 후 더 짧은 요청으로 재시도하거나 axiom-ai.multiPatch.enabled=false 로 폴백.`),
+      );
     }
   }
 
@@ -323,6 +410,23 @@ export class LlmService {
     config: LlmConfig,
     opts: { sendThinkingParams: boolean; maxTokens: number },
   ): string {
+    if (config.provider === 'ollama') {
+      // Ollama 네이티브(/api/chat): thinking은 top-level think:false로만 확실히 꺼진다.
+      // (/v1 호환 레이어의 enable_thinking·chat_template_kwargs·reasoning_effort는 모두 무시되어 추론이 계속됨)
+      // think:false가 권위 있으므로 /no_think 텍스트 주입은 불필요·생략한다.
+      // max_tokens·temperature는 OpenAI식 top-level이 아니라 options 하위로 전달한다.
+      return JSON.stringify({
+        model: config.model,
+        messages,
+        stream: true,
+        think: false,
+        options: {
+          temperature: config.temperature,
+          num_predict: opts.maxTokens,
+        },
+      });
+    }
+
     const body: Record<string, unknown> = {
       model: config.model,
       // qwen3 계열은 JSON 파라미터를 무시하는 서버가 있어, 모델 레벨에서 인식하는 /no_think 소프트 스위치를 함께 쓴다.

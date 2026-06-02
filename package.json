@@ -70,6 +70,16 @@
           "default": "https://referral-aerial-than-mathematical.trycloudflare.com",
           "description": "LLM 서버 엔드포인트 URL (OpenAI 호환 API)"
         },
+        "axiom-ai.llm.provider": {
+          "type": "string",
+          "enum": ["openai", "ollama"],
+          "default": "openai",
+          "enumDescriptions": [
+            "OpenAI 호환 API (/v1/chat/completions). vLLM·LM Studio·LocalAI 등. thinking 억제는 injectNoThink·sendThinkingParams로 시도합니다.",
+            "Ollama 네이티브 API (/api/chat). thinking을 top-level think:false로 확실히 끕니다. Ollama 백엔드에서 thinking(추론) 토큰 때문에 빈 응답이 나면 이 값으로 바꾸세요."
+          ],
+          "description": "LLM 백엔드 종류. Ollama는 OpenAI 호환(/v1) 경로에서 thinking 끄기를 지원하지 않으므로, Ollama 서버를 쓰면 'ollama'로 설정해야 thinking이 꺼집니다."
+        },
         "axiom-ai.llm.model": {
           "type": "string",
           "default": "qwen2.5-coder:14b",

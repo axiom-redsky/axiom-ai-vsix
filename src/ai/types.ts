@@ -3,9 +3,17 @@ export interface ChatMessage {
   content: string;
 }
 
+export type LlmProvider = 'openai' | 'ollama';
+
 export interface LlmConfig {
   endpoint: string;
   apiKey: string;
+  /**
+   * LLM 백엔드 종류. 요청 경로·바디·thinking 억제 방식을 결정한다.
+   * - 'openai': OpenAI 호환(/v1/chat/completions). injectNoThink·sendThinkingParams로 thinking 억제 시도.
+   * - 'ollama': Ollama 네이티브(/api/chat). think:false로 thinking을 확실히 끈다(/v1 호환 레이어는 억제 파라미터를 무시).
+   */
+  provider: LlmProvider;
   model: string;
   temperature: number;
   maxTokens: number;

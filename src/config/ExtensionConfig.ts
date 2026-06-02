@@ -46,6 +46,7 @@ export class ExtensionConfig {
     return {
       endpoint:    cfg.get<string>('llm.endpoint',    AI_DEFAULTS.endpoint),
       apiKey:      cfg.get<string>('llm.apiKey',      AI_DEFAULTS.apiKey),
+      provider:    cfg.get<'openai' | 'ollama'>('llm.provider', AI_DEFAULTS.provider as 'openai' | 'ollama'),
       model:       cfg.get<string>('llm.model',       AI_DEFAULTS.model),
       temperature: cfg.get<number>('llm.temperature', AI_DEFAULTS.temperature),
       maxTokens:   cfg.get<number>('llm.maxTokens',   AI_DEFAULTS.maxTokens),
