@@ -130,6 +130,33 @@ export class ScaffoldContextBuilder {
    */
   private static readonly ESTIMATED_RULES_CHARS = 6000;
 
+  /** 선택영역·쿼리·슬라이스 안내문 등 가변 부가 텍스트를 위한 예약 여유분(자). */
+  private static readonly FILE_BUDGET_RESERVE_MARGIN = 4000;
+
+  /**
+   * 현재 파일을 스텁으로 자르기 시작하는 글자 임계값을 **모델 컨텍스트 윈도우에 맞춰 적응형**으로 계산한다.
+   *
+   * 고정 3000자(FILE_SLICE_BUDGET)는 64k 윈도우 모델에도 ~300줄 파일을 잘라, 모델이 실제 코드를 보지
+   * 못한 채 `<search>`를 기억으로 지어내 매칭 실패하는 근본 원인이었다. 윈도우가 넉넉하면 파일을 통째로
+   * 넣어 모델이 실제 코드를 보게 한다(약한 모델이 patch를 정확히 만드는 가장 견고한 조건).
+   * 규칙·가이드 + RAG + 가변 부가 텍스트 몫을 목표 상한에서 빼고 남는 만큼을 파일에 허용하며,
+   * 작은 윈도우 보호를 위해 하한은 종전 고정값으로 둔다. adaptiveBudget이 꺼져 있으면 종전 동작(무회귀).
+   */
+  private _computeFileSliceBudget(
+    diet: ReturnType<typeof ExtensionConfig.getPromptDietConfig>,
+  ): number {
+    const ab = diet.adaptiveBudget;
+    if (!ab.enabled) return FILE_SLICE_BUDGET;
+    const contextWindow = ExtensionConfig.getLlmConfig().contextWindow;
+    const charBudget = ExtensionConfig.getRagConfig().charBudget;
+    const targetChars = contextWindow * ab.charsPerToken * ab.targetRatio;
+    const reserved =
+      ScaffoldContextBuilder.ESTIMATED_RULES_CHARS +
+      charBudget +
+      ScaffoldContextBuilder.FILE_BUDGET_RESERVE_MARGIN;
+    return Math.max(FILE_SLICE_BUDGET, Math.floor(targetChars - reserved));
+  }
+
   /**
    * 적응형 RAG 예산을 계산한다. 비활성이면 undefined를 반환해 엔진이 고정 charBudget을 쓰게 한다.
    *
@@ -148,7 +175,7 @@ export class ScaffoldContextBuilder {
     const contextWindow = ExtensionConfig.getLlmConfig().contextWindow;
     const targetChars = contextWindow * ab.charsPerToken * ab.targetRatio;
 
-    const estFileChars = Math.min(ctx.content?.length ?? 0, FILE_SLICE_BUDGET);
+    const estFileChars = Math.min(ctx.content?.length ?? 0, this._computeFileSliceBudget(diet));
     const estFixed = ScaffoldContextBuilder.ESTIMATED_RULES_CHARS + estFileChars;
 
     const available = Math.floor(targetChars - estFixed);
@@ -180,6 +207,7 @@ export class ScaffoldContextBuilder {
 - 모든 코드는 아래 scaffold 문서의 패턴을 따라야 합니다
 - createBrowserRouter 사용 금지 → 항상 createHashRouter (createAppRouter() 경유)
 - useQuery/useMutation 직접 사용 금지 → 항상 @axiom/hooks의 useApi 사용
+- **기존 코드 보존(중요)**: 새 \`useApi\`나 import를 추가할 때 ① 이미 있는 import를 다시 추가하지 말 것(중복), ② 기존 훅의 구조분해 필드(\`isPending\`, \`error\`, \`refetch\` 등)를 **이름 바꾸지 말 것**. 충돌이 걱정되면 **새로 추가하는 훅의 필드만** 고유 이름으로 alias한다(예: \`const { data: departments, isPending: isDepartmentsPending, error: departmentsError } = useApi(...)\`). 기존 훅과 그 사용처는 건드리지 않는다.
 - **⚠️ React Rules of Hooks 절대 준수**: \`use\`로 시작하는 모든 훅(useApi, useState, useEffect, useMemo, useCallback, useRef, useParams 등)은 반드시 **React 함수 컴포넌트 본문 또는 커스텀 훅(\`use*\`) 함수 본문의 최상위**에서만 호출. 다음 위치에서 호출 절대 금지: ① 모듈 최상위(import 아래·\`export default function\` 위), ② 조건문/반복문/일반 \`if·for·try\` 블록 안, ③ 일반 함수(컴포넌트가 아닌 \`calculateXxx\`, \`formatXxx\` 등 유틸 함수)나 콜백 안, ④ class 컴포넌트 안. 새 \`useApi\` 호출을 추가할 때는 반드시 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 위에 위치시킬 것.
 - 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
 - scaffold의 package.json에 없는 라이브러리 제안 금지
@@ -236,18 +264,21 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
       }
     }
 
-    // TS/TSX 등 코드 파일이면 함수 단위로 슬라이싱 — 쿼리와 무관한 함수는 stub으로 대체
+    // TS/TSX 등 코드 파일이면 함수 단위로 슬라이싱 — 쿼리와 무관한 함수는 stub으로 대체.
+    // 임계값은 모델 컨텍스트 윈도우 기반 적응형: 윈도우가 넉넉하면 통째로 넣어(스텁 없이) 모델이
+    // 실제 코드를 보게 한다 — patch 매칭 실패의 근본 원인 제거.
+    const fileSliceBudget = this._computeFileSliceBudget(diet);
     let sliceNotice = '';
     if (
       ctx.available &&
       ctx.language &&
       SLICEABLE_LANGUAGES.has(ctx.language) &&
-      fileContent.length > FILE_SLICE_BUDGET
+      fileContent.length > fileSliceBudget
     ) {
       const sliced = extractRelevantTsSlice(
         fileContent,
         tokenizeQuery(userQuery),
-        FILE_SLICE_BUDGET,
+        fileSliceBudget,
         ctx.selection
           ? { startLine: ctx.selection.startLine, endLine: ctx.selection.endLine }
           : undefined,
@@ -298,7 +329,10 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
             `1. 수정 대상은 라인 **${selStart}~${selEnd}** 안의 토큰 정확히 1곳뿐. 같은 변수명/표현식이 다른 라인(예: 위 코드의 다른 \`← 선택됨\` 표시 없는 라인)에 또 있어도 **절대 건드리지 마세요**.`,
             `2. \`<search>\`/\`<replace>\`는 라인 ${selStart}~${selEnd}만 포함. 양쪽 1줄 정도까지 맥락으로 확장 허용.`,
             '3. `<search>` 코드는 위 코드 블록에서 그대로 복사하되 **앞의 `NNN| ` 라인 번호 prefix는 절대 포함하지 마세요**. 라인 번호는 위치 파악용일 뿐 실제 파일 내용이 아닙니다.',
-            '4. import 추가는 별도 `<patch>` 블록으로 분리.',
+            '4. **선택 영역 밖에 새로 추가**할 코드(import, `useApi` 등 훅 호출, state 선언, 타입 선언)는 `<patch>`로 만들지 마세요 — 그 위치는 파일이 커서 잘려 안 보이므로 `<search>`가 매칭되지 않습니다. 대신 **조각만** 내면 위치는 확장이 알아서 끼웁니다(같은 `<axiom-action>` 안에 `<patch>`와 함께 출력):',
+            "   - 훅/state: `<hook>const { data: departments } = useApi<TDepartment[]>('/api/departments');</hook>`",
+            '   - import: `<import module="@axiom/hooks" named="useApi" />`',
+            '   - 타입: `<hook>` 안에 `type TDepartment = { ... }` 선언을 함께 넣으면 확장이 모듈 스코프로 올립니다.',
             '5. **선택 밖 소비처는 출력하지 마세요.** 선택 영역에서 필드/식별자를 rename하면(예: `name`→`employee_name`), 컴포넌트 본문의 소비처(`member.name`→`member.employee_name` 등)는 **확장이 자동으로 반영**합니다. 소비처 JSX/로직을 추측해 `<patch>`로 내지 마세요(추측한 코드는 실제 파일과 달라 매칭 실패합니다).',
             '',
             `**예시**: 위 코드에 \`u.end_date\`가 라인 ${selStart}과 다른 라인 두 곳에 있어도, \`← 선택됨\` 표시가 있는 **라인 ${selStart}만** 변경하세요.`,

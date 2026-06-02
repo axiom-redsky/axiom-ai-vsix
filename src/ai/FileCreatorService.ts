@@ -206,6 +206,39 @@ export class FileCreatorService {
   }
 
   /**
+   * 결과 텍스트에서 **중복 import 라인**을 제거한다(첫 번째만 유지).
+   *
+   * 약한 모델이 patch로 이미 존재하는 import(예: `import { useApi } from '@axiom/hooks';`)를 또 추가하는
+   * 흔한 실수를 결정론적으로 정리한다 — structural 모드의 import 병합/skip과 동일한 취지를 patch 결과에도 적용.
+   *
+   * 보수적 규칙: 한 줄짜리 `import ... from '...';` 라인만 대상으로, **정규화(공백 접기·따옴표 통일) 후
+   * 완전히 동일한** 라인의 2번째 이후만 제거한다. side-effect import(`import './x'`)·여러 줄 import는
+   * 패턴이 매칭되지 않아 손대지 않는다(오제거 방지).
+   */
+  dedupeImportLines(text: string): { text: string; removed: number } {
+    const hasCRLF = text.includes('\r\n');
+    const norm = hasCRLF ? text.replace(/\r\n/g, '\n') : text;
+    const lines = norm.split('\n');
+    const seen = new Set<string>();
+    const out: string[] = [];
+    let removed = 0;
+    for (const line of lines) {
+      if (/^\s*import\s.+\sfrom\s*['"][^'"]+['"]\s*;?\s*$/.test(line)) {
+        const key = line.trim().replace(/\s+/g, ' ').replace(/"/g, "'");
+        if (seen.has(key)) {
+          removed++;
+          continue;
+        }
+        seen.add(key);
+      }
+      out.push(line);
+    }
+    if (removed === 0) return { text, removed: 0 };
+    const joined = out.join('\n');
+    return { text: hasCRLF ? joined.replace(/\n/g, '\r\n') : joined, removed };
+  }
+
+  /**
    * 다중 patch를 원본에 동시 적용한다.
    *
    * 핵심 알고리즘 — "원본 기준 매칭 + 라인 범위 분리":

@@ -6,7 +6,7 @@ import { LlmService } from '../ai/LlmService';
 import { EditorContextCollector, type EditorContext } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
-import type { AxiomAction, LineEdit, MultiPatchResult } from '../ai/FileCreatorService';
+import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { computeDiffHunks } from '../ai/DiffUtil';
@@ -1679,6 +1679,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     response: string,
     forcePageAutoWrite = false,
     groundedRetryDone = false,
+    carryPatches?: PatchBlock[],
   ): Promise<boolean> {
     const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
     const actions: AxiomAction[] = [];
@@ -1741,31 +1742,52 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
-      // 3차: structural 모드 — <hook>/<import> 조각 파싱 (약한 모델용 결정론적 삽입)
-      // patch 블록이 없을 때만 시도한다 (모드 혼용 방지).
+      // 2.5차: grounded 재시도의 "성공분 carry" — 이미 원본에 매칭된 patch는 모델에 재출력시키지
+      // 않고(약한 모델이 멀쩡한 patch를 망치는 것 방지) 여기서 그대로 앞에 합친다. 모델은 실패 region만
+      // 다시 냈고, carryPatches는 직전 computeMultiPatch에서 성공한 원본 PatchBlock이다. 둘을 합쳐
+      // computeMultiPatch를 재실행하면 — 성공분은 (파일 불변이라) 다시 매칭되고 실패분만 새로 풀린다.
+      // 쓰기 atomic·겹침 검증은 그대로 적용되므로 부분 적용으로 인한 깨진 파일은 생기지 않는다.
+      // 모델이 patch 모드를 유지했을 때만 합친다(full로 응답하면 그 자체가 완결된 전체 파일).
+      if (carryPatches && carryPatches.length > 0 && action.patches) {
+        action.patches = [...carryPatches, ...action.patches];
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] grounded 재시도: 성공분 ${carryPatches.length}개 carry + 실패분 재요청 ${action.patches.length - carryPatches.length}개 → 합쳐 ${action.patches.length}개로 재적용`,
+        );
+      }
+
+      // 3차: structural 조각 — <hook>/<import> 파싱 (약한 모델용 결정론적 삽입).
+      //  - patch와 함께 오면 → **혼용 모드**: 국소/선택 변경은 patch가, import·훅·타입 등 부수 삽입은
+      //    structural이 담당한다(아래 patch 적용부에서 patch를 적용한 뒤 결정론적으로 끼움). mode는 patch 유지.
+      //    선택 영역의 in-place 수정(patch)과 선택 밖 부수 삽입(structural)을 한 응답에서 함께 처리하는 핵심.
+      //  - patch 없이 structural만 → 단독 structural 모드. 단, 선택이 활성이면 선택을 건드릴 수단이 없으므로
+      //    (structural은 위치를 구조 앵커로만 정해 선택을 무시) 종전대로 억제한다.
       let suppressedStructuralForSelection = false;
-      if (!action.patches) {
+      {
         const hookMatches = [...blockContent.matchAll(/<hook>\n?([\s\S]*?)<\/hook>/g)];
         const importMatches = [...blockContent.matchAll(/<import\b([^>]*?)\/?>/g)];
         if (hookMatches.length > 0 || importMatches.length > 0) {
-          // 선택 영역이 활성일 때는 structural 모드를 쓰지 않는다.
-          // structural은 삽입 위치를 구조 앵커(컴포넌트 함수 위 / 마지막 훅 다음)로만 결정해
-          // 사용자의 선택 영역을 원천적으로 무시하며, 선택한 JSX 내부 바인딩 교체 같은
-          // 국소 수정은 표현조차 못 한다. 선택 기반 수정은 patch/full 모드로만 처리한다.
-          if (this._lastSelectionLineRange) {
+          const hookCode = hookMatches
+            .map((m) => m[1].replace(/\n+$/, ''))
+            .filter((c) => c.trim())
+            .join('\n') || undefined;
+          const imports = importMatches
+            .map((m) => this._parseImportTag(m[1]))
+            .filter((x): x is ImportRequest => x !== null);
+
+          if (action.patches) {
+            // 혼용 모드 — patch 곁의 보조 삽입. mode는 patch로 두고 structural만 첨부한다.
+            action.structural = { hookCode, imports: imports.length ? imports : undefined };
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] 혼용 모드 (${action.filePath}): patch ${action.patches.length}개 + structural 보조 삽입 ` +
+                `(hook ${hookCode ? '있음' : '없음'}, import ${imports.length}개)`,
+            );
+          } else if (this._lastSelectionLineRange) {
             suppressedStructuralForSelection = true;
             this._corpusOutputChannel.appendLine(
-              `[Axiom AI] ⚠️ 선택 영역 활성 — structural(<hook>) 응답을 무시 (${action.filePath}). ` +
-                `선택 기반 수정은 patch/full 모드로만 처리.`,
+              `[Axiom AI] ⚠️ 선택 영역 활성 + patch 없음 — structural 단독 응답을 무시 (${action.filePath}). ` +
+                `선택을 건드릴 patch가 없어 부수 삽입만 적용하면 의도가 누락됨.`,
             );
           } else {
-            const hookCode = hookMatches
-              .map((m) => m[1].replace(/\n+$/, ''))
-              .filter((c) => c.trim())
-              .join('\n') || undefined;
-            const imports = importMatches
-              .map((m) => this._parseImportTag(m[1]))
-              .filter((x): x is ImportRequest => x !== null);
             action.structural = { hookCode, imports: imports.length ? imports : undefined };
             action.mode = 'structural';
           }
@@ -2170,28 +2192,55 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
             if (violatingLines.length > 0) {
               const lineNums = [...new Set(violatingLines.map((v) => v.line))].sort((a, b) => a - b);
-              this._corpusOutputChannel.appendLine(
-                `[Axiom AI] ❌ 선택 영역 위반 거부 (선택 ${sel.startLine}~${sel.endLine}): ` +
-                `실제 변경 라인 ${lineNums.join(', ')}가 선택 영역 밖`,
+              // 모델이 **선택 영역 자체도 수정했는지** 판정 — resolvedOk 중 하나라도 선택 범위와 겹치면
+              // 의도를 반영한 것이다. 이때 선택 밖 변경은 데이터 소스(useApi) 추가·이름 충돌 회피 rename 등
+              // 정당한 보조 수정으로 보고 **허용**한다(잘못된 위치 방어는 아래 휴먼 confirm diff가 담당).
+              // 반대로 선택은 전혀 안 건드리고 선택 밖만 바꿨다면 = 같은 토큰의 잘못된 위치 → 거부(종전).
+              const addressedSelection = mp.resolvedOk.some(
+                (o) => o.endLine + 1 >= sel.startLine && o.startLine + 1 <= sel.endLine,
               );
-              violatingLines.slice(0, 5).forEach((v) => {
+              if (addressedSelection) {
                 this._corpusOutputChannel.appendLine(
-                  `  - 라인 ${v.line}: ${v.content.trim().slice(0, 100)}`,
+                  `[Axiom AI] 선택 영역 외 변경 허용 (선택 ${sel.startLine}~${sel.endLine} 수정 확인됨) — 부수 변경 라인 ${lineNums.join(', ')}`,
                 );
-              });
-              const failedSearches = action.patches.map((p, idx) => {
-                return `[#${idx + 1} selection-mismatch] 모델이 선택 영역(${sel.startLine}~${sel.endLine}) 밖 라인 ${lineNums.join(', ')}을 변경하려 함\n${p.search}`;
-              });
-              this._post({
-                type: 'token',
-                content:
-                  `\n\n> ❌ **선택 영역 위반으로 거부됨**: 사용자가 선택한 라인은 **${sel.startLine}~${sel.endLine}** 인데, ` +
-                  `모델이 제시한 patch는 라인 **${lineNums.join(', ')}** 를 변경하려 했습니다. ` +
-                  `같은 토큰이 다른 위치에도 있어 모델이 잘못된 위치를 선택했습니다. ` +
-                  `**Full로 재시도**를 선택하거나, 라인 번호를 명시해서 다시 요청하세요 (예: "라인 ${sel.startLine}의 \`u.end_date\`만 변경해줘").\n`,
-              });
-              this._reportPatchFailure(action.filePath, failedSearches);
-              break;
+                this._post({
+                  type: 'token',
+                  content:
+                    `\n\n> ℹ️ 선택 영역(${sel.startLine}~${sel.endLine}) 외에 라인 **${lineNums.join(', ')}** 도 함께 변경됩니다 ` +
+                    `(데이터 소스 추가·이름 충돌 회피 등 부수 수정). 아래 diff에서 전체 변경을 확인하고 적용하세요.\n`,
+                });
+              } else {
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] ❌ 선택 영역 위반 거부 (선택 ${sel.startLine}~${sel.endLine}): ` +
+                  `선택은 손대지 않고 선택 밖 라인 ${lineNums.join(', ')}만 변경 — 잘못된 위치`,
+                );
+                violatingLines.slice(0, 5).forEach((v) => {
+                  this._corpusOutputChannel.appendLine(
+                    `  - 라인 ${v.line}: ${v.content.trim().slice(0, 100)}`,
+                  );
+                });
+                // 진단: 모델이 낸 patch search/replace 원문 덤프 (거부 케이스 분석용).
+                action.patches.forEach((p, idx) => {
+                  this._corpusOutputChannel.appendLine(`\n[Axiom AI] === patch #${idx + 1} (selection-mismatch) 진단 ===`);
+                  this._corpusOutputChannel.appendLine(`--- 모델 <search> (${p.search.split('\n').length}줄) ---`);
+                  p.search.split('\n').forEach((ln, i) => this._corpusOutputChannel.appendLine(`SEARCH[${i + 1}]: ${JSON.stringify(ln)}`));
+                  this._corpusOutputChannel.appendLine(`--- 모델 <replace> (${p.replace.split('\n').length}줄) ---`);
+                  p.replace.split('\n').forEach((ln, i) => this._corpusOutputChannel.appendLine(`REPLACE[${i + 1}]: ${JSON.stringify(ln)}`));
+                });
+                const failedSearches = action.patches.map((p, idx) => {
+                  return `[#${idx + 1} selection-mismatch] 모델이 선택 영역(${sel.startLine}~${sel.endLine})은 건드리지 않고 라인 ${lineNums.join(', ')}만 변경하려 함\n${p.search}`;
+                });
+                this._post({
+                  type: 'token',
+                  content:
+                    `\n\n> ❌ **선택 영역 위반으로 거부됨**: 선택한 라인은 **${sel.startLine}~${sel.endLine}** 인데, ` +
+                    `모델이 선택 영역은 손대지 않고 라인 **${lineNums.join(', ')}** 만 변경하려 했습니다. ` +
+                    `같은 토큰이 다른 위치에도 있어 잘못된 위치를 선택한 것으로 보입니다. ` +
+                    `**Full로 재시도**를 선택하거나, 라인 번호를 명시해서 다시 요청하세요 (예: "라인 ${sel.startLine}의 \`u.end_date\`만 변경해줘").\n`,
+                });
+                this._reportPatchFailure(action.filePath, failedSearches);
+                break;
+              }
             }
 
             // Phase 2 — 결정론적 리플: 선택 영역 rename을 소비처(멤버 접근 `.field`)에 직접 반영한다.
@@ -2213,6 +2262,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     `필드 분리·타입 변경 등 단순 rename이 아닌 부분의 소비처는 수동 확인이 필요할 수 있습니다.\n`,
                 });
               }
+            }
+          }
+
+          // 혼용 모드: 선택/국소 변경(patch)은 mp.text에 이미 반영됐고 선택 가드도 통과했다.
+          // 그 위에 import·훅·타입 등 부수 삽입을 structural로 결정론적으로 끼운다 — 이들은 선택 밖
+          // (import 블록·컴포넌트 본문·모듈 스코프)이라 선택 가드와 무관하므로 가드 이후에 적용한다.
+          // 모델은 안 보이는 영역의 search를 만들 필요가 없어(structural은 위치를 확장이 계산) 매칭 실패가 없다.
+          if (action.structural && (action.structural.hookCode || action.structural.imports?.length)) {
+            const res = applyStructuralEdit(mp.text, action.structural);
+            mp.text = res.text;
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] 혼용 structural 삽입 (${action.filePath}):\n  ${res.changes.join('\n  ')}`,
+            );
+
+            // 의존성 폐쇄 게이트 — useApi<TFoo> 삽입 시 useApi import·TFoo 선언이 결과 파일에 없으면
+            // 컴파일이 깨지는 출력이므로 거부한다. 고정 경로 스캐폴드 훅(useApi 등)은 자동 import 보강.
+            let dep = findUnresolvedReferences(action.structural.hookCode ?? '', mp.text);
+            if (!dep.ok) {
+              const autoImports = resolveKnownImports(dep.unresolved);
+              if (autoImports.length > 0) {
+                const patched = applyStructuralEdit(mp.text, { imports: autoImports });
+                mp.text = patched.text;
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] 🔧 혼용 structural import 자동 보강 (${action.filePath}):\n  ${patched.changes.join('\n  ')}`,
+                );
+                dep = findUnresolvedReferences(action.structural.hookCode ?? '', mp.text);
+              }
+            }
+            if (!dep.ok) {
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ⛔ 혼용 structural 의존성 미해소 (${action.filePath}): ${dep.unresolved.join(', ')}`,
+              );
+              this._post({
+                type: 'token',
+                content:
+                  `\n\n> ⛔ **부수 삽입을 취소했습니다.** 추가하려는 코드가 쓰는 ` +
+                  `\`${dep.unresolved.join('`, `')}\` 의 선언/import가 결과 파일에 없어 그대로 적용하면 컴파일이 깨집니다. ` +
+                  `타입 선언과 import까지 함께 넣도록 다시 시도해주세요.\n`,
+              });
+              this._reportPatchFailure(action.filePath, [
+                `[혼용 structural 의존성 미해소] 미해소 심볼: ${dep.unresolved.join(', ')}`,
+              ]);
+              break;
             }
           }
 
@@ -2239,6 +2331,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this._reportReactViolation(action.filePath, after);
                 break;
               }
+            }
+          }
+
+          // 결정론적 import 정리 — 약한 모델이 patch로 이미 존재하는 import를 또 추가하는 흔한 실수
+          // (예: useApi import 중복)를 제거한다. structural의 import 병합과 동일 취지를 patch 결과에도 적용.
+          if (/\.(tsx|ts|jsx|js)$/.test(action.filePath)) {
+            const dedup = this._fileCreator.dedupeImportLines(mp.text);
+            if (dedup.removed > 0) {
+              mp.text = dedup.text;
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] 🔧 중복 import ${dedup.removed}줄 제거 (${action.filePath})`,
+              );
+              this._post({
+                type: 'token',
+                content: `\n\n> 🔧 이미 존재하는 import ${dedup.removed}줄을 자동 제거했습니다(중복 방지).\n`,
+              });
             }
           }
 
@@ -2505,20 +2613,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       });
     }
 
-    // 이미 매칭된 patch도 실제 위치를 알고 있으므로 함께 제공 — 재출력 시 깨지지 않도록.
-    for (const o of mp.resolvedOk) {
-      const p = action.patches[o.index];
-      grounded.push({
-        index: o.index, intent: p.replace,
-        realText: origLines.slice(o.startLine, o.endLine + 1).join('\n'),
-        startLine: o.startLine + 1, endLine: o.endLine + 1,
-      });
-    }
+    // 이미 매칭된 patch는 모델에 재출력시키지 않는다 — 약한 모델이 그 과정에서 멀쩡했던 patch를
+    // 망치는 것을 막기 위해, 성공분은 원본 PatchBlock 그대로 carry해 재처리 때(_handleAxiomAction)
+    // 실패분과 합쳐 computeMultiPatch를 재실행한다. grounded 프롬프트엔 실패 region만 실어 모델이
+    // 다시 만들 대상을 최소화한다(= "성공 매칭 간직 + 실패 region만 좁혀 재시도").
     grounded.sort((a, b) => a.index - b.index);
+    const carryPatches: PatchBlock[] = [...mp.resolvedOk]
+      .sort((a, b) => a.index - b.index)
+      .map((o) => action.patches![o.index]);
 
     this._corpusOutputChannel.appendLine(
-      `[Axiom AI] 🔁 grounded 재시도 (${action.filePath}): 실패 ${failed.length}건 위치 grounding 성공, ` +
-      `${grounded.length}개 영역 실제 텍스트 주입`,
+      `[Axiom AI] 🔁 grounded 재시도 (${action.filePath}): 실패 ${failed.length}건만 재요청(위치 grounding 성공), ` +
+      `성공분 ${carryPatches.length}개는 carry해 합침`,
     );
     this._post({
       type: 'token',
@@ -2529,7 +2635,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const resp = await this._retryForAxiomAction(action.filePath, config, { groundedPatches: grounded });
     if (!resp) return false;
     // groundedRetryDone=true → 재시도 결과가 또 실패해도 다시 grounding하지 않고 기존 폴백으로.
-    await this._handleAxiomAction(resp, false, true);
+    // carryPatches → 모델이 다시 낸 실패분 patch 앞에 성공분을 합쳐 atomic 재적용.
+    await this._handleAxiomAction(resp, false, true, carryPatches);
     return true;
   }
 
