@@ -53,7 +53,7 @@ export interface SpecWizardState {
 
 // WebView → Extension Host
 export type WebviewToHostMessage =
-  | { type: 'sendMessage'; text: string }
+  | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number } }
   | { type: 'stopMessage' }
   | { type: 'clearHistory' }
   | { type: 'ready' }

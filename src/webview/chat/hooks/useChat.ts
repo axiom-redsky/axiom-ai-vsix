@@ -226,9 +226,18 @@ export function useChat() {
         { id: Date.now().toString(), role: 'user', content: text },
       ]);
       setIsWaiting(true);
-      vscode.postMessage({ type: 'sendMessage', text });
+      // 핀(chip)으로 붙은 선택 범위를 함께 전송 — host가 라이브 에디터 selection 대신 이걸
+      // 선택의 진실로 삼는다(다른 파일/패널에 포커스가 있어도 선택이 유실되지 않게).
+      const selection = selectionContext
+        ? {
+            filePath: selectionContext.filePath,
+            startLine: selectionContext.startLine,
+            endLine: selectionContext.endLine,
+          }
+        : undefined;
+      vscode.postMessage({ type: 'sendMessage', text, selection });
     },
-    [isStreaming, isWaiting],
+    [isStreaming, isWaiting, selectionContext],
   );
 
   const clearHistory = useCallback(() => {

@@ -299,6 +299,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
             `2. \`<search>\`/\`<replace>\`는 라인 ${selStart}~${selEnd}만 포함. 양쪽 1줄 정도까지 맥락으로 확장 허용.`,
             '3. `<search>` 코드는 위 코드 블록에서 그대로 복사하되 **앞의 `NNN| ` 라인 번호 prefix는 절대 포함하지 마세요**. 라인 번호는 위치 파악용일 뿐 실제 파일 내용이 아닙니다.',
             '4. import 추가는 별도 `<patch>` 블록으로 분리.',
+            '5. **선택 밖 소비처는 출력하지 마세요.** 선택 영역에서 필드/식별자를 rename하면(예: `name`→`employee_name`), 컴포넌트 본문의 소비처(`member.name`→`member.employee_name` 등)는 **확장이 자동으로 반영**합니다. 소비처 JSX/로직을 추측해 `<patch>`로 내지 마세요(추측한 코드는 실제 파일과 달라 매칭 실패합니다).',
             '',
             `**예시**: 위 코드에 \`u.end_date\`가 라인 ${selStart}과 다른 라인 두 곳에 있어도, \`← 선택됨\` 표시가 있는 **라인 ${selStart}만** 변경하세요.`,
           ].join('\n');
@@ -339,6 +340,10 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     const domainCtx = this._getDomainContext(userQuery, ctx.filePath ?? '');
     const domainSection = this._buildDomainSection(domainCtx, userQuery);
 
+    // 쿼리에 명시된 참조 파일(예: /plan/api-spec.md)을 읽어 주입한다.
+    // 모든 시나리오(Q&A·A·B·C)에 공통 적용 — 모델이 임의 엔드포인트를 지어내지 않게 한다.
+    const referencedSection = this._buildReferencedFilesSection(userQuery);
+
     // SDD 컨텍스트는 _handleMessage가 ctx.content에 append하므로 파일 섹션에 포함된다.
     // 별도 분리가 필요하면 EditorContext에 sddChars를 추가하는 추가 작업이 필요.
     this._lastBreakdown = {
@@ -366,12 +371,12 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 ## 현재 작업: 질문 답변 (조회·설명)
 사용자의 질문에 답하세요. 코드 예시가 필요하면 위 scaffold 문서의 패턴을 따른 코드 블록으로 보여주되,
 **파일을 생성·수정하는 axiom-action 블록은 출력하지 마세요** — 이 요청은 파일 변경이 아니라 설명 요청입니다.
-${scaffoldSection}${fileSection}`;
+${scaffoldSection}${fileSection}${referencedSection}`;
       // 도메인 섹션은 Q&A 프롬프트에 포함하지 않으므로 0으로 보정
       this._lastBreakdown.domainChars = 0;
       this._lastBreakdown.rulesChars = Math.max(
         0,
-        qnaPrompt.length - fileSection.length - scaffoldSection.length,
+        qnaPrompt.length - fileSection.length - scaffoldSection.length - referencedSection.length,
       );
       return qnaPrompt;
     }
@@ -383,12 +388,13 @@ ${scaffoldSection}${fileSection}`;
     if (domainCtx.isCurrentFileContext) {
       const cPrompt = this._buildScenarioCPrompt(
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
-        linesAllowed, lineEditCfg.requireAnchor,
+        linesAllowed, lineEditCfg.requireAnchor, !!ctx.selection,
+        referencedSection,
       );
       // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 합산)
       this._lastBreakdown.rulesChars = Math.max(
         0,
-        cPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length,
+        cPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length - referencedSection.length,
       );
       return cPrompt;
     }
@@ -468,10 +474,10 @@ ${scaffoldSection}${fileSection}`;
 - 도메인 라우터는 \`TAppRoute[]\` 배열만 export (createHashRouter는 루트 App.tsx에서만 사용)
 - 올바른 패턴: \`const routes: TAppRoute[] = [...]; export default routes;\`
 
-${domainSection}${scaffoldSection}${fileSection}`;
+${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     this._lastBreakdown.rulesChars = Math.max(
       0,
-      abPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length,
+      abPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length - referencedSection.length,
     );
     return abPrompt;
   }
@@ -489,6 +495,8 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     fileSection: string,
     linesAllowed: boolean,
     requireAnchor: boolean,
+    hasSelection: boolean,
+    referencedSection = '',
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
@@ -532,7 +540,12 @@ ${domainSection}${scaffoldSection}${fileSection}`;
 </patch>
 </axiom-action>`;
 
-    const structuralModeBlock = `**structural 모드 (훅·import 추가 시 최우선 권장)** — 위치를 직접 찾지 마세요. "추가할 코드"만 출력하면 확장이 컴포넌트 본문의 정확한 위치(기존 훅 다음, return 위)에 결정론적으로 삽입합니다. \`<search>\`·라인 번호·전체 파일이 전혀 필요 없습니다.
+    // 선택 영역이 있으면 structural 모드를 아예 제시하지 않는다.
+    // structural은 삽입 위치를 구조 앵커로만 결정해 선택 영역을 무시하며, 선택한 JSX 내부
+    // 바인딩 교체 같은 국소 수정을 표현할 수 없다(서버측 가드도 이 응답을 거부함).
+    const structuralModeBlock = hasSelection
+      ? ''
+      : `**structural 모드 (훅·import 추가 시 최우선 권장)** — 위치를 직접 찾지 마세요. "추가할 코드"만 출력하면 확장이 컴포넌트 본문의 정확한 위치(기존 훅 다음, return 위)에 결정론적으로 삽입합니다. \`<search>\`·라인 번호·전체 파일이 전혀 필요 없습니다.
 - useApi/useState/useEffect 등 **훅 추가**, **import 추가**는 이 모드를 쓰세요.
 - \`<hook>\`: 컴포넌트 본문에 추가할 훅/코드 줄만 작성 (들여쓰기 없이 — 확장이 맞춰 넣음).
 - \`<hook>\` 안에 \`type\`/\`interface\`/\`enum\` 선언을 함께 써도 됩니다. 확장이 이를 자동으로 분리해 **함수 컴포넌트 바로 위(모듈 스코프)** 에 배치하므로, 컴포넌트 본문 안에 직접 박지 마세요.
@@ -546,6 +559,19 @@ const { data, isPending, error } = useApi<TResponse>('/api/endpoint');
 </hook>
 <import module="@axiom/hooks" named="useApi" />
 </axiom-action>`;
+
+    // "출력 모드 선택" 요약 규칙. 선택 영역이 있으면 patch를 강제하고 structural/lines를 금지한다
+    // — 선택 영역 수정은 patch(`<search>`/`<replace>`)로만 정확히 표현·검증되기 때문이다.
+    const modeSelectionRules = hasSelection
+      ? `> - **patch 모드 (선택 영역 수정 시 필수)**: 위 "🎯 선택 영역"에 표시된 코드를 \`<search>\`/\`<replace>\`로 직접 고치세요. ⛔ **\`<hook>\`(structural)·\`<edit>\`(lines) 모드 절대 금지** — structural은 선택 영역을 무시하고 엉뚱한 위치(컴포넌트 위·훅 다음)에 삽입되어, 정작 선택한 코드는 그대로 남습니다.`
+      : `> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.${
+          linesAllowed
+            ? `
+> - **lines 모드 (그 외 일반 코드 수정의 기본)**: 위 파일에 붙은 라인 번호를 보고 **바뀐 줄만** \`<edit>\`로 출력하세요. 원본을 다시 복사하지 않아 출력이 가장 작습니다.
+> - **patch 모드**: 라인 번호가 헷갈리거나 lines로 표현하기 어려운 국소 변경에 한해 \`<patch>\` 블록 사용(폴백).`
+            : `
+> - **patch 모드**: 기존 코드의 특정 부분을 고치는 국소 변경(선택 영역 수정 등)은 \`<patch>\` 블록 N개로 표현.`
+        }`;
 
     // 라인 앵커(lines) 모드 — 파일이 슬라이싱되지 않아 라인번호가 실제와 일치할 때만 제공.
     const anchorRule = requireAnchor
@@ -601,20 +627,11 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 ### 출력 모드 선택
 
 > ⚠️ **모드 선택 핵심 규칙** (출력은 작을수록 좋습니다 — 바뀐 부분만 출력):
-> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.${
-  linesAllowed
-    ? `
-> - **lines 모드 (그 외 일반 코드 수정의 기본)**: 위 파일에 붙은 라인 번호를 보고 **바뀐 줄만** \`<edit>\`로 출력하세요. 원본을 다시 복사하지 않아 출력이 가장 작습니다.
-> - **patch 모드**: 라인 번호가 헷갈리거나 lines로 표현하기 어려운 국소 변경에 한해 \`<patch>\` 블록 사용(폴백).`
-    : `
-> - **patch 모드**: 기존 코드의 특정 부분을 고치는 국소 변경(선택 영역 수정 등)은 \`<patch>\` 블록 N개로 표현.`
-}
+${modeSelectionRules}
 > - **full 모드**: 파일 절반 이상을 재작성해야 할 때만 사용(출력이 가장 큼 — 최후의 수단).
 > - 선택 영역이 위에 제시되어 있으면 그 영역과 import 추가에만 한정하세요.
 
-${structuralModeBlock}
-${linesAllowed ? `\n${lineModeBlock}\n` : ''}
-${patchModeBlock}
+${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSelection ? `${lineModeBlock}\n\n` : ''}${patchModeBlock}
 
 **full 모드** — 전체 파일 재작성이 필요할 때만:
 
@@ -626,7 +643,7 @@ ${patchModeBlock}
 </axiom-action>
 ${navigationHint}
 
-${domainSection}${scaffoldSection}${fileSection}`;
+${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
   }
 
   /** 파일 경로에서 도메인명을 추출한다 (public 노출). */
@@ -787,6 +804,16 @@ ${domainSection}${scaffoldSection}${fileSection}`;
     return this._getDomainContext(userQuery, filePath).isCurrentFileContext;
   }
 
+  /**
+   * buildSystemPrompt가 이 쿼리를 Q&A로 게이팅하는지(=axiom-action 생성 지시를 빼는지) 여부.
+   * 호출자(ChatViewProvider)가 응답 후처리에서 동일한 판단을 따르게 해, 설명형 질문을
+   * 파일 수정 모드로 강제 진입시키지 않도록 한다.
+   */
+  isQnAGated(userQuery: string): boolean {
+    const diet = ExtensionConfig.getPromptDietConfig();
+    return diet.qnaGating && this._isQnAQuery(userQuery) && !this._isExplicitEditOrCreate(userQuery);
+  }
+
   /** .axiom/knowledge/ 폴더가 존재하면 경로를 반환한다. */
   private _getAxiomKnowledgeDir(): string | null {
     const axiomFolder = ExtensionConfig.getSddAxiomFolder();
@@ -809,6 +836,44 @@ ${domainSection}${scaffoldSection}${fileSection}`;
   private _getWorkspaceRoot(): string | null {
     const folders = vscode.workspace.workspaceFolders;
     return folders && folders.length > 0 ? folders[0].uri.fsPath : null;
+  }
+
+  /** 참조 파일 1개당 주입 글자 상한 — 스펙 md가 길어도 컨텍스트 폭주를 막는다. */
+  private static readonly REFERENCED_FILE_BUDGET = 12000;
+
+  /**
+   * 사용자 쿼리에 명시된 파일 경로(예: "/plan/api-spec.md")를 워크스페이스에서 읽어
+   * 시스템 프롬프트 섹션으로 반환한다. 경로 멘션이 없거나 파일이 없으면 빈 문자열.
+   *
+   * 모델이 참조 파일에 **이미 정의된** API/스펙을 고르도록 유도하고, 적절한 항목이
+   * 없을 때만 "없다"고 답하게 한다(새 엔드포인트 임의 생성 방지).
+   */
+  private _buildReferencedFilesSection(userQuery: string): string {
+    const wsRoot = this._getWorkspaceRoot();
+    if (!wsRoot) return '';
+
+    // .md/.ts/.tsx/.json/.yaml/.css 등 확장자를 가진 경로 토큰 추출
+    const re = /(?:^|[\s`'"(])(\/?(?:[\w.-]+[/\\])*[\w.-]+\.(?:md|tsx?|jsx?|json|ya?ml|css))/g;
+    const found = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(userQuery)) !== null) {
+      found.add(m[1].replace(/^[/\\]/, '').replace(/\\/g, '/'));
+    }
+    if (found.size === 0) return '';
+
+    const blocks: string[] = [];
+    for (const rel of found) {
+      const abs = path.join(wsRoot, rel);
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+      let content = fs.readFileSync(abs, 'utf-8');
+      if (content.length > ScaffoldContextBuilder.REFERENCED_FILE_BUDGET) {
+        content = content.slice(0, ScaffoldContextBuilder.REFERENCED_FILE_BUDGET) + '\n... (이하 생략)';
+      }
+      blocks.push(`## 📎 참조 요청 파일: ${rel}\n\`\`\`\n${content}\n\`\`\``);
+    }
+    if (blocks.length === 0) return '';
+
+    return `\n\n---\n\n> ⚠️ 사용자가 아래 파일을 **참조하라고 명시**했습니다. 이 파일에 **이미 정의된 API/스펙 중에서** 현재 화면(또는 질문 대상)에 맞는 것을 골라 제시하세요.\n> - 파일에 적절한 API/항목이 있으면 그것을 인용해 답하고, **새 엔드포인트를 임의로 만들지 마세요**.\n> - 파일을 통틀어 적절한 항목이 없을 때만 "참조 파일(${[...found].join(', ')})에 해당 항목이 없습니다"라고 명시하세요. 이 경우에도 추측한 API를 사실처럼 단정하지 마세요.\n\n${blocks.join('\n\n')}`;
   }
 
   /**

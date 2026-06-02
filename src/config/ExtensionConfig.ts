@@ -28,6 +28,9 @@ export interface MultiPatchConfig {
   enabled: boolean;
   maxPatches: number;
   minContextLines: number;
+  groundedRetry: boolean;
+  fuzzyLocateThreshold: number;
+  rippleGuard: boolean;
 }
 
 export interface LineEditConfig {
@@ -105,9 +108,12 @@ export class ExtensionConfig {
   static getMultiPatchConfig(): MultiPatchConfig {
     const cfg = ExtensionConfig._cfg();
     return {
-      enabled:         cfg.get<boolean>('multiPatch.enabled',         AI_DEFAULTS.multiPatch.enabled),
-      maxPatches:      cfg.get<number>('multiPatch.maxPatches',       AI_DEFAULTS.multiPatch.maxPatches),
-      minContextLines: cfg.get<number>('multiPatch.minContextLines',  AI_DEFAULTS.multiPatch.minContextLines),
+      enabled:              cfg.get<boolean>('multiPatch.enabled',              AI_DEFAULTS.multiPatch.enabled),
+      maxPatches:           cfg.get<number>('multiPatch.maxPatches',            AI_DEFAULTS.multiPatch.maxPatches),
+      minContextLines:      cfg.get<number>('multiPatch.minContextLines',       AI_DEFAULTS.multiPatch.minContextLines),
+      groundedRetry:        cfg.get<boolean>('multiPatch.groundedRetry',        AI_DEFAULTS.multiPatch.groundedRetry),
+      fuzzyLocateThreshold: cfg.get<number>('multiPatch.fuzzyLocateThreshold',  AI_DEFAULTS.multiPatch.fuzzyLocateThreshold),
+      rippleGuard:          cfg.get<boolean>('multiPatch.rippleGuard',          AI_DEFAULTS.multiPatch.rippleGuard),
     };
   }
 

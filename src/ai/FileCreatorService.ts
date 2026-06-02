@@ -91,6 +91,24 @@ export interface MultiPatchResult {
   text: string | null;
   /** patch별 결과 (입력 순서 유지) */
   results: PatchApplyResult[];
+  /**
+   * 매칭에 성공한 patch의 해소 정보(0-based 라인 범위). 일부가 실패해 text=null이어도
+   * 성공분은 여기 채워진다 — grounded 재시도가 "이미 맞은 patch"의 실제 위치를 알 때 사용.
+   * 디스크 쓰기 게이트는 여전히 text로만 판단한다(atomic 계약 불변).
+   */
+  resolvedOk: { index: number; startLine: number; endLine: number }[];
+}
+
+/** locateFuzzyRegion이 반환하는, 실패 search에 가장 닮은 원본 영역 */
+export interface FuzzyRegion {
+  /** 1-based, 포함 */
+  startLine: number;
+  /** 1-based, 포함 */
+  endLine: number;
+  /** 해당 영역의 실제 원본 텍스트(앞뒤 ctx 포함) */
+  text: string;
+  /** 최고 매칭 라인의 토큰 자카드 유사도(0~1) */
+  confidence: number;
 }
 
 export interface CreateFileResult {
@@ -205,7 +223,7 @@ export class FileCreatorService {
     patches: PatchBlock[],
     selection?: SelectionLineRange,
   ): MultiPatchResult {
-    if (patches.length === 0) return { text: null, results: [] };
+    if (patches.length === 0) return { text: null, results: [], resolvedOk: [] };
 
     const hasCRLF = original.includes('\r\n');
     const normOrig = hasCRLF ? original.replace(/\r\n/g, '\n') : original;
@@ -214,6 +232,9 @@ export class FileCreatorService {
     type Resolved = { index: number; startLine: number; endLine: number; replaceLines: string[] };
     const resolved: Resolved[] = [];
     const results: PatchApplyResult[] = [];
+    // 성공분의 0-based 라인 범위(실패가 섞여도 채움) — grounded 재시도용
+    const resolvedOk = (): { index: number; startLine: number; endLine: number }[] =>
+      resolved.map((r) => ({ index: r.index, startLine: r.startLine, endLine: r.endLine }));
 
     for (let i = 0; i < patches.length; i++) {
       const normSearch = patches[i].search.replace(/\r\n/g, '\n');
@@ -238,7 +259,7 @@ export class FileCreatorService {
     }
 
     if (results.some((r) => !r.success)) {
-      return { text: null, results };
+      return { text: null, results, resolvedOk: resolvedOk() };
     }
 
     // 겹침 검출 — startLine 오름차순으로 정렬한 뒤 인접 범위 비교
@@ -254,7 +275,7 @@ export class FileCreatorService {
           delete overlapEntry.startLine;
           delete overlapEntry.endLine;
         }
-        return { text: null, results };
+        return { text: null, results, resolvedOk: resolvedOk() };
       }
     }
 
@@ -271,8 +292,210 @@ export class FileCreatorService {
 
     let text = lines.join('\n');
     if (hasCRLF) text = text.replace(/\n/g, '\r\n');
-    return { text, results };
+    return { text, results, resolvedOk: resolvedOk() };
   }
+
+  /**
+   * 실패한 `<search>`에 가장 닮은 원본 영역을 토큰 자카드 유사도로 찾는다(grounded 재시도용).
+   *
+   * 약한 sLLM이 기억으로 재구성해 글자가 어긋난 search라도, 식별성 높은 한 줄을 기준으로
+   * 실제 파일에서 닮은 위치를 짚어 그 **실제 텍스트**를 돌려준다. 이 텍스트를 모델에 다시 줘서
+   * `<search>`를 실제 코드 기준으로 재작성하게 만든다.
+   *
+   * ⚠️ 위치 '힌트'로만 쓴다. 여기서 직접 치환·적용하지 않는다(조용한 오적용 방지).
+   * 최고점이 threshold 미만이거나 2위와 명확히 우월하지 않으면(동점 다수) null을 반환해
+   * grounding을 포기하고 기존 dead-end 폴백으로 보낸다.
+   *
+   * @param originalLines 원본 라인 배열(\n 정규화 후)
+   * @param failedSearch  매칭 실패한 search 원문
+   * @param ctx           반환 영역의 앞뒤 여유 줄 수
+   * @param threshold     최고 매칭 라인의 자카드 유사도 하한(0~1)
+   */
+  locateFuzzyRegion(
+    originalLines: string[],
+    failedSearch: string,
+    ctx: number,
+    threshold: number,
+  ): FuzzyRegion | null {
+    // search에서 비공백 라인만 추출
+    const searchLines = failedSearch
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (searchLines.length === 0) return null;
+
+    const tokenize = (s: string): Set<string> => {
+      const m = s.match(/[A-Za-z0-9_$]+/g);
+      return new Set(m ?? []);
+    };
+    const jaccard = (a: Set<string>, b: Set<string>): number => {
+      if (a.size === 0 || b.size === 0) return 0;
+      let inter = 0;
+      for (const t of a) if (b.has(t)) inter++;
+      return inter / (a.size + b.size - inter);
+    };
+
+    // 기준 줄: search 라인 중 식별성(영숫자 토큰 수)이 가장 높은 줄
+    let anchorTokens = new Set<string>();
+    for (const l of searchLines) {
+      const t = tokenize(l);
+      if (t.size > anchorTokens.size) anchorTokens = t;
+    }
+    if (anchorTokens.size === 0) return null;
+
+    // 원본 각 라인과 유사도 → 최고점/2위 추적
+    let best = { line: -1, score: 0 };
+    let second = { line: -1, score: 0 };
+    for (let i = 0; i < originalLines.length; i++) {
+      const score = jaccard(anchorTokens, tokenize(originalLines[i]));
+      if (score > best.score) {
+        second = best;
+        best = { line: i, score };
+      } else if (score > second.score) {
+        second = { line: i, score };
+      }
+    }
+
+    if (best.line < 0 || best.score < threshold) return null;
+    // 동점(또는 거의 동률) 다수 → 위치 모호 → 포기
+    if (second.line >= 0 && best.score - second.score < 1e-9) return null;
+
+    const startLine = Math.max(0, best.line - ctx);
+    const endLine = Math.min(originalLines.length - 1, best.line + ctx);
+    return {
+      startLine: startLine + 1,
+      endLine: endLine + 1,
+      text: originalLines.slice(startLine, endLine + 1).join('\n'),
+      confidence: best.score,
+    };
+  }
+
+  /**
+   * 모델의 `<search>`에 슬라이싱 스텁 마커가 들어 있으면, 그 스텁이 가리키는 실제 섹션의
+   * **본문 라인 범위**를 splitTsSections로 결정론적으로 찾아 돌려준다(grounded 재시도용).
+   *
+   * 파일이 커서(maxFileLines 초과) 본문이 `... [kind name] 원본 NN줄 보존 ...` 스텁으로 잘려
+   * 모델에 전달되면, 모델은 그 안의 실제 코드를 본 적이 없어 올바른 `<search>`를 만들 수 없다.
+   * (스텁을 그대로 search에 넣어 항상 not-found가 난다.) 이때 실제 섹션 본문을 grounding 영역으로
+   * 돌려주면, grounded 재시도가 모델에 실제 코드를 주고 patch를 다시 받을 수 있다.
+   *
+   * 스텁은 `//` 주석 형태와 모델이 JSX 안에서 변형한 `{/* ... *​/}` 형태를 모두 인식한다.
+   * fuzzy(locateFuzzyRegion)보다 우선해서 시도한다 — 섹션명이 명시돼 있어 결정론적이기 때문.
+   */
+  resolveStubSection(originalContent: string, search: string): FuzzyRegion | null {
+    // `[kind name]` 뒤에 `원본 NN줄 보존`이 오는 스텁 마커. 주석 구문(`//`·`{/* */}`)과 무관하게 매칭.
+    const m = search.match(/\[\s*([a-zA-Z]+)\s+([\w$]+)\s*\][^\]\n]*원본\s*\d+\s*줄\s*보존/);
+    if (!m) return null;
+    const kind = m[1];
+    const name = m[2];
+    const normContent = originalContent.replace(/\r\n/g, '\n');
+    const found = splitTsSections(normContent).find((s) => s.kind === kind && s.name === name);
+    if (!found) return null;
+    const lines = normContent.split('\n');
+    return {
+      startLine: found.startLine,
+      endLine: found.endLine,
+      text: lines.slice(found.startLine - 1, found.endLine).join('\n'),
+      confidence: 1,
+    };
+  }
+
+  /**
+   * 선택 영역 안 patch들의 `search`→`replace`에서 **식별자 일괄 치환(rename) 맵**을 추출한다.
+   * (1B ripple-aware guard 전용 — 선택 밖 변경이 이 rename의 결과인지 검증하는 데 쓴다.)
+   *
+   * search와 replace를 "식별자 / 비식별자" 토큰 시퀀스로 쪼개 위치별로 비교한다:
+   *  - 두 시퀀스 길이가 같고, 비식별자 토큰이 모두 동일하고, 차이가 식별자 위치에서만 나면
+   *    그 차이를 old→new 후보로 모은다(구조가 보존된 순수 치환만 인정 → 보수적).
+   *  - 길이/구조가 다르면 그 patch는 건너뛴다(추출 실패 → guard는 거부 쪽으로 안전 폴백).
+   *  - 같은 old가 서로 다른 new로 매핑되면 충돌로 보고 제외한다.
+   *  - old가 TS 키워드·원시 타입(string/number 등)이면 제외 — 타입 변경이 전역 rename으로
+   *    오염되는 것을 막는다.
+   */
+  extractRenameMap(patches: { search: string; replace: string }[]): Map<string, string> {
+    const splitTokens = (s: string): string[] =>
+      // 식별자(캡처)와 그 사이 구분자가 번갈아 나오도록 분할. 빈 문자열도 위치 유지를 위해 보존.
+      s.replace(/\r\n/g, '\n').split(/([A-Za-z0-9_$]+)/);
+    const isIdent = (t: string): boolean => /^[A-Za-z0-9_$]+$/.test(t);
+
+    const map = new Map<string, string>();
+    const conflict = new Set<string>();
+
+    for (const p of patches) {
+      const a = splitTokens(p.search);
+      const b = splitTokens(p.replace);
+      if (a.length !== b.length) continue; // 구조 불일치 → 안전하게 건너뜀
+
+      let structureOk = true;
+      const pending: Array<[string, string]> = [];
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] === b[i]) continue;
+        // 차이가 식별자 위치가 아니면(구분자·공백이 다름) 순수 치환이 아님 → 이 patch 폐기
+        if (!isIdent(a[i]) || !isIdent(b[i])) { structureOk = false; break; }
+        pending.push([a[i], b[i]]);
+      }
+      if (!structureOk) continue;
+
+      for (const [oldId, newId] of pending) {
+        if (oldId === newId) continue;
+        if (FileCreatorService._RENAME_DENY.has(oldId)) continue; // 타입/키워드는 rename으로 안 봄
+        const existing = map.get(oldId);
+        if (existing !== undefined && existing !== newId) { conflict.add(oldId); continue; }
+        map.set(oldId, newId);
+      }
+    }
+    for (const c of conflict) map.delete(c);
+    return map;
+  }
+
+  /**
+   * 한 줄에 rename 맵을 **동시 적용**한 결과를 반환한다(식별자 단위, 체이닝 없음).
+   * 식별자 토큰만 맵을 통과시키고 구분자는 그대로 둔다. a→b, b→c가 있어도 a가 c로 가지 않는다.
+   */
+  applyRenameMap(line: string, renames: Map<string, string>): string {
+    if (renames.size === 0) return line;
+    return line
+      .split(/([A-Za-z0-9_$]+)/)
+      .map((tok) => (/^[A-Za-z0-9_$]+$/.test(tok) ? renames.get(tok) ?? tok : tok))
+      .join('');
+  }
+
+  /**
+   * Phase 2 결정론적 리플 — 선택 영역에서 추출한 rename 맵을, 텍스트 전역의 **멤버 접근**
+   * (`.field` / `?.field`)에만 적용한다. 타입 필드를 rename하면 그 필드를 소비하는
+   * `member.name` 같은 접근을 확장이 직접 바꿔주므로, 모델이 소비처 JSX를 재구성(→ 매칭 실패)할
+   * 필요가 없다.
+   *
+   * 안전 범위: 점(`.`) 뒤에 오는 식별자만 치환한다. 독립 변수·객체 리터럴 키(`name:`)·문자열은
+   * 건드리지 않는다. 단, 같은 필드명을 가진 무관한 객체(`config.rate` 등)도 함께 바뀔 수 있는
+   * 한계가 있으므로(타입 추론 없음) 변경 결과는 diff로 확인하는 것을 전제로 한다.
+   * 단일 패스라 체이닝(a→b, b→c) 없이 동시 적용된다.
+   */
+  applyMemberRename(
+    text: string,
+    renames: Map<string, string>,
+  ): { text: string; count: number; fields: string[] } {
+    if (renames.size === 0) return { text, count: 0, fields: [] };
+    let count = 0;
+    const used = new Set<string>();
+    const out = text.replace(/\.([A-Za-z0-9_$]+)/g, (m, id: string) => {
+      const repl = renames.get(id);
+      if (repl === undefined) return m;
+      count++;
+      used.add(id);
+      return '.' + repl;
+    });
+    return { text: out, count, fields: [...used] };
+  }
+
+  /** rename old로 인정하지 않을 TS 키워드·원시 타입 (타입 변경이 전역 치환으로 오염되는 것 방지) */
+  private static readonly _RENAME_DENY = new Set<string>([
+    'string', 'number', 'boolean', 'any', 'unknown', 'void', 'never', 'object',
+    'null', 'undefined', 'true', 'false', 'bigint', 'symbol',
+    'const', 'let', 'var', 'type', 'interface', 'class', 'function', 'return',
+    'import', 'export', 'default', 'new', 'extends', 'implements', 'readonly',
+  ]);
 
   /**
    * 라인 앵커(diff) 모드: 모델이 출력한 `<edit>` 목록을 원본에 적용한 결과를 반환한다.
@@ -291,7 +514,8 @@ export class FileCreatorService {
     edits: LineEdit[],
     opts: { requireAnchor: boolean; anchorSearchRadius: number },
   ): MultiPatchResult {
-    if (edits.length === 0) return { text: null, results: [] };
+    // lines 모드는 grounded 재시도 경로를 쓰지 않으므로 resolvedOk는 항상 빈 배열.
+    if (edits.length === 0) return { text: null, results: [], resolvedOk: [] };
 
     const hasCRLF = original.includes('\r\n');
     const normOrig = hasCRLF ? original.replace(/\r\n/g, '\n') : original;
@@ -327,7 +551,7 @@ export class FileCreatorService {
     }
 
     if (results.some((r) => !r.success)) {
-      return { text: null, results };
+      return { text: null, results, resolvedOk: [] };
     }
 
     // 겹침 검출 — start 오름차순 정렬 후 인접 비교 (computeMultiPatch와 동일 규약)
@@ -343,7 +567,7 @@ export class FileCreatorService {
           delete overlapEntry.startLine;
           delete overlapEntry.endLine;
         }
-        return { text: null, results };
+        return { text: null, results, resolvedOk: [] };
       }
     }
 
@@ -363,7 +587,7 @@ export class FileCreatorService {
 
     let text = lines.join('\n');
     if (hasCRLF) text = text.replace(/\n/g, '\r\n');
-    return { text, results };
+    return { text, results, resolvedOk: [] };
   }
 
   /**

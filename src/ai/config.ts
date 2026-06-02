@@ -106,6 +106,25 @@ export const AI_DEFAULTS = {
     maxPatches: 3,
     /** <search> 블록 작성 시 권장하는 전후 맥락 라인 수 */
     minContextLines: 3,
+    /**
+     * grounded bounded retry — patch가 not-found/ambiguous로 실패하면, 확장이 실패 search를
+     * 실제 파일 위치에 fuzzy 매칭(locateFuzzyRegion)으로 grounding한 뒤, 그 실제 텍스트를
+     * 모델에 돌려주어 1회만 재요청한다. 약한 sLLM이 기억으로 재구성한 search가 어긋나
+     * dead-end로 떨어지는 빈도를 낮춘다. (무한 루프 방지: 정확히 1회만)
+     */
+    groundedRetry: true,
+    /**
+     * locateFuzzyRegion의 토큰 자카드 유사도 임계치(0~1). 최고점이 이 값 미만이거나
+     * 유일하지 않으면 grounding을 포기하고 기존 dead-end UI로 폴백한다. 높을수록 보수적.
+     */
+    fuzzyLocateThreshold: 0.6,
+    /**
+     * ripple-aware selection guard — 선택 영역 안의 식별자 일괄 치환(rename)이 선택 밖 소비처로
+     * 번지는 변경을, "선택 안 rename을 적용한 결과와 글자까지 동일할 때만" 허용한다.
+     * (예: 타입 필드 name→employee_name 변경 시 컴포넌트의 member.name→member.employee_name)
+     * false면 종전처럼 선택 밖 변경을 무조건 거부한다. rename 추출 실패 시에도 거부(무회귀).
+     */
+    rippleGuard: true,
   },
   /**
    * 라인 앵커(diff) 출력 모드 기본값. 바뀐 줄만 라인번호로 지정해 출력 토큰을 줄인다.

@@ -24,7 +24,9 @@
       "Bash(node esbuild.extension.js)",
       "Bash(node esbuild.webview.js)",
       "PowerShell(npm run typecheck)",
-      "PowerShell(npm run compile)"
+      "PowerShell(npm run compile)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)",
+      "PowerShell(npm run test:patch-grounded)"
     ]
   }
 }

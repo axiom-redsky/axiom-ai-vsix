@@ -6,10 +6,11 @@ import { LlmService } from '../ai/LlmService';
 import { EditorContextCollector, type EditorContext } from '../ai/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
-import type { AxiomAction, LineEdit } from '../ai/FileCreatorService';
+import type { AxiomAction, LineEdit, MultiPatchResult } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { computeDiffHunks } from '../ai/DiffUtil';
+import { splitIntoSections, scoreSections, tokenizeQuery, selectByBudget } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage } from '../ai/types';
@@ -23,6 +24,22 @@ import type { SpecIndexEntry } from '../spec/AxiomIndexTracker';
 import { DomainRouter } from '../spec/DomainRouter';
 import { SddCorpusLoader } from '../spec/SddCorpusLoader';
 import { PublishExtractor } from '../spec/PublishExtractor';
+
+/**
+ * grounded bounded retry에서 모델에 돌려주는 "실제 코드 영역" 1건.
+ * 실패 patch는 locateFuzzyRegion으로, 성공 patch는 resolvedOk로 위치를 확보해 채운다.
+ */
+interface GroundedPatchRegion {
+  /** 원본 patch 배열에서의 인덱스 */
+  index: number;
+  /** 모델이 직전에 의도했던 변경 결과(<replace> 원문) */
+  intent: string;
+  /** 해당 위치의 실제 현재 코드(<search>에 그대로 복사하도록 제시) */
+  realText: string;
+  /** 1-based 라인 범위(포함) — 안내용 */
+  startLine: number;
+  endLine: number;
+}
 
 /**
  * 우측 Secondary Side Bar에 표시되는 채팅 WebviewView 프로바이더.
@@ -123,7 +140,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._postStatus(ExtensionConfig.getLlmConfig().model);
           break;
         case 'sendMessage':
-          await this._handleMessage(msg.text);
+          await this._handleMessage(msg.text, msg.selection);
           break;
         case 'stopMessage':
           this._abortController?.abort();
@@ -166,6 +183,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         const doc = e.textEditor.document;
+        // 파일(file scheme)만 선택 컨텍스트로 인정 — Output 패널·output/diff 등 가짜 에디터의
+        // 텍스트 선택이 chip을 덮어써(예: "Corpus:4-51") 엉뚱한 선택으로 잡히는 것을 막는다.
+        if (doc.uri.scheme !== 'file') return;
         const selectedText = doc.getText(sel).trim();
         if (!selectedText) return;
         this._post({
@@ -178,6 +198,137 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }, 150);
     });
     webviewView.onDidDispose(() => selectionDisposable.dispose());
+  }
+
+  /**
+   * 사용자 메시지에 명시된 워크스페이스 파일 경로(예: `/plan/api-spec.md`, `src/.../foo.ts`,
+   * `@api-spec.md`)를 감지해 해당 파일을 읽어, 프롬프트에 주입할 ground truth 블록으로 만든다.
+   *
+   * 모델은 파일을 열 수 없으므로 "참조 파일은 X" 라고만 적으면 그 내용을 모른다(→ 응답 스키마를
+   * 추측해 엉뚱한 key로 타입을 선언). 확장이 직접 읽어 넣어야 추측 없이 정확히 반영된다.
+   *
+   * 후보 조건: 슬래시를 포함하거나 `@`로 시작하고, 알려진 확장자로 끝나는 토큰만(`/api/reports/x`
+   * 같은 API 경로·`member.id` 같은 멤버접근은 확장자가 없어 제외). 못 찾으면 조용히 건너뛴다.
+   */
+  private async _loadReferencedFiles(
+    text: string,
+    currentFilePath?: string,
+  ): Promise<{ block: string; loaded: string[] }> {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) return { block: '', loaded: [] };
+    const root = folders[0].uri;
+
+    const EXT = 'md|markdown|json|ya?ml|txt|ts|tsx|js|jsx|css|html?';
+    const candidates = new Set<string>();
+    // (a) 슬래시 포함 경로: /plan/api-spec.md, src/foo/bar.ts, ./x/y.json
+    for (const m of text.matchAll(new RegExp(`@?\\/?(?:[\\w.\\-]+\\/)+[\\w.\\-]+\\.(?:${EXT})\\b`, 'gi'))) {
+      candidates.add(m[0]);
+    }
+    // (b) @파일.확장자 (슬래시 없이도 허용): @api-spec.md
+    for (const m of text.matchAll(new RegExp(`@[\\w.\\-]+\\.(?:${EXT})\\b`, 'gi'))) {
+      candidates.add(m[0]);
+    }
+    if (candidates.size === 0) return { block: '', loaded: [] };
+
+    const PER_FILE_CAP = 8000;
+    const TOTAL_CAP = 16000;
+    const MAX_FILES = 5;
+    const currentRel = currentFilePath
+      ? currentFilePath.replace(/\\/g, '/').replace(/^\/+/, '')
+      : '';
+    const loaded: string[] = [];
+    const blocks: string[] = [];
+    let total = 0;
+
+    const queryTokens = tokenizeQuery(text);
+    for (const raw of candidates) {
+      if (total >= TOTAL_CAP || loaded.length >= MAX_FILES) break;
+      const uri = await this._resolveReferencedFileUri(root, raw);
+      if (!uri) continue;
+      const rel = vscode.workspace.asRelativePath(uri).replace(/\\/g, '/');
+      if (rel === currentRel || loaded.includes(rel)) continue; // 현재 파일·중복 제외
+      let content: string;
+      try {
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        content = Buffer.from(bytes).toString('utf-8');
+      } catch {
+        continue;
+      }
+
+      const budget = Math.min(PER_FILE_CAP, TOTAL_CAP - total);
+      let injected: string;
+      if (content.length <= budget) {
+        injected = content;
+      } else if (/\.(md|markdown)$/i.test(rel)) {
+        // 큰 마크다운(예: 여러 API가 담긴 스펙)은 앞부분만 자르면 정작 필요한 섹션(파일 끝의
+        // member-summary 등)이 잘려나간다. 질문 키워드로 관련 섹션을 추출해 주입한다.
+        const sections = splitIntoSections(rel, content);
+        scoreSections(sections, queryTokens);
+        const picked = selectByBudget(sections, budget, 1);
+        if (picked.length > 0) {
+          injected = `(질문 관련 섹션 추출)\n\n${picked.map((s) => s.body).join('\n\n')}`;
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] 참조 ${rel}: ${content.length}자(>${budget}) → 관련 섹션 ${picked.length}개 추출: ` +
+            picked.map((s) => s.header.replace(/^#+\s*/, '').slice(0, 40)).join(' | '),
+          );
+        } else {
+          injected = content.slice(0, budget) + `\n\n... (이하 생략 — 관련 섹션 미검출로 앞부분만 포함)`;
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] 참조 ${rel}: 관련 섹션 미검출 → 앞부분 ${budget}자만 포함`,
+          );
+        }
+      } else {
+        injected = content.slice(0, budget) + `\n\n... (이하 ${content.length - budget}자 생략)`;
+      }
+
+      blocks.push(`## 참조: ${rel}\n\n${injected}`);
+      loaded.push(rel);
+      total += injected.length;
+    }
+
+    if (blocks.length === 0) return { block: '', loaded: [] };
+    const block =
+      `\n\n<!-- 참조 파일 (사용자가 메시지에서 명시) -->\n` +
+      `> ⚠️ 아래는 사용자가 참조하라고 지정한 파일의 실제 내용입니다. ` +
+      `타입·필드명·스키마·API 응답 구조는 추측하지 말고 **반드시 아래 내용을 그대로 근거로** 작성하세요.\n` +
+      `> ❗ **API 응답 타입의 필드명은 반드시 이 스펙의 response 스키마에서 가져오세요.** ` +
+      `현재 파일에 있는 더미/샘플 데이터(하드코딩 배열·mock 객체)의 필드명이 스펙과 다르면 ` +
+      `**스펙을 따르고, 더미 데이터의 필드명은 타입에 쓰지 마세요.** ` +
+      `(예: 더미가 \`name\`이어도 스펙 response가 \`employee_name\`이면 타입은 \`employee_name\`)\n\n` +
+      blocks.join('\n\n---\n\n');
+    return { block, loaded };
+  }
+
+  /** 언급된 경로 문자열을 워크스페이스 파일 Uri로 해석한다. 직접결합→전체glob→basename glob 순. */
+  private async _resolveReferencedFileUri(root: vscode.Uri, raw: string): Promise<vscode.Uri | null> {
+    const rel = raw.replace(/^@/, '').replace(/^\.\//, '').replace(/^\/+/, '').trim();
+    if (!rel) return null;
+    // 1) 워크스페이스 루트 기준 직접 결합
+    const direct = vscode.Uri.joinPath(root, rel);
+    try {
+      await vscode.workspace.fs.stat(direct);
+      return direct;
+    } catch {
+      /* not found — 아래로 */
+    }
+    // 2) 전체 경로 glob (`**/plan/api-spec.md`)
+    try {
+      const matches = await vscode.workspace.findFiles(`**/${rel}`, '**/node_modules/**', 1);
+      if (matches.length > 0) return matches[0];
+    } catch {
+      /* ignore */
+    }
+    // 3) basename glob — 유일하게 매칭될 때만
+    const base = rel.split('/').pop();
+    if (base && base !== rel) {
+      try {
+        const m2 = await vscode.workspace.findFiles(`**/${base}`, '**/node_modules/**', 2);
+        if (m2.length === 1) return m2[0];
+      } catch {
+        /* ignore */
+      }
+    }
+    return null;
   }
 
   private _requestFileConfirmation(
@@ -463,7 +614,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // ─── private: 메시지 처리 ────────────────────────────────────────────────────
 
-  private async _handleMessage(text: string): Promise<void> {
+  private async _handleMessage(
+    text: string,
+    overrideSelection?: { filePath: string; startLine: number; endLine: number },
+  ): Promise<void> {
     if (!this._view) return;
 
     // 페이지 생성 대화 모드: 취소 또는 도메인 선택 처리
@@ -568,11 +722,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let mainTimedOut = false;
 
     try {
-      let editorCtx = this._editorCollector.collect();
+      let editorCtx = this._editorCollector.collect(overrideSelection);
 
       // 대상 파일 선확정 — 신규 생성이 아닌 수정 요청은 코드 생성 전에 "어떤 파일을 고칠지"를
       // 결정론적 휴리스틱으로 확정한다(잘못된 파일에 라인 splice 방지).
-      const isFileCtx = this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
+      // 단, Q&A(조회·설명형) 질문은 buildSystemPrompt가 axiom-action 지시를 빼므로(qnaGating),
+      // 후처리도 동일하게 파일 수정 흐름(타겟 확정·action 보강·patch 재시도)을 건너뛴다.
+      // 그러지 않으면 설명만 한 응답을 강제로 수정 코드로 보강하려다 현재 파일을 추측한
+      // <search>가 매칭 실패("patch 매칭 실패")로 이어진다.
+      const isFileCtx =
+        !this._scaffoldBuilder.isQnAGated(text) &&
+        this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
       if (isFileCtx) {
         const resolved = await this._resolveTargetFile(text, editorCtx);
         if (!resolved.proceed) {
@@ -614,6 +774,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      // 사용자가 메시지에 명시한 파일 경로(예: /plan/api-spec.md)를 읽어 ground truth로 주입한다.
+      // 모델은 파일을 열 수 없으므로, "참조 파일은 X" 라고만 적으면 그 내용을 모른다 → 응답 스키마를
+      // 추측해 엉뚱한 key로 타입을 선언한다. 확장이 직접 읽어 넣어야 추측 없이 정확히 반영된다.
+      const refResult = await this._loadReferencedFiles(text, editorCtx.filePath);
+      if (refResult.block) {
+        editorCtx.content = (editorCtx.content ?? '') + refResult.block;
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 참조 파일 ${refResult.loaded.length}개 주입: ${refResult.loaded.join(', ')}`,
+        );
+        this._post({
+          type: 'token',
+          content: `\n\n> 📎 참조 파일 **${refResult.loaded.length}개**를 컨텍스트에 포함했습니다: ${refResult.loaded.map((f) => `\`${f}\``).join(', ')}\n`,
+        });
+      }
+
       const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text);
       const rawBreakdown = this._scaffoldBuilder.lastBreakdown();
       // SDD는 fileSection에 append되므로 fileChars에서 분리해 별도 표기
@@ -629,10 +804,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         contextWindow: config.contextWindow,
       });
       this._logSystemPrompt(text, systemPrompt, breakdown);
-      const messages: ChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        ...this._history,
-      ];
+      // 선택 영역 수정 턴은 이전 대화 history를 빼고 "시스템 프롬프트의 최신 현재 파일 + 이번 요청"만
+      // 보낸다. 누적 history엔 직전 턴들의 옛 필드명·옛 코드(이미 디스크에서 바뀐 상태)가 남아 있고,
+      // 약한 모델이 recency bias로 그 옛 내용을 신뢰해 현재 파일과 안 맞는 Frankenstein <search>를
+      // 만든다(예: 옛 `id/name` + 새 `department/project_name` 혼합 → 매칭 실패). 사용자가 검증한
+      // "히스토리 초기화 후 첫 프롬프트는 100% 정상"을 매 선택 수정마다 재현하는 것.
+      const isSelectionEdit = isFileCtx && !!editorCtx.selection;
+      const messages: ChatMessage[] = isSelectionEdit
+        ? [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text },
+          ]
+        : [
+            { role: 'system', content: systemPrompt },
+            ...this._history,
+          ];
+      if (isSelectionEdit && this._history.length > 1) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 선택 수정 턴 — 이전 대화 history ${this._history.length - 1}건 제외, 최신 현재 파일 기준으로 처리`,
+        );
+      }
       let fullResponse = '';
       let wasFallback = false;
 
@@ -1484,7 +1675,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * axiom-action 블록을 파싱하여 파일을 생성/수정한다.
    * @returns 라우터 관련 액션이 성공적으로 처리되었으면 true
    */
-  private async _handleAxiomAction(response: string, forcePageAutoWrite = false): Promise<boolean> {
+  private async _handleAxiomAction(
+    response: string,
+    forcePageAutoWrite = false,
+    groundedRetryDone = false,
+  ): Promise<boolean> {
     const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
     const actions: AxiomAction[] = [];
     const blockMatches = [...response.matchAll(blockRegex)];
@@ -1548,19 +1743,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       // 3차: structural 모드 — <hook>/<import> 조각 파싱 (약한 모델용 결정론적 삽입)
       // patch 블록이 없을 때만 시도한다 (모드 혼용 방지).
+      let suppressedStructuralForSelection = false;
       if (!action.patches) {
         const hookMatches = [...blockContent.matchAll(/<hook>\n?([\s\S]*?)<\/hook>/g)];
         const importMatches = [...blockContent.matchAll(/<import\b([^>]*?)\/?>/g)];
         if (hookMatches.length > 0 || importMatches.length > 0) {
-          const hookCode = hookMatches
-            .map((m) => m[1].replace(/\n+$/, ''))
-            .filter((c) => c.trim())
-            .join('\n') || undefined;
-          const imports = importMatches
-            .map((m) => this._parseImportTag(m[1]))
-            .filter((x): x is ImportRequest => x !== null);
-          action.structural = { hookCode, imports: imports.length ? imports : undefined };
-          action.mode = 'structural';
+          // 선택 영역이 활성일 때는 structural 모드를 쓰지 않는다.
+          // structural은 삽입 위치를 구조 앵커(컴포넌트 함수 위 / 마지막 훅 다음)로만 결정해
+          // 사용자의 선택 영역을 원천적으로 무시하며, 선택한 JSX 내부 바인딩 교체 같은
+          // 국소 수정은 표현조차 못 한다. 선택 기반 수정은 patch/full 모드로만 처리한다.
+          if (this._lastSelectionLineRange) {
+            suppressedStructuralForSelection = true;
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⚠️ 선택 영역 활성 — structural(<hook>) 응답을 무시 (${action.filePath}). ` +
+                `선택 기반 수정은 patch/full 모드로만 처리.`,
+            );
+          } else {
+            const hookCode = hookMatches
+              .map((m) => m[1].replace(/\n+$/, ''))
+              .filter((c) => c.trim())
+              .join('\n') || undefined;
+            const imports = importMatches
+              .map((m) => this._parseImportTag(m[1]))
+              .filter((x): x is ImportRequest => x !== null);
+            action.structural = { hookCode, imports: imports.length ? imports : undefined };
+            action.mode = 'structural';
+          }
         }
       }
 
@@ -1598,6 +1806,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const codeMatch = blockContent.match(/```(?:[a-z]*)\n([\s\S]*?)```/);
       // lines 모드면 <edit> 내부에 우연히 들어간 코드펜스를 full 코드로 오인하지 않는다.
       if (codeMatch?.[1] && action.mode !== 'lines') action.generatedCode = codeMatch[1].trimEnd();
+
+      // 선택 영역이 있어 structural 응답을 버렸는데 대체할 full 코드도 없으면,
+      // 빈 generatedCode로 파일을 덮어쓰는 사고(아래 컨펌·쓰기 경로)를 막고
+      // 복구 UI(Full로 재시도)로 보낸다. Full 재시도는 현재 파일을 진실의 원천으로
+      // 삼아 선택 영역을 직접 수정할 수 있다.
+      if (suppressedStructuralForSelection && !action.patches && !action.generatedCode) {
+        this._post({
+          type: 'token',
+          content:
+            '\n\n> ⚠️ **선택 영역은 구조 삽입(structural) 모드로 수정할 수 없습니다.** ' +
+            '모델이 선택 영역 대신 컴포넌트 구조에 코드를 삽입하는 형식으로 응답했습니다. ' +
+            '아래 **Full로 재시도**를 누르면 현재 파일 기준으로 선택 영역을 직접 수정합니다.\n',
+        });
+        this._reportPatchFailure(action.filePath, [
+          '[structural-suppressed-for-selection] 선택 영역이 활성일 때는 patch/full 모드로만 수정합니다.',
+        ]);
+        continue;
+      }
 
       // full 모드 updateFile TSX/TS → React 규칙 위반 조기 차단
       if (
@@ -1840,6 +2066,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
           const mp = this._fileCreator.computeMultiPatch(originalContent, action.patches, this._lastSelectionLineRange);
           if (mp.text === null) {
+            // grounded bounded retry — 실패 search를 실제 파일 위치에 fuzzy 매칭해 그 실제 텍스트를
+            // 모델에 돌려주고 1회만 재요청한다. 성공하면 재귀 처리되므로 dead-end UI를 건너뛴다.
+            if (await this._tryGroundedPatchRetry(action, originalContent, mp, groundedRetryDone)) {
+              break;
+            }
             const failureSummary = mp.results
               .filter((r) => !r.success)
               .map((r) => `#${r.index + 1}:${r.reason}`)
@@ -1887,12 +2118,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (this._lastSelectionLineRange) {
             const sel = this._lastSelectionLineRange;
             const PADDING = 1;
+            const guardCfg = ExtensionConfig.getMultiPatchConfig();
             const diff = computeDiffHunks(originalContent, mp.text);
             // LCS-diff의 false-positive 필터: del 라인의 trimmed 내용이 result에 그대로
             // 존재하면 "실제 변경"이 아니라 indent/순서 시프트로 간주 (예: <div> 들여쓰기 변경).
             const resultTrimmedSet = new Set(
               mp.text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0),
             );
+
+            // 1B ripple-aware: 선택 영역 안 patch의 search→replace에서 식별자 rename 맵을 추출한다.
+            // 선택 밖 변경이라도 "이 rename을 적용한 결과와 글자까지 동일"하면 리플로 보고 허용한다
+            // (모델이 임의 코드를 끼워넣을 수 없음 — 예측된 rename 결과와 일치할 때만 면제).
+            const inSelectionPatches = guardCfg.rippleGuard
+              ? mp.resolvedOk
+                  .filter((o) => o.endLine + 1 >= sel.startLine - PADDING && o.startLine + 1 <= sel.endLine + PADDING)
+                  .map((o) => action.patches![o.index])
+              : [];
+            const renameMap = guardCfg.rippleGuard
+              ? this._fileCreator.extractRenameMap(inSelectionPatches)
+              : new Map<string, string>();
+            let rippleExempted = 0;
+
             // 'del' 라인의 oldNo가 "원본에서 변경된 라인"의 번호 (1-based)
             const violatingLines: Array<{ line: number; content: string }> = [];
             for (const d of diff) {
@@ -1904,7 +2150,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               // trimmed 내용이 결과에 그대로 존재 → 위치 시프트일 뿐 실제 변경 아님
               const trimmed = d.content.trim();
               if (trimmed.length > 0 && resultTrimmedSet.has(trimmed)) continue;
+              // ripple 면제: 선택 안 rename을 이 줄에 적용한 결과가 result에 존재하면 일관된 리플.
+              if (renameMap.size > 0) {
+                const renamed = this._fileCreator.applyRenameMap(trimmed, renameMap);
+                if (renamed !== trimmed && resultTrimmedSet.has(renamed)) {
+                  rippleExempted++;
+                  continue;
+                }
+              }
               violatingLines.push({ line: d.oldNo, content: d.content });
+            }
+
+            if (rippleExempted > 0) {
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ripple-aware: 선택 밖 변경 ${rippleExempted}줄을 rename 리플로 허용 ` +
+                `(${[...renameMap].map(([o, n]) => `${o}→${n}`).join(', ')})`,
+              );
             }
 
             if (violatingLines.length > 0) {
@@ -1931,6 +2192,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               });
               this._reportPatchFailure(action.filePath, failedSearches);
               break;
+            }
+
+            // Phase 2 — 결정론적 리플: 선택 영역 rename을 소비처(멤버 접근 `.field`)에 직접 반영한다.
+            // 모델이 소비처 JSX를 재구성하지 않아도 확장이 일괄 치환하므로, not-found·스텁 문제를
+            // 원천 회피한다. 순수 rename만 반영되고(필드 split·타입 변경은 renameMap에 안 들어옴),
+            // 그 외는 손대지 않아 사용자가 수동 확인할 수 있다.
+            if (renameMap.size > 0) {
+              const ripple = this._fileCreator.applyMemberRename(mp.text, renameMap);
+              if (ripple.count > 0) {
+                mp.text = ripple.text;
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] 🔁 Phase2 리플: 소비처 멤버접근 ${ripple.count}곳 자동 치환 ` +
+                  `(${ripple.fields.map((f) => `${f}→${renameMap.get(f)}`).join(', ')})`,
+                );
+                this._post({
+                  type: 'token',
+                  content:
+                    `\n\n> 🔁 선택 영역 rename을 소비처 **${ripple.count}곳**(\`.${ripple.fields.join('`, `.')}\`)에 자동 반영했습니다. ` +
+                    `필드 분리·타입 변경 등 단순 rename이 아닌 부분의 소비처는 수동 확인이 필요할 수 있습니다.\n`,
+                });
+              }
             }
           }
 
@@ -2161,6 +2443,97 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * grounded bounded retry — patch가 not-found/ambiguous로 매칭 실패했을 때, 실패 search를
+   * 실제 파일 위치에 fuzzy 매칭(locateFuzzyRegion)으로 grounding하고, 그 **실제 텍스트**를
+   * 모델에 돌려주어 `<search>`를 실제 코드 기준으로 재작성하게 1회만 재요청한다.
+   *
+   * 약한 sLLM이 기억으로 재구성한 search가 실제 파일과 어긋나 dead-end로 떨어지는 빈도를
+   * 낮추는 것이 목적. Claude Code의 "read해서 정확히 안다"를 모델 없이(확장이 파일을 들고)
+   * 재현하는 셈이다.
+   *
+   * 안전장치:
+   *  - 이미 grounded 재시도를 했으면(groundedRetryDone) 즉시 false → 무한 루프 차단(정확히 1회)
+   *  - 실패 사유에 not-found/ambiguous 아닌 게 섞였으면 false (overlap 등은 재위치로 안 풀림)
+   *  - 실패 patch 중 하나라도 위치 grounding 실패면 false (그 변경이 조용히 누락되는 사고 방지)
+   *
+   * @returns true = 재시도를 시작·처리함(호출부는 dead-end UI를 생략) / false = 기존 폴백으로 가라
+   */
+  private async _tryGroundedPatchRetry(
+    action: AxiomAction,
+    originalContent: string,
+    mp: MultiPatchResult,
+    groundedRetryDone: boolean,
+  ): Promise<boolean> {
+    if (groundedRetryDone) return false;
+    const cfg = ExtensionConfig.getMultiPatchConfig();
+    if (!cfg.groundedRetry) return false;
+    if (!action.patches || action.patches.length === 0) return false;
+
+    const failed = mp.results.filter((r) => !r.success);
+    if (failed.length === 0) return false;
+    // 위치 문제(not-found/ambiguous)만 grounding 대상. overlap 등 다른 사유가 섞이면 폴백.
+    if (!failed.every((r) => r.reason === 'not-found' || r.reason === 'ambiguous')) return false;
+
+    const origLines = originalContent.replace(/\r\n/g, '\n').split('\n');
+
+    // 실패 patch를 실제 위치로 grounding — 하나라도 못 찾으면 포기(변경 누락 방지).
+    // 1순위: 스텁 섹션 해소(결정론). 모델이 스텁을 search에 넣은 경우 실제 섹션 본문을 준다.
+    // 2순위: fuzzy 위치 grounding.
+    const grounded: GroundedPatchRegion[] = [];
+    for (const r of failed) {
+      const p = action.patches[r.index];
+      const stubRegion = this._fileCreator.resolveStubSection(originalContent, p.search);
+      const region = stubRegion ?? this._fileCreator.locateFuzzyRegion(
+        origLines, p.search, cfg.minContextLines, cfg.fuzzyLocateThreshold,
+      );
+      if (!region) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] grounded 재시도 포기 (${action.filePath}): patch #${r.index + 1}(${r.reason}) 위치 grounding 실패`,
+        );
+        return false;
+      }
+      if (stubRegion) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] patch #${r.index + 1}: <search>에 스텁 마커 감지 → 실제 섹션 본문(라인 ${region.startLine}~${region.endLine})으로 grounding`,
+        );
+      }
+      grounded.push({
+        // 스텁 해소된 경우 모델의 원래 <replace>도 스텁·허위 토큰을 담고 있어 신뢰할 수 없다.
+        // intent를 비워 누적 히스토리의 원래 요청이 변경 의도를 전달하도록 한다.
+        index: r.index, intent: stubRegion ? '' : p.replace,
+        realText: region.text, startLine: region.startLine, endLine: region.endLine,
+      });
+    }
+
+    // 이미 매칭된 patch도 실제 위치를 알고 있으므로 함께 제공 — 재출력 시 깨지지 않도록.
+    for (const o of mp.resolvedOk) {
+      const p = action.patches[o.index];
+      grounded.push({
+        index: o.index, intent: p.replace,
+        realText: origLines.slice(o.startLine, o.endLine + 1).join('\n'),
+        startLine: o.startLine + 1, endLine: o.endLine + 1,
+      });
+    }
+    grounded.sort((a, b) => a.index - b.index);
+
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🔁 grounded 재시도 (${action.filePath}): 실패 ${failed.length}건 위치 grounding 성공, ` +
+      `${grounded.length}개 영역 실제 텍스트 주입`,
+    );
+    this._post({
+      type: 'token',
+      content: '\n\n> 🔁 **매칭 실패 부분의 실제 코드로 patch를 다시 만드는 중…** (현재 파일 기준, 1회)\n',
+    });
+
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const resp = await this._retryForAxiomAction(action.filePath, config, { groundedPatches: grounded });
+    if (!resp) return false;
+    // groundedRetryDone=true → 재시도 결과가 또 실패해도 다시 grounding하지 않고 기존 폴백으로.
+    await this._handleAxiomAction(resp, false, true);
+    return true;
+  }
+
+  /**
    * assistant 응답을 히스토리에 저장하기 직전 호출.
    * `<axiom-action>` 제거 + 본문에 남은 큰 코드 펜스(```lang ... ```)를
    * `[코드 블록 N줄 — 파일에 반영됨]` stub으로 치환해 누적 토큰을 줄인다.
@@ -2261,19 +2634,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    *
    * @returns 보강 응답 전체 문자열, 실패 시 null
    */
+  /**
+   * full 재시도 응답에서 `<axiom-action>` 래퍼가 누락됐을 때, 본문의 코드 펜스를
+   * full 모드 axiom-action 블록으로 합성한다. 약한 모델이 전체 파일을 코드 펜스로만
+   * 내놓는 흔한 실패를 결정론적으로 복구한다.
+   *
+   * full 재시도는 대상 파일·모드·도메인이 이미 확정돼 있어 모호함이 없다.
+   * 여러 펜스가 있으면 **가장 긴** 펜스를 전체 파일로 본다(부수 스니펫 회피).
+   *
+   * @returns 합성된 axiom-action 문자열, 추출 실패 시 null
+   */
+  private _synthesizeFullActionFromFence(
+    response: string,
+    filePath: string,
+    domain: string | null,
+  ): string | null {
+    let best = '';
+    for (const m of response.matchAll(/```(?:[a-zA-Z]*)\n([\s\S]*?)```/g)) {
+      const code = m[1].replace(/\n$/, '');
+      if (code.length > best.length) best = code;
+    }
+    if (!best.trim()) return null;
+    const lang = /\.tsx$/.test(filePath) ? 'tsx' : /\.ts$/.test(filePath) ? 'ts' : '';
+    const meta = `{"action":"updateFile","mode":"full","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}`;
+    return `<axiom-action>\n${meta}\n\`\`\`${lang}\n${best}\n\`\`\`\n</axiom-action>`;
+  }
+
   private async _retryForAxiomAction(
     filePath: string,
     config: ReturnType<typeof ExtensionConfig.getEffectiveLlmConfig>,
-    opts: { reactViolation?: string; forceFull?: boolean } = {},
+    opts: { reactViolation?: string; forceFull?: boolean; groundedPatches?: GroundedPatchRegion[] } = {},
   ): Promise<string | null> {
-    const { reactViolation } = opts;
+    const { reactViolation, groundedPatches } = opts;
     // "Full로 재시도" 버튼 또는 React 위반 재시도는 full 모드를 강제한다.
     // patch 재시도는 약한 모델이 원본에 없는 코드로 <search>를 또 만들어 무한 실패하기 때문이다.
-    const forceFull = opts.forceFull || !!reactViolation;
+    // 단, grounded 재시도는 실제 텍스트를 주입해 patch 모드를 유지한다(full 강제 안 함).
+    const forceFull = !groundedPatches && (opts.forceFull || !!reactViolation);
 
     this._post({
       type: 'token',
-      content: reactViolation
+      content: groundedPatches
+        ? '\n\n---\n> 🔁 **매칭된 실제 코드 기준으로 patch 재작성 중…**\n\n'
+        : reactViolation
         ? '\n\n---\n> 🔄 **훅 위치를 고쳐서 다시 생성 중…** (전체 파일을 full 모드로 다시 받습니다)\n\n'
         : forceFull
         ? '\n\n---\n> 🔄 **전체 파일을 다시 생성 중…** (현재 파일을 기준으로 full 모드로 받습니다)\n\n'
@@ -2282,6 +2684,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath);
     const mp = ExtensionConfig.getMultiPatchConfig();
+    const lang = /\.tsx$/.test(filePath) ? 'tsx' : /\.ts$/.test(filePath) ? 'ts' : '';
 
     // full 모드 강제 시: 히스토리 압축으로 사라진 원본 대신 현재 파일을 다시 읽어 기준으로 제공한다.
     // patch 실패·위반 차단 시점엔 아직 디스크에 쓰지 않았으므로 "현재 파일 = 수정 대상 원본"이 보장된다.
@@ -2292,7 +2695,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         action: 'updateFile', templateType: 'page', domain: domain ?? '', componentName: '', filePath,
       });
       if (originalContent) {
-        const lang = /\.tsx$/.test(filePath) ? 'tsx' : /\.ts$/.test(filePath) ? 'ts' : '';
         const sel = this._lastSelectionLineRange;
         const selNote = sel ? ` (원래 수정 요청 영역: 라인 ${sel.startLine}~${sel.endLine})` : '';
         currentFileBlock = `\n\n아래는 **현재 \`${filePath}\` 파일의 실제 전체 내용**입니다. 직전 응답을 신뢰하지 말고 반드시 이것을 기준으로 작성하세요.${selNote}\n\`\`\`${lang}\n${originalContent}\n\`\`\`\n`;
@@ -2307,7 +2709,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </axiom-action>`;
 
     let retryMsg: string;
-    if (reactViolation) {
+    if (groundedPatches && groundedPatches.length > 0) {
+      // grounded 재시도 — 매칭 실패 부분의 실제 코드를 주입하고, 그 텍스트를 그대로 <search>에
+      // 쓰게 한다. 모델이 기억으로 search를 재구성하지 않으므로 매칭률이 크게 오른다(patch 모드 유지).
+      const regionBlocks = groundedPatches
+        .map((g, i) => {
+          const intentBlock = g.intent.trim()
+            ? `\n→ 이 부분에 적용할 변경(직전 의도):\n\`\`\`${lang}\n${g.intent}\n\`\`\``
+            : '';
+          return `[#${i + 1}] 실제 현재 코드 (라인 ${g.startLine}~${g.endLine}):
+\`\`\`${lang}
+${g.realText}
+\`\`\`${intentBlock}`;
+        })
+        .join('\n\n');
+
+      retryMsg = `직전 patch의 일부 \`<search>\`가 현재 파일과 매칭되지 않았습니다. 파일이 커서 본문이 자리표시자(스텁)로 잘려 전달됐거나, 모델이 기억으로 만든 \`<search>\`가 실제 코드와 글자 단위로 달랐기 때문입니다.
+
+아래는 수정 대상 부분의 **실제 현재 코드**입니다. 위 대화의 원래 요청을 이 실제 코드에 반영하세요. 각 부분에 대해 \`<patch>\` 블록을 출력하되, \`<search>\`에는 아래 '실제 현재 코드'에서 **바꿀 줄 주변만 그대로 복사**하세요(공백·들여쓰기 포함, 토큰을 임의로 바꾸거나 추가하지 마세요). \`<replace>\`는 변경을 반영한 결과입니다. 자리표시자(스텁) 주석은 절대 \`<search>\`에 넣지 마세요.
+
+${regionBlocks}
+
+위 ${groundedPatches.length}개 부분을 \`<patch>\` 블록 ${groundedPatches.length}개로 출력하세요(부가 설명 없이 블록만):
+<axiom-action>
+{"action":"updateFile","mode":"patch","templateType":"page","domain":"${domain ?? ''}","filePath":"${filePath}"}
+<patch>
+<search>위 '실제 현재 코드'에서 그대로 복사</search>
+<replace>변경이 반영된 코드</replace>
+</patch>
+<!-- 부분마다 <patch> 블록 1개씩, 총 ${groundedPatches.length}개 -->
+</axiom-action>`;
+    } else if (reactViolation) {
       // React 규칙 위반 — full 모드로 전체 파일을 다시 받아 훅을 컴포넌트 본문 안으로 옮긴다.
       retryMsg = `직전 응답이 **React Rules of Hooks 위반**으로 거부되었습니다: ${reactViolation}
 
@@ -2424,7 +2856,34 @@ import 변경 또는 2곳 이상 수정이면:
       clearInterval(elapsedTimer);
     }
 
-    const hasBlock = retryResponse.includes('<axiom-action>');
+    let hasBlock = retryResponse.includes('<axiom-action>');
+
+    // full 재시도인데 모델이 <axiom-action> 래퍼를 빠뜨리고 코드 펜스만 출력한 경우(약한 모델 흔한 실패).
+    // 재시도 컨텍스트는 대상 파일·모드(full)·도메인이 확정돼 있으므로, 본문의 코드 펜스를
+    // full 액션으로 결정론적으로 합성해 데드엔드를 복구한다. (긴 파일에서 특히 자주 발생)
+    if (!hasBlock && forceFull) {
+      const synthesized = this._synthesizeFullActionFromFence(retryResponse, filePath, domain);
+      if (synthesized) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 🔧 full 재시도: <axiom-action> 래퍼 누락 → 코드 펜스에서 full 액션 합성 (${filePath})`,
+        );
+        retryResponse = synthesized;
+        hasBlock = true;
+      }
+    }
+
+    // grounded 재시도인데 모델이 <axiom-action> 래퍼를 빠뜨리고 <patch> 블록만 출력한 경우 — 래핑 복구.
+    if (!hasBlock && groundedPatches) {
+      const wrapped = this._wrapCodeBlockAsAxiomAction(retryResponse, filePath);
+      if (wrapped) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 🔧 grounded 재시도: <axiom-action> 래퍼 누락 → <patch> 블록을 래핑 (${filePath})`,
+        );
+        retryResponse = wrapped;
+        hasBlock = true;
+      }
+    }
+
     this._corpusOutputChannel.appendLine(
       `[Axiom AI] 재시도 결과: axiom-action ${hasBlock ? '포함' : '여전히 누락'}`,
     );

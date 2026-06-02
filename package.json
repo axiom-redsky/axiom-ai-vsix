@@ -224,6 +224,23 @@
           "maximum": 10,
           "description": "<search> 블록 작성 시 LLM에게 안내할 권장 전후 맥락 라인 수. 작을수록 매칭 모호성 증가."
         },
+        "axiom-ai.multiPatch.groundedRetry": {
+          "type": "boolean",
+          "default": true,
+          "description": "patch가 not-found/ambiguous로 매칭 실패하면, 확장이 실패한 <search>를 실제 파일 위치에 fuzzy 매칭해 그 실제 코드를 모델에 돌려주고 1회만 재요청합니다. 약한 모델이 기억으로 재구성한 search가 어긋나 'Full로 재시도' dead-end로 떨어지는 빈도를 낮춥니다. false면 종전처럼 즉시 사용자 선택 UI로 보냅니다."
+        },
+        "axiom-ai.multiPatch.fuzzyLocateThreshold": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "groundedRetry의 위치 grounding 임계치(토큰 자카드 유사도, 0~1). 실패한 search와 가장 닮은 원본 위치의 유사도가 이 값 미만이거나 유일하지 않으면 grounding을 포기하고 기존 dead-end UI로 폴백합니다. 높을수록 보수적(오위치 방지), 낮을수록 적극적."
+        },
+        "axiom-ai.multiPatch.rippleGuard": {
+          "type": "boolean",
+          "default": true,
+          "description": "선택 영역 안의 식별자 일괄 치환(rename)이 선택 밖 소비처로 번지는 변경을 허용합니다. 단, '선택 안 rename을 적용한 결과와 글자까지 동일한' 변경만 허용하므로 모델이 임의 코드를 끼워넣을 수 없습니다. 예: 타입 필드 name→employee_name 변경 시 컴포넌트의 member.name→member.employee_name 자동 허용. false면 종전처럼 선택 밖 변경을 무조건 거부합니다(rename 추출 실패 시에도 거부)."
+        },
         "axiom-ai.lineEdit.enabled": {
           "type": "boolean",
           "default": true,
@@ -392,7 +409,8 @@
     "watch": "concurrently \"node esbuild.extension.js --watch\" \"node esbuild.webview.js --watch\"",
     "package": "vsce package --no-dependencies",
     "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.webview.json",
-    "test:line-edits": "node scripts/run-test-line-edits.mjs"
+    "test:line-edits": "node scripts/run-test-line-edits.mjs",
+    "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
