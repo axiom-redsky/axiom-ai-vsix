@@ -51,6 +51,12 @@
           "id": "axiom-ai.projectConfigPanel",
           "name": "프로젝트 설정",
           "visibility": "collapsed"
+        },
+        {
+          "type": "webview",
+          "id": "axiom-ai.sliceProbePanel",
+          "name": "슬라이싱 실험",
+          "visibility": "collapsed"
         }
       ],
       "axiom-ai-chat-container": [
@@ -174,6 +180,11 @@
           "type": "boolean",
           "default": false,
           "description": "AI 서버로 전송하는 시스템 프롬프트(규칙·가이드 + RAG 문서 + 현재 파일) 전문을 'axiom-ai: Prompt' 출력 채널에 기록합니다. 보낸 내용을 직접 확인할 때 켜세요(평소에는 끄는 것을 권장)."
+        },
+        "axiom-ai.experimental.regionEdit": {
+          "type": "boolean",
+          "default": false,
+          "description": "[실험] 영역(region/hybrid) 편집. TSX 수정 요청에서 확장이 편집 영역을 결정론적으로 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성하고, 새 훅/import는 구조적으로 삽입합니다. 게이트 미통과·의존성 미해소 시 기존 전체 입력 방식으로 자동 폴백합니다(파일 파손 방지). 폐쇄망 점진 도입용, 기본 꺼짐."
         },
         "axiom-ai.promptDiet.qnaGating": {
           "type": "boolean",
@@ -410,7 +421,8 @@
     "package": "vsce package --no-dependencies",
     "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.webview.json",
     "test:line-edits": "node scripts/run-test-line-edits.mjs",
-    "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs"
+    "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs",
+    "test:region-edit": "node scripts/test-region-edit.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -70,7 +70,13 @@ export type WebviewToHostMessage =
   | { type: 'fileConfirmApprove'; actionId: string }
   | { type: 'fileConfirmReject'; actionId: string }
   | { type: 'patchRetryFull'; recoveryId: string }
-  | { type: 'patchRetryCancel'; recoveryId: string };
+  | { type: 'patchRetryCancel'; recoveryId: string }
+  | { type: 'probePickFile' }
+  | { type: 'probeUseActiveFile' }
+  | { type: 'runProbe'; filePath: string; query: string; budget: number; mode: ProbeMode };
+
+/** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
+export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
 
 export interface DiffLine {
   type: 'ctx' | 'add' | 'del' | 'sep';
@@ -101,7 +107,19 @@ export type HostToWebviewMessage =
   | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string }
   | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string }
   | { type: 'contextInfo'; systemPromptChars: number; breakdown?: ContextBreakdown; contextWindow: number }
-  | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number };
+  | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number }
+  | { type: 'probeFilePicked'; filePath: string }
+  | {
+      type: 'probeViews';
+      filePath: string;
+      query: string;
+      original: { chars: number; lines: number };
+      sliced: { chars: number; includedCount: number; skippedCount: number; text: string };
+      fullText: string;
+    }
+  | { type: 'probeOutput'; variant: 'full' | 'sliced' | 'tool' | 'region' | 'hybrid'; status: 'ok' | 'error'; content: string; promptChars: number }
+  | { type: 'probeDone' }
+  | { type: 'probeError'; message: string };
 
 /** 시스템 프롬프트 구성 요소별 글자 수. UI 브레이크다운 표시용. */
 export interface ContextBreakdown {

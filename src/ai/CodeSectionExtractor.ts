@@ -77,6 +77,29 @@ export function countDelimiters(line: string): { open: number; close: number } {
 }
 
 /**
+ * 줄에서 트레일링 라인 주석(`// ...`)을 제거한 코드 부분을 반환한다.
+ * 문자열(따옴표·백틱) 안의 `//`는 주석이 아니므로 보존한다.
+ *
+ * 한 줄 선언의 종료(`;`) 판정에 쓰인다. `const X = 10; // 주석` 처럼 세미콜론 뒤에
+ * 주석이 붙으면 줄 끝이 `;`가 아니어서 선언이 종료되지 않은 것으로 오판,
+ * 뒤따르는 export default 컴포넌트까지 한 섹션으로 삼켜지는 버그를 막는다.
+ */
+function stripTrailingLineComment(line: string): string {
+  let inString: '"' | "'" | '`' | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const prev = i > 0 ? line[i - 1] : '';
+    if (inString) {
+      if (ch === inString && prev !== '\\') inString = null;
+      continue;
+    }
+    if (ch === '/' && line[i + 1] === '/') return line.slice(0, i);
+    if (ch === '"' || ch === "'" || ch === '`') inString = ch;
+  }
+  return line;
+}
+
+/**
  * TS / TSX 소스를 top-level 선언 단위로 분할한다.
  *
  * import 라인은 묶어 한 섹션, 그 외는 선언 시작 라인부터 중괄호 균형이 맞을 때까지를 한 섹션으로 본다.
@@ -111,8 +134,19 @@ export function splitTsSections(source: string): CodeSection[] {
 
     if (IMPORT_PATTERN.test(stripped)) {
       if (importStart === null) importStart = i;
-      importBuffer.push(line);
-      i++;
+      // 멀티라인 import도 한 문장으로 수집한다. 예: `import {\n  A,\n  B,\n} from 'mod';`
+      // 중괄호 균형이 0으로 돌아오고 세미콜론 또는 `from '...'` 로 끝나면 문장 종료로 본다.
+      // (연속 줄을 놓쳐 import 섹션이 첫 줄만 잡히던 버그 — depsHeader가 잘리는 원인 — 수정)
+      let depth = 0;
+      let j = i;
+      for (; j < lines.length; j++) {
+        const { open, close } = countDelimiters(lines[j]);
+        depth += open - close;
+        importBuffer.push(lines[j]);
+        const code = stripTrailingLineComment(lines[j]).trimEnd();
+        if (depth <= 0 && (/;\s*$/.test(code) || /from\s+['"][^'"]+['"]$/.test(code))) break;
+      }
+      i = j + 1;
       continue;
     }
 
@@ -146,7 +180,8 @@ export function splitTsSections(source: string): CodeSection[] {
       depth += open - close;
       if (open > 0) opened = true;
       // 세미콜론으로 끝나는 한 줄 선언(type / 화살표 함수가 아닌 const 등)
-      if (!opened && /[;]\s*$/.test(lines[j])) {
+      // 트레일링 주석(`const X = 10; // 메모`)을 제거하고 판정한다.
+      if (!opened && /[;]\s*$/.test(stripTrailingLineComment(lines[j]))) {
         endLine = j;
         break;
       }

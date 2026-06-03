@@ -80,17 +80,43 @@ export function scoreSections(sections: MdSection[], queryTokens: string[]): voi
 }
 
 /**
+ * 한국어 조사(접미) — 명사 뒤에 붙어 grep `includes()` 부분일치를 깨뜨리는 주범.
+ * 예: "department를", "select도", "목록에". 길이 내림차순으로 한 번만 벗겨 어근 후보를 추가한다.
+ * 형태소 분석기(사전) 없이 폐쇄망 의존성 0을 유지하기 위한 휴리스틱.
+ */
+const KOREAN_JOSA = [
+  '으로써', '으로서', '으로', '에서', '에게', '한테', '부터', '까지', '처럼', '보다', '마다', '조차', '라도', '이나', '든지',
+  '은', '는', '이', '가', '을', '를', '에', '의', '도', '로', '와', '과', '만', '나', '랑', '께',
+];
+
+/**
  * 사용자 쿼리를 매칭용 키워드 토큰으로 변환한다.
- * - 소문자화, 공백/구두점 기준 분할
- * - 길이 2 이상만 유지 (조사·1글자 노이즈 제거)
+ * - 소문자화, 공백/구두점/가운뎃점(·ㆍ‧•) 기준 분할 ("재직상태·투입상태" → 둘로)
+ * - 길이 2 이상만 유지 (1글자 노이즈 제거)
+ * - 한국어 조사를 벗긴 어근을 **추가**(원본도 유지 — 과도 분리 방지, 남는 길이 2 이상일 때만)
  * - 중복 제거
+ *
+ * 조사를 벗기는 이유: locate의 grep이 `line.includes(token)` 부분일치라, 명사에 조사가 붙으면
+ * ("select도", "department를") 코드 식별자에 매칭되지 않아 위치를 통째로 못 찾는다(견고성 매핑 실측).
  */
 export function tokenizeQuery(query: string): string[] {
   const raw = query
     .toLowerCase()
-    .split(/[\s,.\/()[\]{}<>"'`?!:;|+*=&^%$#@~\\-]+/)
+    .split(/[\s,.\/·ㆍ‧•…()[\]{}<>"'`?!:;|+*=&^%$#@~\\-]+/)
     .filter((t) => t.length >= 2);
-  return [...new Set(raw)];
+
+  const out = new Set<string>();
+  for (const t of raw) {
+    out.add(t);
+    for (const j of KOREAN_JOSA) {
+      if (t.length > j.length && t.endsWith(j)) {
+        const stem = t.slice(0, -j.length);
+        if (stem.length >= 2) out.add(stem); // 어근이 2글자 이상일 때만(잡음 방지)
+        break; // 가장 긴 조사 하나만 벗긴다
+      }
+    }
+  }
+  return [...out];
 }
 
 /**

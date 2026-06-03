@@ -136,6 +136,15 @@ export class ExtensionConfig {
     return ExtensionConfig._cfg().get<boolean>('debug.logSystemPrompt', AI_DEFAULTS.debug.logSystemPrompt);
   }
 
+  /**
+   * 실험: 영역(region/hybrid) 편집. updateFile(TSX) 요청에서 확장이 편집 영역을 결정론적으로 찾아
+   * (안전 게이트 통과 시) 그 영역만 모델에 보내 재작성 + 훅/import는 structural 삽입한다. 게이트 미통과
+   * 또는 의존성 미해소 시 기존 full 입력 경로로 자동 폴백한다. 폐쇄망 점진 도입을 위해 기본 off.
+   */
+  static isRegionEditEnabled(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('experimental.regionEdit', false);
+  }
+
   /** 사용자가 설정한 오프라인 stubs 보강 폴더 */
   static getUserStubsFolder(): string {
     return ExtensionConfig._cfg().get<string>('stubs.userStubsFolder', '');

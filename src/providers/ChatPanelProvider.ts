@@ -176,11 +176,26 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      // 1단계: GET /v1/models 로 서버 생존 확인 (인증 없이 동작하는 서버 포함)
+      // 1단계: GET /v1/models 로 서버 생존 + 모델명 등록 여부 확인 (인증 없이 동작하는 서버 포함)
       const modelsRes = await fetch(modelsUrl, { method: 'GET', headers, signal: controller.signal });
       if (modelsRes.ok) {
-        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
-        return;
+        const ids = await this._extractModelIds(modelsRes);
+        // Ollama는 태그를 생략하면 :latest로 해석한다. /v1/models는 'name:latest'로 보고하지만
+        // 설정엔 'name'만 넣는 경우가 많으므로 :latest를 정규화해 비교한다(채팅은 정상 동작).
+        const stripLatest = (s: string) => s.replace(/:latest$/, '');
+        const want = stripLatest(llm.model);
+        if (ids.some((id) => stripLatest(id) === want)) {
+          this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+          return;
+        }
+        if (ids.length > 0) {
+          // 서버는 살아있으나 설정한 모델명이 목록에 없음 → 채팅 시 404가 날 상황을 미리 알려준다.
+          const preview = ids.slice(0, 8).join(', ');
+          this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
+            detail: `서버 연결됨 — '${llm.model}' 모델이 서버에 없습니다. 모델명을 확인해주세요. 사용 가능: ${preview}${ids.length > 8 ? ` 외 ${ids.length - 8}개` : ''}` });
+          return;
+        }
+        // 목록을 못 읽은 경우(빈 응답·비표준 스키마)만 2단계 추론 호출로 확인한다.
       }
       if (modelsRes.status === 401 || modelsRes.status === 403) {
         const wwwAuth = modelsRes.headers.get('www-authenticate') ?? '';
@@ -220,6 +235,26 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint, detail: msg });
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /**
+   * /v1/models(OpenAI 호환: data[].id) 또는 /api/tags(Ollama: models[].name) 응답에서
+   * 모델 식별자 목록을 추출한다. 파싱 불가 시 빈 배열을 반환해 호출부가 추론 호출로 폴백하게 한다.
+   */
+  private async _extractModelIds(res: Response): Promise<string[]> {
+    try {
+      const json = (await res.json()) as any;
+      const arr = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.models)
+          ? json.models
+          : [];
+      return arr
+        .map((m: any) => (typeof m === 'string' ? m : m?.id ?? m?.name))
+        .filter((s: any): s is string => typeof s === 'string' && s.length > 0);
+    } catch {
+      return [];
     }
   }
 

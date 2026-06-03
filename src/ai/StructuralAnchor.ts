@@ -176,6 +176,36 @@ function parseImportLine(line: string): { module: string; named: string[]; def: 
   return { module, named, def };
 }
 
+/**
+ * 물리 라인 배열에서 **논리 import 문**을 모은다. 멀티라인 named import
+ * (`import {⏎  Select,⏎  SelectItem,⏎} from '@axiom/components/ui';`)을 한 논리 문자열로 합쳐
+ * 돌려줘, 한 줄 정규식인 parseImportLine이 멀티라인을 통째로 놓치던 한계를 보완한다.
+ *
+ * (이 누락 때문에 이미 멀티라인으로 import된 모듈을 "없다"고 오판해 같은 모듈을 한 줄 더 추가 →
+ *  중복 식별자 컴파일 에러가 났다.)
+ */
+function collectLogicalImports(lines: string[]): string[] {
+  const out: string[] = [];
+  const isComplete = (s: string): boolean =>
+    /from\s*['"][^'"]+['"]/.test(s) || /;\s*$/.test(s.trim());
+  let i = 0;
+  while (i < lines.length) {
+    if (!/^\s*import\b/.test(lines[i])) {
+      i++;
+      continue;
+    }
+    let buf = lines[i];
+    let j = i;
+    while (!isComplete(buf) && j + 1 < lines.length) {
+      j++;
+      buf += ' ' + lines[j].trim();
+    }
+    out.push(buf);
+    i = j + 1;
+  }
+  return out;
+}
+
 /** import 블록 앵커를 만든다. */
 function computeImportAnchor(section: CodeSection): ImportAnchor {
   const byModule: ImportAnchor['byModule'] = new Map();
@@ -246,37 +276,60 @@ function tidyBlankLines(lines: string[]): string[] {
 }
 
 /**
- * 훅 조각에서 top-level type/interface/enum 선언을 분리한다.
- *
- * react-app-scaffold 컨벤션: 타입 선언부는 함수 컴포넌트 본문 안이 아니라
- * 함수 바로 위(모듈 스코프)에 둔다. structural 모드에서 약한 모델이 타입을 훅 조각에
- * 섞어 내더라도 확장이 결정론적으로 끌어올려 컨벤션을 강제한다.
- *
- * splitTsSections 의 kind 'type'(type/enum) · 'interface' 만 분리 대상으로 본다.
- * 들여쓰기가 붙은 조각은 DECL_PATTERN(라인 시작)이 매칭되지 않아 분리되지 않고
- * 종전처럼 본문에 들어간다(graceful fallback — 프롬프트는 들여쓰기 없이 안내).
+ * 모듈 스코프로 올려도 **안전한** 단일 라인 const: 원시 리터럴(문자열·숫자·불리언, `as const` 허용)만.
+ * 예: `const EMPLOYEES_ENDPOINT = '/api/employees';`, `const PAGE_LIMIT = 10;`
+ * 배열·객체·식별자/호출이 들어간 RHS는 컴포넌트 스코프(훅 결과 등)를 참조할 수 있어 제외한다
+ * (예: `const departments = deptResponse?.data ?? []` 은 본문에 남겨야 함).
  */
-function splitTypeDeclarations(hookCode: string): {
+const HOISTABLE_LITERAL_CONST =
+  /^(?:export\s+)?const\s+[A-Za-z_$][\w$]*\s*(?::\s*[^=]+?)?=\s*(?:'[^']*'|"[^"]*"|`[^`$]*`|-?\d[\d_.]*|true|false)\s*(?:as\s+const\s*)?;?\s*$/;
+
+/**
+ * 훅 조각에서 모듈 스코프로 올릴 선언(type/interface/enum + 원시 리터럴 const)을 분리한다.
+ *
+ * react-app-scaffold 컨벤션: 타입 선언과 엔드포인트/상수(EMPLOYEES_ENDPOINT 등)는 컴포넌트 본문이 아니라
+ * 함수 바로 위(모듈 스코프)에 둔다. 약한 모델이 이를 훅 조각에 섞어 내더라도 확장이 결정론적으로 끌어올린다.
+ *
+ * 안전성: const는 **단일 라인 원시 리터럴**만 올린다(HOISTABLE_LITERAL_CONST). 훅 결과·컴포넌트 변수를
+ * 참조하는 const(예: `const departments = deptResponse?.data ?? []`)는 본문에 남겨 깨지지 않게 한다.
+ * 들여쓰기가 붙은 조각은 DECL_PATTERN(라인 시작)이 매칭되지 않아 분리되지 않고 본문에 들어간다(graceful fallback).
+ */
+function splitTypeDeclarations(
+  hookCode: string,
+  existingNames: Set<string> = new Set(),
+): {
   typeDecls: string;
   rest: string;
   typeCount: number;
 } {
   const sections = splitTsSections(hookCode);
-  const typeSections = sections.filter((s) => s.kind === 'type' || s.kind === 'interface');
-  if (typeSections.length === 0) return { typeDecls: '', rest: hookCode, typeCount: 0 };
+  const isModuleDecl = (s: CodeSection): boolean =>
+    s.kind === 'type' ||
+    s.kind === 'interface' ||
+    (s.kind === 'const' && s.startLine === s.endLine && HOISTABLE_LITERAL_CONST.test(s.body.trim()));
+
+  // 모듈 스코프로 올릴 선언. 단, 이름이 이미 모듈 스코프에 있으면 **드롭**한다(중복 선언 = 컴파일 에러 방지).
+  // 모델이 기존 이름을 재사용해 새 const/type를 내는 경우(예: PAGE_LIMIT 재정의)를 결정론적으로 흡수.
+  const moduleSections = sections.filter((s) => isModuleDecl(s) && !existingNames.has(s.name));
+  const collisionSections = sections.filter((s) => isModuleDecl(s) && existingNames.has(s.name));
+  if (moduleSections.length === 0 && collisionSections.length === 0) {
+    return { typeDecls: '', rest: hookCode, typeCount: 0 };
+  }
 
   const lines = hookCode.split('\n');
-  const isTypeLine = new Array<boolean>(lines.length).fill(false);
-  for (const s of typeSections) {
-    for (let ln = s.startLine; ln <= s.endLine; ln++) isTypeLine[ln - 1] = true;
+  const removeLine = new Array<boolean>(lines.length).fill(false);
+  // 올릴 선언과 충돌로 드롭할 선언 모두 본문(rest)에서 제거한다.
+  // (충돌 선언을 본문에 남기면 모듈 const를 가려 TDZ 참조 오류가 날 수 있어 안전하게 드롭)
+  for (const s of [...moduleSections, ...collisionSections]) {
+    for (let ln = s.startLine; ln <= s.endLine; ln++) removeLine[ln - 1] = true;
   }
-  const restLines = lines.filter((_, i) => !isTypeLine[i]);
-  // 타입 선언은 섹션 본문을 빈 줄로 구분해 재조립(선언 간 가독성 유지).
-  const typeDecls = typeSections.map((s) => s.body).join('\n\n');
+  const restLines = lines.filter((_, i) => !removeLine[i]);
+  // 선언은 섹션 본문을 빈 줄로 구분해 재조립(가독성 유지).
+  const typeDecls = moduleSections.map((s) => s.body).join('\n\n');
   return {
     typeDecls,
     rest: tidyBlankLines(restLines).join('\n'),
-    typeCount: typeSections.length,
+    typeCount: moduleSections.length,
   };
 }
 
@@ -375,6 +428,55 @@ function collectDeclaredBindings(code: string): Set<string> {
 }
 
 /**
+ * 코드 조각을 문장 단위로 쪼갠다(괄호·중괄호·대괄호 균형이 0으로 돌아오고 `;`로 끝나면 문장 종료).
+ * 멀티라인 `const { data } = useApi({\n …\n});` 도 한 문장으로 묶는다.
+ */
+function splitStatements(code: string): string[] {
+  const lines = code.split('\n');
+  const out: string[] = [];
+  let buf: string[] = [];
+  let depth = 0;
+  for (const line of lines) {
+    buf.push(line);
+    const { open, close } = countDelimiters(line);
+    depth += open - close;
+    const c = line.replace(/\/\/.*$/, '').trimEnd();
+    if (depth <= 0 && /;\s*$/.test(c)) {
+      out.push(buf.join('\n'));
+      buf = [];
+      depth = 0;
+    }
+  }
+  if (buf.length) out.push(buf.join('\n'));
+  return out;
+}
+
+/**
+ * 훅 조각에서, 선언하는 바인딩이 **모두 이미 대상 파일에 존재**하는 const/let/var 문장을 드롭한다.
+ *
+ * 약한 모델이 의존성 헤더의 기존 선언(예: `const [selectedStatus] = useState('all')`)을 그대로 베껴
+ * 다시 선언하면 같은 스코프에 중복 선언이 생겨 **컴파일 에러**가 난다(실측: 투입상태 select 편집에서
+ * selectedStatus 중복). 모듈 스코프 충돌만 막던 splitTypeDeclarations를 컴포넌트 본문 바인딩까지 확장한다.
+ * 일부 바인딩만 겹치면(나머지는 신규) 신규 손실을 피하려 보존한다(전부 겹칠 때만 드롭).
+ */
+function dropDuplicateDeclarations(code: string, existing: Set<string>): { text: string; dropped: string[] } {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const stmt of splitStatements(code)) {
+    const m = stmt.match(/^\s*(?:export\s+)?(?:const|let|var)\s+([\s\S]*?)(?:=(?![=>])|;)/);
+    if (m) {
+      const names = parseBindingPattern(m[1].trim());
+      if (names.length > 0 && names.every((n) => existing.has(n))) {
+        dropped.push(names.join(', '));
+        continue;
+      }
+    }
+    kept.push(stmt);
+  }
+  return { text: kept.join('\n'), dropped };
+}
+
+/**
  * 구조 앵커를 이용해 모델이 낸 조각을 결정론적으로 적용한다.
  * search/replace, 라인 번호 추측, 전체 파일 재작성 없이 동작한다.
  */
@@ -393,7 +495,17 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
   // 1) 훅 코드 — react-app-scaffold 컨벤션: type/interface/enum 선언은 컴포넌트 본문이 아니라
   //    함수 바로 위(모듈 스코프)에 둔다. 모델이 둘을 섞어 내도 여기서 결정론적으로 분리한다.
   if (edit.hookCode && anchors.component) {
-    const { typeDecls, rest, typeCount } = splitTypeDeclarations(edit.hookCode);
+    // 기존 top-level 선언 이름 — 같은 이름의 type/const를 또 모듈 스코프로 올리지 않도록(중복 선언 방지).
+    const existingTopLevelNames = new Set(anchors.sections.map((s) => s.name));
+    const { typeDecls, rest: rawRest, typeCount } = splitTypeDeclarations(edit.hookCode, existingTopLevelNames);
+
+    // 컴포넌트 본문 코드에 삽입하기 전, 대상 파일(모듈+컴포넌트 본문)에 **이미 선언된 이름을 다시
+    // 선언하는** 문장을 드롭한다(중복 선언 = 컴파일 에러 방지). 기존 이름은 그대로 재사용된다.
+    const existingBindings = collectDeclaredBindings(norm);
+    const { text: rest, dropped: droppedDecls } = dropDuplicateDeclarations(rawRest, existingBindings);
+    if (droppedDecls.length > 0) {
+      changes.push(`중복 선언 드롭(이미 존재): ${droppedDecls.join(' / ')}`);
+    }
 
     // 1-a) 훅/일반 코드 → 컴포넌트 본문(들여쓰기 부여)
     if (rest.trim()) {
@@ -421,12 +533,12 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
       }
     }
 
-    // 1-b) 타입 선언 → 함수 컴포넌트 바로 위(모듈 스코프, 들여쓰기 없음)
+    // 1-b) 타입·상수 선언 → 함수 컴포넌트 바로 위(모듈 스코프, 들여쓰기 없음)
     if (typeDecls.trim()) {
       const content = [...typeDecls.split('\n'), ''];
       ops.push({ atLine: anchors.component.startLine, removeCount: 0, content });
       changes.push(
-        `타입 선언 ${typeCount}개를 컴포넌트 '${anchors.component.name}' 바로 위(모듈 스코프)로 ` +
+        `선언(타입·상수) ${typeCount}개를 컴포넌트 '${anchors.component.name}' 바로 위(모듈 스코프)로 ` +
           `배치 — react-app-scaffold 컨벤션`,
       );
     }
@@ -436,9 +548,34 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
 
   // 2) import
   if (edit.imports?.length) {
+    // 전체 소스의 import를 모듈별로 스캔한다. import 블록 중간에 주석(예: `//import X`)이 있으면
+    // splitTsSections가 import 섹션을 쪼개 anchors.imports엔 첫 그룹만 잡힌다. 그 결과 주석 아래
+    // import(예: react·lucide-react)가 중복 검출에서 누락돼 같은 모듈이 또 추가되는 버그가 있었다.
+    // 존재 여부 판정만은 파일 전체 기준으로 해 중복 추가를 막는다.
+    const globalByModule = new Map<string, { named: Set<string>; def: string | null }>();
+    for (const ln of collectLogicalImports(lines)) {
+      const p = parseImportLine(ln);
+      if (!p) continue;
+      const e = globalByModule.get(p.module) ?? { named: new Set<string>(), def: null };
+      p.named.forEach((n) => e.named.add(n));
+      if (p.def) e.def = p.def;
+      globalByModule.set(p.module, e);
+    }
+
     for (const req of edit.imports) {
       const existing = anchors.imports?.byModule.get(req.module);
       const wantNamed = req.named ?? [];
+
+      // 파일 전체 기준으로 이미 모두 존재하면 무조건 skip (주석으로 쪼개진 그룹의 import도 인식).
+      const globalEx = globalByModule.get(req.module);
+      if (globalEx) {
+        const missingGlobal = wantNamed.filter((n) => !globalEx.named.has(n));
+        if (missingGlobal.length === 0 && (!req.def || globalEx.def === req.def)) {
+          changes.push(`import skip (이미 존재): ${req.module}`);
+          continue;
+        }
+      }
+
       if (existing) {
         const missing = wantNamed.filter((n) => !existing.named.has(n));
         if (missing.length === 0 && (!req.def || existing.def === req.def)) {
@@ -507,7 +644,22 @@ const GLOBAL_KNOWN = new Set<string>([
   'Number', 'Boolean', 'Symbol', 'BigInt', 'Function', 'JSON', 'Math', 'Iterable', 'Iterator',
   // React/DOM 흔한 전역 (보통 React.X 형태라 안 잡히지만 안전망)
   'React', 'JSX', 'Element', 'Event', 'Node', 'HTMLElement', 'ReactNode', 'ReactElement',
+  // DOM 이벤트·요소 전역 — useApi 핸들러 시그니처(React.ChangeEvent<HTMLInputElement> 등)에 자주 등장.
+  // import 불필요한 앰비언트 전역인데 "미선언"으로 오판돼 불필요한 full 폴백을 유발했다(실측).
+  'ChangeEvent', 'MouseEvent', 'KeyboardEvent', 'FocusEvent', 'FormEvent', 'PointerEvent',
+  'TouchEvent', 'DragEvent', 'ClipboardEvent', 'WheelEvent', 'UIEvent', 'InputEvent',
+  'AnimationEvent', 'TransitionEvent', 'CustomEvent', 'EventTarget', 'AbortController',
+  'AbortSignal', 'URL', 'URLSearchParams', 'FormData', 'Blob', 'File', 'FileList', 'DataTransfer',
 ]);
+
+/**
+ * import가 필요 없는 전역 타입 판정. GLOBAL_KNOWN(명시 목록) + DOM 요소 패밀리 패턴.
+ * HTMLInputElement·HTMLButtonElement·SVGPathElement … 를 일일이 나열하지 않고 패턴으로 흡수한다.
+ */
+const DOM_ELEMENT_RE = /^(?:HTML|SVG)[A-Za-z]*Element$/;
+function isWellKnownGlobal(name: string): boolean {
+  return GLOBAL_KNOWN.has(name) || DOM_ELEMENT_RE.test(name);
+}
 
 export interface DependencyCheckResult {
   ok: boolean;
@@ -519,17 +671,26 @@ export interface DependencyCheckResult {
 function collectAvailableSymbols(fullText: string): Set<string> {
   const available = new Set<string>(GLOBAL_KNOWN);
 
-  // import 명세 (named + default)
-  const anchors = computeAnchors(fullText);
-  if (anchors.imports) {
-    for (const entry of anchors.imports.byModule.values()) {
-      for (const n of entry.named) available.add(n);
-      if (entry.def) available.add(entry.def);
-    }
-  }
-  // top-level 선언 이름 (type/interface/const/function/class …)
+  // import 명세 (named + default + namespace) — **모든 import 섹션**을 훑는다.
+  // computeAnchors().imports 는 첫 import 그룹만 잡아, import 사이에 주석(`// hooks`)이 끼어
+  // 섹션이 쪼개지면 둘째 그룹의 import(예: react의 useState)를 놓쳐 "미해소" 오탐을 낸다.
+  // 멀티라인 import도 한 섹션 body로 들어오므로 { … } 전체에서 named를 뽑는다.
   for (const s of splitTsSections(fullText)) {
-    if (s.name && s.name !== 'imports') available.add(s.name);
+    if (s.kind === 'import') {
+      for (const block of s.body.matchAll(/\{([^}]*)\}/g)) {
+        for (const part of block[1].split(',')) {
+          const id = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()!.trim();
+          if (/^[A-Za-z_$][\w$]*$/.test(id)) available.add(id);
+        }
+      }
+      // default / `* as NS` import
+      for (const d of s.body.matchAll(/import\s+(?:type\s+)?(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,|from)/g)) {
+        available.add(d[1]);
+      }
+    } else if (s.name && s.name !== 'imports') {
+      // top-level 선언 이름 (type/interface/const/function/class …)
+      available.add(s.name);
+    }
   }
   return available;
 }
@@ -554,6 +715,13 @@ function collectReferencedSymbols(insertedCode: string): Set<string> {
   // 훅 호출: useApi( / useApi< / useState( …
   for (const m of insertedCode.matchAll(/\b(use[A-Z][\w$]*)\s*[(<]/g)) {
     refs.add(m[1]);
+  }
+
+  // 한정명(X.Y)의 네임스페이스 head는 선언 필요 대상이 아니다 — 앰비언트 전역(NodeJS.Timeout,
+  // Intl.DateTimeFormat 등)이거나 네임스페이스 import다. 바로 뒤에 '.'가 오면 refs에서 뺀다.
+  // (커스텀 타입은 `useApi<TFoo>`처럼 bare로 쓰여 '.'가 없으므로 본연의 미선언 검출은 유지된다.)
+  for (const m of insertedCode.matchAll(/\b([A-Z][\w$]*)\s*\./g)) {
+    refs.delete(m[1]);
   }
 
   // 조각 내부에서 스스로 선언한 이름은 참조 대상에서 제외(지역 해소)
@@ -585,7 +753,7 @@ export function findUnresolvedReferences(
   if (!insertedCode.trim()) return { ok: true, unresolved: [] };
   const available = collectAvailableSymbols(fullText);
   const refs = collectReferencedSymbols(insertedCode);
-  const unresolved = [...refs].filter((r) => !available.has(r));
+  const unresolved = [...refs].filter((r) => !available.has(r) && !isWellKnownGlobal(r));
   return { ok: unresolved.length === 0, unresolved };
 }
 
@@ -598,6 +766,16 @@ export function findUnresolvedReferences(
  */
 const SCAFFOLD_IMPORTS: ReadonlyMap<string, { module: string; named: string }> = new Map([
   ['useApi', { module: '@axiom/hooks', named: 'useApi' }],
+  // React 표준 훅 — import 경로가 'react'로 고정. 모델이 훅 조각에 도입하고 import를 빠뜨려도
+  // 확장이 결정론적으로 보강한다(useApi와 동일 원리). applyStructuralEdit가 기존 react import에 merge.
+  ['useState', { module: 'react', named: 'useState' }],
+  ['useEffect', { module: 'react', named: 'useEffect' }],
+  ['useRef', { module: 'react', named: 'useRef' }],
+  ['useMemo', { module: 'react', named: 'useMemo' }],
+  ['useCallback', { module: 'react', named: 'useCallback' }],
+  ['useReducer', { module: 'react', named: 'useReducer' }],
+  ['useContext', { module: 'react', named: 'useContext' }],
+  ['useLayoutEffect', { module: 'react', named: 'useLayoutEffect' }],
 ]);
 
 /**

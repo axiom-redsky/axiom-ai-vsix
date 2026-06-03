@@ -9,11 +9,12 @@ import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
+import { runHybridRegionEdit } from '../ai/RegionEditService';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import { splitIntoSections, scoreSections, tokenizeQuery, selectByBudget } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import type { ChatMessage } from '../ai/types';
+import type { ChatMessage, LlmConfig } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
 import { ContextCollector } from '../spec/ContextCollector';
 import { SpecGenerator } from '../spec/SpecGenerator';
@@ -745,6 +746,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         editorCtx = resolved.editorCtx;
+
+        // [실험] 영역 편집(설정 off 기본): 선택 없는 TSX 수정 요청은 확장이 편집 영역을 결정론적으로
+        // 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성 + 훅/import structural 삽입한다.
+        // 게이트 미통과·의존성 미해소·root-tag 불일치면 handled=false → 아래 기존 full 입력 흐름으로 폴백.
+        if (
+          ExtensionConfig.isRegionEditEnabled() &&
+          !editorCtx.selection &&
+          editorCtx.filePath &&
+          /\.tsx?$/.test(editorCtx.filePath)
+        ) {
+          const handled = await this._tryRegionEdit(editorCtx.filePath, text, config);
+          if (handled) {
+            this._post({ type: 'done' });
+            this._postStatus(config.model);
+            return;
+          }
+        }
       }
 
       this._lastSelectionLineRange = editorCtx.selection
@@ -1667,6 +1685,96 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'error', message: (err as Error).message });
       this._postStatus('오류 발생');
     }
+  }
+
+  // ─── 영역 편집(실험) ──────────────────────────────────────────────────────────
+
+  /**
+   * [실험] 호스트 주도 영역(하이브리드) 편집을 시도한다.
+   *  - 확장이 편집 영역을 결정론적으로 찾아 안전 게이트를 통과하면 그 영역만 모델에 보내 재작성하고,
+   *    새 훅/import는 structural 삽입해 **최종 전체 파일 텍스트**를 만든다.
+   *  - 그 텍스트를 기존 full updateFile 적용 경로(컨펌·React 규칙·쓰기)에 그대로 흘려보낸다.
+   *  - 게이트 미통과·의존성 미해소·root-tag 불일치·합성 no-op이면 false → 호출부가 기존 full 흐름으로 폴백.
+   *
+   * @returns true = 영역 편집으로 처리됨(또는 컨펌 흐름 진입) / false = full 폴백 필요
+   */
+  private async _tryRegionEdit(filePath: string, query: string, config: LlmConfig): Promise<boolean> {
+    // splice는 정확한 ground truth가 필요하다 — 슬라이싱 가능성이 있는 editorCtx.content 대신 디스크를 읽는다.
+    let source: string;
+    try {
+      source = fs.readFileSync(this._resolveWorkspacePath(filePath), 'utf-8');
+    } catch {
+      return false; // 읽기 실패 → full 폴백
+    }
+    if (!source.trim()) return false;
+
+    const signal = this._abortController?.signal;
+    const callModel = async (system: string, user: string): Promise<string> => {
+      const messages: ChatMessage[] = [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ];
+      let out = '';
+      for await (const token of this._llm.streamChat(messages, config, signal, () => {})) {
+        out += token;
+      }
+      return out;
+    };
+
+    // 사용자가 메시지에 명시한 참조 파일(예: /plan/api-spec.md)을 region 경로에도 주입한다.
+    // (full 경로는 line 798에서 별도 주입하지만 그건 폴백 이후라, region 모델은 스펙을 못 봐
+    //  응답 타입·쿼리 파라미터를 추측 → code_type·category 환각·의존성 폴백을 유발했다.)
+    const refResult = await this._loadReferencedFiles(query, filePath);
+    if (refResult.block) {
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 영역편집: 참조 파일 ${refResult.loaded.length}개 주입: ${refResult.loaded.join(', ')}`,
+      );
+    }
+
+    this._postStatus('영역 편집 시도 중…');
+    const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined);
+    this._corpusOutputChannel.appendLine(outcome.diagnostics);
+
+    if (outcome.status !== 'applied' || !outcome.finalText) {
+      // fallback/error → 기존 full 입력 흐름으로 (조용한 파손 대신 안전)
+      return false;
+    }
+
+    // 영역 편집은 모델 원시 출력을 chat에 스트리밍하지 않으므로, **무엇이 바뀌는지 항상 보이도록**
+    // 합성 결과(source→finalText) diff를 chat에 직접 렌더한다. (수정 대기 패널의 diff가 비어도 안전.)
+    const regionDiff = computeDiffHunks(source, outcome.finalText);
+    if (regionDiff.length === 0) {
+      this._post({
+        type: 'token',
+        content: '\n\n> ℹ️ **영역 편집 결과가 현재 파일과 동일합니다** — 변경 없음(이미 적용된 상태일 수 있습니다).\n',
+      });
+    } else {
+      const MAX = 400;
+      const body = regionDiff
+        .slice(0, MAX)
+        .map((l) => {
+          const p = l.type === 'add' ? '+' : l.type === 'del' ? '-' : l.type === 'sep' ? '…' : ' ';
+          return p + (l.content ?? '');
+        })
+        .join('\n');
+      const more = regionDiff.length > MAX ? `\n… (이하 ${regionDiff.length - MAX}줄 생략)` : '';
+      this._post({
+        type: 'token',
+        content: `\n\n**변경 내용 (diff):**\n\`\`\`diff\n${body}${more}\n\`\`\`\n`,
+      });
+    }
+
+    // 최종 전체 파일을 full updateFile로 래핑해 기존 적용 파이프라인에 흘려보낸다.
+    const wrapped = this._wrapCodeBlockAsAxiomAction('```tsx\n' + outcome.finalText + '\n```', filePath);
+    if (!wrapped) return false;
+
+    this._post({
+      type: 'token',
+      content: `\n\n> 🧩 **영역 편집(실험)**: 편집 영역만 모델에 보내 재작성했습니다. ${outcome.diagnostics.replace('[regionEdit] ', '')}\n`,
+    });
+    this._history.push({ role: 'assistant', content: '(영역 편집 적용)' });
+    await this._handleAxiomAction(wrapped);
+    return true;
   }
 
   // ─── axiom-action ────────────────────────────────────────────────────────────
