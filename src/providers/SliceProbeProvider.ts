@@ -2,7 +2,15 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { extractRelevantTsSlice, splitTsSections } from '../ai/CodeSectionExtractor';
-import { tokenizeQuery, splitIntoSections, scoreSections, selectByBudget } from '../ai/SectionExtractor';
+import {
+  tokenizeQuery,
+  splitIntoSections,
+  scoreSections,
+  selectByBudget,
+  extractApiPaths,
+  matchedApiPaths,
+  formatExactPathDirective,
+} from '../ai/SectionExtractor';
 import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
 import { locateEditRegion, firstJsxTag } from '../ai/RegionEdit';
 import { ExtensionConfig } from '../config/ExtensionConfig';
@@ -255,6 +263,8 @@ ${fileView}
     const baseDir = path.dirname(baseFilePath);
     const PER_FILE_CAP = 8000;
     const queryTokens = tokenizeQuery(query);
+    const apiPaths = extractApiPaths(query);
+    const matchedPaths = new Set<string>();
     const blocks: string[] = [];
 
     for (const raw of candidates) {
@@ -279,7 +289,8 @@ ${fileView}
         injected = content;
       } else if (/\.(md|markdown)$/i.test(abs)) {
         const sections = splitIntoSections(base, content);
-        scoreSections(sections, queryTokens);
+        scoreSections(sections, queryTokens, apiPaths);
+        for (const p of matchedApiPaths(sections, apiPaths)) matchedPaths.add(p);
         const picked = selectByBudget(sections, PER_FILE_CAP, 1);
         injected = picked.length > 0
           ? `(질문 관련 섹션 추출)\n\n${picked.map((s) => s.body).join('\n\n')}`
@@ -292,6 +303,7 @@ ${fileView}
 
     if (blocks.length === 0) return '';
     return (
+      formatExactPathDirective([...matchedPaths]) +
       `> ⚠️ 아래는 사용자가 참조하라고 지정한 파일의 실제 내용입니다. ` +
       `타입·필드명·스키마·API 응답 구조는 추측하지 말고 **반드시 아래 내용을 그대로 근거로** 작성하세요.\n` +
       `> ❗ **API 응답 타입의 필드명과 쿼리 파라미터 이름은 반드시 이 스펙에서만** 가져오세요. ` +

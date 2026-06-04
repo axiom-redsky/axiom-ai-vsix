@@ -11,7 +11,15 @@ import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit } from '../ai/RegionEditService';
 import { computeDiffHunks } from '../ai/DiffUtil';
-import { splitIntoSections, scoreSections, tokenizeQuery, selectByBudget } from '../ai/SectionExtractor';
+import {
+  splitIntoSections,
+  scoreSections,
+  tokenizeQuery,
+  selectByBudget,
+  extractApiPaths,
+  matchedApiPaths,
+  formatExactPathDirective,
+} from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig } from '../ai/types';
@@ -242,6 +250,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     let total = 0;
 
     const queryTokens = tokenizeQuery(text);
+    const apiPaths = extractApiPaths(text);
+    const matchedPaths = new Set<string>();
     for (const raw of candidates) {
       if (total >= TOTAL_CAP || loaded.length >= MAX_FILES) break;
       const uri = await this._resolveReferencedFileUri(root, raw);
@@ -264,7 +274,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // 큰 마크다운(예: 여러 API가 담긴 스펙)은 앞부분만 자르면 정작 필요한 섹션(파일 끝의
         // member-summary 등)이 잘려나간다. 질문 키워드로 관련 섹션을 추출해 주입한다.
         const sections = splitIntoSections(rel, content);
-        scoreSections(sections, queryTokens);
+        scoreSections(sections, queryTokens, apiPaths);
+        for (const p of matchedApiPaths(sections, apiPaths)) matchedPaths.add(p);
         const picked = selectByBudget(sections, budget, 1);
         if (picked.length > 0) {
           injected = `(질문 관련 섹션 추출)\n\n${picked.map((s) => s.body).join('\n\n')}`;
@@ -288,8 +299,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (blocks.length === 0) return { block: '', loaded: [] };
+    const directive = formatExactPathDirective([...matchedPaths]);
+    if (matchedPaths.size > 0) {
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 정확 엔드포인트 지정 감지 → 우선 주입·드리프트 차단: ${[...matchedPaths].join(', ')}`,
+      );
+    }
     const block =
       `\n\n<!-- 참조 파일 (사용자가 메시지에서 명시) -->\n` +
+      directive +
       `> ⚠️ 아래는 사용자가 참조하라고 지정한 파일의 실제 내용입니다. ` +
       `타입·필드명·스키마·API 응답 구조는 추측하지 말고 **반드시 아래 내용을 그대로 근거로** 작성하세요.\n` +
       `> ❗ **API 응답 타입의 필드명은 반드시 이 스펙의 response 스키마에서 가져오세요.** ` +

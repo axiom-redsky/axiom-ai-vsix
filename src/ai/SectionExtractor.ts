@@ -49,17 +49,33 @@ export function splitIntoSections(source: string, markdown: string): MdSection[]
 }
 
 /**
+ * 사용자가 지정한 정확 경로의 섹션에 부여하는 가산점.
+ *
+ * 토큰 매칭(헤더 +3/개)만으로는 `/api/common-codes`와 형제 `/api/common-codes/groups`·`/:id`가
+ * 모두 api·common·codes로 동점이 되어, 모델이 형제 중 엉뚱한 URL을 고르는 사고가 난다(실측).
+ * 정확일치 섹션만 압도적으로 끌어올려 "사용자가 지정한 그 엔드포인트"가 1순위로 주입되게 한다.
+ */
+const EXACT_PATH_BONUS = 20;
+
+/**
  * 쿼리 키워드 기준으로 섹션에 점수를 매긴다.
  *
  * 점수 산정 기준:
  * - 헤더에 키워드 등장: +3점/개 (가장 강한 신호)
  * - 본문에 키워드 등장: +1점/개 (중복 매칭은 1점 한정)
  * - 도입부(header="")는 기본 가산점 +1 (타입 정의·import 경로 등 핵심 정보)
+ * - 사용자가 지정한 정확 API 경로와 헤더가 정확일치: +EXACT_PATH_BONUS (형제 하위경로는 제외)
  *
  * 매칭 키워드가 없으면 점수는 0이지만, 점수 0이라고 무조건 제외하지는 않는다.
  * (호출자가 필요에 따라 필터링)
+ *
+ * @param apiPaths 쿼리에서 추출한 정확 API 경로(예: `/api/common-codes`). `extractApiPaths` 결과를 넘긴다.
  */
-export function scoreSections(sections: MdSection[], queryTokens: string[]): void {
+export function scoreSections(
+  sections: MdSection[],
+  queryTokens: string[],
+  apiPaths: string[] = [],
+): void {
   for (const section of sections) {
     let score = 0;
     const headerLower = section.header.toLowerCase();
@@ -74,9 +90,75 @@ export function scoreSections(sections: MdSection[], queryTokens: string[]): voi
     // 도입부 섹션(헤더 없음)은 파일 타이틀·타입 정의 등 핵심 메타 정보가 많아 가산점
     if (!section.header && section.length < 1500) score += 1;
 
+    // 사용자가 따옴표/리터럴로 박은 정확 경로 — 형제 하위경로와 분리해 압도적으로 우선
+    if (apiPaths.some((p) => headerMatchesApiPath(section.header, p))) {
+      score += EXACT_PATH_BONUS;
+    }
+
     section.score = score;
     section.rawScore = score;
   }
+}
+
+/** 정규식 메타문자 이스케이프 */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 쿼리에서 정확 API 경로 리터럴을 추출한다(예: `'/api/common-codes'`, `/api/projects/:id`).
+ *
+ * - 슬래시로 시작하고 첫 세그먼트가 영문, 2개 이상 세그먼트인 토큰만 경로로 본다.
+ * - 바로 뒤에 `.확장자`가 오면 파일 경로(예: `/plan/api-spec.md`)로 보고 제외한다.
+ *   (참조 파일 경로는 `_loadReferencedFiles`가 따로 처리하므로 여기서 잡으면 안 된다)
+ */
+export function extractApiPaths(query: string): string[] {
+  const out = new Set<string>();
+  const re = /\/[a-zA-Z][\w-]*(?:\/[\w:-]+)+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(query)) !== null) {
+    const end = m.index + m[0].length;
+    if (/^\.[a-zA-Z]/.test(query.slice(end, end + 2))) continue; // 파일 경로(.md/.ts 등) 제외
+    out.add(m[0]);
+  }
+  return [...out];
+}
+
+/**
+ * 텍스트(섹션 헤더 등)에 API 경로 `apiPath`가 **독립된 경로로** 등장하는지 판정한다.
+ *
+ * 형제 하위경로·상위경로의 부분일치는 false:
+ *  - `/api/common-codes` 는 `GET \`/api/common-codes/groups\`` 헤더와 매칭되지 않는다(뒤에 `/groups`).
+ *  - `/common-codes`     는 `/api/common-codes` 와 매칭되지 않는다(앞에 `/api`).
+ * 경로 연속 문자(`\w : / -`)가 경계에 닿으면 매칭을 거부하는 방식이다.
+ */
+export function headerMatchesApiPath(text: string, apiPath: string): boolean {
+  if (!apiPath) return false;
+  const re = new RegExp(`(?<![\\w:/-])${escapeRegExp(apiPath)}(?![\\w:/-])`);
+  return re.test(text);
+}
+
+/**
+ * 주어진 섹션 집합에서 `apiPaths` 중 헤더 정확일치 섹션이 실제로 존재하는 경로만 골라낸다.
+ * 스펙에 없는 경로로 "이 경로를 쓰라"는 지시를 만들지 않기 위한 검증용.
+ */
+export function matchedApiPaths(sections: MdSection[], apiPaths: string[]): string[] {
+  return apiPaths.filter((p) => sections.some((s) => headerMatchesApiPath(s.header, p)));
+}
+
+/**
+ * 사용자가 지정한 정확 엔드포인트를 모델에 명시하는 지시 블록을 만든다.
+ * URL 드리프트(형제 경로로 바뀜)와 응답 구조 혼동을 동시에 차단한다.
+ * 매칭 경로가 없으면 빈 문자열.
+ */
+export function formatExactPathDirective(paths: string[]): string {
+  if (paths.length === 0) return '';
+  const list = paths.map((p) => `\`${p}\``).join(', ');
+  return (
+    `> 🎯 사용자가 지정한 정확한 API 엔드포인트: ${list}. ` +
+    `**useApi 호출의 URL 문자열을 정확히 이 경로로** 쓰고, 형제 경로(\`.../groups\`, \`.../:id\` 등)로 ` +
+    `바꾸지 마세요. 응답 타입·데이터 바인딩(배열 vs 객체키 접근)도 **이 경로의 response 스키마**를 따르세요.\n\n`
+  );
 }
 
 /**
