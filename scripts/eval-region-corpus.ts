@@ -1,0 +1,235 @@
+/**
+ * region/hybrid 편집 측정 코퍼스 (모델 무관).
+ *
+ * 목적: locateEditRegion이 현실적인 (파일, 질문) 쌍에서
+ *  - region 모드로 남는가(eligible) vs full로 폴백하는가
+ *  - 어떤 안전 게이트로 폴백하는가(게이트 분포)
+ *  - region 모드일 때 모델에 보내는 입력이 full 파일 대비 얼마나 작은가(토큰 절감률)
+ * 를 **집계 지표**로 측정하기 위한 케이스 모음. 단위 테스트(test-region-edit)가
+ * "특정 불변식 1개"를 못박는다면, 이 코퍼스는 "결과의 분포"를 추적해 고도화의
+ * 회귀 안전망 + 계기판이 된다.
+ *
+ * 케이스 추가법: 파일(FIXTURES)에 현실 TSX를 넣고, 그 파일에 대한 질문을 CASES에
+ * 한 줄씩 추가한다. expect.gate를 적으면 회귀(예상≠실제)로 잡히고, 비워두면
+ * 측정만 한다(아직 정답이 불확실한 탐색 케이스).
+ */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+export interface EvalCase {
+  id: string;
+  /** FIXTURES 키 */
+  file: string;
+  /** 사용자 질문 */
+  query: string;
+  /** 기대 게이트(회귀 가드). 생략 시 측정만. 게이트 라벨이 바뀌어도 결과(eligible)만 지키려면 expectEligible 사용. */
+  expectGate?: 'ok' | 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed';
+  /** 기대 적용여부(회귀 가드). 게이트 라벨에 무관하게 region 적용/폴백만 못박는다. */
+  expectEligible?: boolean;
+  /** 케이스 의도 메모 */
+  note?: string;
+}
+
+/** 현실적 react-app-scaffold 페이지 — Select 필터 + 검색 + 테이블 + 페이지네이션. */
+const MEMBER_LIST = [
+  /*  1 */ "import { useState } from 'react';",
+  /*  2 */ "import { useApi } from '@axiom/hooks';",
+  /*  3 */ 'import {',
+  /*  4 */ '  Select,',
+  /*  5 */ '  SelectContent,',
+  /*  6 */ '  SelectItem,',
+  /*  7 */ '  SelectTrigger,',
+  /*  8 */ '  SelectValue,',
+  /*  9 */ "} from '@axiom/components/ui';",
+  /* 10 */ "import { Input } from '@axiom/components/ui';",
+  /* 11 */ "import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@axiom/components/ui';",
+  /* 12 */ '',
+  /* 13 */ 'type TMember = { id: number; name: string; dept: string; status: string };',
+  /* 14 */ 'type TMemberListResponse = { success: boolean; data: TMember[]; total: number };',
+  /* 15 */ '',
+  /* 16 */ 'export default function MemberListPage(): React.ReactNode {',
+  /* 17 */ "  const [status, setStatus] = useState('all');",
+  /* 18 */ "  const [keyword, setKeyword] = useState('');",
+  /* 19 */ '  const [page, setPage] = useState(1);',
+  /* 20 */ "  const { data: resp } = useApi<TMemberListResponse>('/api/members');",
+  /* 21 */ '  const members = resp?.data ?? [];',
+  /* 22 */ '  const total = resp?.total ?? 0;',
+  /* 23 */ '',
+  /* 24 */ '  return (',
+  /* 25 */ '    <div className="page">',
+  /* 26 */ '      <div className="toolbar">',
+  /* 27 */ '        {/* 재직상태 필터 */}',
+  /* 28 */ '        <Select value={status} onValueChange={setStatus}>',
+  /* 29 */ '          <SelectTrigger>',
+  /* 30 */ '            <SelectValue placeholder="재직상태" />',
+  /* 31 */ '          </SelectTrigger>',
+  /* 32 */ '          <SelectContent>',
+  /* 33 */ '            <SelectItem value="all">전체</SelectItem>',
+  /* 34 */ '            <SelectItem value="active">재직</SelectItem>',
+  /* 35 */ '            <SelectItem value="leave">휴직</SelectItem>',
+  /* 36 */ '          </SelectContent>',
+  /* 37 */ '        </Select>',
+  /* 38 */ '        <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="이름 검색" />',
+  /* 39 */ '      </div>',
+  /* 40 */ '      <Table>',
+  /* 41 */ '        <TableHeader>',
+  /* 42 */ '          <TableRow>',
+  /* 43 */ '            <TableHead>이름</TableHead>',
+  /* 44 */ '            <TableHead>부서</TableHead>',
+  /* 45 */ '            <TableHead>상태</TableHead>',
+  /* 46 */ '          </TableRow>',
+  /* 47 */ '        </TableHeader>',
+  /* 48 */ '        <TableBody>',
+  /* 49 */ '          {members.map((m) => (',
+  /* 50 */ '            <TableRow key={m.id}>',
+  /* 51 */ '              <TableCell>{m.name}</TableCell>',
+  /* 52 */ '              <TableCell>{m.dept}</TableCell>',
+  /* 53 */ '              <TableCell>{m.status}</TableCell>',
+  /* 54 */ '            </TableRow>',
+  /* 55 */ '          ))}',
+  /* 56 */ '        </TableBody>',
+  /* 57 */ '      </Table>',
+  /* 58 */ '    </div>',
+  /* 59 */ '  );',
+  /* 60 */ '}',
+].join('\n');
+
+/** 작은 폼 페이지 — 비-JSX 상수 편집(snap-failed) 케이스용. */
+const SMALL_FORM = [
+  /*  1 */ "import { useState } from 'react';",
+  /*  2 */ "import { Button, Input } from '@axiom/components/ui';",
+  /*  3 */ '',
+  /*  4 */ 'const PAGE_LIMIT = 20;',
+  /*  5 */ '',
+  /*  6 */ 'export default function LoginForm(): React.ReactNode {',
+  /*  7 */ "  const [id, setId] = useState('');",
+  /*  8 */ '  return (',
+  /*  9 */ '    <form className="login">',
+  /* 10 */ '      <Input value={id} onChange={(e) => setId(e.target.value)} placeholder="아이디" />',
+  /* 11 */ '      <Button type="submit">로그인</Button>',
+  /* 12 */ '    </form>',
+  /* 13 */ '  );',
+  /* 14 */ '}',
+].join('\n');
+
+/**
+ * 인라인 합성 픽스처 + 디스크 실파일 픽스처를 합친다.
+ * scripts/eval-fixtures/ 에 떨군 *.tsx/*.ts 는 basename(확장자 제외)을 키로 자동 로드된다.
+ * (실고객 코드는 .gitignore로 커밋 제외 — 추세만 보고, 절대 픽스처를 저장소에 올리지 않는다.)
+ */
+function loadDiskFixtures(): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    const dir = path.resolve(process.cwd(), 'scripts/eval-fixtures');
+    if (!fs.existsSync(dir)) return out;
+    for (const f of fs.readdirSync(dir)) {
+      if (!/\.(tsx?|jsx?)$/.test(f)) continue;
+      const key = f.replace(/\.(tsx?|jsx?)$/, '');
+      out[key] = fs.readFileSync(path.join(dir, f), 'utf8');
+    }
+  } catch {
+    /* 디스크 접근 불가 시 인라인 픽스처만 사용 */
+  }
+  return out;
+}
+
+export const FIXTURES: Record<string, string> = {
+  MEMBER_LIST,
+  SMALL_FORM,
+  ...loadDiskFixtures(),
+};
+
+export const CASES: EvalCase[] = [
+  // ── region 적용이 기대되는 케이스(ok) ─────────────────────────────────
+  {
+    id: 'select-filter',
+    file: 'MEMBER_LIST',
+    query: '재직상태 select 옵션을 api로 받아오게 해줘',
+    expectGate: 'ok',
+    note: 'Select 컨트롤 통짜 스냅 — 하이브리드 핵심 경로',
+  },
+  {
+    id: 'table-cell',
+    file: 'MEMBER_LIST',
+    query: '테이블에 입사일 컬럼을 추가해줘',
+    note: '테이블 행/헤더 편집 — 탐색(정답 미확정)',
+  },
+  // ── full 폴백이 기대되는 케이스(게이트별) ─────────────────────────────
+  {
+    id: 'missing-feature',
+    file: 'MEMBER_LIST',
+    query: '엑셀 다운로드 기능을 붙여줘',
+    expectGate: 'anchor-missing',
+    note: '파일에 없는 기능 — 앵커 부재 → full',
+  },
+  {
+    id: 'jsx-comment-overlap',
+    file: 'MEMBER_LIST',
+    query: '재직상태 필터 주석 부분을 정리해줘',
+    expectGate: 'ok',
+    note: '발견: anchor-comment 게이트는 //·/* */만 인식, JSX 주석 {/* */}은 못 잡아 실제 Select로 스냅됨(갭 후보)',
+  },
+  {
+    id: 'import-anchor',
+    file: 'MEMBER_LIST',
+    query: 'useApi import 적용 방식을 바꿔줘',
+    expectGate: 'anchor-import',
+    note: '최고 매칭이 import 라인 — 편집 영역 부적합',
+  },
+  {
+    id: 'nonjsx-const',
+    file: 'SMALL_FORM',
+    query: 'PAGE_LIMIT 값을 50으로 수정해줘',
+    expectGate: 'snap-failed',
+    note: '비-JSX 상수 — 감싸는 완결 JSX 없음 → full',
+  },
+
+  // ══ 실파일(peoplify) 측정 케이스 — eval-fixtures/*.tsx 자동 로드 ══════════
+  //   expectGate는 거의 비워 측정에 집중(앞선 합성 케이스가 게이트 회귀를 지킴).
+  //   엑셀/다운로드처럼 파일에 없는 어휘만 anchor-missing 가드로 못박는다.
+
+  // EmployeeListPage — 부서/재직상태/투입상태 select, 검색, 페이지네이션, 테이블
+  { id: 'emp-list-dept-api', file: 'EmployeeListPage', query: '부서 셀렉트 옵션을 부서 목록 API로 받아오게 해줘', note: '실파일: 부서 Select' },
+  { id: 'emp-list-status-code', file: 'EmployeeListPage', query: '재직상태 셀렉트를 공통코드로 채워줘', note: '실파일: 재직상태 Select' },
+  { id: 'emp-list-phone-col', file: 'EmployeeListPage', query: '직원 테이블에 연락처 컬럼을 추가해줘', note: '실파일: 테이블 컬럼 추가' },
+  { id: 'emp-list-excel', file: 'EmployeeListPage', query: '엑셀 다운로드 버튼을 추가해줘', expectEligible: false, note: '실파일: 없는 기능 → full 가드(게이트 무관, 적용만 막으면 OK)' },
+
+  // EmployeeEditPage — 부서/직급/재직상태 select, 퇴사일, 스킬 태그
+  { id: 'emp-edit-grade-add', file: 'EmployeeEditPage', query: '직급 셀렉트에 수석 항목을 추가해줘', note: '실파일: 직급 Select 옵션 추가' },
+  { id: 'emp-edit-resign-valid', file: 'EmployeeEditPage', query: '퇴사일은 입사일 이후만 선택되게 검증을 추가해줘', note: '실파일: 폼 검증' },
+  { id: 'emp-edit-skill-dup', file: 'EmployeeEditPage', query: '기술 스택 추가 시 중복이면 안내문구를 보여줘', note: '실파일: 스킬 태그 입력' },
+
+  // EmployeeFormPage — 부서/직급 select, 스킬
+  { id: 'emp-form-dept-default', file: 'EmployeeFormPage', query: '부서 셀렉트 기본 선택을 개발팀으로 바꿔줘', note: '실파일: 등록폼 부서 Select' },
+  { id: 'emp-form-skill-kotlin', file: 'EmployeeFormPage', query: '추천 기술 스택에 Kotlin을 추가해줘', note: '실파일: 추천 스킬' },
+
+  // EmployeeDetailPage — 탭, 투입이력 테이블
+  { id: 'emp-detail-history-col', file: 'EmployeeDetailPage', query: '투입 이력 테이블에 비고 컬럼을 추가해줘', note: '실파일: 투입이력 테이블' },
+  { id: 'emp-detail-contact', file: 'EmployeeDetailPage', query: '요약 카드에 연락처를 한 줄 더 보여줘', note: '실파일: 요약 카드' },
+
+  // ProjectListPage — 탭, 검색, 기술스택/PM select
+  { id: 'proj-list-tech-node', file: 'ProjectListPage', query: '기술스택 셀렉트에 Node.js 옵션을 추가해줘', note: '실파일: 기술스택 Select' },
+  { id: 'proj-list-pm-api', file: 'ProjectListPage', query: 'PM 셀렉트를 API로 받아오게 해줘', note: '실파일: PM Select' },
+  { id: 'proj-list-search-ph', file: 'ProjectListPage', query: '프로젝트명·고객사 검색 입력의 안내 문구를 바꿔줘', note: '실파일: 검색 input' },
+
+  // ProjectDetailPage — 투입인력 테이블, 배정 버튼
+  { id: 'proj-detail-member-col', file: 'ProjectDetailPage', query: '투입 인력 테이블에 연락처 컬럼을 추가해줘', note: '실파일: 투입인력 테이블' },
+  { id: 'proj-detail-excel', file: 'ProjectDetailPage', query: '엑셀 다운로드 기능을 붙여줘', expectEligible: false, note: '실파일: 없는 기능 → full 가드(게이트 무관)' },
+
+  // ProjectAssignPage — 기술스택/투입률/경력/부서 필터 select, 역할 select
+  { id: 'proj-assign-exp-opts', file: 'ProjectAssignPage', query: '경력 필터 셀렉트 옵션을 3년/5년/10년으로 바꿔줘', note: '실파일: 경력 필터 Select' },
+  { id: 'proj-assign-role-qa', file: 'ProjectAssignPage', query: '역할 셀렉트에 QA를 추가해줘', note: '실파일: 역할 Select' },
+  { id: 'proj-assign-dept-api', file: 'ProjectAssignPage', query: '부서 필터 셀렉트를 부서 API로 받아오게 해줘', note: '실파일: 부서 필터 Select' },
+
+  // ProjectStatusPage — 상태/부서/철수임박 select, 테이블
+  { id: 'proj-status-add-wait', file: 'ProjectStatusPage', query: '상태 셀렉트에 대기 항목을 추가해줘', note: '실파일: 상태 Select' },
+  { id: 'proj-status-leave-60', file: 'ProjectStatusPage', query: '철수 임박 필터에 60일 이내 옵션을 추가해줘', note: '실파일: 철수임박 Select' },
+
+  // ══ 임의 요소(비-Select/비-table) — 도메인 한글 콘텐츠로 가리킴: 앵커 품질(B) 측정용 ══════
+  //   th/td/label/span 등 다양한 enclosing 요소. 구조어 없이 화면 텍스트로만 지시.
+  { id: 'q-rate-cell', file: 'ProjectDetailPage', query: '투입률을 퍼센트 막대로 표시해줘', note: 'B: 투입률 th(콘텐츠) → enclosing 요소' },
+  { id: 'q-leave-date', file: 'ProjectStatusPage', query: '철수 예정일 표기를 날짜만 보이게 바꿔줘', note: 'B: 철수 예정일 th' },
+  { id: 'q-resign-input', file: 'EmployeeEditPage', query: '퇴사일 입력칸 안내문을 추가해줘', note: 'B: 퇴사일 label/Input' },
+  { id: 'q-skill-tag', file: 'EmployeeFormPage', query: '선택된 기술 스택 태그를 더 크게 보여줘', note: 'B: 스킬 태그 span' },
+  { id: 'q-summary-email', file: 'EmployeeDetailPage', query: '요약 카드의 이메일을 굵게 표시해줘', note: 'B: 요약 카드 내 이메일' },
+];

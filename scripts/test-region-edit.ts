@@ -204,5 +204,132 @@ console.log('\nfindUnresolvedReferences — 쪼개진/멀티라인 import 해소
   check('bare 커스텀 타입(TFoo)은 여전히 미해소', !d5.ok && d5.unresolved.includes('TFoo'), `unresolved=[${d5.unresolved.join(',')}]`);
 }
 
+// ─── 토큰 어휘 브리징 + 구조 랜드마크 라우팅 (측정 루프가 산출한 개선의 회귀 고정) ──────
+console.log('\n어휘 브리징 / 구조 랜드마크 라우팅:');
+{
+  // 브리지: 순수 한글 "셀렉트"가 영문 <Select>에 매칭돼 region 적용(이전엔 점수 미달로 full 폴백).
+  const r = locateEditRegion(SRC, '재직상태 셀렉트를 공통코드로 바꿔줘');
+  check('한글 "셀렉트" → <Select> 브리지로 ok', r.safety.ok && firstJsxTag(r.region) === 'Select', `gate=${r.safety.gate}, root=${firstJsxTag(r.region)}`);
+}
+{
+  const TABLE_SRC = [
+    'export default function P(): React.ReactNode {',
+    '  return (',
+    '    <div>',
+    '      <table>',
+    '        <thead><tr><th>이름</th></tr></thead>',
+    '        <tbody><tr><td>{x.name}</td></tr></tbody>',
+    '      </table>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  // 랜드마크: "테이블 컬럼" 요청은 표 여는 줄이 2점을 못 얻지만, 표가 하나뿐이면 그 표로 스냅.
+  const r = locateEditRegion(TABLE_SRC, '테이블에 부서 컬럼을 추가해줘');
+  check('단일 <table> → 랜드마크 라우팅 ok', r.safety.ok && firstJsxTag(r.region) === 'table', `gate=${r.safety.gate}, region=${r.startLine}~${r.endLine}`);
+  check('표 전체를 region으로 잡음', r.region.includes('<thead>') && r.region.includes('</table>'));
+}
+{
+  // 표가 둘이면 모호 → 라우팅 안 함(안전). 토큰이 표 밖에만 걸려 full 폴백.
+  const MULTI = [
+    'export default function P(): React.ReactNode {',
+    '  return (<div>',
+    '    <table><tbody><tr><td>a</td></tr></tbody></table>',
+    '    <table><tbody><tr><td>b</td></tr></tbody></table>',
+    '  </div>);',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(MULTI, '테이블에 컬럼 추가');
+  check('표 2개 → 모호로 라우팅 안 함(폴백)', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+
+// ─── 앵커 품질 스코어링(B) — 컴포넌트 이름 없이 화면 한글로 임의 요소 가리키기 ──────────
+console.log('\n앵커 품질 스코어링(B):');
+{
+  // 단일 콘텐츠어("투입률")가 td 텍스트에 유일 → 1토큰이어도 콘텐츠 앵커로 ok(Select/table 아님).
+  const B_SRC = [
+    'export default function P(): React.ReactNode {',
+    '  return (',
+    '    <div className="card">',
+    '      <section>',
+    '        <span className="label">{value}</span>',
+    '        <em className="cell">투입률</em>',
+    '      </section>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(B_SRC, '투입률 표기를 강조해줘');
+  check('단일 콘텐츠어 → 앵커 품질로 ok', r.safety.ok, `gate=${r.safety.gate}, region=${r.startLine}~${r.endLine}`);
+}
+{
+  // 콘텐츠어가 서로 다른 부모 요소로 흩어지면 모호 → full(안전).
+  const SCATTER = [
+    'export default function P(): React.ReactNode {',
+    '  return (',
+    '    <div>',
+    '      <section>',
+    '        <span>금액</span>',
+    '      </section>',
+    '      <footer>',
+    '        <span>금액</span>',
+    '      </footer>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(SCATTER, '금액 표시를 바꿔줘');
+  check('콘텐츠어 흩어짐 → 모호로 폴백', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+{
+  // 주석 속 단어는 앵커 아님(우연일치 배제) → 폴백.
+  const COMMENT = [
+    'export default function P(): React.ReactNode {',
+    '  // 보너스 계산 로직 메모',
+    '  return (<div><span>{name}</span></div>);',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(COMMENT, '보너스 항목을 손봐줘');
+  check('주석 속 단어는 콘텐츠 앵커 아님 → 폴백', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+
+// ─── 섹션-주석 랜드마킹(E) — 사람이 단 {/* 섹션 */} 주석을 랜드마크로 ──────────────────
+console.log('\n섹션-주석 랜드마킹(E):');
+{
+  const E_SRC = [
+    'export default function P(): React.ReactNode {',
+    '  return (',
+    '    <div>',
+    '      {/* 직원 요약 카드 */}',
+    '      <div className="bg-card">',
+    '        <span>{name}</span>',
+    '      </div>',
+    '      {/* 필터바 */}',
+    '      <div className="toolbar">',
+    '        <span>{x}</span>',
+    '      </div>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  // "요약 카드" 주석 → 그 주석이 가리키는 다음 요소(bg-card div)로 스냅.
+  const r = locateEditRegion(E_SRC, '요약 카드에 연락처를 추가해줘');
+  check('JSX 섹션 주석 → 다음 요소로 스냅', r.safety.ok && r.region.includes('bg-card'), `gate=${r.safety.gate}, region=${r.startLine}~${r.endLine}`);
+  // 앵커 줄을 요소로 보고하므로 게이트가 주석으로 오인하지 않음.
+  check('게이트가 ok (주석 오인 없음)', r.safety.gate === 'ok', `gate=${r.safety.gate}`);
+}
+{
+  // 로직 // 주석(다음이 비-JSX)은 랜드마크 안 됨 → 폴백(섹션 라벨만 인정).
+  const LOGIC = [
+    'export default function P(): React.ReactNode {',
+    '  // 보너스 계산 로직',
+    '  const x = calc();',
+    '  return (<div><span>{x}</span></div>);',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(LOGIC, '보너스 계산을 손봐줘');
+  check('로직 // 주석(다음 비-JSX) → 폴백', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
