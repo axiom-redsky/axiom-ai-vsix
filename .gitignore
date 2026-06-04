@@ -13,3 +13,6 @@ scripts/eval-fixtures/*.js
 
 # eval:e2e 녹화물(모델 원시 출력) — 실고객 픽스처 파생이라 커밋 제외(로컬 전용)
 scripts/eval-recordings/
+
+# eval:e2e 정답(골든) 파일 — 실고객 픽스처 파생이라 커밋 제외(로컬 전용)
+scripts/eval-goldens/

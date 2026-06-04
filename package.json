@@ -440,7 +440,8 @@
     "probe:bc": "node scripts/run-probe-bc-primitives.mjs",
     "probe:real": "node scripts/run-probe-eval-real.mjs",
     "eval:e2e": "node scripts/run-eval-e2e.mjs",
-    "eval:e2e:record": "node scripts/run-eval-e2e.mjs --record"
+    "eval:e2e:record": "node scripts/run-eval-e2e.mjs --record",
+    "eval:e2e:bless": "node scripts/run-eval-e2e.mjs --bless"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
