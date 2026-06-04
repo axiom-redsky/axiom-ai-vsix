@@ -139,11 +139,38 @@ export function RegionIoApp(): React.ReactElement {
             <div style={{ opacity: 0.85 }}>{input.safety.reason}</div>
           </div>
 
+          {/* 입력(다이어트) 품질 — axiom 입력구성 책임 구간(모델 무관) */}
+          <div
+            style={{
+              fontSize: 12,
+              padding: '4px 8px',
+              borderRadius: 4,
+              marginBottom: 4,
+              border: `1px solid ${input.quality.adequate ? 'rgba(46,160,67,0.6)' : 'rgba(248,113,113,0.6)'}`,
+              background: input.quality.adequate ? 'rgba(46,160,67,0.12)' : 'rgba(248,113,113,0.12)',
+            }}
+          >
+            🧪 입력 품질: {input.quality.adequate ? '충분(adequate)' : '부실(inadequate)'} · 다이어트비 {input.quality.dietRatio}
+            <div style={{ opacity: 0.7, marginTop: 2 }}>
+              ※ 이 구간은 <b>axiom의 입력 구성</b> 책임입니다(모델과 무관 — region 타깃·컨텍스트 충분성).
+            </div>
+            {input.quality.flags.length === 0 ? (
+              <div style={{ opacity: 0.6, marginTop: 4 }}>플래그 없음</div>
+            ) : (
+              input.quality.flags.map((f, i) => (
+                <div key={i} style={{ marginTop: 4 }}>
+                  {f.severity === 'high' ? '🔴' : f.severity === 'medium' ? '🟡' : '🔵'} <b>[{f.code}]</b> {f.message}
+                </div>
+              ))
+            )}
+          </div>
+
           <div style={{ ...sectionTitle, marginTop: 8 }}>영역별 분리 조각</div>
           <Block title="① 편집 영역 (region — 모델이 다시 쓸 부분)" body={input.sections.region} open />
           <Block title="② 의존성 헤더 (depsHeader — 읽기 전용 참고)" body={input.sections.depsHeader} />
           <Block title="③ 참조하는 기존 선언 (backingDecls — grounding)" body={input.sections.backingDecls} />
           <Block title="④ 참조 스펙 (referencedSpec — api-spec 등)" body={input.sections.referencedSpec} />
+          <Block title="⑤ 기존 컨트롤 인벤토리 (B — 재생성 금지 컨텍스트)" body={input.sections.controlInventory} />
           <Block title="▣ 실제 전송 system 프롬프트 전체 (조립 결과)" body={input.systemPrompt} chars={input.systemPromptChars} />
         </div>
       )}
@@ -159,7 +186,7 @@ export function RegionIoApp(): React.ReactElement {
           ) : (
             <>
               <div style={{ fontSize: 12, marginBottom: 4 }}>
-                파싱: &lt;region&gt; {output.parsed.regionFound ? '있음' : '없음'} · &lt;hook&gt; {output.parsed.hooks.length}개 · &lt;import&gt; {output.parsed.imports.length}개
+                파싱: &lt;region&gt; {output.parsed.regionFound ? '있음' : '없음'} · &lt;hook&gt; {output.parsed.hooks.length}개 · &lt;import&gt; {output.parsed.imports.length}개 · &lt;replace&gt; {output.parsed.replaces.length}개
               </div>
               <Block title="① 파싱된 region (JSX 재작성)" body={output.parsed.region} open={output.parsed.regionFound} />
               {output.parsed.hooks.map((h, i) => (
@@ -171,6 +198,9 @@ export function RegionIoApp(): React.ReactElement {
                   .map((im) => `module="${im.module}"${im.named ? ` named="${im.named.join(', ')}"` : ''}${im.def ? ` def="${im.def}"` : ''}`)
                   .join('\n')}
               />
+              {output.parsed.replaces.map((r, i) => (
+                <Block key={`r${i}`} title={`④ 파싱된 replace[${i + 1}] (C — 기존 문장 교체) anchor="${r.anchor}"`} body={r.replacement} />
+              ))}
               <Block title="▣ 모델 원시 출력 전체" body={output.rawOutput} />
             </>
           )}

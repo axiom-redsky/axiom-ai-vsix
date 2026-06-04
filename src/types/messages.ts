@@ -150,6 +150,13 @@ export interface RegionIoInput {
   /** 실제 모델에 보낸 분리 입력(system) 전체 — 본체 buildHybridPrompt 결과 그대로. */
   systemPrompt: string;
   systemPromptChars: number;
+  /** 입력(다이어트) 품질 채점 — analyzeInputQuality 결과(모델 무관, axiom 입력구성 책임 구간). */
+  quality: {
+    adequate: boolean;
+    /** 입력/원본 문자수 비율(낮을수록 공격적 다이어트). */
+    dietRatio: number;
+    flags: { code: string; severity: 'high' | 'medium' | 'info'; message: string }[];
+  };
 }
 
 /** 영역(하이브리드) 편집의 "출력 결과물" — 모델 원시 출력 + 영역별 파싱. */

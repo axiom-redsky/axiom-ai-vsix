@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { locateEditRegion } from '../ai/RegionEdit';
 import { buildHybridPrompt } from '../ai/RegionEditService';
+import { analyzeInputQuality } from '../ai/RegionInputQuality';
 import { splitIntoSections, scoreSections, selectByBudget, extractApiPaths, matchedApiPaths, formatExactPathDirective, tokenizeQuery } from '../ai/SectionExtractor';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import { LlmService } from '../ai/LlmService';
@@ -131,6 +132,10 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
       },
       systemPrompt,
       systemPromptChars: systemPrompt.length,
+      quality: (() => {
+        const q = analyzeInputQuality(source, query);
+        return { adequate: q.adequate, dietRatio: q.leanness.dietRatio, flags: q.flags };
+      })(),
     };
     // 분리 입력을 먼저 보내 — 모델 응답을 기다리는 동안 사용자가 입력을 먼저 검토하게.
     this._post({ type: 'regionIoInput', input });

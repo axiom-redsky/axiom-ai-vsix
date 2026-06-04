@@ -1238,6 +1238,28 @@ function netDelims(line: string): number {
 }
 
 /**
+ * 앵커가 든 라인 인덱스를 관대하게 찾는다(0-based, 없으면 -1).
+ *
+ * 모델은 멀티라인 문장(`const {\n…\n} = useApi(…)`)을 앵커로 줄 때 **한 줄로 펼쳐** 쓰는 경향이 있어
+ * (실측: 패널 sLLM 출력), 단순 `line.includes(anchor)`로는 어떤 단일 라인도 매칭 못 한다. 3단계로:
+ *  ① 정확 단일 라인 ② 공백 정규화 단일 라인 ③ 첫 `{` 이전 distinctive head(예: `useApi<T>(ENDPOINT,`).
+ */
+function resolveAnchorLine(lines: string[], anchor: string): number {
+  const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
+  let i = lines.findIndex((l) => l.includes(anchor));
+  if (i >= 0) return i;
+  const na = norm(anchor);
+  i = lines.findIndex((l) => norm(l).includes(na));
+  if (i >= 0) return i;
+  const head = norm(anchor.split('{')[0]); // 멀티라인 펼침 대응 — 호출 head만으로 매칭
+  if (head.length >= 8) {
+    i = lines.findIndex((l) => norm(l).includes(head));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+/**
  * 모델이 낸 `<replace>` 블록을 결정론적으로 적용한다 — region(JSX)·hook(삽입)이 못 다루는
  * **영역 밖 기존 문장 수정**(예: `useApi(endpoint, { params })` 의 params 보강)을 위한 채널.
  *
@@ -1255,7 +1277,7 @@ export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[]): Repl
     const anchor = b.anchor.trim();
     if (!anchor || !b.replacement.trim()) continue;
     const lines = text.split('\n');
-    const aIdx = lines.findIndex((l) => l.includes(anchor));
+    const aIdx = resolveAnchorLine(lines, anchor);
     if (aIdx < 0) {
       unresolved.push(anchor);
       continue;
