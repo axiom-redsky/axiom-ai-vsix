@@ -145,6 +145,17 @@ export const AI_DEFAULTS = {
     anchorSearchRadius: 3,
   },
   /**
+   * 시나리오 C(열린 파일 수정) 프롬프트 컴팩트 모드. 약한 sLLM 대상 기본값.
+   * - 약한 모델은 "설명 먼저 → 블록 나중" + 4개 출력모드(structural/lines/patch/full) 선택부담에
+   *   눌려, 자연어 계획만 쓰고 axiom-action 블록 없이 종료하는 실패가 잦다(시나리오 C 누락).
+   * - compactModes=true: ① 블록을 먼저 내고 설명은 1~2줄로 제한, ② 모드를 핵심 2개로 좁힌다
+   *   (lines 가능 시 structural+lines, 불가 시 structural+patch). full은 최후의 수단으로만 표기.
+   * - 상위 모델에선 false로 두면 종전처럼 전체 모드를 제시한다.
+   */
+  scenarioC: {
+    compactModes: true,
+  },
+  /**
    * 디버그용 기본값.
    */
   debug: {

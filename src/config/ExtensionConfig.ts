@@ -131,6 +131,14 @@ export class ExtensionConfig {
     };
   }
 
+  /**
+   * 시나리오 C(열린 파일 수정) 프롬프트 컴팩트 모드 여부. 약한 sLLM 대상 기본 on.
+   * on이면 블록을 먼저 내도록 지시하고 출력 모드를 핵심 2개로 좁혀 "설명만 내고 종료" 실패를 줄인다.
+   */
+  static isScenarioCCompactModes(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('scenarioC.compactModes', AI_DEFAULTS.scenarioC.compactModes);
+  }
+
   /** 시스템 프롬프트 전문을 'axiom-ai: Prompt' 출력 채널에 기록할지 여부(디버그). */
   static isLogSystemPromptEnabled(): boolean {
     return ExtensionConfig._cfg().get<boolean>('debug.logSystemPrompt', AI_DEFAULTS.debug.logSystemPrompt);

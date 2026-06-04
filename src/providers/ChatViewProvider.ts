@@ -8,7 +8,7 @@ import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
-import { applyStructuralEdit, findUnresolvedReferences, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
+import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit } from '../ai/RegionEditService';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
@@ -2547,6 +2547,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this._corpusOutputChannel.appendLine(
               `[Axiom AI] ⚠️ 원본에서 찾지 못한 stub: ${restored.unmatched.join(', ')}`,
             );
+          }
+        }
+
+        // 중복 선언 가드 — 적용하면 컴파일이 깨지는 출력을 적용 직전에 차단한다.
+        // 약한 모델이 full·region 재작성에서 기존 const(예: `const departments = …`)를 state로 바꾸며
+        // 원본을 안 지워 같은 스코프에 같은 이름을 2번 선언하는 실패(실측)를 막는다. "applied != correct"
+        // 의 결정론적 안전망. 원본에 이미 있던 중복은 이 편집의 책임이 아니므로 새로 생긴 것만 차단한다.
+        if (/\.(tsx|ts)$/.test(action.filePath) && action.generatedCode) {
+          const after = findDuplicateDeclarations(action.generatedCode);
+          if (after.length > 0) {
+            const before = new Set(
+              originalContent ? findDuplicateDeclarations(originalContent) : [],
+            );
+            const introduced = after.filter((n) => !before.has(n));
+            if (introduced.length > 0) {
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ⛔ 중복 선언 가드 (${action.filePath}): ${introduced.join(', ')} — 같은 스코프 2회 이상 선언(컴파일 에러) → 적용 거부`,
+              );
+              this._post({
+                type: 'token',
+                content:
+                  `\n\n> ⛔ **이 수정은 적용하지 않았습니다.** \`${introduced.join('`, `')}\`(을)를 같은 스코프에서 ` +
+                  `두 번 선언해, 그대로 적용하면 \`Cannot redeclare block-scoped variable\` 컴파일 에러가 납니다 ` +
+                  `(기존 선언을 지우지 않고 새로 추가한 경우입니다). 기존 선언을 재사용하거나 한쪽만 남기도록 다시 시도해주세요.\n`,
+              });
+              this._post({ type: 'fileCancelled' });
+              break;
+            }
           }
         }
 

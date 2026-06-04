@@ -186,6 +186,11 @@
           "default": false,
           "description": "[실험] 영역(region/hybrid) 편집. TSX 수정 요청에서 확장이 편집 영역을 결정론적으로 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성하고, 새 훅/import는 구조적으로 삽입합니다. 게이트 미통과·의존성 미해소 시 기존 전체 입력 방식으로 자동 폴백합니다(파일 파손 방지). 폐쇄망 점진 도입용, 기본 꺼짐."
         },
+        "axiom-ai.scenarioC.compactModes": {
+          "type": "boolean",
+          "default": true,
+          "description": "열린 파일 수정(시나리오 C) 프롬프트를 약한 sLLM에 맞춰 압축합니다. 켜면 ① axiom-action 블록을 먼저 출력하도록 지시하고 설명은 1~2줄로 제한하며, ② 출력 모드를 핵심 2개(라인 가능 시 structural+lines, 불가 시 structural+patch)로 좁힙니다. 약한 모델이 설명만 길게 쓰고 코드 블록 없이 종료하는 실패를 줄입니다. 상위 모델에서 전체 모드를 제시하려면 끄세요. 기본 켜짐."
+        },
         "axiom-ai.promptDiet.qnaGating": {
           "type": "boolean",
           "default": true,

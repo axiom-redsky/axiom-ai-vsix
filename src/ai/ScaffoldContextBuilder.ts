@@ -423,7 +423,7 @@ ${scaffoldSection}${fileSection}${referencedSection}`;
       const cPrompt = this._buildScenarioCPrompt(
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
         linesAllowed, lineEditCfg.requireAnchor, !!ctx.selection,
-        referencedSection,
+        referencedSection, ExtensionConfig.isScenarioCCompactModes(),
       );
       // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 합산)
       this._lastBreakdown.rulesChars = Math.max(
@@ -531,12 +531,20 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     requireAnchor: boolean,
     hasSelection: boolean,
     referencedSection = '',
+    compactModes = false,
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
       : '[현재 열린 파일 경로]';
 
     const templateType = 'page';
+
+    // 컴팩트 모드는 선택 영역이 없을 때만 의미가 있다(선택 영역은 patch를 강제하므로 별도 경로).
+    // lines가 허용될 때 patch는 lines와 역할이 겹쳐 약한 모델의 선택부담만 키운다 → patch를 빼고
+    // structural(추가)+lines(치환/삽입/삭제) 2개로 좁힌다. lines 불가(슬라이싱 등) 시엔 patch가
+    // 유일한 국소 편집 수단이라 유지한다(structural+patch).
+    const compact = compactModes && !hasSelection;
+    const dropPatch = compact && linesAllowed;
 
     const mp = ExtensionConfig.getMultiPatchConfig();
 
@@ -601,8 +609,12 @@ const { data, isPending, error } = useApi<TResponse>('/api/endpoint');
       : `> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.${
           linesAllowed
             ? `
-> - **lines 모드 (그 외 일반 코드 수정의 기본)**: 위 파일에 붙은 라인 번호를 보고 **바뀐 줄만** \`<edit>\`로 출력하세요. 원본을 다시 복사하지 않아 출력이 가장 작습니다.
+> - **lines 모드 (그 외 일반 코드 수정의 기본)**: 위 파일에 붙은 라인 번호를 보고 **바뀐 줄만** \`<edit>\`로 출력하세요. 원본을 다시 복사하지 않아 출력이 가장 작습니다.${
+                dropPatch
+                  ? ''
+                  : `
 > - **patch 모드**: 라인 번호가 헷갈리거나 lines로 표현하기 어려운 국소 변경에 한해 \`<patch>\` 블록 사용(폴백).`
+              }`
             : `
 > - **patch 모드**: 기존 코드의 특정 부분을 고치는 국소 변경(선택 영역 수정 등)은 \`<patch>\` 블록 N개로 표현.`
         }`;
@@ -646,10 +658,15 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 ## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
 현재 열린 파일에 코드 추가/수정 요청입니다. 아래 규칙을 반드시 따르세요:
 
-1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
+${compact
+  ? `1. **⚠️ axiom-action 블록을 먼저 출력**하세요. 설명을 길게 쓰다 블록을 빠뜨리면 아무것도 적용되지 않습니다 — 블록이 가장 중요합니다.
+2. 블록 뒤에 변경 요약을 **1~2줄로만 짧게** 덧붙이세요 (길게 쓰지 말 것).
+3. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
+4. 아래 출력 모드 중 하나를 선택하고, JSON 메타데이터와 코드/edit 블록을 분리하세요`
+  : `1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
 2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
 3. 수정 범위에 따라 아래 출력 모드 중 하나를 선택하세요 (출력은 작을수록 좋습니다)
-4. JSON 메타데이터와 코드/edit 블록을 분리하여 작성하세요
+4. JSON 메타데이터와 코드/edit 블록을 분리하여 작성하세요`}
 
 ### ⚠️ 훅(useApi 등) 삽입 위치 규칙 — 위반 시 런타임 즉시 크래시
 새로운 \`useApi\` / \`useState\` / \`useEffect\` 등 \`use*\` 훅 호출을 추가할 때:
@@ -665,7 +682,7 @@ ${modeSelectionRules}
 > - **full 모드**: 파일 절반 이상을 재작성해야 할 때만 사용(출력이 가장 큼 — 최후의 수단).
 > - 선택 영역이 위에 제시되어 있으면 그 영역과 import 추가에만 한정하세요.
 
-${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSelection ? `${lineModeBlock}\n\n` : ''}${patchModeBlock}
+${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSelection ? `${lineModeBlock}\n\n` : ''}${dropPatch ? '' : patchModeBlock}
 
 **full 모드** — 전체 파일 재작성이 필요할 때만:
 

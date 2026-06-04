@@ -1031,6 +1031,64 @@ export function findUnusedInsertedBindings(hookCode: string, finalText: string):
 }
 
 /**
+ * 같은 렉시컬 스코프에서 const/let 식별자가 2회 이상 선언돼 TypeScript
+ * `Cannot redeclare block-scoped variable` 컴파일 에러를 내는 경우를 결정론으로 찾는다.
+ *
+ * 약한 모델이 전체/영역 재작성(full·region)에서 기존 파생 const를 state로 바꾸며 **원본을 안 지워**
+ * 같은 이름을 두 번 선언하는 실패(실측: `departments`·`deploymentStatuses` 중복)를 적용 전에 차단하는
+ * 안전망. 외부 의존성 0 — 문자열·주석 인식 중괄호 스캔 + parseBindingPattern만 사용한다.
+ *
+ * 스코프 식별: `{` 마다 고유 id를 push, `}` 마다 pop(중괄호는 한 줄 안에서 **텍스트 순서대로** 처리 —
+ * `} else {` 처럼 닫고 여는 형제 블록을 구분). 선언은 그 줄 진입 시점의 최상위 스코프에 귀속한다.
+ * → 서로 다른 스코프(다른 콜백·블록)의 동명 const는 합법이라 잡지 않는다(오탐 방지).
+ * 정밀도 우선: 줄 시작이 const/let인 단일 선언만 본다(for 헤더·다중행 구조분해 등은 제외 → 미탐 허용).
+ */
+export function findDuplicateDeclarations(fullText: string): string[] {
+  const scopeStack: number[] = [0]; // 0 = 모듈 스코프
+  let nextScopeId = 1;
+  const declsByScope = new Map<number, Map<string, number>>();
+  const dupes = new Set<string>();
+
+  for (const raw of fullText.split('\n')) {
+    // 1) 이 줄의 선언을 현재(줄 진입 시점) 스코프에 귀속한다.
+    const m = raw.trim().match(/^(?:export\s+)?(?:const|let)\s+([\s\S]*?)(?:=(?![=>])|;)/);
+    if (m) {
+      const names = parseBindingPattern(m[1].trim());
+      if (names.length > 0) {
+        const scope = scopeStack[scopeStack.length - 1];
+        let map = declsByScope.get(scope);
+        if (!map) {
+          map = new Map();
+          declsByScope.set(scope, map);
+        }
+        for (const n of names) {
+          const c = (map.get(n) ?? 0) + 1;
+          map.set(n, c);
+          if (c >= 2) dupes.add(n);
+        }
+      }
+    }
+    // 2) 이 줄의 중괄호를 텍스트 순서대로 적용해 다음 줄의 스코프를 갱신한다(문자열·줄주석 무시).
+    let inStr: string | null = null;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inStr) {
+        if (ch === inStr && raw[i - 1] !== '\\') inStr = null;
+        continue;
+      }
+      if (ch === '/' && raw[i + 1] === '/') break; // 줄 나머지는 주석
+      if (ch === '"' || ch === "'" || ch === '`') {
+        inStr = ch;
+        continue;
+      }
+      if (ch === '{') scopeStack.push(nextScopeId++);
+      else if (ch === '}' && scopeStack.length > 1) scopeStack.pop();
+    }
+  }
+  return [...dupes];
+}
+
+/**
  * 삽입된 코드 조각이 참조하는 타입·훅 심볼이 최종 파일에서 전부 해소되는지 검증한다.
  *
  * 자기완결성(dependency closure) 불변식의 결정론적 안전망:
