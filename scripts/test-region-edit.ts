@@ -6,7 +6,7 @@
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
 import { runHybridRegionEdit } from '../src/ai/RegionEditService';
-import { findUnresolvedReferences, resolveKnownImports } from '../src/ai/StructuralAnchor';
+import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 const SRC = [
   /*  1 */ "import { useState } from 'react';",
@@ -205,6 +205,50 @@ await (async () => {
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
     check('주석 처리된 컴포넌트는 오탐 없음 → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
   }
+
+  // grounding(영역 밖 const 수정 갭의 정공법): 편집 영역이 참조하는 모듈 스코프 const를 프롬프트에
+  //   주입(backingDecls)하고, 모델이 기존 항목 보존한 superset을 내면 확장이 무손실 교체로 적용한다.
+  {
+    const GSRC = [
+      "import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@axiom/components/ui';",
+      "import { useState } from 'react';",
+      '',
+      "const grades = ['사원', '대리', '과장'];",
+      '',
+      'export default function P(): React.ReactNode {',
+      "  const [grade, setGrade] = useState('');",
+      '  return (',
+      '    <div>',
+      '      <Select value={grade} onValueChange={setGrade}>',
+      '        <SelectTrigger><SelectValue placeholder="직급 선택" /></SelectTrigger>',
+      '        <SelectContent>',
+      '          {grades.map((g) => (<SelectItem key={g} value={g}>{g}</SelectItem>))}',
+      '        </SelectContent>',
+      '      </Select>',
+      '    </div>',
+      '  );',
+      '}',
+    ].join('\n');
+    const q = '직급 셀렉트에 수석 항목을 추가해줘';
+    const loc = locateEditRegion(GSRC, q);
+    check('grounding: backingDecls에 기존 const(grades, 사원 포함) 주입', loc.backingDecls.includes('grades') && loc.backingDecls.includes("'사원'"), `backing=${JSON.stringify(loc.backingDecls)}`);
+    check('grounding: 직급 Select 영역 eligible', loc.safety.ok, `gate=${loc.safety.gate}`);
+
+    // faithful superset(기존 전부 보존 + 수석) → 무손실 교체 적용
+    {
+      const model = `<region>\n${loc.region}\n</region>\n<hook>const grades = ['사원', '대리', '과장', '수석'];</hook>`;
+      const o = await runHybridRegionEdit(GSRC, q, async () => model);
+      check('grounding+superset → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+      check('최종 파일: 수석 추가 + 사원 보존', !!o.finalText && o.finalText.includes("'수석'") && o.finalText.includes("'사원'"));
+      check('grades 선언 1곳만(중복 없음)', !!o.finalText && (o.finalText.match(/const grades =/g) ?? []).length === 1);
+    }
+    // lossy(기존 사원 누락) → 교체 거부 → no-op 폴백(손실 적용 차단)
+    {
+      const model = `<region>\n${loc.region}\n</region>\n<hook>const grades = ['수석', '대리', '과장'];</hook>`;
+      const o = await runHybridRegionEdit(GSRC, q, async () => model);
+      check('grounding+lossy → no-op 폴백(손실 차단)', o.status === 'fallback' && o.reason === 'no-op', `status=${o.status}, reason=${o.reason}`);
+    }
+  }
 })();
 
 // ─── findUnresolvedReferences — 의존성 게이트 import 전체 스캔(useState 오탐 수정) ──────
@@ -373,6 +417,83 @@ console.log('\n섹션-주석 랜드마킹(E):');
   ].join('\n');
   const r = locateEditRegion(LOGIC, '보너스 계산을 손봐줘');
   check('로직 // 주석(다음 비-JSX) → 폴백', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+
+// ─── 기존 top-level const 결정론 교체(무손실 가드) — 영역 밖 선언 수정 갭 ────────────────
+console.log('\n기존 const 결정론 교체:');
+{
+  const BASE = [
+    "import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@axiom/components/ui';",
+    '',
+    "const grades = ['사원', '대리', '과장'];",
+    '',
+    'export default function P(): React.ReactNode {',
+    "  const [grade, setGrade] = useState('');",
+    '  return (',
+    '    <Select value={grade} onValueChange={setGrade}>',
+    '      <SelectTrigger><SelectValue /></SelectTrigger>',
+    '      <SelectContent>',
+    '        {grades.map((g) => (<SelectItem key={g} value={g}>{g}</SelectItem>))}',
+    '      </SelectContent>',
+    '    </Select>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  // (a) 무손실 superset 재선언 → 교체 적용(기존 항목 보존 + 수석 추가)
+  {
+    const { text, changes } = applyStructuralEdit(BASE, { hookCode: "const grades = ['사원', '대리', '과장', '수석'];" });
+    check('superset 재선언 → 교체 적용(수석 추가·사원 보존)', text.includes("'수석'") && text.includes("'사원'"), changes.join(' | '));
+    check('교체는 1곳만(중복 선언 없음)', (text.match(/const grades =/g) ?? []).length === 1, `count=${(text.match(/const grades =/g) ?? []).length}`);
+    check('교체 변경 기록', changes.some((c) => c.includes('교체') && c.includes('grades')));
+  }
+
+  // (b) 손실(기존 '사원' 누락) 재선언 → 교체 거부 → 원본 const 보존(손실 적용 차단)
+  {
+    const { text, changes } = applyStructuralEdit(BASE, { hookCode: "const grades = ['수석', '대리', '과장'];" });
+    check('손실 재선언 → 교체 거부(원본 보존)', text.includes("'사원'") && !text.includes("'수석'"), changes.join(' | '));
+    check('거부 사유 기록', changes.some((c) => c.includes('거부')));
+  }
+
+  // (c) primitive const 값 변경 → 교체 허용(PAGE_LIMIT 20→50)
+  {
+    const P = [
+      'const PAGE_LIMIT = 20;',
+      '',
+      'export default function P(): React.ReactNode {',
+      '  return (<div>{PAGE_LIMIT}</div>);',
+      '}',
+    ].join('\n');
+    const { text } = applyStructuralEdit(P, { hookCode: 'const PAGE_LIMIT = 50;' });
+    check('primitive const 값 변경 → 교체', text.includes('PAGE_LIMIT = 50') && !text.includes('PAGE_LIMIT = 20'));
+  }
+
+  // (d) 컴포넌트 useState 초기값 변경 → in-place 교체(부서 기본선택 변경 패턴, case-2)
+  {
+    const C = [
+      "import { useState } from 'react';",
+      '',
+      'export default function P(): React.ReactNode {',
+      "  const [department, setDepartment] = useState('');",
+      '  return (<div>{department}</div>);',
+      '}',
+    ].join('\n');
+    const { text, changes } = applyStructuralEdit(C, { hookCode: "const [department, setDepartment] = useState('개발팀');" });
+    check('useState 초기값 재선언 → in-place 교체', text.includes("useState('개발팀')") && !text.includes("useState('')"), changes.join(' | '));
+    check('useState 선언 1곳만(중복 없음)', (text.match(/const \[department/g) ?? []).length === 1);
+  }
+
+  // (e) 컴포넌트 헬퍼 함수 재선언은 교체 안 함(formatDate/handleSearch류 헛교체 방지)
+  {
+    const C = [
+      'export default function P(): React.ReactNode {',
+      '  const handleSearch = () => doSearch();',
+      '  return (<div onClick={handleSearch} />);',
+      '}',
+    ].join('\n');
+    const { text } = applyStructuralEdit(C, { hookCode: 'const handleSearch = () => doOther();' });
+    check('헬퍼 함수 재선언 → 교체 안 함(원본 유지)', text.includes('doSearch()') && !text.includes('doOther()'));
+  }
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);

@@ -46,7 +46,17 @@ function buildHybridPrompt(
   startLine: number,
   endLine: number,
   referencedSpec?: string,
+  backingDecls?: string,
 ): string {
+  // 편집 영역이 참조하는 모듈 스코프 const(예: const grades=[...]) — 항목 추가/수정 grounding.
+  // depsHeader엔 top-level const가 없어 모델이 기억으로 배열을 재구성하다 기존 항목을 흘린다.
+  // 실제 선언을 주입하고 "전부 보존해 재선언" 규칙을 줘, 확장의 무손실 교체가 적용되게 한다.
+  const backingSection = backingDecls?.trim()
+    ? `## 편집 영역이 참조하는 기존 선언 (수정 가능)\n\`\`\`tsx\n${backingDecls.trim()}\n\`\`\`\n` +
+      `> ❗ 위 선언(옵션 배열 등)에 항목을 **추가·변경**해야 하면, 그 선언을 <hook>에 **기존 항목을 하나도 ` +
+      `빠뜨리지 말고 전부 포함한 채** 다시 선언하세요(요청한 추가분만 덧붙임). 확장이 기존 위치에 교체 적용합니다. ` +
+      `기존 항목을 지어내거나 누락하면 적용이 거부됩니다.\n\n`
+    : '';
   // 참조 스펙(예: /plan/api-spec.md)이 있으면 의존성 헤더 위에 주입한다. 안 그러면 모델이
   // 응답 타입·쿼리 파라미터를 추측해(code_type·category 등) 의존성 게이트에서 full 폴백된다.
   // refResult.block 자체에 이미 "추측 금지" 경고가 들어 있고, 여기서 쿼리 파라미터 경고만 보강한다.
@@ -83,6 +93,7 @@ function buildHybridPrompt(
     `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n\n` +
     specSection +
     `## 의존성 헤더 (읽기 전용)\n\`\`\`tsx\n${depsHeader}\n\`\`\`\n\n` +
+    backingSection +
     `## 편집 영역 (원본 ${startLine}~${endLine}줄)\n\`\`\`tsx\n${region}\n\`\`\``
   );
 }
@@ -113,7 +124,7 @@ export async function runHybridRegionEdit(
   }
 
   // 2) 모델 호출 (영역 + 의존성 헤더만)
-  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec);
+  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls);
   let modelOut: string;
   try {
     modelOut = await callModel(system, query);

@@ -206,9 +206,8 @@ export const CASES: EvalCase[] = [
   { id: 'emp-list-excel', file: 'EmployeeListPage', query: '엑셀 다운로드 버튼을 추가해줘', expectEligible: false, note: '실파일: 없는 기능 → full 가드(게이트 무관, 적용만 막으면 OK)' },
 
   // EmployeeEditPage — 부서/직급/재직상태 select, 퇴사일, 스킬 태그
-  // ⚠ 개선 타깃(미못박음): 기존 top-level `const grades=[...]`(영역 밖)에 항목 추가가 필요한데 모델이
-  //    배열 통째 재선언 → structural dedup 스킵 → no-op. "기존 const 결정론 교체" 구현 시 applied로 전환되어야 함.
-  { id: 'emp-edit-grade-add', file: 'EmployeeEditPage', query: '직급 셀렉트에 수석 항목을 추가해줘', note: '실파일: 직급 Select 옵션 추가 — 현재 no-op(영역 밖 const 수정 갭). 개선 후 applied 기대' },
+  // grounding(backingDecls 주입) + 무손실 const 교체로 해소됨: 모델이 기존 grades 전부 보존한 superset 출력 → 교체 적용.
+  { id: 'emp-edit-grade-add', file: 'EmployeeEditPage', query: '직급 셀렉트에 수석 항목을 추가해줘', expectE2E: 'applied', note: '실파일: 직급 Select 옵션 추가 — grounding+무손실 교체로 applied(영역 밖 const 수정 갭 해소)' },
   { id: 'emp-edit-resign-valid', file: 'EmployeeEditPage', query: '퇴사일은 입사일 이후만 선택되게 검증을 추가해줘', expectE2E: 'applied', note: '실파일: 폼 검증' },
   { id: 'emp-edit-skill-dup', file: 'EmployeeEditPage', query: '기술 스택 추가 시 중복이면 안내문구를 보여줘', expectE2E: 'applied', note: '실파일: 스킬 태그 입력' },
 

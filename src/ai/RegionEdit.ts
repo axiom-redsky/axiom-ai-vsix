@@ -88,6 +88,13 @@ export interface LocatedRegion {
   region: string;
   /** 의존성 헤더(import·타입·컴포넌트 훅 선언부) — 읽기 전용 참고용 */
   depsHeader: string;
+  /**
+   * 편집 영역이 참조하는 **모듈 스코프 const 선언**(grounding용, 없으면 ''). 예: region이 `grades.map(...)`을
+   * 쓰면 `const grades = [...]`. depsHeader엔 top-level const가 안 담겨 약한 모델이 기존 옵션 배열을
+   * 기억으로 재구성하다 항목을 흘린다(실측: '수석 추가'에 '사원' 누락). 실제 선언을 프롬프트에 주입해
+   * faithful 수정(기존 항목 보존 + 추가)을 유도하고, 확장이 무손실 교체로 적용한다.
+   */
+  backingDecls: string;
   /** region/hybrid splice 안전 판정 — ok=false면 full 입력으로 폴백 */
   safety: RegionSafety;
 }
@@ -360,6 +367,17 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   }
   const depsHeader = headerParts.join('\n\n');
 
+  // ③.5 grounding — 편집 영역이 참조하는 모듈 스코프 const 선언을 모은다(이름이 region에 등장하는 것만).
+  //      depsHeader엔 top-level const가 없어, 모델이 기존 옵션 배열을 기억으로 재구성하다 항목을 흘린다
+  //      (실측: 직급 select '수석 추가'에 기존 '사원' 누락). 실제 선언을 주입해 faithful 수정을 유도한다.
+  const backingParts: string[] = [];
+  for (const s of sections) {
+    if (s.kind !== 'const') continue;
+    const esc = s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${esc}\\b`).test(region)) backingParts.push(s.body);
+  }
+  const backingDecls = backingParts.join('\n');
+
   // ④ 안전 게이트
   const hitLine = (lines[bestLine - 1] ?? '').trim();
   let safety: RegionSafety;
@@ -375,7 +393,7 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
     safety = { ok: true, gate: 'ok', reason: `코드줄 앵커(${bestLine}줄, 점수 ${bestScore}) + 완결 JSX 요소 스냅(${startLine}~${endLine}) — region/hybrid 안전.` };
   }
 
-  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, safety };
+  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, safety };
 }
 
 /**

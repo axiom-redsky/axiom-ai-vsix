@@ -9,7 +9,7 @@
  * 외부 의존성(타입스크립트 컴파일러 등) 없이 splitTsSections + 중괄호 깊이 추적만 사용한다.
  * (폐쇄망 환경 의존성 0 유지)
  */
-import { splitTsSections, countDelimiters, type CodeSection } from './CodeSectionExtractor';
+import { splitTsSections, countDelimiters, stripTrailingLineComment, type CodeSection } from './CodeSectionExtractor';
 
 /**
  * 훅 호출 패턴: useApi / useState / useEffect ...
@@ -477,6 +477,179 @@ function dropDuplicateDeclarations(code: string, existing: Set<string>): { text:
 }
 
 /**
+ * const 선언 본문에서 RHS(우변)를 추출한다. 첫 depth0 '='(==·=>·!=·<=·>= 제외) 이후 ~ 끝(트레일링 ; 제거).
+ * 타입 주석(`const x: Record<A, B> = …`)의 '='는 보통 없으므로 first-'=' 휴리스틱으로 충분하다.
+ */
+function constRhs(body: string): string | null {
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (
+      ch === '=' &&
+      body[i + 1] !== '=' && body[i + 1] !== '>' &&
+      body[i - 1] !== '=' && body[i - 1] !== '!' && body[i - 1] !== '<' && body[i - 1] !== '>'
+    ) {
+      return body.slice(i + 1).replace(/;?\s*$/, '').trim();
+    }
+  }
+  return null;
+}
+
+/** 텍스트에서 문자열 리터럴 내용·숫자 리터럴을 무손실 비교용 토큰 집합으로 추출한다. */
+function literalTokens(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)) out.add('s:' + (m[1] ?? m[2] ?? m[3] ?? ''));
+  for (const m of text.matchAll(/(?<![\w$])-?\d[\d_]*(?:\.\d+)?/g)) out.add('n:' + m[0]);
+  return out;
+}
+
+/** 비교 정규화: 연속 공백 접기 + 트레일링 세미콜론·양끝 공백 제거. */
+function normDecl(s: string): string {
+  return s.replace(/\s+/g, ' ').replace(/;?\s*$/, '').trim();
+}
+
+/** 모듈 스코프 교체를 허용하는 primitive 리터럴 RHS(문자열·숫자·불리언, `as const` 허용). */
+const PRIMITIVE_RHS = /^(?:'[^']*'|"[^"]*"|`[^`$]*`|-?\d[\d_.]*|true|false)\s*(?:as\s+const\s*)?$/;
+/** RHS 시작이 화살표 함수/함수식인지(헬퍼 함수 재출력 헛 교체 방지). 문자열 속 `=>`는 head가 아니라 안전. */
+const ARROW_OR_FN_RHS = /^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]+)?=>|[A-Za-z_$][\w$]*\s*=>)/;
+
+/**
+ * 기존 선언을 모델의 재선언으로 **결정론 교체**해도 되는지 판정한다(무손실·헛교체 방지 가드).
+ *  - 화살표/함수식 RHS: **항상 비대상**. 함수를 모델 재출력으로 갈아끼우면 요청과 무관한 헛 적용·구현 변질이
+ *    난다(실측: formatDate 헬퍼 재선언이 '연락처 추가'와 무관히 교체돼 헛 applied → 제외).
+ *  - 배열/객체 리터럴(컬렉션): 기존의 모든 문자열·숫자 리터럴이 새 본문에 **전부 보존**될 때만 허용한다.
+ *    (약한 모델이 배열을 기억으로 재구성하며 기존 항목을 누락/환각하는 **손실 적용** 차단. 실측: '수석 추가'에
+ *     기존 '사원'을 빠뜨리고 직급 사다리를 새로 씀 → 거부.)
+ *  - primitive 리터럴(문자열/숫자/불리언): 값 변경이 의도이므로 허용(예: PAGE_LIMIT 20→50).
+ *  - 그 외(호출 등 식): `allowCall`이면 허용(useState 초기값 변경 등 컴포넌트 바인딩 in-place 수정),
+ *    아니면 거부(모듈 const는 리터럴만 — 파생/식 const 보수적 제외).
+ */
+function canReplaceDecl(
+  existingBody: string,
+  newBody: string,
+  opts: { allowCall: boolean },
+): { ok: boolean; reason: string } {
+  const rhsE = constRhs(existingBody);
+  const rhsN = constRhs(newBody);
+  if (rhsE === null || rhsN === null) return { ok: false, reason: 'RHS 파싱 불가' };
+  if (ARROW_OR_FN_RHS.test(rhsE)) return { ok: false, reason: '함수/화살표 RHS — 교체 비대상' };
+  const head = rhsE.trimStart()[0];
+  if (head === '[' || head === '{') {
+    const newLits = literalTokens(rhsN);
+    const missing = [...literalTokens(rhsE)].filter((l) => !newLits.has(l));
+    if (missing.length > 0) {
+      const show = missing.slice(0, 3).map((l) => l.slice(2)).join(', ');
+      return { ok: false, reason: `기존 항목 누락(${show}${missing.length > 3 ? ' …' : ''})` };
+    }
+    return { ok: true, reason: '' };
+  }
+  if (PRIMITIVE_RHS.test(rhsE)) return { ok: true, reason: '' };
+  return opts.allowCall ? { ok: true, reason: '' } : { ok: false, reason: '비-리터럴 RHS(식) — 교체 비대상' };
+}
+
+interface ConstReplaceOp { atLine: number; removeCount: number; content: string[] }
+
+/**
+ * 훅 조각에서 "기존 top-level const를 재선언"하는 부분을 찾아 **결정론적 교체 op**으로 변환한다.
+ *
+ * 하이브리드 포맷은 (a)JSX 영역 재작성·(b)새 훅/타입/import 추가만 표현하고 (c)영역 밖 기존 선언의 수정은
+ * 표현할 채널이 없었다. 모델은 자연히 "배열/const 통째 재선언"으로 답하는데, 그게 dropDuplicateDeclarations에
+ * 먹혀 변경0(no-op)이 됐다(실측: 직급 select에 항목 추가). 여기서 재선언을 기존 선언 위치의 in-place 교체로
+ * 바꾼다. **무손실 가드(canReplaceConst)** 를 통과한 것만 교체하고, 거부분은 hook에 남겨 종전 드롭 경로로
+ * 흘려보낸다(=손실 적용 대신 종전 no-op 유지).
+ */
+function extractConstReplacements(
+  hookCode: string,
+  topConstByName: Map<string, CodeSection>,
+): { reducedHook: string; ops: ConstReplaceOp[]; replaced: string[]; rejected: { name: string; reason: string }[] } {
+  const ops: ConstReplaceOp[] = [];
+  const replaced: string[] = [];
+  const rejected: { name: string; reason: string }[] = [];
+  const hookLines = hookCode.split('\n');
+  const consumed = new Array<boolean>(hookLines.length).fill(false);
+
+  for (const hs of splitTsSections(hookCode)) {
+    if (hs.kind !== 'const') continue;
+    const existing = topConstByName.get(hs.name);
+    if (!existing) continue;
+    if (normDecl(existing.body) === normDecl(hs.body)) continue; // 동일 → 순수 중복(종전대로 드롭)
+    const guard = canReplaceDecl(existing.body, hs.body, { allowCall: false }); // 모듈 const는 리터럴 데이터만
+    if (!guard.ok) {
+      rejected.push({ name: hs.name, reason: guard.reason });
+      continue; // hook에 남겨 중복 드롭 경로로 → 손실 적용 차단(종전 no-op 유지)
+    }
+    ops.push({
+      atLine: existing.startLine,
+      removeCount: existing.endLine - existing.startLine + 1,
+      content: hs.body.split('\n'),
+    });
+    replaced.push(hs.name);
+    for (let ln = hs.startLine; ln <= hs.endLine; ln++) consumed[ln - 1] = true;
+  }
+
+  const reducedHook = consumed.some(Boolean) ? hookLines.filter((_, i) => !consumed[i]).join('\n') : hookCode;
+  return { reducedHook, ops, replaced, rejected };
+}
+
+/** 한 선언 문장의 바인딩 이름 목록(구조분해 포함). 선언이 아니면 빈 배열. */
+function declBindings(stmt: string): string[] {
+  const m = stmt.match(/^\s*(?:export\s+)?(?:const|let|var)\s+([\s\S]*?)(?:=(?![=>])|;)/);
+  return m ? parseBindingPattern(m[1].trim()) : [];
+}
+
+/**
+ * **컴포넌트 본문**의 기존 단일 라인 선언을, 모델이 같은 바인딩으로 재선언한 조각으로 in-place 교체한다.
+ *
+ * extractConstReplacements가 모듈 스코프 const(옵션 배열 등)를 다룬다면, 이쪽은 컴포넌트 본문의 useState
+ * 초기값 변경 같은 경우다 — `const [department, setDepartment] = useState('')`를 모델이 `useState('개발팀')`로
+ * 재선언하면 dropDuplicateDeclarations가 바인딩 중복으로 드롭해 변경0(no-op)이 됐다(실측: 부서 기본선택 변경).
+ *
+ * 안전 범위(보수적): **바인딩 집합이 정확히 일치**하는 기존 **단일 라인** 선언만 교체하고, 가드는 allowCall=true
+ * (useState 등 호출 초기값 변경 허용)지만 화살표/함수 RHS는 제외(handleSearch 등 헬퍼 헛교체 방지) +
+ * 컬렉션은 무손실. 멀티라인 기존 선언·바인딩 불일치는 종전 동작(드롭)으로 둔다.
+ */
+function extractComponentReplacements(
+  hookRest: string,
+  sourceLines: string[],
+  range: { startLine: number; endLine: number },
+): { reduced: string; ops: ConstReplaceOp[]; replaced: string[] } {
+  const ops: ConstReplaceOp[] = [];
+  const replaced: string[] = [];
+
+  // 컴포넌트 본문의 "단일 라인 완결" 선언만 인덱싱: 정렬한 바인딩키 → {라인 idx0, body}
+  const existingByKey = new Map<string, { idx0: number; body: string }>();
+  for (let i = range.startLine - 1; i < range.endLine && i < sourceLines.length; i++) {
+    const ln = sourceLines[i];
+    const { open, close } = countDelimiters(ln);
+    if (open !== close) continue; // 멀티라인 선언 시작 → 보수적 제외
+    if (!/;\s*$/.test(stripTrailingLineComment(ln).trimEnd())) continue; // 한 줄 완결(;)만
+    const b = declBindings(ln);
+    if (b.length === 0) continue;
+    existingByKey.set([...b].sort().join(','), { idx0: i, body: ln });
+  }
+  if (existingByKey.size === 0) return { reduced: hookRest, ops, replaced };
+
+  const kept: string[] = [];
+  for (const stmt of splitStatements(hookRest)) {
+    const b = declBindings(stmt);
+    if (b.length > 0) {
+      const ex = existingByKey.get([...b].sort().join(','));
+      if (ex && normDecl(ex.body) !== normDecl(stmt) && canReplaceDecl(ex.body, stmt, { allowCall: true }).ok) {
+        const indent = ex.body.match(/^[ \t]*/)?.[0] ?? '';
+        ops.push({
+          atLine: ex.idx0 + 1,
+          removeCount: 1,
+          content: stmt.split('\n').map((l) => (l.trim() ? indent + l.trim() : l)),
+        });
+        replaced.push(b.join(', '));
+        continue; // 소비 — 드롭 경로로 안 보냄
+      }
+    }
+    kept.push(stmt);
+  }
+  return { reduced: kept.join('\n'), ops, replaced };
+}
+
+/**
  * 구조 앵커를 이용해 모델이 낸 조각을 결정론적으로 적용한다.
  * search/replace, 라인 번호 추측, 전체 파일 재작성 없이 동작한다.
  */
@@ -495,14 +668,40 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
   // 1) 훅 코드 — react-app-scaffold 컨벤션: type/interface/enum 선언은 컴포넌트 본문이 아니라
   //    함수 바로 위(모듈 스코프)에 둔다. 모델이 둘을 섞어 내도 여기서 결정론적으로 분리한다.
   if (edit.hookCode && anchors.component) {
+    // 0) 기존 top-level const 재선언 → 무손실 결정론 교체(영역 밖 선언 수정 갭 해소).
+    //    교체로 소비된 선언은 reducedHook에서 빠져, 이후 분리/중복드롭 로직이 건드리지 않는다.
+    const topConstByName = new Map<string, CodeSection>();
+    for (const s of splitTsSections(norm)) {
+      if (s.kind === 'const') topConstByName.set(s.name, s);
+    }
+    const repl = extractConstReplacements(edit.hookCode, topConstByName);
+    for (const op of repl.ops) ops.push(op);
+    for (const name of repl.replaced) {
+      changes.push(`기존 top-level const '${name}' 결정론 교체(무손실) — 영역 밖 선언 수정`);
+    }
+    for (const r of repl.rejected) {
+      changes.push(`재선언 '${r.name}' 교체 거부(${r.reason}) → 종전 동작(드롭) — 손실 적용 차단`);
+    }
+    const effectiveHookCode = repl.reducedHook;
+
     // 기존 top-level 선언 이름 — 같은 이름의 type/const를 또 모듈 스코프로 올리지 않도록(중복 선언 방지).
     const existingTopLevelNames = new Set(anchors.sections.map((s) => s.name));
-    const { typeDecls, rest: rawRest, typeCount } = splitTypeDeclarations(edit.hookCode, existingTopLevelNames);
+    const { typeDecls, rest: rawRest, typeCount } = splitTypeDeclarations(effectiveHookCode, existingTopLevelNames);
+
+    // 0.5) 컴포넌트 본문 기존 선언 in-place 교체(useState 초기값 변경 등). 드롭 전에 가로채야 한다.
+    const compRepl = extractComponentReplacements(rawRest, lines, {
+      startLine: anchors.component.startLine,
+      endLine: anchors.component.endLine,
+    });
+    for (const op of compRepl.ops) ops.push(op);
+    for (const name of compRepl.replaced) {
+      changes.push(`컴포넌트 선언 '${name}' in-place 교체 — 기존 바인딩 초기값/내용 수정`);
+    }
 
     // 컴포넌트 본문 코드에 삽입하기 전, 대상 파일(모듈+컴포넌트 본문)에 **이미 선언된 이름을 다시
     // 선언하는** 문장을 드롭한다(중복 선언 = 컴파일 에러 방지). 기존 이름은 그대로 재사용된다.
     const existingBindings = collectDeclaredBindings(norm);
-    const { text: rest, dropped: droppedDecls } = dropDuplicateDeclarations(rawRest, existingBindings);
+    const { text: rest, dropped: droppedDecls } = dropDuplicateDeclarations(compRepl.reduced, existingBindings);
     if (droppedDecls.length > 0) {
       changes.push(`중복 선언 드롭(이미 존재): ${droppedDecls.join(' / ')}`);
     }

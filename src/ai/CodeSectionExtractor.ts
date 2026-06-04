@@ -84,7 +84,7 @@ export function countDelimiters(line: string): { open: number; close: number } {
  * 주석이 붙으면 줄 끝이 `;`가 아니어서 선언이 종료되지 않은 것으로 오판,
  * 뒤따르는 export default 컴포넌트까지 한 섹션으로 삼켜지는 버그를 막는다.
  */
-function stripTrailingLineComment(line: string): string {
+export function stripTrailingLineComment(line: string): string {
   let inString: '"' | "'" | '`' | null = null;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
