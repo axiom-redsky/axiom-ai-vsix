@@ -94,15 +94,26 @@ export function analyzeInputQuality(source: string, query: string): InputQuality
   }
 
   const controls = impliedControlTags(query);
+  const inventory = loc.controlInventory ?? '';
+
+  // B+C 경로 활성 여부 — 서버 params 필터(편집의도+useApi params) + 인벤토리가 채워져 있으면,
+  // region이 컨테이너여도 모델은 인벤토리(B)로 재생성을 피하고 <replace>(C)로 데이터 소스를 고친다.
+  // 이때 region-mistarget·edit-locus-readonly는 "보완됨" — 거짓 경보로 충분/부실 판정을 흐리지 않게 강등/억제.
+  const hasServerParamsFilter = EDIT_INTENT_RE.test(query) && /useApi/.test(depsHeader) && /\bparams\s*:/.test(depsHeader);
+  const bcActive = hasServerParamsFilter && inventory.trim().length > 0;
 
   // ── region-mistarget ──────────────────────────────────────────
   // 쿼리가 특정 컨트롤을 지목했는데 region 루트가 큰 컨테이너면, region이 정밀 타깃이 아님.
+  // B+C 활성이면 info로 강등(보완됨) — locate 품질 신호로는 남기되 부실 판정엔 안 넣음.
   if (controls.length > 0 && rootTag && CONTAINER_TAGS.has(rootTag)) {
     flags.push({
       code: 'region-mistarget',
-      severity: 'high',
+      severity: bcActive ? 'info' : 'high',
       message: `쿼리가 [${controls.join(', ')}] 컨트롤을 지목했으나 region 루트는 컨테이너 <${rootTag}> ` +
-        `(${loc.startLine}~${loc.endLine}줄). 편집 대상 컨트롤이 region 밖일 가능성 높음.`,
+        `(${loc.startLine}~${loc.endLine}줄).` +
+        (bcActive
+          ? ` — B(인벤토리)+C(<replace>)로 보완됨(모델은 region 미변경 + 데이터소스 교체). locate 타깃 개선 여지(E).`
+          : ` 편집 대상 컨트롤이 region 밖일 가능성 높음.`),
     });
   }
 
@@ -111,7 +122,6 @@ export function analyzeInputQuality(source: string, query: string): InputQuality
   // region에 그 컨트롤이 있으면 모델은 제자리에서 고치므로 안전(depsHeader 가시성은 무관 — 거긴
   // 읽기전용이라 어차피 못 고침). 따라서 소스엔 있는데 region엔 0개인 컨트롤만 비가시로 본다.
   // B(컨트롤 인벤토리)가 region 밖 컨트롤을 프롬프트에 노출하면 더 이상 "비가시"가 아니다 → 억제.
-  const inventory = loc.controlInventory ?? '';
   for (const tag of controls) {
     const inSource = countTag(source, tag);
     const inRegion = countTag(region, tag);
@@ -129,7 +139,8 @@ export function analyzeInputQuality(source: string, query: string): InputQuality
   // ── edit-locus-readonly ───────────────────────────────────────
   // 필터/편집 의도인데 region이 렌더하는 목록 변수의 출처가 읽기전용 depsHeader에만 있으면,
   // 진짜 편집 지점(useApi params 등)에 손댈 수정 채널이 입력에 없다.
-  if (EDIT_INTENT_RE.test(query)) {
+  // 단 B+C 활성이면 그 채널(<replace>)이 이미 프롬프트에 있으므로 억제(거짓 경보 방지).
+  if (EDIT_INTENT_RE.test(query) && !bcActive) {
     for (const v of mappedListVars(region)) {
       const inDeps = isDeclaredIn(depsHeader, v);
       const inRegion = isDeclaredIn(region, v);

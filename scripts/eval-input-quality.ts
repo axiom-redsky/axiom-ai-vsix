@@ -37,9 +37,9 @@ const CASES: Case[] = [
     fixture: 'EmployeeListPage.tsx',
     query: '현재 파일에 select(부서, 재직상태, 투입상태)를 변경하면, 아래쪽 인력 리스트 테이블의 내용을 필터링 하게 적용해줘',
     expectFlags: ['region-mistarget'],
-    forbidFlags: ['control-invisible', 'anchor-unsafe'],
-    expectAdequate: false,
-    note: 'B+C 경로: 인벤토리가 기존 select를 노출해 control-invisible 억제, 서버 params라 게이트 통과(anchor-unsafe 없음). region은 여전히 table 오타깃(region-mistarget).',
+    forbidFlags: ['control-invisible', 'anchor-unsafe', 'edit-locus-readonly'],
+    expectAdequate: true,
+    note: 'B+C 활성: 인벤토리가 control-invisible 억제 + <replace> 채널이 edit-locus-readonly 억제 → region-mistarget은 info로 강등 → adequate. (probe:real로 실제 적용도 성공 확인.)',
   },
   {
     no: 2,
