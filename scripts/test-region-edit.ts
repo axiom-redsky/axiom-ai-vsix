@@ -161,6 +161,50 @@ await (async () => {
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
     check('의존성 미해소(TUnknownResp): fallback', o.status === 'fallback' && o.reason === 'unresolved-deps', `status=${o.status}, reason=${o.reason}`);
   }
+
+  // region 컴포넌트 폐쇄(6.5): 모델이 <region>에 새 UI 컴포넌트(<Card>)를 쓰고 <import> 누락 →
+  //   카탈로그(@axiom/components/ui)면 import 자동 보강 후 applied (실측: Card 누락 컴파일 깨짐 차단).
+  {
+    const model = [
+      '<region>',
+      '      <Select value={status} onValueChange={setStatus}>',
+      '        <SelectTrigger/>',
+      '      </Select>',
+      '      {status && (<Card><CardHeader><CardTitle>제목</CardTitle></CardHeader><CardContent>{status}</CardContent></Card>)}',
+      '</region>',
+    ].join('\n');
+    const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
+    check('region 새 UI 컴포넌트(Card) import 자동보강 → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+    check('finalText에 Card import 보강', !!o.finalText && /import\s*\{[^}]*\bCard\b[^}]*\}\s*from\s*'@axiom\/components\/ui'/.test(o.finalText!), `header=${(o.finalText ?? '').split('\n').slice(0, 12).join(' | ')}`);
+  }
+
+  // region 컴포넌트 폐쇄: 카탈로그에 없는 커스텀 컴포넌트(<StatusBadge>)는 import 경로 불명 → fallback.
+  {
+    const model = [
+      '<region>',
+      '      <Select value={status} onValueChange={setStatus}>',
+      '        <SelectTrigger/>',
+      '      </Select>',
+      '      <StatusBadge status={status} />',
+      '</region>',
+    ].join('\n');
+    const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
+    check('region 커스텀 컴포넌트(StatusBadge) 미해소 → fallback', o.status === 'fallback' && o.reason === 'unresolved-components', `status=${o.status}, reason=${o.reason}`);
+  }
+
+  // region 컴포넌트 폐쇄: 주석 처리된 컴포넌트는 실제 사용이 아니므로 오탐 없이 applied(회귀 가드).
+  {
+    const model = [
+      '<region>',
+      '      <Select value={status} onValueChange={setStatus}>',
+      '        <SelectTrigger/>',
+      '        {/* <StatusBadge status={status} /> */}',
+      '      </Select>',
+      '</region>',
+    ].join('\n');
+    const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
+    check('주석 처리된 컴포넌트는 오탐 없음 → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+  }
 })();
 
 // ─── findUnresolvedReferences — 의존성 게이트 import 전체 스캔(useState 오탐 수정) ──────

@@ -643,7 +643,7 @@ const GLOBAL_KNOWN = new Set<string>([
   'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Date', 'RegExp', 'Error', 'Object', 'String',
   'Number', 'Boolean', 'Symbol', 'BigInt', 'Function', 'JSON', 'Math', 'Iterable', 'Iterator',
   // React/DOM 흔한 전역 (보통 React.X 형태라 안 잡히지만 안전망)
-  'React', 'JSX', 'Element', 'Event', 'Node', 'HTMLElement', 'ReactNode', 'ReactElement',
+  'React', 'JSX', 'Element', 'Event', 'Node', 'HTMLElement', 'ReactNode', 'ReactElement', 'Fragment',
   // DOM 이벤트·요소 전역 — useApi 핸들러 시그니처(React.ChangeEvent<HTMLInputElement> 등)에 자주 등장.
   // import 불필요한 앰비언트 전역인데 "미선언"으로 오판돼 불필요한 full 폴백을 유발했다(실측).
   'ChangeEvent', 'MouseEvent', 'KeyboardEvent', 'FocusEvent', 'FormEvent', 'PointerEvent',
@@ -779,17 +779,83 @@ const SCAFFOLD_IMPORTS: ReadonlyMap<string, { module: string; named: string }> =
 ]);
 
 /**
+ * `@axiom/components/ui`(shadcn/ui 래퍼) 디자인시스템 컴포넌트 카탈로그.
+ *
+ * 약한 모델이 `<region>`에 Card·Dialog 등 UI 컴포넌트를 쓰고 `<import>`를 빠뜨려도, 확장이
+ * 결정론적으로 이 모듈에서 import를 보강한다(의존성 폐쇄 게이트가 컴파일 깨짐을 막는 원리의 JSX 확장).
+ * **유한한 카탈로그**라 일일이 나열해도 유지보수 가능하다(knowledge/scaffold-docs/components.md 기준).
+ * 목록에 없는 커스텀 컴포넌트(StatusBadge 등 경로 가변)는 의도적으로 제외 — 게이트가 full 폴백시킨다.
+ */
+const UI_MODULE = '@axiom/components/ui';
+const UI_COMPONENTS = new Set<string>([
+  'Button', 'Input', 'Textarea', 'Label', 'Checkbox', 'Switch', 'Badge', 'Separator', 'Skeleton', 'Slider', 'Progress', 'Toggle',
+  'Card', 'CardHeader', 'CardTitle', 'CardDescription', 'CardContent', 'CardFooter', 'CardAction',
+  'Select', 'SelectGroup', 'SelectValue', 'SelectTrigger', 'SelectContent', 'SelectLabel', 'SelectItem', 'SelectSeparator',
+  'Table', 'TableHeader', 'TableBody', 'TableFooter', 'TableHead', 'TableRow', 'TableCell', 'TableCaption',
+  'Dialog', 'DialogTrigger', 'DialogContent', 'DialogHeader', 'DialogTitle', 'DialogDescription', 'DialogFooter', 'DialogClose',
+  'AlertDialog', 'AlertDialogTrigger', 'AlertDialogContent', 'AlertDialogHeader', 'AlertDialogFooter', 'AlertDialogTitle', 'AlertDialogDescription', 'AlertDialogAction', 'AlertDialogCancel',
+  'Tabs', 'TabsList', 'TabsTrigger', 'TabsContent',
+  'Accordion', 'AccordionItem', 'AccordionTrigger', 'AccordionContent',
+  'Tooltip', 'TooltipTrigger', 'TooltipContent', 'TooltipProvider',
+  'Popover', 'PopoverTrigger', 'PopoverContent', 'PopoverAnchor',
+  'DropdownMenu', 'DropdownMenuTrigger', 'DropdownMenuContent', 'DropdownMenuItem', 'DropdownMenuCheckboxItem', 'DropdownMenuRadioItem', 'DropdownMenuLabel', 'DropdownMenuSeparator', 'DropdownMenuGroup', 'DropdownMenuSub', 'DropdownMenuSubContent', 'DropdownMenuSubTrigger', 'DropdownMenuRadioGroup', 'DropdownMenuShortcut',
+  'Avatar', 'AvatarImage', 'AvatarFallback',
+  'Alert', 'AlertTitle', 'AlertDescription',
+  'Form', 'FormItem', 'FormLabel', 'FormControl', 'FormDescription', 'FormMessage', 'FormField',
+  'RadioGroup', 'RadioGroupItem',
+  'Sheet', 'SheetTrigger', 'SheetContent', 'SheetHeader', 'SheetFooter', 'SheetTitle', 'SheetDescription', 'SheetClose',
+  'ScrollArea', 'ScrollBar',
+  'Breadcrumb', 'BreadcrumbList', 'BreadcrumbItem', 'BreadcrumbLink', 'BreadcrumbPage', 'BreadcrumbSeparator', 'BreadcrumbEllipsis',
+]);
+
+/**
  * 미해소 심볼 중 import 경로가 고정된 스캐폴드 표준 심볼을 ImportRequest 목록으로 변환한다.
- * 모듈별로 named import를 묶는다. 등록되지 않은 심볼(임의 타입 등)은 무시한다.
+ * SCAFFOLD_IMPORTS(useApi·react 훅) + UI_COMPONENTS(@axiom/components/ui 카탈로그)를 모두 본다.
+ * 모듈별로 named import를 묶는다. 등록되지 않은 심볼(임의 타입·커스텀 컴포넌트)은 무시한다.
  */
 export function resolveKnownImports(symbols: Iterable<string>): ImportRequest[] {
   const byModule = new Map<string, Set<string>>();
+  const add = (module: string, named: string): void => {
+    const set = byModule.get(module) ?? new Set<string>();
+    set.add(named);
+    byModule.set(module, set);
+  };
   for (const s of symbols) {
     const known = SCAFFOLD_IMPORTS.get(s);
-    if (!known) continue;
-    const set = byModule.get(known.module) ?? new Set<string>();
-    set.add(known.named);
-    byModule.set(known.module, set);
+    if (known) add(known.module, known.named);
+    else if (UI_COMPONENTS.has(s)) add(UI_MODULE, s);
   }
   return [...byModule].map(([module, named]) => ({ module, named: [...named] }));
+}
+
+/** JSX/JS 주석을 제거한다(주석으로 처리된 컴포넌트 태그를 실제 사용으로 오인하지 않게). */
+function stripCommentsForJsx(s: string): string {
+  return s
+    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '') // {/* ... */}
+    .replace(/\/\*[\s\S]*?\*\//g, '')           // /* ... */
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');      // // ... (URL의 // 는 보존)
+}
+
+/** JSX 텍스트에서 사용된 PascalCase 컴포넌트 여는 태그 이름을 모은다(주석 제거 후). */
+function collectJsxComponentRefs(jsx: string): Set<string> {
+  const refs = new Set<string>();
+  for (const m of stripCommentsForJsx(jsx).matchAll(/<([A-Z][A-Za-z0-9]*)/g)) refs.add(m[1]);
+  return refs;
+}
+
+/**
+ * region JSX가 사용하는 컴포넌트(`<Card>` 등)가 최종 파일에서 import/선언으로 해소되는지 검증한다.
+ *
+ * 의존성 폐쇄 게이트의 JSX 확장 — 기존 findUnresolvedReferences는 `<hook>` 코드만 봐서, 모델이
+ * `<region>`에 새 컴포넌트를 쓰고 `<import>`를 빠뜨리면 못 잡아 컴파일이 깨졌다(실측: Card 누락).
+ *
+ * @param regionJsx 모델이 재작성한 편집 영역 텍스트
+ * @param fullText  합성이 반영된 최종 파일(추가된 import 포함)
+ */
+export function findUnresolvedJsxComponents(regionJsx: string, fullText: string): DependencyCheckResult {
+  const refs = collectJsxComponentRefs(regionJsx);
+  if (refs.size === 0) return { ok: true, unresolved: [] };
+  const available = collectAvailableSymbols(fullText);
+  const unresolved = [...refs].filter((r) => !available.has(r) && !isWellKnownGlobal(r));
+  return { ok: unresolved.length === 0, unresolved };
 }

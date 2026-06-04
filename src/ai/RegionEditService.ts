@@ -16,6 +16,7 @@ import { locateEditRegion, checkRegionRootTag } from './RegionEdit';
 import {
   applyStructuralEdit,
   findUnresolvedReferences,
+  findUnresolvedJsxComponents,
   resolveKnownImports,
   type StructuralEdit,
   type ImportRequest,
@@ -191,6 +192,30 @@ export async function runHybridRegionEdit(
         status: 'fallback',
         reason: 'unresolved-deps',
         diagnostics: `[regionEdit] 의존성 미해소(${dep.unresolved.join(', ')}) → full 폴백 / 훅조각: ${JSON.stringify(hookCode.slice(0, 200))}`,
+      };
+    }
+  }
+
+  // 6.5) region JSX 컴포넌트 폐쇄 게이트 — 모델이 <region>에 새 컴포넌트(<Card> 등)를 쓰고 <import>를
+  //      빠뜨리면 위 hookCode 게이트가 못 잡는다(JSX는 검사 대상 아님 → 컴파일 깨짐, 실측: Card 누락).
+  //      region의 PascalCase 태그를 검사해 @axiom/components/ui 카탈로그면 import 자동 보강, 그래도
+  //      미해소(커스텀 컴포넌트 등)면 full 폴백.
+  if (newRegion.trim()) {
+    let comp = findUnresolvedJsxComponents(newRegion, composed);
+    if (!comp.ok) {
+      const autoImports = resolveKnownImports(comp.unresolved);
+      if (autoImports.length > 0) {
+        const patched = applyStructuralEdit(composed, { imports: autoImports });
+        composed = patched.text;
+        changes.push(...patched.changes);
+        comp = findUnresolvedJsxComponents(newRegion, composed);
+      }
+    }
+    if (!comp.ok) {
+      return {
+        status: 'fallback',
+        reason: 'unresolved-components',
+        diagnostics: `[regionEdit] region 컴포넌트 미해소(${comp.unresolved.join(', ')}) — import 불명 → full 폴백`,
       };
     }
   }
