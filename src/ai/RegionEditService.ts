@@ -70,7 +70,13 @@ function buildHybridPrompt(
     `- ⛔ useApi·useState·useEffect 등 모든 훅은 **컴포넌트 최상위에서만** 호출. \`useEffect(()=>{ useApi(...) })\`처럼 ` +
     `effect/콜백/조건문 안에서 훅을 호출하지 마세요(React Rules of Hooks 위반).\n` +
     `- ⛔ 서버 데이터를 \`useState\`+\`useEffect\`로 **복사(미러링)하지 마세요**. \`useApi\` 결과를 **파생 const**로 바로 쓰세요 ` +
-    `(예: \`const items = resp?.data?.GROUP ?? [];\`). 새 useState/useEffect 추가 금지.\n` +
+    `(예: \`const items = resp?.data?.GROUP ?? [];\`). 서버 응답 목록용 새 useState/useEffect 추가 금지.\n` +
+    `- ⛔ **편집하는 컨트롤의 선택값 state는 새 이름으로 — 기존 state 재사용 금지.** \`defaultValue\`로 제어 안 되던 ` +
+    `select를 API화하면 그 컨트롤만의 **새 선택 state**가 필요합니다. 의존성 헤더에 이미 있는 다른 컨트롤의 state ` +
+    `(예: 재직상태의 \`selectedStatus\`)를 재사용하면 두 컨트롤이 한 state를 공유해 버그가 납니다. 한글 라벨이 ` +
+    `비슷해도(…상태) 합치지 말고, **새롭고 구별되는 이름**(예: 투입상태 → \`selectedDeployment\`)으로 \`useState\`를 ` +
+    `<hook>에 선언하고 <region>의 value/onValueChange를 그 새 state에 묶으세요. ` +
+    `(이 선택값은 UI 상태라 useState가 맞습니다 — 위 '서버 데이터 미러링 금지'는 API 응답 목록에만 해당.)\n` +
     `- ⛔ **요청한 컨트롤에 필요한 것만** 출력하세요. 의존성 헤더에 이미 있는 검색/페이지네이션/다른 select 등 ` +
     `무관한 훅·핸들러·상수(handleSearch, PAGE_LIMIT 등)를 새로 만들거나 옮기지 마세요.\n` +
     `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n\n` +
