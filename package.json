@@ -423,7 +423,9 @@
     "test:line-edits": "node scripts/run-test-line-edits.mjs",
     "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs",
     "test:region-edit": "node scripts/test-region-edit.mjs",
-    "eval:region": "node scripts/run-eval-region.mjs"
+    "eval:region": "node scripts/run-eval-region.mjs",
+    "eval:e2e": "node scripts/run-eval-e2e.mjs",
+    "eval:e2e:record": "node scripts/run-eval-e2e.mjs --record"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
