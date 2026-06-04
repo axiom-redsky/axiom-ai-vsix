@@ -91,7 +91,7 @@ export function scoreSections(
     if (!section.header && section.length < 1500) score += 1;
 
     // 사용자가 따옴표/리터럴로 박은 정확 경로 — 형제 하위경로와 분리해 압도적으로 우선
-    if (apiPaths.some((p) => headerMatchesApiPath(section.header, p))) {
+    if (apiPaths.some((p) => containsExactApiPath(section.header, p))) {
       score += EXACT_PATH_BONUS;
     }
 
@@ -125,14 +125,14 @@ export function extractApiPaths(query: string): string[] {
 }
 
 /**
- * 텍스트(섹션 헤더 등)에 API 경로 `apiPath`가 **독립된 경로로** 등장하는지 판정한다.
+ * 텍스트(섹션 헤더·본문 등)에 API 경로 `apiPath`가 **독립된 경로로** 등장하는지 판정한다.
  *
  * 형제 하위경로·상위경로의 부분일치는 false:
- *  - `/api/common-codes` 는 `GET \`/api/common-codes/groups\`` 헤더와 매칭되지 않는다(뒤에 `/groups`).
+ *  - `/api/common-codes` 는 `GET \`/api/common-codes/groups\`` 와 매칭되지 않는다(뒤에 `/groups`).
  *  - `/common-codes`     는 `/api/common-codes` 와 매칭되지 않는다(앞에 `/api`).
  * 경로 연속 문자(`\w : / -`)가 경계에 닿으면 매칭을 거부하는 방식이다.
  */
-export function headerMatchesApiPath(text: string, apiPath: string): boolean {
+export function containsExactApiPath(text: string, apiPath: string): boolean {
   if (!apiPath) return false;
   const re = new RegExp(`(?<![\\w:/-])${escapeRegExp(apiPath)}(?![\\w:/-])`);
   return re.test(text);
@@ -143,7 +143,19 @@ export function headerMatchesApiPath(text: string, apiPath: string): boolean {
  * 스펙에 없는 경로로 "이 경로를 쓰라"는 지시를 만들지 않기 위한 검증용.
  */
 export function matchedApiPaths(sections: MdSection[], apiPaths: string[]): string[] {
-  return apiPaths.filter((p) => sections.some((s) => headerMatchesApiPath(s.header, p)));
+  return apiPaths.filter((p) => sections.some((s) => containsExactApiPath(s.header, p)));
+}
+
+/**
+ * `apiPaths` 중 주입된 스펙 텍스트 어디에도 정확 경로로 등장하지 않는 경로를 골라낸다.
+ *
+ * 헤더뿐 아니라 **본문 전체**를 대상으로 하므로(표·예시에만 적힌 경로는 정상 문서로 인정),
+ * 진짜 "스펙에 없는 경로"만 남는다. 사용자에게 정보성 경고를 한 번 띄울 때 쓴다.
+ * 빈 `specTexts`(검증 대상 없음)이면 빈 배열 — 확인 불가 시 경고하지 않는다.
+ */
+export function unmatchedApiPaths(specTexts: string[], apiPaths: string[]): string[] {
+  if (specTexts.length === 0) return [];
+  return apiPaths.filter((p) => !specTexts.some((t) => containsExactApiPath(t, p)));
 }
 
 /**

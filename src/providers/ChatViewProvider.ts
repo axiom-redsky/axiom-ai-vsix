@@ -18,6 +18,7 @@ import {
   selectByBudget,
   extractApiPaths,
   matchedApiPaths,
+  unmatchedApiPaths,
   formatExactPathDirective,
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
@@ -222,9 +223,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _loadReferencedFiles(
     text: string,
     currentFilePath?: string,
-  ): Promise<{ block: string; loaded: string[] }> {
+  ): Promise<{ block: string; loaded: string[]; unmatchedApiPaths: string[] }> {
     const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) return { block: '', loaded: [] };
+    if (!folders || folders.length === 0) return { block: '', loaded: [], unmatchedApiPaths: [] };
     const root = folders[0].uri;
 
     const EXT = 'md|markdown|json|ya?ml|txt|ts|tsx|js|jsx|css|html?';
@@ -237,7 +238,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     for (const m of text.matchAll(new RegExp(`@[\\w.\\-]+\\.(?:${EXT})\\b`, 'gi'))) {
       candidates.add(m[0]);
     }
-    if (candidates.size === 0) return { block: '', loaded: [] };
+    if (candidates.size === 0) return { block: '', loaded: [], unmatchedApiPaths: [] };
 
     const PER_FILE_CAP = 8000;
     const TOTAL_CAP = 16000;
@@ -252,6 +253,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const queryTokens = tokenizeQuery(text);
     const apiPaths = extractApiPaths(text);
     const matchedPaths = new Set<string>();
+    const loadedContents: string[] = [];
     for (const raw of candidates) {
       if (total >= TOTAL_CAP || loaded.length >= MAX_FILES) break;
       const uri = await this._resolveReferencedFileUri(root, raw);
@@ -295,10 +297,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       blocks.push(`## 참조: ${rel}\n\n${injected}`);
       loaded.push(rel);
+      loadedContents.push(content);
       total += injected.length;
     }
 
-    if (blocks.length === 0) return { block: '', loaded: [] };
+    if (blocks.length === 0) return { block: '', loaded: [], unmatchedApiPaths: [] };
+    // 따옴표로 지정했으나 주입된 스펙 어디에도 없는 경로 — 사용자에게 정보성 경고 한 번
+    const unmatched = unmatchedApiPaths(loadedContents, apiPaths);
     const directive = formatExactPathDirective([...matchedPaths]);
     if (matchedPaths.size > 0) {
       this._corpusOutputChannel.appendLine(
@@ -315,7 +320,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       `**스펙을 따르고, 더미 데이터의 필드명은 타입에 쓰지 마세요.** ` +
       `(예: 더미가 \`name\`이어도 스펙 response가 \`employee_name\`이면 타입은 \`employee_name\`)\n\n` +
       blocks.join('\n\n---\n\n');
-    return { block, loaded };
+    return { block, loaded, unmatchedApiPaths: unmatched };
+  }
+
+  /**
+   * 사용자가 따옴표/리터럴로 지정한 API 경로가 주입된 참조 스펙 어디에도 없을 때,
+   * 정보성 경고를 chat에 한 번 띄운다(검증 없이 진행함을 알림). 경로가 없으면 아무것도 안 한다.
+   */
+  private _warnUnmatchedApiPaths(paths: string[]): void {
+    if (!paths || paths.length === 0) return;
+    const list = paths.map((p) => `\`${p}\``).join(', ');
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 경고: 지정 엔드포인트가 참조 스펙에 없음 → 검증 없이 진행: ${paths.join(', ')}`,
+    );
+    this._post({
+      type: 'token',
+      content:
+        `\n> ⚠️ 지정하신 엔드포인트 ${list}(을)를 참조 스펙에서 찾지 못했습니다. ` +
+        `URL·응답 구조를 검증 없이 진행하니, 경로 철자나 참조 파일이 맞는지 확인해 주세요.\n`,
+    });
   }
 
   /** 언급된 경로 문자열을 워크스페이스 파일 Uri로 해석한다. 직접결합→전체glob→basename glob 순. */
@@ -823,6 +846,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           type: 'token',
           content: `\n\n> 📎 참조 파일 **${refResult.loaded.length}개**를 컨텍스트에 포함했습니다: ${refResult.loaded.map((f) => `\`${f}\``).join(', ')}\n`,
         });
+        this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
       }
 
       const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text);
@@ -1747,6 +1771,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._corpusOutputChannel.appendLine(
         `[Axiom AI] 영역편집: 참조 파일 ${refResult.loaded.length}개 주입: ${refResult.loaded.join(', ')}`,
       );
+      this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
     }
 
     this._postStatus('영역 편집 시도 중…');
