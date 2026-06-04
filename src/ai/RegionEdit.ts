@@ -17,7 +17,7 @@
  */
 import { splitTsSections } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
-import { isCrossCutting } from './RegionIntent';
+import { isCrossCutting, extractControlInventory, EDIT_INTENT_RE } from './RegionIntent';
 
 /** locate 잡음 토큰 — 'api'가 useApi에, '박스/사용/적용' 등이 엉뚱한 줄에 걸려 위치를 빗나가게 한다. */
 const LOCATE_STOP = new Set(['api', '박스', '사용', '적용', '현재', '화면', '해줘', '추가', 'box', '에서']);
@@ -96,6 +96,11 @@ export interface LocatedRegion {
    * faithful 수정(기존 항목 보존 + 추가)을 유도하고, 확장이 무손실 교체로 적용한다.
    */
   backingDecls: string;
+  /**
+   * region **밖**에 이미 있는 입력 컨트롤 1줄 인벤토리(B, 없으면 ''). depsHeader가 첫 return에서
+   * 잘려 기존 select/input이 모델에 안 보이던 갭을 메운다 — 모델이 재생성(중복)하지 않게.
+   */
+  controlInventory: string;
   /** region/hybrid splice 안전 판정 — ok=false면 full 입력으로 폴백 */
   safety: RegionSafety;
 }
@@ -379,6 +384,13 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   }
   const backingDecls = backingParts.join('\n');
 
+  // ③.7 컨트롤 인벤토리(B) — region 밖 기존 입력 컨트롤. 모델 재생성(중복) 방지용.
+  const controlInventory = snap ? extractControlInventory(source, startLine, endLine) : '';
+
+  // 서버 params 필터 가능 여부 — 편집의도 + 컴포넌트가 useApi(params)로 서버 조회 중.
+  // 이때 다중지점이어도 B(인벤토리)+C(<replace> params 보강)로 region 경로에서 성공시킨다.
+  const hasServerParamsFilter = EDIT_INTENT_RE.test(query) && /useApi/.test(depsHeader) && /\bparams\s*:/.test(depsHeader);
+
   // ④ 안전 게이트
   const hitLine = (lines[bestLine - 1] ?? '').trim();
   let safety: RegionSafety;
@@ -390,16 +402,17 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
     safety = { ok: false, gate: 'anchor-import', reason: `최고 매칭(${bestLine}줄)이 import 라인 — 편집 영역으로 부적합.` };
   } else if (!snap) {
     safety = { ok: false, gate: 'snap-failed', reason: `완결 JSX 요소 스냅 실패 → ±윈도우(${startLine}~${endLine})는 균형 블록이 아님. 모델 재작성 splice 시 구조 파손 위험.` };
-  } else if (isCrossCutting(query, firstJsxTag(region), region)) {
+  } else if (isCrossCutting(query, firstJsxTag(region), region) && !hasServerParamsFilter) {
     // 다중지점(필터/정렬/연동) — 편집의도 + region 루트가 큰 컨테이너 + 지목 컨트롤이 region 밖.
-    // 단일 region이 표현 못 하는 요청(컨트롤·데이터소스·렌더 여러 곳)이라, 모델에 보내면 기존 컨트롤을
-    // 재생성(중복)하거나 클라 필터로 우회한다(실측: select→테이블 필터, 3/3 깨짐). 모델 호출 전 full 폴백.
-    safety = { ok: false, gate: 'cross-cutting', reason: `다중지점 편집 의도 — region 루트 <${firstJsxTag(region)}>(${startLine}~${endLine})는 컨테이너이고 지목 컨트롤이 영역 밖. 단일 region으로 표현 불가 → full 폴백.` };
+    // **서버 params 필터가 가능하면(B+C 경로)** 통과시킨다: 인벤토리로 기존 컨트롤 재생성을 막고,
+    // <replace>로 useApi params를 보강해 region 경로에서 성공시킨다. 서버 params가 없으면(클라만)
+    // 단일 region이 표현 못 하므로 종전대로 full 폴백.
+    safety = { ok: false, gate: 'cross-cutting', reason: `다중지점 편집 의도(서버 params 없음) — region 루트 <${firstJsxTag(region)}>(${startLine}~${endLine}) 컨테이너 + 지목 컨트롤 영역 밖. 단일 region 표현 불가 → full 폴백.` };
   } else {
     safety = { ok: true, gate: 'ok', reason: `코드줄 앵커(${bestLine}줄, 점수 ${bestScore}) + 완결 JSX 요소 스냅(${startLine}~${endLine}) — region/hybrid 안전.` };
   }
 
-  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, safety };
+  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, controlInventory, safety };
 }
 
 /**

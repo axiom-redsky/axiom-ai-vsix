@@ -15,12 +15,14 @@
 import { locateEditRegion, checkRegionRootTag } from './RegionEdit';
 import {
   applyStructuralEdit,
+  applyReplaceBlocks,
   findUnresolvedReferences,
   findUnresolvedJsxComponents,
   findUnusedInsertedBindings,
   resolveKnownImports,
   type StructuralEdit,
   type ImportRequest,
+  type ReplaceBlock,
 } from './StructuralAnchor';
 
 export interface RegionEditOutcome {
@@ -55,6 +57,7 @@ export function buildHybridPrompt(
   referencedSpec?: string,
   backingDecls?: string,
   query = '',
+  controlInventory = '',
 ): string {
   // 필터·검색 요청 + 의존성 헤더가 이미 useApi(params)로 서버 조회 중일 때만 노출하는 타깃 지침.
   // 약한 모델이 서버 params 대신 클라이언트 파괴적 필터(가져온 목록 state를 filter 결과로 덮어쓰기)나
@@ -65,12 +68,20 @@ export function buildHybridPrompt(
     wantsFilter && hasServerParams
       ? `\n**필터·검색 구현 규칙(서버 params 우선 — 위반 시 버그):**\n` +
         `- ✅ 의존성 헤더의 \`useApi(endpoint, { params: { … } })\` 가 서버 조회입니다. 필터는 그 ` +
-        `**params에 조건을 추가**해 처리하세요 — 편집하는 select의 새 선택 state를 params에 넣고, 그 \`useApi\` 호출을 ` +
-        `<hook>에 **같은 이름으로 params만 보강해 다시 선언**하면 확장이 in-place 교체합니다.\n` +
+        `**params에 조건을 추가**해 처리하세요 — 선택 state를 params에 넣으면 됩니다(useApi는 params 변경 시 자동 재조회).\n` +
+        `- ✅ **기존 useApi 호출문을 통째로 수정**할 때는 \`<replace anchor="문장 안의 식별 문자열">…새 문장 전체…</replace>\` 로 출력하세요. ` +
+        `확장이 그 문장을 찾아 결정론적으로 교체합니다. 예: \`<replace anchor="useApi<T>(EMPLOYEES_ENDPOINT">const { data } = useApi<T>(EMPLOYEES_ENDPOINT, { params: { …기존…, status: selectedStatus === 'all' ? undefined : selectedStatus } });</replace>\` ` +
+        `(기존 params를 **하나도 빠뜨리지 말고** 전부 포함한 채 조건만 덧붙이세요.)\n` +
         `- ⛔ **클라이언트 필터 금지**: \`list.filter(...)\` 결과를 가져온 목록 state에 \`setState\`로 덮어쓰지 마세요 ` +
         `(원본이 사라져 복구 불가 — 파괴적).\n` +
         `- ⛔ 테이블 **행(row)마다 새 입력 컴포넌트(<Select> 등)를 만들지 마세요**. 요청이 '필터'면 상단 필터 컨트롤만 다룹니다.\n`
       : '';
+  // 컨트롤 인벤토리(B) — region 밖에 이미 있는 select/input. 모델이 "없는 줄 알고" 재생성(중복)하지 않게.
+  const inventorySection = controlInventory?.trim()
+    ? `## 이미 존재하는 입력 컨트롤 (재생성 금지 — 아래는 이미 파일에 있음)\n\`\`\`tsx\n${controlInventory.trim()}\n\`\`\`\n` +
+      `> ❗ 위 컨트롤과 그 선택 state(예: \`selectedStatus\`)는 **이미 존재**합니다. <region>이나 <hook>에 ` +
+      `다시 만들지 마세요(중복 = 적용 거부). 필터는 그 **기존 state를 useApi params에 넣어** 처리하세요(위 <replace>).\n\n`
+    : '';
   // 편집 영역이 참조하는 모듈 스코프 const(예: const grades=[...]) — 항목 추가/수정 grounding.
   // depsHeader엔 top-level const가 없어 모델이 기억으로 배열을 재구성하다 기존 항목을 흘린다.
   // 실제 선언을 주입하고 "전부 보존해 재선언" 규칙을 줘, 확장의 무손실 교체가 적용되게 한다.
@@ -118,6 +129,7 @@ export function buildHybridPrompt(
     `\n` +
     specSection +
     `## 의존성 헤더 (읽기 전용)\n\`\`\`tsx\n${depsHeader}\n\`\`\`\n\n` +
+    inventorySection +
     backingSection +
     `## 편집 영역 (원본 ${startLine}~${endLine}줄)\n\`\`\`tsx\n${region}\n\`\`\``
   );
@@ -149,7 +161,7 @@ export async function runHybridRegionEdit(
   }
 
   // 2) 모델 호출 (영역 + 의존성 헤더만)
-  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query);
+  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query, loc.controlInventory);
   let modelOut: string;
   try {
     modelOut = await callModel(system, query);
@@ -157,10 +169,13 @@ export async function runHybridRegionEdit(
     return { status: 'error', reason: 'model-call', diagnostics: `[regionEdit] 모델 호출 실패: ${(e as Error).message}` };
   }
 
-  // 3) 파싱: <region> + <hook>(N개) + <import …/>
+  // 3) 파싱: <region> + <hook>(N개) + <import …/> + <replace anchor=…>(N개)
   const regionMatch = modelOut.match(/<region>([\s\S]*?)<\/region>/);
   const hookMatches = [...modelOut.matchAll(/<hook>([\s\S]*?)<\/hook>/g)].map((m) => m[1].trim());
   const importMatches = [...modelOut.matchAll(/<import\s+([^>]*?)\/?>/g)].map((m) => m[1]);
+  const replaceBlocks: ReplaceBlock[] = [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
+    .map((m) => ({ anchor: m[1].trim(), replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, '') }))
+    .filter((b) => b.anchor && b.replacement.trim());
 
   // 앞 빈 줄만 제거, 첫 줄 들여쓰기는 보존(.trim()은 splice를 flush-left로 만든다).
   const newRegion = regionMatch ? stripFences(regionMatch[1]).replace(/^\n+/, '').replace(/\s+$/, '') : '';
@@ -178,7 +193,7 @@ export async function runHybridRegionEdit(
     .filter((r) => r.module);
 
   // 아무 산출물도 없으면(빈 응답) full로 넘긴다 — region이 줄 수 있는 게 없음.
-  if (!newRegion.trim() && !hookCode.trim() && imports.length === 0) {
+  if (!newRegion.trim() && !hookCode.trim() && imports.length === 0 && replaceBlocks.length === 0) {
     return { status: 'fallback', reason: 'empty-output', diagnostics: '[regionEdit] 모델 산출물 없음 → full 폴백' };
   }
 
@@ -217,6 +232,21 @@ export async function runHybridRegionEdit(
     const applied = applyStructuralEdit(composed, edit, { stripDeadInserts: regionChanged, removalIntent });
     composed = applied.text;
     changes.push(...applied.changes);
+  }
+
+  // 5.5) <replace> — 영역 밖 기존 문장(useApi params 등) 결정론 교체(C). 앵커 미해소면 full 폴백
+  //      (모델이 존재하지 않는 문장을 가리킨 것 → 적용하면 의도 누락).
+  if (replaceBlocks.length > 0) {
+    const rep = applyReplaceBlocks(composed, replaceBlocks);
+    if (rep.unresolved.length > 0) {
+      return {
+        status: 'fallback',
+        reason: 'replace-anchor-missing',
+        diagnostics: `[regionEdit] <replace> 앵커 미해소(${rep.unresolved.join(' / ')}) → full 폴백`,
+      };
+    }
+    composed = rep.text;
+    changes.push(...rep.changes);
   }
 
   // 6) 의존성 폐쇄 게이트 — 삽입 훅이 참조하는 타입/훅이 최종 파일에서 해소되는지.

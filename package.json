@@ -436,6 +436,8 @@
     "test:region-edit": "node scripts/test-region-edit.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:input": "node scripts/run-eval-input-quality.mjs",
+    "probe:crosscut": "node scripts/run-probe-crosscut.mjs",
+    "probe:bc": "node scripts/run-probe-bc-primitives.mjs",
     "eval:e2e": "node scripts/run-eval-e2e.mjs",
     "eval:e2e:record": "node scripts/run-eval-e2e.mjs --record"
   },

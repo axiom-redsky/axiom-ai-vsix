@@ -36,9 +36,10 @@ const CASES: Case[] = [
     label: '다중 지점 필터(사용자 실측)',
     fixture: 'EmployeeListPage.tsx',
     query: '현재 파일에 select(부서, 재직상태, 투입상태)를 변경하면, 아래쪽 인력 리스트 테이블의 내용을 필터링 하게 적용해줘',
-    expectFlags: ['region-mistarget', 'control-invisible', 'anchor-unsafe'],
+    expectFlags: ['region-mistarget'],
+    forbidFlags: ['control-invisible', 'anchor-unsafe'],
     expectAdequate: false,
-    note: '다중지점 → cross-cutting 게이트가 모델 호출 전 full 폴백(anchor-unsafe). region은 table 오타깃·select 비가시.',
+    note: 'B+C 경로: 인벤토리가 기존 select를 노출해 control-invisible 억제, 서버 params라 게이트 통과(anchor-unsafe 없음). region은 여전히 table 오타깃(region-mistarget).',
   },
   {
     no: 2,

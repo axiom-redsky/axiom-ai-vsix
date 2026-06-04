@@ -144,6 +144,8 @@ export interface RegionIoInput {
     depsHeader: string;
     backingDecls: string;
     referencedSpec: string;
+    /** region 밖 기존 입력 컨트롤 인벤토리(B) — 재생성 금지 컨텍스트. */
+    controlInventory: string;
   };
   /** 실제 모델에 보낸 분리 입력(system) 전체 — 본체 buildHybridPrompt 결과 그대로. */
   systemPrompt: string;
@@ -162,6 +164,8 @@ export interface RegionIoOutput {
     region: string;
     hooks: string[];
     imports: { module: string; named?: string[]; def?: string }[];
+    /** <replace anchor=…> 블록(C) — 기존 문장 교체 채널. */
+    replaces: { anchor: string; replacement: string }[];
   };
 }
 

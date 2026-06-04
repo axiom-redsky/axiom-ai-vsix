@@ -58,6 +58,41 @@ export function mappedListVars(region: string): string[] {
   return [...out];
 }
 
+/** 인벤토리에 넣을 입력 컨트롤 태그. */
+const INVENTORY_TAGS = 'Select|Input|Checkbox|Switch|RadioGroup|Textarea';
+const INVENTORY_OPEN_RE = new RegExp(`<(${INVENTORY_TAGS})(?![A-Za-z0-9])`);
+
+/**
+ * region **밖**에 이미 존재하는 입력 컨트롤들의 1줄 인벤토리(B). depsHeader가 첫 return에서 잘려
+ * 기존 JSX 컨트롤이 모델에 안 보이던 갭을 메운다 — 모델이 "이미 있다"를 알아 재생성(중복)하지 않게.
+ *
+ * 각 컨트롤: `<Select value={selectedStatus}>  // "재직상태 선택"`. region 안의 컨트롤은 이미
+ * 편집 영역으로 보이므로 제외한다. 토큰을 아끼려 바인딩 state와 placeholder만 발췌한다.
+ */
+export function extractControlInventory(source: string, regionStartLine: number, regionEndLine: number): string {
+  const lines = source.split('\n');
+  const items: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(INVENTORY_OPEN_RE);
+    if (!m) continue;
+    const lineNo = i + 1;
+    if (lineNo >= regionStartLine && lineNo <= regionEndLine) continue; // region 안은 이미 보임
+    const tag = m[1];
+    // 다음 컨트롤 직전(최대 16줄)까지를 이 컨트롤의 범위로 본다(value/placeholder 발췌).
+    let windowEnd = Math.min(i + 16, lines.length);
+    for (let j = i + 1; j < windowEnd; j++) {
+      if (INVENTORY_OPEN_RE.test(lines[j])) { windowEnd = j; break; }
+    }
+    const look = lines.slice(i, windowEnd).join('\n');
+    const value = look.match(/value=\{([^}]+)\}/)?.[1]?.trim();
+    const ph = look.match(/placeholder="([^"]*)"/)?.[1];
+    let line = value ? `<${tag} value={${value}}>` : `<${tag}>`;
+    if (ph) line += `  // "${ph}"`;
+    items.push(line);
+  }
+  return [...new Set(items)].join('\n');
+}
+
 /**
  * 다중지점(cross-cutting) 판정 — region 경로가 표현 못 하는 요청인가.
  *

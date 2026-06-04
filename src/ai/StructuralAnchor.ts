@@ -1214,3 +1214,87 @@ export function findUnresolvedJsxComponents(regionJsx: string, fullText: string)
   const unresolved = [...refs].filter((r) => !available.has(r) && !isWellKnownGlobal(r));
   return { ok: unresolved.length === 0, unresolved };
 }
+
+// ─── 기존 문장 교체(<replace>) — 영역 밖 비-JSX 문장 수정 채널 ──────────────────
+
+export interface ReplaceBlock {
+  /** 교체할 문장 안에 등장하는 식별 문자열(예: `useApi<...>(EMPLOYEES_ENDPOINT`). */
+  anchor: string;
+  /** 그 문장 **전체**를 대신할 새 코드(여러 줄 가능). */
+  replacement: string;
+}
+
+export interface ReplaceResult {
+  text: string;
+  changes: string[];
+  /** 앵커를 파일에서 못 찾은 블록들 */
+  unresolved: string[];
+}
+
+/** 라인의 순델리미터 깊이((){}[] open−close, 문자열·주석 무시). */
+function netDelims(line: string): number {
+  const { open, close } = countDelimiters(line);
+  return open - close;
+}
+
+/**
+ * 모델이 낸 `<replace>` 블록을 결정론적으로 적용한다 — region(JSX)·hook(삽입)이 못 다루는
+ * **영역 밖 기존 문장 수정**(예: `useApi(endpoint, { params })` 의 params 보강)을 위한 채널.
+ *
+ * anchor 문자열이 등장하는 줄을 찾아, 그 줄이 속한 **완결 문장**(위로 경계까지 + 아래로 델리미터
+ * 균형이 0 복귀하며 `;`로 끝나는 줄까지)을 통째로 replacement로 바꾼다. 멀티라인 `const {…} =
+ * useApi(…);` 도 한 문장으로 잡는다. 못 찾으면 unresolved에 담아 호출부가 폴백 판단하게 한다.
+ */
+export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[]): ReplaceResult {
+  const changes: string[] = [];
+  const unresolved: string[] = [];
+  const hasCRLF = source.includes('\r\n');
+  let text = hasCRLF ? source.replace(/\r\n/g, '\n') : source;
+
+  for (const b of blocks) {
+    const anchor = b.anchor.trim();
+    if (!anchor || !b.replacement.trim()) continue;
+    const lines = text.split('\n');
+    const aIdx = lines.findIndex((l) => l.includes(anchor));
+    if (aIdx < 0) {
+      unresolved.push(anchor);
+      continue;
+    }
+
+    // 문장 시작 — 위로 올라가다 "완결된 문장 경계"를 만나면 멈춘다.
+    // 경계: 빈 줄 / 주석 / `;`·`}`로 끝남. `{`로 끝나는 줄은 보통 블록 오프너(경계)지만,
+    // `const {`·`let {` 같은 **객체 구조분해 시작**은 우리 문장의 첫 줄이므로 경계가 아니다
+    // (예: `const { data } = useApi(...)` 멀티라인 — `const {`에서 멈추면 안 됨).
+    let start = aIdx;
+    while (start > 0) {
+      const prev = stripTrailingLineComment(lines[start - 1]).trim();
+      if (prev === '' || prev.startsWith('//') || prev.startsWith('/*') || prev.endsWith('*/')) break;
+      if (/[;}]$/.test(prev)) break;
+      if (prev.endsWith('{') && !/^(?:export\s+)?(?:const|let|var)\b/.test(prev)) break; // 블록 오프너(const 구조분해 제외)
+      start--;
+    }
+    // 문장 끝 — start부터 델리미터 누적이 0으로 돌아오고 `;`로 끝나는 첫 줄.
+    let depth = 0;
+    let end = aIdx;
+    for (let i = start; i < lines.length && i <= start + 80; i++) {
+      depth += netDelims(lines[i]);
+      const t = stripTrailingLineComment(lines[i]).trim();
+      end = i;
+      if (i >= aIdx && depth <= 0 && /;$/.test(t)) break;
+    }
+
+    // 재인덴트 — replacement의 최소 들여쓰기를 벗기고 기존 문장 들여쓰기로 맞춘다.
+    const indent = lines[start].match(/^[ \t]*/)?.[0] ?? '';
+    const rlines = b.replacement.replace(/^\n+/, '').replace(/\s+$/, '').split('\n');
+    const nonblank = rlines.filter((l) => l.trim());
+    const minIndent = nonblank.length ? Math.min(...nonblank.map((l) => l.match(/^[ \t]*/)![0].length)) : 0;
+    const reindented = rlines.map((l) => (l.trim() ? indent + l.slice(minIndent) : ''));
+
+    const next = [...lines.slice(0, start), ...reindented, ...lines.slice(end + 1)];
+    text = next.join('\n');
+    changes.push(`replace 적용(앵커 "${anchor.slice(0, 48)}…") 원본 ${start + 1}~${end + 1}줄`);
+  }
+
+  if (hasCRLF) text = text.replace(/\n/g, '\r\n');
+  return { text, changes, unresolved };
+}

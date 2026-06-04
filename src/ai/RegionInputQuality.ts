@@ -110,15 +110,18 @@ export function analyzeInputQuality(source: string, query: string): InputQuality
   // 재생성(중복) 위험의 본질은 "사용자가 손대려는 컨트롤이 **재작성 표면(region)** 안에 없을 때"다.
   // region에 그 컨트롤이 있으면 모델은 제자리에서 고치므로 안전(depsHeader 가시성은 무관 — 거긴
   // 읽기전용이라 어차피 못 고침). 따라서 소스엔 있는데 region엔 0개인 컨트롤만 비가시로 본다.
+  // B(컨트롤 인벤토리)가 region 밖 컨트롤을 프롬프트에 노출하면 더 이상 "비가시"가 아니다 → 억제.
+  const inventory = loc.controlInventory ?? '';
   for (const tag of controls) {
     const inSource = countTag(source, tag);
     const inRegion = countTag(region, tag);
-    if (inSource > 0 && inRegion === 0) {
+    const inInventory = countTag(inventory, tag);
+    if (inSource > 0 && inRegion === 0 && inInventory === 0) {
       flags.push({
         code: 'control-invisible',
         severity: 'high',
-        message: `<${tag}> 컨트롤이 소스엔 ${inSource}개 있으나 재작성 region엔 0개 — 편집 대상이 ` +
-          `region 밖. 모델이 없는 줄 알고 region에 재생성 → 기존 ${inSource}개와 중복 위험.`,
+        message: `<${tag}> 컨트롤이 소스엔 ${inSource}개 있으나 region·인벤토리 어디에도 없음 — 모델이 ` +
+          `없는 줄 알고 재생성 → 기존 ${inSource}개와 중복 위험.`,
       });
     }
   }

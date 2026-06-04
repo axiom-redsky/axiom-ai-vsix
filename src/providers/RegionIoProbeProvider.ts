@@ -107,6 +107,7 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
       referencedSpec || undefined,
       loc.backingDecls,
       query,
+      loc.controlInventory,
     );
 
     const input: RegionIoInput = {
@@ -126,6 +127,7 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
         depsHeader: loc.depsHeader,
         backingDecls: loc.backingDecls,
         referencedSpec,
+        controlInventory: loc.controlInventory,
       },
       systemPrompt,
       systemPromptChars: systemPrompt.length,
@@ -142,7 +144,7 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
           status: 'error',
           error: `안전 게이트 차단(${loc.safety.gate}) → 운영에선 모델 미호출, full 입력으로 폴백합니다.\n사유: ${loc.safety.reason}`,
           rawOutput: '',
-          parsed: { regionFound: false, region: '', hooks: [], imports: [] },
+          parsed: { regionFound: false, region: '', hooks: [], imports: [], replaces: [] },
         },
       });
       this._post({ type: 'regionIoDone' });
@@ -161,7 +163,7 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
     if (err) {
       this._post({
         type: 'regionIoOutput',
-        output: { status: 'error', error: err, rawOutput: '', parsed: { regionFound: false, region: '', hooks: [], imports: [] } },
+        output: { status: 'error', error: err, rawOutput: '', parsed: { regionFound: false, region: '', hooks: [], imports: [], replaces: [] } },
       });
       this._post({ type: 'regionIoDone' });
       return;
@@ -185,6 +187,9 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
     const regionMatch = modelOut.match(/<region>([\s\S]*?)<\/region>/);
     const hookMatches = [...modelOut.matchAll(/<hook>([\s\S]*?)<\/hook>/g)].map((m) => m[1].trim());
     const importMatches = [...modelOut.matchAll(/<import\s+([^>]*?)\/?>/g)].map((m) => m[1]);
+    const replaces = [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
+      .map((m) => ({ anchor: m[1].trim(), replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, '') }))
+      .filter((b) => b.anchor && b.replacement.trim());
 
     const region = regionMatch ? stripFences(regionMatch[1]).replace(/^\n+/, '').replace(/\s+$/, '') : '';
     const imports = importMatches
@@ -202,7 +207,7 @@ export class RegionIoProbeProvider implements vscode.WebviewViewProvider {
     return {
       status: 'ok',
       rawOutput: modelOut,
-      parsed: { regionFound: !!regionMatch, region, hooks: hookMatches, imports },
+      parsed: { regionFound: !!regionMatch, region, hooks: hookMatches, imports, replaces },
     };
   }
 
