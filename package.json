@@ -422,7 +422,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.webview.json",
     "test:line-edits": "node scripts/run-test-line-edits.mjs",
     "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs",
-    "test:region-edit": "node scripts/test-region-edit.mjs"
+    "test:region-edit": "node scripts/test-region-edit.mjs",
+    "eval:region": "node scripts/run-eval-region.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
