@@ -597,6 +597,43 @@ function declBindings(stmt: string): string[] {
 }
 
 /**
+ * 삽입할 컴포넌트 본문 코드(rest)에서, 최종 파일(baseText=영역 반영 소스 + 조각 내 나머지 문장) 어디에서도
+ * 참조되지 않는 **죽은 선언 문장**을 반복 제거한다.
+ *
+ * region이 실제 편집된 케이스에서 약한 모델은 요청과 무관한 미사용 state/const(곁다리 죽은코드)를 덤으로
+ * 붙이곤 한다(실측: '대기 옵션 추가'에 미사용 selectedStatus, 'Kotlin 추가'에 미사용 suggestedSkills).
+ * 실제 편집(region)은 살리고 이 곁다리만 걷어내 깨끗한 적용을 만든다. 체인(A→B→dead) 해소를 위해 변화가
+ * 없을 때까지 반복한다. (region 미변경 케이스엔 호출하지 않는다 — 그건 dead-binding 게이트가 폴백 처리.)
+ */
+function stripDeadStatements(restCode: string, baseText: string): { code: string; dropped: string[] } {
+  let stmts = splitStatements(restCode);
+  const dropped: string[] = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const surviving: string[] = [];
+    for (let i = 0; i < stmts.length; i++) {
+      const bindings = declBindings(stmts[i]);
+      if (bindings.length === 0) {
+        surviving.push(stmts[i]);
+        continue;
+      }
+      const universe = baseText + '\n' + stmts.filter((_, j) => j !== i).join('\n');
+      const used = bindings.some((b) =>
+        new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(universe),
+      );
+      if (used) surviving.push(stmts[i]);
+      else {
+        dropped.push(bindings.join(', '));
+        changed = true;
+      }
+    }
+    stmts = surviving;
+  }
+  return { code: stmts.join('\n'), dropped };
+}
+
+/**
  * **컴포넌트 본문**의 기존 단일 라인 선언을, 모델이 같은 바인딩으로 재선언한 조각으로 in-place 교체한다.
  *
  * extractConstReplacements가 모듈 스코프 const(옵션 배열 등)를 다룬다면, 이쪽은 컴포넌트 본문의 useState
@@ -653,7 +690,11 @@ function extractComponentReplacements(
  * 구조 앵커를 이용해 모델이 낸 조각을 결정론적으로 적용한다.
  * search/replace, 라인 번호 추측, 전체 파일 재작성 없이 동작한다.
  */
-export function applyStructuralEdit(source: string, edit: StructuralEdit): ApplyResult {
+export function applyStructuralEdit(
+  source: string,
+  edit: StructuralEdit,
+  opts: { stripDeadInserts?: boolean } = {},
+): ApplyResult {
   // CRLF 정규화 — 삽입 라인이 LF만 갖는 일을 막아 줄바꿈 혼용을 방지한다.
   const hasCRLF = source.includes('\r\n');
   const norm = hasCRLF ? source.replace(/\r\n/g, '\n') : source;
@@ -701,9 +742,16 @@ export function applyStructuralEdit(source: string, edit: StructuralEdit): Apply
     // 컴포넌트 본문 코드에 삽입하기 전, 대상 파일(모듈+컴포넌트 본문)에 **이미 선언된 이름을 다시
     // 선언하는** 문장을 드롭한다(중복 선언 = 컴파일 에러 방지). 기존 이름은 그대로 재사용된다.
     const existingBindings = collectDeclaredBindings(norm);
-    const { text: rest, dropped: droppedDecls } = dropDuplicateDeclarations(compRepl.reduced, existingBindings);
-    if (droppedDecls.length > 0) {
-      changes.push(`중복 선언 드롭(이미 존재): ${droppedDecls.join(' / ')}`);
+    const dedup = dropDuplicateDeclarations(compRepl.reduced, existingBindings);
+    let rest = dedup.text;
+    if (dedup.dropped.length > 0) {
+      changes.push(`중복 선언 드롭(이미 존재): ${dedup.dropped.join(' / ')}`);
+    }
+    // region이 실제 편집된 경우, 모델이 덤으로 붙인 미사용 곁다리 선언을 걷어낸다(깨끗한 출력).
+    if (opts.stripDeadInserts && rest.trim()) {
+      const s = stripDeadStatements(rest, norm);
+      rest = s.code;
+      if (s.dropped.length > 0) changes.push(`미사용 곁다리 선언 strip: ${s.dropped.join(' / ')}`);
     }
 
     // 1-a) 훅/일반 코드 → 컴포넌트 본문(들여쓰기 부여)
@@ -930,6 +978,39 @@ function collectReferencedSymbols(insertedCode: string): Set<string> {
     refs.delete(m[1]);
   }
   return refs;
+}
+
+/**
+ * 모델이 `<hook>`으로 선언한 바인딩 중, 최종 파일 어디에서도(자기 선언 밖) **참조되지 않는** "죽은" 선언을 찾는다.
+ *
+ * region/하이브리드가 표현 못 하는 편집유형(rename·다중타깃)에서 약한 모델은 구조 게이트(root-tag/deps/
+ * components)는 통과하지만, **안 쓰는 새 state/const를 삽입하는 죽은 코드**를 낸다(실측: department→selectedDept
+ * rename 요청에 미사용 `selectedDept` 삽입 + 원본 rename 안 함 / 다중타깃에 미사용 `selectedStatus` 삽입).
+ * 이러면 "applied"로 집계되지만 실제론 silent 오편집이다. "삽입 코드는 실제로 쓰여야 한다"를 불변식으로 못박아
+ * full 폴백시킨다. 한 선언의 바인딩이 **전부** 미참조일 때만 죽은 것으로 본다(보수적 — setter만 미사용 등 오탐 방지).
+ *
+ * 사용 판정: 바인딩 b의 최종 파일 등장 횟수 − 그 선언문 내 등장 횟수 > 0 이면 "선언 밖에서 쓰임".
+ * (교체/중복드롭된 선언도 원본 사용처가 남아 통과한다.)
+ *
+ * @param hookCode 모델이 낸 `<hook>` 원본
+ * @param finalText 합성이 반영된 최종 파일
+ * @returns 죽은 선언들의 바인딩 목록(빈 배열이면 전부 사용됨)
+ */
+export function findUnusedInsertedBindings(hookCode: string, finalText: string): string[] {
+  if (!hookCode.trim()) return [];
+  const dead: string[] = [];
+  for (const stmt of splitStatements(hookCode)) {
+    const bindings = declBindings(stmt);
+    if (bindings.length === 0) continue;
+    const anyUsed = bindings.some((b) => {
+      const re = new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+      const finalCount = (finalText.match(re) ?? []).length;
+      const declCount = (stmt.match(re) ?? []).length;
+      return finalCount - declCount > 0;
+    });
+    if (!anyUsed) dead.push(bindings.join(', '));
+  }
+  return dead;
 }
 
 /**

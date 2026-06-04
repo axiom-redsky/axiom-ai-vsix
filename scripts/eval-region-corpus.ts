@@ -154,8 +154,9 @@ export const CASES: EvalCase[] = [
     file: 'MEMBER_LIST',
     query: '재직상태 select 옵션을 api로 받아오게 해줘',
     expectGate: 'ok',
-    expectE2E: 'applied',
-    note: 'Select 컨트롤 통짜 스냅 — 하이브리드 핵심 경로',
+    expectE2E: 'fallback',
+    expectE2EReason: 'dead-binding',
+    note: 'Select 통짜 스냅(locate ok). 단 실측: 모델이 API 옵션(statusItems)을 hook에 만들고 region엔 안 끼움(하드코딩 유지) → 미사용 죽은코드 → dead-binding 폴백이 정답(편집 미완성). 30B도 핵심경로 가끔 미완.',
   },
   {
     id: 'table-cell',
@@ -208,7 +209,7 @@ export const CASES: EvalCase[] = [
   // EmployeeEditPage — 부서/직급/재직상태 select, 퇴사일, 스킬 태그
   // grounding(backingDecls 주입) + 무손실 const 교체로 해소됨: 모델이 기존 grades 전부 보존한 superset 출력 → 교체 적용.
   { id: 'emp-edit-grade-add', file: 'EmployeeEditPage', query: '직급 셀렉트에 수석 항목을 추가해줘', expectE2E: 'applied', note: '실파일: 직급 Select 옵션 추가 — grounding+무손실 교체로 applied(영역 밖 const 수정 갭 해소)' },
-  { id: 'emp-edit-resign-valid', file: 'EmployeeEditPage', query: '퇴사일은 입사일 이후만 선택되게 검증을 추가해줘', expectE2E: 'applied', note: '실파일: 폼 검증' },
+  { id: 'emp-edit-resign-valid', file: 'EmployeeEditPage', query: '퇴사일은 입사일 이후만 선택되게 검증을 추가해줘', expectE2E: 'fallback', expectE2EReason: 'dead-binding', note: '실파일: 폼 검증 — 실측: region(퇴사일 Input)에 이미 min={hireDate} 검증 존재(미변경) + 미사용 resignDateError 삽입 → dead-binding 폴백 정답' },
   { id: 'emp-edit-skill-dup', file: 'EmployeeEditPage', query: '기술 스택 추가 시 중복이면 안내문구를 보여줘', expectE2E: 'applied', note: '실파일: 스킬 태그 입력' },
 
   // EmployeeFormPage — 부서/직급 select, 스킬
@@ -239,9 +240,37 @@ export const CASES: EvalCase[] = [
 
   // ══ 임의 요소(비-Select/비-table) — 도메인 한글 콘텐츠로 가리킴: 앵커 품질(B) 측정용 ══════
   //   th/td/label/span 등 다양한 enclosing 요소. 구조어 없이 화면 텍스트로만 지시.
-  { id: 'q-rate-cell', file: 'ProjectDetailPage', query: '투입률을 퍼센트 막대로 표시해줘', expectE2E: 'applied', note: 'B: 투입률 th(콘텐츠) → enclosing 요소' },
+  { id: 'q-rate-cell', file: 'ProjectDetailPage', query: '투입률을 퍼센트 막대로 표시해줘', expectE2E: 'fallback', expectE2EReason: 'dead-binding', note: 'B: 투입률 th. 실측: region(헤더 tr) 미변경(막대 미렌더) + 미사용 progressPercentage 헬퍼 삽입 → dead-binding 폴백 정답' },
   { id: 'q-leave-date', file: 'ProjectStatusPage', query: '철수 예정일 표기를 날짜만 보이게 바꿔줘', expectE2E: 'applied', note: 'B: 철수 예정일 th' },
   { id: 'q-resign-input', file: 'EmployeeEditPage', query: '퇴사일 입력칸 안내문을 추가해줘', expectE2E: 'applied', note: 'B: 퇴사일 label/Input' },
   { id: 'q-skill-tag', file: 'EmployeeFormPage', query: '선택된 기술 스택 태그를 더 크게 보여줘', expectE2E: 'applied', note: 'B: 스킬 태그 span' },
   { id: 'q-summary-email', file: 'EmployeeDetailPage', query: '요약 카드의 이메일을 굵게 표시해줘', expectE2E: 'applied', note: 'B: 요약 카드 내 이메일' },
+
+  // ══ 편집 유형 다양화(코퍼스 확장) — Select/table 편중을 깨고 다음 갭을 탐색 ════════════════
+  //   expect는 비워 측정만(탐색). eval:region(locate)로 게이트 먼저 보고, e2e 녹화 후 결과 못박는다.
+  //   각 케이스의 가설을 note에 적어 측정값과 대조한다.
+
+  // 삭제 vs 무손실 가드 대조쌍 ───────────────────────────────────────────────
+  // (A) 배열 백킹 옵션 삭제: 모델이 grades 배열을 항목 빼고 재선언 → 무손실 가드가 '누락'으로 거부 → no-op?
+  //     ⚠ 삭제 의도와 무손실 가드의 정면충돌 가설. 가드가 "실수 누락"과 "의도적 제거"를 구분 못 함.
+  { id: 'del-grade-option', file: 'EmployeeEditPage', query: '직급 셀렉트에서 이사 항목을 빼줘', note: '편집유형:삭제(배열백킹) — 무손실 가드 충돌 가설(거부→no-op 예상)' },
+  // (B) 하드코딩 SelectItem 삭제: JSX 영역 재작성으로 줄 제거 → 배열 아님 → applied 예상(대조군)
+  { id: 'del-jsx-option', file: 'MEMBER_LIST', query: '재직상태 필터에서 휴직 옵션을 제거해줘', expectE2E: 'applied', note: '편집유형:삭제(JSX 하드코딩) — 영역 재작성으로 줄 제거 → applied(del-grade-option 대조군: 배열백킹은 가드충돌 no-op)' },
+
+  // rename: 영역+사용처에 걸친 식별자 변경 — region 단일 splice로 표현 불가. 실측: 모델이 미사용 selectedDept만
+  //   삽입 + 원본 미rename → dead-binding 게이트가 honest fallback으로(silent 오편집 차단).
+  { id: 'rename-state', file: 'EmployeeEditPage', query: 'department state 이름을 selectedDept로 바꿔줘', expectE2E: 'fallback', expectE2EReason: 'dead-binding', note: '편집유형:rename — region 표현 불가, 미사용 selectedDept 삽입 → dead-binding 폴백 정답' },
+
+  // 조건부 렌더 추가: 실측은 엉뚱한 region(스킬 입력) 스냅 + 미사용 leaveStartDate 삽입 → dead-binding 폴백.
+  { id: 'cond-leave-date', file: 'EmployeeEditPage', query: '휴직 상태일 때 휴직 시작일 입력란을 보여줘', expectE2E: 'fallback', expectE2EReason: 'dead-binding', note: '편집유형:조건부 렌더 — 실측 미스냅+미사용 state → dead-binding 폴백' },
+
+  // JSX 텍스트/속성 변경(작은 영역 편집)
+  { id: 'btn-text', file: 'EmployeeEditPage', query: '저장 버튼 글자를 수정 완료로 바꿔줘', expectE2E: 'applied', note: '편집유형:JSX 텍스트 변경 — Button 영역' },
+  { id: 'attr-readonly', file: 'EmployeeEditPage', query: '이메일 입력칸을 읽기 전용으로 만들어줘', note: '편집유형:속성 토글(readOnly) — 이메일 Input 영역' },
+
+  // 신규 섹션 삽입: 기존 섹션 곁에 새 카드 섹션 추가(영역 재작성으로 충분한지/위치 가설)
+  { id: 'new-memo-section', file: 'EmployeeEditPage', query: '기술스택 섹션 아래에 메모 입력란 섹션을 추가해줘', note: '편집유형:신규 섹션 — 위치/범위 가설' },
+
+  // 다중 컨트롤: 한 질문이 두 타깃을 건드림 — locate 단일 스냅의 한계 가설
+  { id: 'multi-control', file: 'MEMBER_LIST', query: '재직상태 필터와 입사일 컬럼을 둘 다 손봐줘', note: '편집유형:다중 타깃 — locate 단일 선택 한계 가설' },
 ];

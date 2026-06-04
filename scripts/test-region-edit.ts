@@ -109,7 +109,8 @@ await (async () => {
   // React 표준 훅 자동 import 보강: 모델이 useRef를 도입(파일은 useState만 import) → applied
   {
     const model = [
-      '<region>\n      <Select value={status} onValueChange={setStatus}>\n        <SelectTrigger/>\n      </Select>\n</region>',
+      // timer를 region에서 실제 사용(ref) → 미사용 삽입 아님 + region 변경됨(dead-binding 게이트 비대상)
+      '<region>\n      <Select value={status} onValueChange={(v) => { timer.current = Date.now(); setStatus(v); }}>\n        <SelectTrigger/>\n      </Select>\n</region>',
       '<hook>const timer = useRef<number | null>(null);</hook>',
     ].join('\n');
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
@@ -204,6 +205,26 @@ await (async () => {
     ].join('\n');
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
     check('주석 처리된 컴포넌트는 오탐 없음 → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+  }
+
+  // 죽은 삽입 바인딩 게이트(6.7): region이 표현 못 하는 편집(rename/조회용 미사용 state)에서 모델이 원본
+  //   영역은 그대로 둔 채 안 쓰는 새 state만 얹어 applied로 위장한 silent 오편집을 full 폴백으로.
+  {
+    // region을 원본 그대로 반환(미변경) + 안 쓰는 새 state 삽입 → dead-binding 폴백
+    const loc = locateEditRegion(SRC, '재직상태 select를 api로');
+    const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로',
+      async () => `<region>\n${loc.region}\n</region>\n<hook>const [selectedDept, setSelectedDept] = useState('');</hook>`);
+    check('미사용 삽입 state + region 미변경 → dead-binding 폴백', o.status === 'fallback' && o.reason === 'dead-binding', `status=${o.status}, reason=${o.reason}`);
+  }
+  {
+    // 대조군 + 죽은 곁다리 strip: region을 실제로 바꾸면(편집 성공) 곁다리 미사용 state는 폴백 대신 strip → applied
+    const loc = locateEditRegion(SRC, '재직상태 select를 api로');
+    const changedRegion = loc.region.replace('placeholder="재직상태"', 'placeholder="상태 선택"');
+    const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로',
+      async () => `<region>\n${changedRegion}\n</region>\n<hook>const [selectedDept, setSelectedDept] = useState('');</hook>`);
+    check('region 변경됨 → 곁다리 미사용 state 있어도 applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+    check('죽은 곁다리 strip — 출력에 미사용 selectedDept 없음', !!o.finalText && !o.finalText.includes('selectedDept'), `has=${o.finalText?.includes('selectedDept')}`);
+    check('region 실제 편집은 보존(상태 선택)', !!o.finalText && o.finalText.includes('상태 선택'));
   }
 
   // grounding(영역 밖 const 수정 갭의 정공법): 편집 영역이 참조하는 모듈 스코프 const를 프롬프트에

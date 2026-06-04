@@ -17,6 +17,7 @@ import {
   applyStructuralEdit,
   findUnresolvedReferences,
   findUnresolvedJsxComponents,
+  findUnusedInsertedBindings,
   resolveKnownImports,
   type StructuralEdit,
   type ImportRequest,
@@ -169,6 +170,10 @@ export async function runHybridRegionEdit(
     }
   }
 
+  // region이 의미있게 바뀌었는가 — 죽은 곁다리 strip(6.8) / dead-binding 게이트(6.7) 분기에 쓴다.
+  const ws = (s: string): string => s.replace(/\s+/g, ' ').trim();
+  const regionChanged = newRegion.trim() !== '' && ws(newRegion) !== ws(loc.region);
+
   // 5) 합성: JSX 영역 splice → structural(훅/타입/import) 결정론 삽입
   const changes: string[] = [];
   let composed = source;
@@ -180,7 +185,9 @@ export async function runHybridRegionEdit(
   if (hookCode.trim()) edit.hookCode = hookCode;
   if (imports.length) edit.imports = imports;
   if (edit.hookCode || edit.imports) {
-    const applied = applyStructuralEdit(composed, edit);
+    // region이 실제 편집된 경우에만 죽은 곁다리 선언을 strip한다(깨끗한 출력). region 미변경 케이스는
+    // strip하면 no-op로 묻혀 진단이 흐려지므로, 6.7 dead-binding 게이트가 fallback으로 처리하게 둔다.
+    const applied = applyStructuralEdit(composed, edit, { stripDeadInserts: regionChanged });
     composed = applied.text;
     changes.push(...applied.changes);
   }
@@ -227,6 +234,22 @@ export async function runHybridRegionEdit(
         status: 'fallback',
         reason: 'unresolved-components',
         diagnostics: `[regionEdit] region 컴포넌트 미해소(${comp.unresolved.join(', ')}) — import 불명 → full 폴백`,
+      };
+    }
+  }
+
+  // 6.7) 죽은 삽입 바인딩 게이트 — 모델이 안 쓰는 새 state/const를 삽입했고 **region 편집은 사실상 없을 때**만
+  //      full 폴백. region/하이브리드가 표현 못 하는 편집(rename·조회용 미사용 state)에서 모델이 원본 영역은
+  //      그대로 둔 채 죽은 코드만 얹어 applied로 위장하는 silent 오편집을 차단한다.
+  //      ⚠ region이 실제로 바뀌었으면 죽은 hook은 곁다리 노이즈일 뿐 — 위 6.8(strip)이 이미 걷어냈으므로
+  //         여기선 region 미변경 케이스만 본다(실측: '대기 옵션 추가'는 region 편집 성공, 미사용 state는 strip됨).
+  if (hookCode.trim() && !regionChanged) {
+    const dead = findUnusedInsertedBindings(hookCode, composed);
+    if (dead.length > 0) {
+      return {
+        status: 'fallback',
+        reason: 'dead-binding',
+        diagnostics: `[regionEdit] 미사용 삽입 선언(${dead.join(' / ')}) + region 편집 없음 — region이 표현 못 하는 편집(rename 등) 의심 → full 폴백`,
       };
     }
   }
