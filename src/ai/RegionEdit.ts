@@ -17,6 +17,7 @@
  */
 import { splitTsSections } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
+import { isCrossCutting } from './RegionIntent';
 
 /** locate 잡음 토큰 — 'api'가 useApi에, '박스/사용/적용' 등이 엉뚱한 줄에 걸려 위치를 빗나가게 한다. */
 const LOCATE_STOP = new Set(['api', '박스', '사용', '적용', '현재', '화면', '해줘', '추가', 'box', '에서']);
@@ -67,7 +68,7 @@ function bridgeQueryTokens(tokens: string[]): string[] {
 
 export interface RegionSafety {
   ok: boolean;
-  gate: 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed' | 'ok';
+  gate: 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed' | 'cross-cutting' | 'ok';
   reason: string;
 }
 
@@ -389,6 +390,11 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
     safety = { ok: false, gate: 'anchor-import', reason: `최고 매칭(${bestLine}줄)이 import 라인 — 편집 영역으로 부적합.` };
   } else if (!snap) {
     safety = { ok: false, gate: 'snap-failed', reason: `완결 JSX 요소 스냅 실패 → ±윈도우(${startLine}~${endLine})는 균형 블록이 아님. 모델 재작성 splice 시 구조 파손 위험.` };
+  } else if (isCrossCutting(query, firstJsxTag(region), region)) {
+    // 다중지점(필터/정렬/연동) — 편집의도 + region 루트가 큰 컨테이너 + 지목 컨트롤이 region 밖.
+    // 단일 region이 표현 못 하는 요청(컨트롤·데이터소스·렌더 여러 곳)이라, 모델에 보내면 기존 컨트롤을
+    // 재생성(중복)하거나 클라 필터로 우회한다(실측: select→테이블 필터, 3/3 깨짐). 모델 호출 전 full 폴백.
+    safety = { ok: false, gate: 'cross-cutting', reason: `다중지점 편집 의도 — region 루트 <${firstJsxTag(region)}>(${startLine}~${endLine})는 컨테이너이고 지목 컨트롤이 영역 밖. 단일 region으로 표현 불가 → full 폴백.` };
   } else {
     safety = { ok: true, gate: 'ok', reason: `코드줄 앵커(${bestLine}줄, 점수 ${bestScore}) + 완결 JSX 요소 스냅(${startLine}~${endLine}) — region/hybrid 안전.` };
   }

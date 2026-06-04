@@ -4,6 +4,7 @@ import { ChatApp } from './chat/ChatApp';
 import { LauncherApp } from './launcher/LauncherApp';
 import { ProjectConfigApp } from './projectConfig/ProjectConfigApp';
 import { SliceProbeApp } from './sliceProbe/SliceProbeApp';
+import { RegionIoApp } from './regionIo/RegionIoApp';
 import './styles/webview.css';
 import 'highlight.js/styles/vs2015.css';
 
@@ -15,6 +16,7 @@ if (rootEl) {
     mode === 'launcher' ? <LauncherApp />
     : mode === 'project-config' ? <ProjectConfigApp />
     : mode === 'slice-probe' ? <SliceProbeApp />
+    : mode === 'region-io' ? <RegionIoApp />
     : <ChatApp />,
   );
 }

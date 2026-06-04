@@ -40,8 +40,14 @@ function stripFences(s: string): string {
   return (m ? m[1] : s).replace(/\s+$/, '');
 }
 
-/** 하이브리드 프롬프트 — JSX는 <region>, 새 훅/타입은 <hook>, import는 <import …/>. */
-function buildHybridPrompt(
+/**
+ * 하이브리드 프롬프트 — JSX는 <region>, 새 훅/타입은 <hook>, import는 <import …/>.
+ *
+ * 입출력 점검 패널(RegionIoProbeProvider)이 "실제 운영 경로가 모델에 보내는 분리 입력"을
+ * 그대로 보여줄 수 있도록 export 한다. 패널이 프롬프트를 재구현하면 본체와 갈라져(실측됨:
+ * 슬라이스 패널의 hybrid 미러가 filterSection·backingSection을 누락) 점검 결과가 거짓이 된다.
+ */
+export function buildHybridPrompt(
   depsHeader: string,
   region: string,
   startLine: number,

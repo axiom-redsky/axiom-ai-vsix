@@ -57,6 +57,12 @@
           "id": "axiom-ai.sliceProbePanel",
           "name": "슬라이싱 실험",
           "visibility": "collapsed"
+        },
+        {
+          "type": "webview",
+          "id": "axiom-ai.regionIoPanel",
+          "name": "영역편집 입출력 점검",
+          "visibility": "collapsed"
         }
       ],
       "axiom-ai-chat-container": [
@@ -429,6 +435,7 @@
     "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs",
     "test:region-edit": "node scripts/test-region-edit.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
+    "eval:input": "node scripts/run-eval-input-quality.mjs",
     "eval:e2e": "node scripts/run-eval-e2e.mjs",
     "eval:e2e:record": "node scripts/run-eval-e2e.mjs --record"
   },

@@ -73,7 +73,10 @@ export type WebviewToHostMessage =
   | { type: 'patchRetryCancel'; recoveryId: string }
   | { type: 'probePickFile' }
   | { type: 'probeUseActiveFile' }
-  | { type: 'runProbe'; filePath: string; query: string; budget: number; mode: ProbeMode };
+  | { type: 'runProbe'; filePath: string; query: string; budget: number; mode: ProbeMode }
+  | { type: 'regionIoPickFile' }
+  | { type: 'regionIoUseActiveFile' }
+  | { type: 'runRegionIo'; filePath: string; query: string };
 
 /** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
 export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
@@ -119,7 +122,48 @@ export type HostToWebviewMessage =
     }
   | { type: 'probeOutput'; variant: 'full' | 'sliced' | 'tool' | 'region' | 'hybrid'; status: 'ok' | 'error'; content: string; promptChars: number }
   | { type: 'probeDone' }
-  | { type: 'probeError'; message: string };
+  | { type: 'probeError'; message: string }
+  | { type: 'regionIoFilePicked'; filePath: string }
+  | { type: 'regionIoInput'; input: RegionIoInput }
+  | { type: 'regionIoOutput'; output: RegionIoOutput }
+  | { type: 'regionIoDone' }
+  | { type: 'regionIoError'; message: string };
+
+/** 영역(하이브리드) 편집의 "분리된 입력" — 모델에 보내기 전 단계. RegionIoProbeProvider 전용. */
+export interface RegionIoInput {
+  filePath: string;
+  query: string;
+  sourceChars: number;
+  /** 위치결정 안전 게이트 — ok=false면 운영에선 full로 폴백(모델 미호출). */
+  safety: { ok: boolean; gate: string; reason: string };
+  /** grep 위치결정 요약. */
+  locate: { bestLine: number; bestScore: number; matched: string[]; startLine: number; endLine: number };
+  /** 영역별로 분리된 입력 조각(실제 buildHybridPrompt에 들어가는 재료). */
+  sections: {
+    region: string;
+    depsHeader: string;
+    backingDecls: string;
+    referencedSpec: string;
+  };
+  /** 실제 모델에 보낸 분리 입력(system) 전체 — 본체 buildHybridPrompt 결과 그대로. */
+  systemPrompt: string;
+  systemPromptChars: number;
+}
+
+/** 영역(하이브리드) 편집의 "출력 결과물" — 모델 원시 출력 + 영역별 파싱. */
+export interface RegionIoOutput {
+  status: 'ok' | 'error';
+  error?: string;
+  /** 모델 원시 출력 전체. */
+  rawOutput: string;
+  /** 원시 출력에서 파싱한 영역별 조각. */
+  parsed: {
+    regionFound: boolean;
+    region: string;
+    hooks: string[];
+    imports: { module: string; named?: string[]; def?: string }[];
+  };
+}
 
 /** 시스템 프롬프트 구성 요소별 글자 수. UI 브레이크다운 표시용. */
 export interface ContextBreakdown {

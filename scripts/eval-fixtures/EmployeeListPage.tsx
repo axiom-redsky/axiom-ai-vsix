@@ -62,6 +62,7 @@ type TCommonCodesResponse = {
 	success: boolean;
 	data: {
 		EMPLOYMENT_STATUS: TCommonCode[];
+		DEPLOYMENT_STATUS: TCommonCode[];
 	};
 };
 
@@ -157,6 +158,15 @@ export default function EmployeeListPage(): React.ReactNode {
 			setEmploymentStatusCodes(commonCodesResponse.data.EMPLOYMENT_STATUS);
 		}
 	}, [commonCodesResponse]);
+	const { data: deploymentResponse } = useApi<TCommonCodesResponse>('/api/common-codes', {
+		params: {
+			groups: 'DEPLOYMENT_STATUS',
+		},
+	});
+
+	const deploymentStatuses = deploymentResponse?.data?.DEPLOYMENT_STATUS ?? [];
+
+	const [selectedDeployment, setSelectedDeployment] = useState<string>('all');
 
 	const departments = deptResponse?.data ?? [];
 
@@ -236,7 +246,10 @@ export default function EmployeeListPage(): React.ReactNode {
 						))}
 					</SelectContent>
 				</Select>
-				<Select defaultValue="all">
+				<Select
+					value={selectedDeployment}
+					onValueChange={setSelectedDeployment}
+				>
 					<SelectTrigger
 						size="lg"
 						className="bg-muted/60 border-slate-300 dark:border-slate-600 shadow-sm"
@@ -245,9 +258,14 @@ export default function EmployeeListPage(): React.ReactNode {
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="all">투입상태 전체</SelectItem>
-						<SelectItem value="active">투입중</SelectItem>
-						<SelectItem value="bench">벤치</SelectItem>
-						<SelectItem value="warning">철수임박</SelectItem>
+						{deploymentStatuses.map((status) => (
+							<SelectItem
+								key={status.code}
+								value={status.code}
+							>
+								{status.code_name}
+							</SelectItem>
+						))}
 					</SelectContent>
 				</Select>
 				<Button

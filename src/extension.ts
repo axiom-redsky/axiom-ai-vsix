@@ -4,6 +4,7 @@ import { ChatViewProvider } from './providers/ChatViewProvider';
 import { SddPanelProvider } from './views/SddPanelProvider';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
+import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
 import { registerCommands } from './commands/index';
 import { ExtensionConfig } from './config/ExtensionConfig';
 import { AxiomIndexTracker } from './spec/AxiomIndexTracker';
@@ -16,6 +17,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const sddPanel = new SddPanelProvider();
   const projectConfigProvider = new ProjectConfigProvider(context.extensionUri);
   const sliceProbeProvider = new SliceProbeProvider(context.extensionUri);
+  const regionIoProbeProvider = new RegionIoProbeProvider(context.extensionUri);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -40,6 +42,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(
       SliceProbeProvider.viewId,
       sliceProbeProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+    vscode.window.registerWebviewViewProvider(
+      RegionIoProbeProvider.viewId,
+      regionIoProbeProvider,
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
   );
