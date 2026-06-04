@@ -91,6 +91,12 @@ export class ScaffoldContextBuilder {
     return patterns.some((p) => q.includes(p));
   }
 
+  /** 필터·검색·정렬 의도가 있는 요청인지(서버 params 배선 지침 노출용). */
+  private _hasFilterIntent(query: string): boolean {
+    const q = query.toLowerCase();
+    return ['필터', 'filter', '검색', 'search', '정렬', 'sort'].some((p) => q.includes(p));
+  }
+
   /**
    * 파일 생성/수정 의도가 명시적으로 드러나는지 판단한다(보수적: 동사·생성 패턴 기반).
    * 하나라도 걸리면 Q&A 게이팅을 적용하지 않고 기존 시나리오 지시문을 그대로 주입한다.
@@ -653,6 +659,19 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 > onClick은 인라인 화살표 함수로 작성. 별도 핸들러 함수 선언 불필요.`
       : '';
 
+    // 데이터 필터링·검색 요청 + 현재 파일이 이미 useApi(params)로 서버 조회 중일 때만 노출한다.
+    // 약한 모델이 서버 params 대신 클라이언트 파괴적 필터(setState로 원본 덮어쓰기)나 행별 Select를
+    // 창작해 의미가 깨지는 실패(실측)를 막는 타깃 지침. (params가 없으면 클라 필터가 정당할 수 있어 미노출.)
+    const hasServerParams = /useApi/.test(fileSection) && /\bparams\s*:/.test(fileSection);
+    const filterHint = this._hasFilterIntent(userQuery) && hasServerParams
+      ? `
+### ⚠️ 데이터 필터링·검색 구현 지침 (서버 params 우선 — 반드시 준수)
+현재 파일은 이미 \`useApi(endpoint, { params: { … } })\` 로 **서버에서** 목록을 가져옵니다. 필터/검색은 클라이언트가 아니라 **서버 params**로 처리하세요:
+- ✅ 그 \`useApi\`의 \`params\` 객체에 필터 조건(예: \`department\`, \`status\`)을 **추가**하고, select 변경 시 해당 state만 바꾸세요 — useApi가 자동으로 재요청합니다(필요 시 \`refetch()\`).
+- ⛔ **클라이언트 필터링 금지**: \`list.filter(...)\` 로 거른 결과를 가져온 목록 state에 \`setState\`로 **덮어쓰지 마세요** — 원본이 사라져 복구 불가(파괴적).
+- ⛔ 요청이 '필터'면 **상단 필터 영역만** 건드리세요. 테이블 행(row)마다 새 입력 컴포넌트(\`<Select>\` 등)를 만들지 마세요.`
+      : '';
+
     return `${coreRules}
 
 ## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
@@ -692,7 +711,7 @@ ${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSe
 // 기존 코드를 유지하면서 요청된 변경사항이 반영된 전체 파일 내용
 \`\`\`
 </axiom-action>
-${navigationHint}
+${navigationHint}${filterHint}
 
 ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
   }

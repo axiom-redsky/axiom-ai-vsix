@@ -48,7 +48,23 @@ function buildHybridPrompt(
   endLine: number,
   referencedSpec?: string,
   backingDecls?: string,
+  query = '',
 ): string {
+  // 필터·검색 요청 + 의존성 헤더가 이미 useApi(params)로 서버 조회 중일 때만 노출하는 타깃 지침.
+  // 약한 모델이 서버 params 대신 클라이언트 파괴적 필터(가져온 목록 state를 filter 결과로 덮어쓰기)나
+  // 테이블 행별 Select를 창작해 의미가 깨지는 실패(실측)를 막는다. (params 없으면 클라 필터가 정당해 미노출.)
+  const wantsFilter = /필터|filter|검색|search|정렬|sort/i.test(query);
+  const hasServerParams = /useApi/.test(depsHeader) && /\bparams\s*:/.test(depsHeader);
+  const filterSection =
+    wantsFilter && hasServerParams
+      ? `\n**필터·검색 구현 규칙(서버 params 우선 — 위반 시 버그):**\n` +
+        `- ✅ 의존성 헤더의 \`useApi(endpoint, { params: { … } })\` 가 서버 조회입니다. 필터는 그 ` +
+        `**params에 조건을 추가**해 처리하세요 — 편집하는 select의 새 선택 state를 params에 넣고, 그 \`useApi\` 호출을 ` +
+        `<hook>에 **같은 이름으로 params만 보강해 다시 선언**하면 확장이 in-place 교체합니다.\n` +
+        `- ⛔ **클라이언트 필터 금지**: \`list.filter(...)\` 결과를 가져온 목록 state에 \`setState\`로 덮어쓰지 마세요 ` +
+        `(원본이 사라져 복구 불가 — 파괴적).\n` +
+        `- ⛔ 테이블 **행(row)마다 새 입력 컴포넌트(<Select> 등)를 만들지 마세요**. 요청이 '필터'면 상단 필터 컨트롤만 다룹니다.\n`
+      : '';
   // 편집 영역이 참조하는 모듈 스코프 const(예: const grades=[...]) — 항목 추가/수정 grounding.
   // depsHeader엔 top-level const가 없어 모델이 기억으로 배열을 재구성하다 기존 항목을 흘린다.
   // 실제 선언을 주입하고 "전부 보존해 재선언" 규칙을 줘, 확장의 무손실 교체가 적용되게 한다.
@@ -91,7 +107,9 @@ function buildHybridPrompt(
     `(이 선택값은 UI 상태라 useState가 맞습니다 — 위 '서버 데이터 미러링 금지'는 API 응답 목록에만 해당.)\n` +
     `- ⛔ **요청한 컨트롤에 필요한 것만** 출력하세요. 의존성 헤더에 이미 있는 검색/페이지네이션/다른 select 등 ` +
     `무관한 훅·핸들러·상수(handleSearch, PAGE_LIMIT 등)를 새로 만들거나 옮기지 마세요.\n` +
-    `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n\n` +
+    `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n` +
+    filterSection +
+    `\n` +
     specSection +
     `## 의존성 헤더 (읽기 전용)\n\`\`\`tsx\n${depsHeader}\n\`\`\`\n\n` +
     backingSection +
@@ -125,7 +143,7 @@ export async function runHybridRegionEdit(
   }
 
   // 2) 모델 호출 (영역 + 의존성 헤더만)
-  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls);
+  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query);
   let modelOut: string;
   try {
     modelOut = await callModel(system, query);
