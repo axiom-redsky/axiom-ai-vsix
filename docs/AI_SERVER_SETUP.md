@@ -101,16 +101,17 @@ Ollama는 top-level `think:false`로 추론이 확실히 꺼진다. Ollama의 `/
 
 ## 4. AI 서버 최소 사양
 
-기본값: `qwen2.5-coder:14b` / `contextWindow: 32768`.
+기본값: `qwen3-coder` / `provider: ollama` / `contextWindow: 32768`. **배포 하한을 qwen3-coder(코딩 특화 30B급)로 표준화**한다.
 
 | 등급 | 모델 예시 | VRAM(추정) | 권장 설정 | 비고 |
 |---|---|---|---|---|
-| **최소 (하한)** | Qwen2.5-Coder **14B** (Q4) | ~10–12GB | `multiPatch.maxPatches: 3`, `lineEdit.requireAnchor: true`, `contextWindow: 32768` | 현재 기본값. anchor/structural 보정으로 약한 모델 보완 |
-| **권장 (현행)** | 14B~**32B** | ~20–24GB | 위 + `maxTokens: 8192` | 멀티 patch·라인 편집 안정 |
+| **최소 (하한)** | **qwen3-coder** (30B급, Q4) | ~18–24GB (24GB GPU 1장) | `provider: ollama`, `maxTokens: 8192`, `contextWindow: 32768` | 현재 기본값. 코딩 특화, 결정론 보강(grounding·구조 교체·게이트)과 합주 |
 | **상위** | **70B** | ~40–48GB | `maxPatches: 6`, `requireAnchor: false` 가능 | 출력 최소화 모드 |
 | **클라우드급** | 70B+ | — | `maxPatches: 8+` | — |
 
-- **14B가 실용 하한**: 그 이하(7B 등)는 느린 게 아니라 멀티 patch/structural 편집의 **형식 준수율이 급락**해 적용 실패가 늘어난다.
+- **qwen3-coder(30B급)를 하한으로 표준화**: 4bit로 ~18–20GB라 **24GB GPU 1장**(예: RTX 3090/4090)이면 32~64k 컨텍스트까지 여유 있게 돈다. 금융 폐쇄망 SI 기준 GPU 비용보다 반입·보안 승인이 더 큰 변수이며, 24GB 한 장은 부담 없는 사양이다. (다중 동시 사용은 모델 하한과 별개로 VRAM 여유·다중 GPU를 따로 산정.)
+- **qwen3-coder는 추론(reasoning) 모델**이라 `provider: ollama`(think:false)로 추론을 확실히 끈다. vLLM 등 OpenAI 호환 서버면 `provider: openai` + thinking 억제 설정으로 override.
+- 그 이하 소형 모델(14B↓)은 멀티 patch/structural 편집의 **형식 준수율이 떨어져** 적용 실패가 는다. 부득이 저사양만 가능한 사이트에서만 14B를 고려하고, 기본은 30B급이다.
 - **컨텍스트 윈도우**: 실제 모델의 윈도우를 `llm.contextWindow`에 **정확히** 입력할 것. 과대 입력 시 프롬프트가 잘려 품질 저하. 프롬프트가 크면 확장이 이 값에 맞춰 RAG 예산을 동적으로 줄인다.
 
 ---
@@ -120,4 +121,4 @@ Ollama는 top-level `think:false`로 추론이 확실히 꺼진다. Ollama의 `/
 1. **먼저 확인:** Ollama냐 OpenAI 호환이냐 → `provider`.
 2. **빈 응답 나오면:** 로그의 `reasoningChars` 확인. > 0 이면 추론 모델 → thinking 억제 필요.
 3. **추론 끄기 우선순위:** Ollama면 `provider:"ollama"`(확실) → 아니면 `injectNoThink`/`sendThinkingParams` → 안 되면 `maxTokens:16384`.
-4. **최소 사양:** Qwen2.5-Coder 14B / 32K / VRAM ~12GB. 그 이하는 적용 실패율 증가.
+4. **최소 사양:** qwen3-coder(30B급) / 32K / VRAM ~24GB(GPU 1장). `provider: ollama` 권장(추론 확실히 끄기). 그 이하 소형 모델은 적용 실패율 증가.

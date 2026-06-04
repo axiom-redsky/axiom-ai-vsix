@@ -8,13 +8,15 @@ export const AI_DEFAULTS = {
   apiKey: '',
   /**
    * LLM 백엔드 종류. 요청 경로·바디·thinking 억제 방식이 달라진다.
-   * - 'openai': OpenAI 호환(/v1/chat/completions). vLLM·LM Studio·LocalAI 등. (기본)
+   * - 'ollama': Ollama 네이티브(/api/chat). thinking은 top-level think:false로만 확실히 꺼진다. (기본)
+   *   기본 모델 qwen3-coder가 추론(reasoning) 모델이라 /v1 호환 경로로는 thinking이 안 꺼져 빈 응답이 나기 쉽다.
+   *   추론을 확실히 끄는 ollama를 기본으로 둔다. vLLM 등 OpenAI 호환 서버를 쓰면 'openai'로 override.
+   * - 'openai': OpenAI 호환(/v1/chat/completions). vLLM·LM Studio·LocalAI 등.
    *   thinking 억제는 injectNoThink(/no_think) + sendThinkingParams(enable_thinking)로 시도.
-   * - 'ollama': Ollama 네이티브(/api/chat). thinking은 top-level think:false로만 확실히 꺼진다.
-   *   (Ollama의 /v1 호환 레이어는 enable_thinking·chat_template_kwargs·reasoning_effort를 모두 무시함)
    */
-  provider: 'openai',
-  model: 'qwen2.5-coder:14b',
+  provider: 'ollama',
+  // 배포 하한 모델. qwen3-coder(코딩 특화, 4bit ~18~20GB → 24GB GPU 1장)을 표준으로. 사이트별 모델은 설정으로 override.
+  model: 'qwen3-coder-64k',
   temperature: 0.2,
   maxTokens: 8192,
   /** 모델 컨텍스트 윈도우(토큰). 사이트별로 다른 모델이 들어오므로 설정으로 override 가능. */

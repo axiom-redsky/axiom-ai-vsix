@@ -253,7 +253,7 @@ export const CASES: EvalCase[] = [
   // 삭제 vs 무손실 가드 대조쌍 ───────────────────────────────────────────────
   // (A) 배열 백킹 옵션 삭제: 모델이 grades 배열을 항목 빼고 재선언 → 무손실 가드가 '누락'으로 거부 → no-op?
   //     ⚠ 삭제 의도와 무손실 가드의 정면충돌 가설. 가드가 "실수 누락"과 "의도적 제거"를 구분 못 함.
-  { id: 'del-grade-option', file: 'EmployeeEditPage', query: '직급 셀렉트에서 이사 항목을 빼줘', note: '편집유형:삭제(배열백킹) — 무손실 가드 충돌 가설(거부→no-op 예상)' },
+  { id: 'del-grade-option', file: 'EmployeeEditPage', query: '직급 셀렉트에서 이사 항목을 빼줘', expectE2E: 'applied', note: '편집유형:삭제(배열백킹) — 삭제 의도 가드로 해소(새 ⊆ 기존이면 항목 제거 허용, 환각 차단). no-op→applied' },
   // (B) 하드코딩 SelectItem 삭제: JSX 영역 재작성으로 줄 제거 → 배열 아님 → applied 예상(대조군)
   { id: 'del-jsx-option', file: 'MEMBER_LIST', query: '재직상태 필터에서 휴직 옵션을 제거해줘', expectE2E: 'applied', note: '편집유형:삭제(JSX 하드코딩) — 영역 재작성으로 줄 제거 → applied(del-grade-option 대조군: 배열백킹은 가드충돌 no-op)' },
 

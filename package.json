@@ -79,7 +79,7 @@
         "axiom-ai.llm.provider": {
           "type": "string",
           "enum": ["openai", "ollama"],
-          "default": "openai",
+          "default": "ollama",
           "enumDescriptions": [
             "OpenAI 호환 API (/v1/chat/completions). vLLM·LM Studio·LocalAI 등. thinking 억제는 injectNoThink·sendThinkingParams로 시도합니다.",
             "Ollama 네이티브 API (/api/chat). thinking을 top-level think:false로 확실히 끕니다. Ollama 백엔드에서 thinking(추론) 토큰 때문에 빈 응답이 나면 이 값으로 바꾸세요."
@@ -88,8 +88,8 @@
         },
         "axiom-ai.llm.model": {
           "type": "string",
-          "default": "qwen2.5-coder:14b",
-          "description": "사용할 LLM 모델명"
+          "default": "qwen3-coder-64k",
+          "description": "사용할 LLM 모델명 (배포 하한: qwen3-coder, 4bit ~18~20GB)"
         },
         "axiom-ai.llm.apiKey": {
           "type": "string",

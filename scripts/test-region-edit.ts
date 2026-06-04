@@ -504,6 +504,33 @@ console.log('\n기존 const 결정론 교체:');
     check('useState 선언 1곳만(중복 없음)', (text.match(/const \[department/g) ?? []).length === 1);
   }
 
+  // (d2) 삭제 의도 가드: 새 배열이 기존의 부분집합(항목 제거)일 때, removalIntent면 교체 / 아니면 무손실 거부.
+  //   (query→removalIntent 배선은 e2e del-grade-option replay에서 실모델 출력으로 확인.)
+  {
+    const DEL = [
+      "const grades = ['사원', '대리', '과장', '이사'];",
+      '',
+      'export default function P(): React.ReactNode {',
+      '  return (<div>{grades.join(",")}</div>);',
+      '}',
+    ].join('\n');
+    // 삭제 의도 + subset(이사 제거) → 교체
+    {
+      const { text } = applyStructuralEdit(DEL, { hookCode: "const grades = ['사원', '대리', '과장'];" }, { removalIntent: true });
+      check('삭제 의도 + subset → 교체(이사 제거)', text.includes("'과장'") && !text.includes("'이사'"));
+    }
+    // 삭제 의도 + 없던 항목(환각) → 거부(원본 유지)
+    {
+      const { text } = applyStructuralEdit(DEL, { hookCode: "const grades = ['사원', '대리', '부장'];" }, { removalIntent: true });
+      check('삭제 의도 + 환각(부장) → 거부(원본 유지)', text.includes("'이사'") && !text.includes("'부장'"));
+    }
+    // 삭제 의도 아님 + subset(손실) → 거부(무손실 가드 유지)
+    {
+      const { text } = applyStructuralEdit(DEL, { hookCode: "const grades = ['사원', '대리', '과장'];" }, { removalIntent: false });
+      check('비-삭제 + subset(손실) → 거부(무손실 유지)', text.includes("'이사'"));
+    }
+  }
+
   // (e) 컴포넌트 헬퍼 함수 재선언은 교체 안 함(formatDate/handleSearch류 헛교체 방지)
   {
     const C = [

@@ -526,7 +526,7 @@ const ARROW_OR_FN_RHS = /^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]+)?=
 function canReplaceDecl(
   existingBody: string,
   newBody: string,
-  opts: { allowCall: boolean },
+  opts: { allowCall: boolean; removalIntent?: boolean },
 ): { ok: boolean; reason: string } {
   const rhsE = constRhs(existingBody);
   const rhsN = constRhs(newBody);
@@ -534,8 +534,23 @@ function canReplaceDecl(
   if (ARROW_OR_FN_RHS.test(rhsE)) return { ok: false, reason: '함수/화살표 RHS — 교체 비대상' };
   const head = rhsE.trimStart()[0];
   if (head === '[' || head === '{') {
+    const existingLits = literalTokens(rhsE);
     const newLits = literalTokens(rhsN);
-    const missing = [...literalTokens(rhsE)].filter((l) => !newLits.has(l));
+    if (opts.removalIntent) {
+      // 삭제 의도(빼/제거 등): 항목 제거를 허용하되 **환각(없던 항목 추가)** 은 차단한다 → 새 ⊆ 기존.
+      // (무손실 가드가 '실수 누락'과 '의도적 제거'를 구분 못 하던 갭의 해소 — del 의도일 때만 부분집합 허용.)
+      const added = [...newLits].filter((l) => !existingLits.has(l));
+      if (added.length > 0) {
+        const show = added.slice(0, 3).map((l) => l.slice(2)).join(', ');
+        return { ok: false, reason: `삭제 의도인데 없던 항목 추가(${show}) — 환각 의심` };
+      }
+      if (newLits.size === 0 && existingLits.size > 0) {
+        return { ok: false, reason: '삭제 의도인데 전 항목 제거 — 의심' };
+      }
+      return { ok: true, reason: '' };
+    }
+    // 비-삭제: 무손실(superset) — 기존 리터럴이 전부 보존돼야 함.
+    const missing = [...existingLits].filter((l) => !newLits.has(l));
     if (missing.length > 0) {
       const show = missing.slice(0, 3).map((l) => l.slice(2)).join(', ');
       return { ok: false, reason: `기존 항목 누락(${show}${missing.length > 3 ? ' …' : ''})` };
@@ -560,6 +575,7 @@ interface ConstReplaceOp { atLine: number; removeCount: number; content: string[
 function extractConstReplacements(
   hookCode: string,
   topConstByName: Map<string, CodeSection>,
+  removalIntent: boolean,
 ): { reducedHook: string; ops: ConstReplaceOp[]; replaced: string[]; rejected: { name: string; reason: string }[] } {
   const ops: ConstReplaceOp[] = [];
   const replaced: string[] = [];
@@ -572,7 +588,7 @@ function extractConstReplacements(
     const existing = topConstByName.get(hs.name);
     if (!existing) continue;
     if (normDecl(existing.body) === normDecl(hs.body)) continue; // 동일 → 순수 중복(종전대로 드롭)
-    const guard = canReplaceDecl(existing.body, hs.body, { allowCall: false }); // 모듈 const는 리터럴 데이터만
+    const guard = canReplaceDecl(existing.body, hs.body, { allowCall: false, removalIntent }); // 모듈 const는 리터럴 데이터만
     if (!guard.ok) {
       rejected.push({ name: hs.name, reason: guard.reason });
       continue; // hook에 남겨 중복 드롭 경로로 → 손실 적용 차단(종전 no-op 유지)
@@ -648,6 +664,7 @@ function extractComponentReplacements(
   hookRest: string,
   sourceLines: string[],
   range: { startLine: number; endLine: number },
+  removalIntent: boolean,
 ): { reduced: string; ops: ConstReplaceOp[]; replaced: string[] } {
   const ops: ConstReplaceOp[] = [];
   const replaced: string[] = [];
@@ -670,7 +687,7 @@ function extractComponentReplacements(
     const b = declBindings(stmt);
     if (b.length > 0) {
       const ex = existingByKey.get([...b].sort().join(','));
-      if (ex && normDecl(ex.body) !== normDecl(stmt) && canReplaceDecl(ex.body, stmt, { allowCall: true }).ok) {
+      if (ex && normDecl(ex.body) !== normDecl(stmt) && canReplaceDecl(ex.body, stmt, { allowCall: true, removalIntent }).ok) {
         const indent = ex.body.match(/^[ \t]*/)?.[0] ?? '';
         ops.push({
           atLine: ex.idx0 + 1,
@@ -693,7 +710,7 @@ function extractComponentReplacements(
 export function applyStructuralEdit(
   source: string,
   edit: StructuralEdit,
-  opts: { stripDeadInserts?: boolean } = {},
+  opts: { stripDeadInserts?: boolean; removalIntent?: boolean } = {},
 ): ApplyResult {
   // CRLF 정규화 — 삽입 라인이 LF만 갖는 일을 막아 줄바꿈 혼용을 방지한다.
   const hasCRLF = source.includes('\r\n');
@@ -715,7 +732,7 @@ export function applyStructuralEdit(
     for (const s of splitTsSections(norm)) {
       if (s.kind === 'const') topConstByName.set(s.name, s);
     }
-    const repl = extractConstReplacements(edit.hookCode, topConstByName);
+    const repl = extractConstReplacements(edit.hookCode, topConstByName, opts.removalIntent ?? false);
     for (const op of repl.ops) ops.push(op);
     for (const name of repl.replaced) {
       changes.push(`기존 top-level const '${name}' 결정론 교체(무손실) — 영역 밖 선언 수정`);
@@ -733,7 +750,7 @@ export function applyStructuralEdit(
     const compRepl = extractComponentReplacements(rawRest, lines, {
       startLine: anchors.component.startLine,
       endLine: anchors.component.endLine,
-    });
+    }, opts.removalIntent ?? false);
     for (const op of compRepl.ops) ops.push(op);
     for (const name of compRepl.replaced) {
       changes.push(`컴포넌트 선언 '${name}' in-place 교체 — 기존 바인딩 초기값/내용 수정`);

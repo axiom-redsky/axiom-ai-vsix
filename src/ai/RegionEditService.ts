@@ -173,6 +173,9 @@ export async function runHybridRegionEdit(
   // region이 의미있게 바뀌었는가 — 죽은 곁다리 strip(6.8) / dead-binding 게이트(6.7) 분기에 쓴다.
   const ws = (s: string): string => s.replace(/\s+/g, ' ').trim();
   const regionChanged = newRegion.trim() !== '' && ws(newRegion) !== ws(loc.region);
+  // 삭제 의도 — 옵션 배열 등에서 항목을 빼는 요청. 이때만 const 교체 가드를 완화(새 ⊆ 기존, 환각 차단)해
+  // "항목 제거" 재선언을 적용한다. 비-삭제는 무손실(superset) 유지. (실측: '이사 항목 빼줘' → grades subset 교체.)
+  const removalIntent = /빼|제거|삭제|없애|지워|remove|delete/i.test(query);
 
   // 5) 합성: JSX 영역 splice → structural(훅/타입/import) 결정론 삽입
   const changes: string[] = [];
@@ -187,7 +190,7 @@ export async function runHybridRegionEdit(
   if (edit.hookCode || edit.imports) {
     // region이 실제 편집된 경우에만 죽은 곁다리 선언을 strip한다(깨끗한 출력). region 미변경 케이스는
     // strip하면 no-op로 묻혀 진단이 흐려지므로, 6.7 dead-binding 게이트가 fallback으로 처리하게 둔다.
-    const applied = applyStructuralEdit(composed, edit, { stripDeadInserts: regionChanged });
+    const applied = applyStructuralEdit(composed, edit, { stripDeadInserts: regionChanged, removalIntent });
     composed = applied.text;
     changes.push(...applied.changes);
   }
