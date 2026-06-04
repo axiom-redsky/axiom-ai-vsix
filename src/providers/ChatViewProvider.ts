@@ -1837,6 +1837,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const blockMatches = [...response.matchAll(blockRegex)];
     this._corpusOutputChannel.appendLine(`[Axiom AI] _handleAxiomAction: 블록 수=${blockMatches.length}`);
 
+    // 게이트는 통과했는데 완결된 <axiom-action>…</axiom-action> 쌍이 하나도 없는 경우.
+    // (예: 모델 응답이 잘려 닫는 태그가 빠짐) 이전에는 for 루프가 그냥 skip되어 diff·에러·재시도
+    // 어느 것도 없이 무음 정지했다 → 사용자가 "결과 확인 못 하고 멈춤"을 겪는 지점.
+    // 무처리로 끝내지 말고 chat창에 원인과 상황을 명시한다.
+    if (blockMatches.length === 0) {
+      const hasOpenTag = response.includes('<axiom-action>');
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] ⚠️ 처리할 axiom-action 블록 없음 (여는 태그 ${hasOpenTag ? '있음 → 닫는 </axiom-action> 누락(응답 잘림)' : '없음'})`,
+      );
+      this._post({
+        type: 'token',
+        content:
+          '\n\n---\n> ⚠️ **파일 수정을 적용하지 못했습니다.**\n>\n' +
+          (hasOpenTag
+            ? '> 모델이 `<axiom-action>` 블록을 끝까지 출력하지 못했습니다 — 닫는 `</axiom-action>` 태그가 없어 응답이 중간에 잘린 것으로 보입니다.\n'
+            : '> 모델 응답에서 완결된 `<axiom-action>` 코드 블록을 찾지 못했습니다.\n') +
+          '>\n> 다시 시도하거나, 요청을 더 작은 단위로 나눠 보내거나 `/spec update` 명령을 사용해보세요.\n',
+      });
+      return false;
+    }
+
     for (const blockMatch of blockMatches) {
       const blockContent = blockMatch[1];
       const jsonMatch = blockContent.match(/(\{[^`]*?\})/s);
@@ -3114,7 +3135,23 @@ import 변경 또는 2곳 이상 수정이면:
       clearInterval(elapsedTimer);
     }
 
-    let hasBlock = retryResponse.includes('<axiom-action>');
+    // ⚠️ 처리부 _handleAxiomAction은 완결된 <axiom-action>…</axiom-action> '쌍'을 요구한다.
+    // 게이트도 동일한 쌍 매칭으로 판정해야 한다 — 여는 태그만 보는 .includes()로 통과시키면,
+    // 닫는 태그가 없는 응답을 '포함'으로 넘겨 처리부가 0개로 판정하고 무음 정지하는 불일치가 생긴다.
+    let hasBlock = /<axiom-action>[\s\S]*?<\/axiom-action>/.test(retryResponse);
+
+    // 여는 <axiom-action>는 있는데 닫는 태그가 없는 경우(약한 모델이 응답 중간에 잘림) — 끝에 닫는
+    // 태그를 보정 삽입해 쌍 매칭이 되도록 복구한다. 이 복구가 없으면 위 불일치로 데드엔드(무음 정지).
+    if (!hasBlock && /<axiom-action>/.test(retryResponse) && !/<\/axiom-action>/.test(retryResponse)) {
+      const repaired = retryResponse.replace(/\s*$/, '') + '\n</axiom-action>';
+      if (/<axiom-action>[\s\S]*?<\/axiom-action>/.test(repaired)) {
+        retryResponse = repaired;
+        hasBlock = true;
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 🔧 재시도: </axiom-action> 닫는 태그 누락 → 보정 삽입 (${filePath})`,
+        );
+      }
+    }
 
     // full 재시도인데 모델이 <axiom-action> 래퍼를 빠뜨리고 코드 펜스만 출력한 경우(약한 모델 흔한 실패).
     // 재시도 컨텍스트는 대상 파일·모드(full)·도메인이 확정돼 있으므로, 본문의 코드 펜스를
