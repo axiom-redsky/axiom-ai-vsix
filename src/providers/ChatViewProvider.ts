@@ -1824,27 +1824,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return false;
     }
 
-    // 영역 편집은 모델 원시 출력을 chat에 스트리밍하지 않으므로, **무엇이 바뀌는지 항상 보이도록**
-    // 합성 결과(source→finalText) diff를 chat에 직접 렌더한다. (수정 대기 패널의 diff가 비어도 안전.)
+    // 합성 결과(source→finalText) diff를 디스크 기준으로 계산한다. 이 diff를 확인 카드에 직접
+    // 넘겨(_handleAxiomAction의 precomputedDiff) 카드가 '무엇이 바뀌는지'를 보여주게 한다.
+    // (예전엔 여기서 인라인 ```diff 블록을 따로 렌더했는데, 확인 카드가 열린 에디터 버퍼 기준으로
+    //  재계산하다 정규화 mismatch로 빈 diff가 돼 카드엔 안 보였다 → 인라인으로 보상. 이제 카드가
+    //  정확한 diff를 받으므로 인라인 중복 렌더는 제거하고, 변경 없음일 때만 사유를 안내한다.)
     const regionDiff = computeDiffHunks(source, outcome.finalText);
     if (regionDiff.length === 0) {
       this._post({
         type: 'token',
         content: '\n\n> ℹ️ **영역 편집 결과가 현재 파일과 동일합니다** — 변경 없음(이미 적용된 상태일 수 있습니다).\n',
-      });
-    } else {
-      const MAX = 400;
-      const body = regionDiff
-        .slice(0, MAX)
-        .map((l) => {
-          const p = l.type === 'add' ? '+' : l.type === 'del' ? '-' : l.type === 'sep' ? '…' : ' ';
-          return p + (l.content ?? '');
-        })
-        .join('\n');
-      const more = regionDiff.length > MAX ? `\n… (이하 ${regionDiff.length - MAX}줄 생략)` : '';
-      this._post({
-        type: 'token',
-        content: `\n\n**변경 내용 (diff):**\n\`\`\`diff\n${body}${more}\n\`\`\`\n`,
       });
     }
 
@@ -1857,7 +1846,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       content: `\n\n> 🧩 **영역 편집(실험)**: 편집 영역만 모델에 보내 재작성했습니다. ${outcome.diagnostics.replace('[regionEdit] ', '')}\n`,
     });
     this._history.push({ role: 'assistant', content: '(영역 편집 적용)' });
-    await this._handleAxiomAction(wrapped);
+    await this._handleAxiomAction(wrapped, false, false, undefined, regionDiff);
     return true;
   }
 
@@ -1872,6 +1861,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     forcePageAutoWrite = false,
     groundedRetryDone = false,
     carryPatches?: PatchBlock[],
+    /**
+     * region 편집 등 호출부가 이미 정확한 diff(디스크 기준)를 계산해 둔 경우 그걸 그대로 쓴다.
+     * 여기서 originalContent는 '열린 에디터 버퍼'라, 디스크에서 합성한 finalText와 EOL/들여쓰기
+     * 정규화가 어긋나면 1만 줄 파일이 통째로 바뀐 것처럼 보여 computeDiffHunks가 MAX_LINES 가드로
+     * 빈 배열을 반환한다(확인 카드 diff 사라짐). 호출부가 단일 액션 응답일 때만 넘긴다.
+     */
+    precomputedDiff?: DiffLine[],
   ): Promise<boolean> {
     const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
     const actions: AxiomAction[] = [];
@@ -2619,10 +2615,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
         }
 
+        // precomputedDiff(region 경로의 디스크 기준 diff)가 있으면 재계산을 건너뛴다 — 에디터 버퍼와
+        // 디스크 합성본의 정규화 mismatch로 빈 diff가 되는 것을 막는다(확인 카드 diff 보존).
         const diff =
-          originalContent !== undefined && action.generatedCode
+          precomputedDiff ??
+          (originalContent !== undefined && action.generatedCode
             ? computeDiffHunks(originalContent, action.generatedCode)
-            : [];
+            : []);
         const actionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
         const approved = await this._requestFileConfirmation(
           actionId,
