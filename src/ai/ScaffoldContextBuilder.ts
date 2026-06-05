@@ -763,7 +763,9 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     let isCurrentFileContext = false;
 
     // 쿼리에서 도메인을 못 찾은 경우에만 현재 열린 파일 경로에서 추출 → Scenario C
-    if (!domainName && currentFilePath) {
+    // 단, "특정 경로에 새 파일을 만들어줘" 같은 명시적 신규 생성 요청은 열린 파일로 폴백하지 않는다.
+    // (열린 파일을 수정 대상(시나리오 C)으로 오인해 "어떤 파일을 수정할까요?"로 새는 것을 방지)
+    if (!domainName && currentFilePath && !this._isExplicitCreateNewFile(userQuery)) {
       domainName = this._extractDomainFromFilePath(currentFilePath);
       if (domainName) {
         isCurrentFileContext = true;
@@ -892,6 +894,43 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     }
 
     return null;
+  }
+
+  /**
+   * 쿼리가 "특정 경로/폴더에 새 파일을 만들어 달라"는 **명시적 신규 생성** 요청인지 판단한다.
+   * 생성 동사 + 쿼리에 적힌 대상 파일명 + (쿼리의 경로로 해석한) 대상 파일이 아직 없을 때 true.
+   *
+   * 현재 다른 파일이 열려 있어도 이 경우는 "현재 파일 수정(시나리오 C)"이 아니라 "신규 생성"이므로,
+   * _getDomainContext가 열린 파일로 폴백하지 않도록 게이트한다. 이렇게 해야 명백한 "만들어줘"가
+   * 열린 파일을 수정 대상으로 오인해 "어떤 파일을 수정할까요?" QuickPick으로 새지 않는다.
+   *
+   * 보수적: 경로를 구체 파일로 해석할 수 없거나, 그 파일이 이미 존재하면(=덮어쓰기/수정 가능성) false로
+   * 두어 기존 수정 흐름을 그대로 유지한다.
+   */
+  private _isExplicitCreateNewFile(userQuery: string): boolean {
+    const q = userQuery.toLowerCase();
+    // 신규 생성 의미의 동사만 — "추가"는 기존 파일에 추가(수정)일 수 있어 제외(오분류 방지).
+    const createVerbs = ['만들', '생성', '새 파일', '새파일', 'create', 'make', 'scaffold'];
+    if (!createVerbs.some((v) => q.includes(v))) return false;
+
+    // 쿼리에 적힌 대상 파일명(.ts/.tsx/.js/.jsx). 예: "(StatusEmploymentBadge.tsx)"
+    const fileM = userQuery.match(/([A-Za-z0-9_]+\.(?:tsx?|jsx?))\b/);
+    if (!fileM) return false;
+    const fileName = fileM[1];
+
+    const wsRoot = this._getWorkspaceRoot();
+    if (!wsRoot) return false;
+
+    // 쿼리에서 src/... 경로(폴더 또는 파일)를 추출. \w는 한글을 포함하지 않으므로 한글 토큰 앞에서 멈춘다.
+    const pathM = userQuery.match(/(?:\.[\\/])?src[\\/][\w./\\-]+/);
+    if (!pathM) return false;
+    const p = pathM[0].replace(/^\.[\\/]/, '').replace(/\\/g, '/');
+    const candidateRel = /\.(?:tsx?|jsx?)$/.test(p)
+      ? p
+      : `${p.replace(/\/+$/, '')}/${fileName}`;
+
+    // 대상 파일이 아직 없으면 신규 생성으로 본다.
+    return !fs.existsSync(path.join(wsRoot, candidateRel));
   }
 
   /** 현재 열린 파일을 수정하는 컨텍스트(시나리오 C)인지 판단한다. */

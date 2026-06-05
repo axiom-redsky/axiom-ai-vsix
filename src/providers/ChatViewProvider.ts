@@ -1012,10 +1012,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const cleanedResponse = this._compressForHistory(fullResponse);
+      // 생성(비수정) 컨텍스트에서 응답이 <axiom-action> 닫는 태그 전에 잘린 경우 —
+      // 위 isFileCtx 복구 분기는 update 전용(_retryForAxiomAction은 현재 파일을 수정 대상으로 가정)
+      // 이라 신규 생성엔 못 쓰고, 그대로 _handleAxiomAction에 넘기면 블록 0개로 데드엔드가 난다.
+      // 같은 요청을 1회 재생성(출력 토큰 한도 상향)해 완결 블록을 노린다. 재생성도 잘리면
+      // 원래 응답으로 폴백 → 기존 데드엔드 안내(무회귀).
+      let finalResponse = fullResponse;
+      if (!hasActionBlock && !isFileCtx && /<axiom-action>/.test(fullResponse)) {
+        this._corpusOutputChannel.appendLine(
+          '[Axiom AI] ⚠️ 출력 잘림 감지(생성 컨텍스트, 닫는 </axiom-action> 누락) → 1회 재생성',
+        );
+        const regen = await this._regenerateTruncated(messages, config);
+        if (/<axiom-action>[\s\S]*?<\/axiom-action>/.test(regen)) {
+          finalResponse = regen;
+        }
+      }
+
+      const cleanedResponse = this._compressForHistory(finalResponse);
       this._history.push({ role: 'assistant', content: cleanedResponse });
 
-      await this._handleAxiomAction(fullResponse);
+      await this._handleAxiomAction(finalResponse);
       this._post({ type: 'done' });
       this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
     } catch (err) {
@@ -2997,6 +3013,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
 
     return `<axiom-action>\n${meta}\n\`\`\`tsx\n${code}\n\`\`\`\n</axiom-action>`;
+  }
+
+  /**
+   * 출력이 <axiom-action> 닫는 태그 전에 잘렸을 때(주로 출력 토큰 소진/모델 변동성) 동일 요청을
+   * 1회 재생성한다. 신규 파일 생성 컨텍스트는 update 전용 폴백(_retryForAxiomAction)을 쓸 수 없어
+   * 데드엔드가 났던 지점 — 여기서 같은 messages로 다시 받되 재-잘림을 줄이려 max_tokens를 끌어올린다
+   * (이미 더 크면 그대로). 스트리밍을 그대로 흘려 사용자에게 진행이 보이게 한다.
+   */
+  private async _regenerateTruncated(
+    messages: ChatMessage[],
+    config: ReturnType<typeof ExtensionConfig.getEffectiveLlmConfig>,
+  ): Promise<string> {
+    const boosted = { ...config, maxTokens: Math.max(config.maxTokens, 16384) };
+    this._post({
+      type: 'token',
+      content: '\n\n---\n> 🔄 **응답이 잘려 다시 생성 중…** (출력 토큰 한도를 높여 1회 재요청)\n\n',
+    });
+    let resp = '';
+    for await (const token of this._llm.streamChat(messages, boosted, this._abortController?.signal)) {
+      resp += token;
+      this._post({ type: 'token', content: token });
+    }
+    return resp;
   }
 
   /**
