@@ -71,8 +71,17 @@ export interface PatchApplyResult {
    *  - 'selection-mismatch': patch가 선택 영역과 겹치지 않는 곳에 적용되었음 (import 추가 제외)
    *  - 'out-of-range': (lines 모드) 지정한 라인번호가 파일 범위(1..N) 밖
    *  - 'anchor-mismatch': (lines 모드) anchor가 기준 라인 ±N 안에서 매칭되지 않음
+   *  - 'closer-dropped': (lines 모드) 삭제 영역 끝의 닫힘 토큰(</div>·)}·} 등)을 교체 내용이
+   *    재현하지 않아 부모 스코프 닫힘이 사라짐 (모델이 to 범위를 닫는 줄까지 넓힌 over-reach)
    */
-  reason?: 'not-found' | 'overlap' | 'ambiguous' | 'selection-mismatch' | 'out-of-range' | 'anchor-mismatch';
+  reason?:
+    | 'not-found'
+    | 'overlap'
+    | 'ambiguous'
+    | 'selection-mismatch'
+    | 'out-of-range'
+    | 'anchor-mismatch'
+    | 'closer-dropped';
 }
 
 /**
@@ -587,6 +596,35 @@ export class FileCreatorService {
       return { text: null, results, resolvedOk: [] };
     }
 
+    // 구조 닫힘 보호 — 치환 edit이 삭제 영역 끝의 순수 닫힘 줄(`</div>`·`)}`·`}` 등)을
+    // 교체 내용 끝에서 재현하지 않으면, 부모 스코프를 닫던 토큰이 조용히 사라져 파일 전체가
+    // 깨진다(약한 모델이 to 범위를 닫는 태그 줄까지 넓혔지만 replace에는 안 적은 over-reach).
+    // 삭제 꼬리의 닫힘 토큰 수가 교체 꼬리보다 많으면 그 edit을 거부 → full 폴백.
+    for (const r of resolved) {
+      if (r.deleteCount === 0) continue; // 순수 삽입은 기존 닫힘을 지우지 않음
+      const deleted = originalLines.slice(r.start, r.start + r.deleteCount);
+      const delC = FileCreatorService._trailingClosers(deleted);
+      if (delC.size === 0) continue;
+      const insC = FileCreatorService._trailingClosers(r.contentLines);
+      let dropped: string | null = null;
+      for (const [tok, n] of delC) {
+        if (n > (insC.get(tok) ?? 0)) {
+          dropped = tok;
+          break;
+        }
+      }
+      if (dropped) {
+        const entry = results.find((x) => x.index === r.index);
+        if (entry) {
+          entry.success = false;
+          entry.reason = 'closer-dropped';
+          delete entry.startLine;
+          delete entry.endLine;
+        }
+        return { text: null, results, resolvedOk: [] };
+      }
+    }
+
     // 겹침 검출 — start 오름차순 정렬 후 인접 비교 (computeMultiPatch와 동일 규약)
     const sortedByStart = [...resolved].sort((a, b) => a.start - b.start);
     for (let i = 1; i < sortedByStart.length; i++) {
@@ -621,6 +659,27 @@ export class FileCreatorService {
     let text = lines.join('\n');
     if (hasCRLF) text = text.replace(/\n/g, '\r\n');
     return { text, results, resolvedOk: [] };
+  }
+
+  /**
+   * 줄 배열의 끝에서부터 "순수 닫힘 줄"(닫는 태그·괄호로만 이뤄진 줄)이 연속되는 꼬리 구간을 보고,
+   * 거기에 등장하는 구조 닫힘 토큰(`</X>`·`</>`·`/>`·`)`·`}`·`]`)의 개수를 센다.
+   * 순수 닫힘이 아닌 줄(코드·텍스트·여는 태그)을 만나면 즉시 멈춘다 — 꼬리만 본다.
+   * `;`·`,`·단독 `>`(여는 태그의 끝)는 구조 중첩과 무관하므로 토큰 집계에서 제외한다.
+   */
+  private static _trailingClosers(lines: string[]): Map<string, number> {
+    const CLOSER_LINE = /^(?:<\/[A-Za-z][\w.]*>|<\/>|\/>|[)}\];,>])+$/;
+    const TOKEN = /<\/[A-Za-z][\w.]*>|<\/>|\/>|[)}\]]/g;
+    const counts = new Map<string, number>();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const t = lines[i].trim();
+      if (t === '') continue; // 빈 줄은 건너뛰되 꼬리 구간은 유지
+      if (!CLOSER_LINE.test(t)) break; // 닫힘이 아닌 줄 → 꼬리 종료
+      for (const m of t.matchAll(TOKEN)) {
+        counts.set(m[0], (counts.get(m[0]) ?? 0) + 1);
+      }
+    }
+    return counts;
   }
 
   /**

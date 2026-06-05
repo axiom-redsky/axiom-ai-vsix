@@ -135,5 +135,81 @@ const noAnchor = { requireAnchor: false, anchorSearchRadius: 3 };
   check('최상단 삽입(after=0)', r.text !== null && r.text!.split('\n')[0].includes('useEffect'));
 }
 
+// 13. 닫힘 over-reach 거부 — 삭제 영역이 </div>까지 포함했는데 교체가 </Button>에서 끝나
+//     부모 </div>가 사라지는 경우 (실제 버그: 초기화 버튼 onClick 확장 시 화면 전체 깨짐).
+{
+  const JSX = [
+    'export default function Demo() {',                 // 1
+    '  return (',                                        // 2
+    '    <div>',                                         // 3
+    '      <Button',                                     // 4
+    '        onClick={() => {',                          // 5
+    "          setSearchQuery('');",                     // 6
+    '          refetch();',                              // 7
+    '        }}',                                        // 8
+    '      >',                                           // 9
+    '        초기화',                                     // 10
+    '      </Button>',                                   // 11
+    '    </div>',                                        // 12
+    '  );',                                              // 13
+    '}',                                                 // 14
+  ].join('\n');
+  const edits: LineEdit[] = [
+    {
+      from: 4,
+      to: 12, // </div>까지 over-reach
+      content: [
+        '      <Button',
+        '        onClick={() => {',
+        "          setSearchQuery('');",
+        "          setSelectedDepartment('all');",
+        '          refetch();',
+        '        }}',
+        '      >',
+        '        초기화',
+        '      </Button>', // </div> 누락
+      ].join('\n'),
+    },
+  ];
+  const r = svc.computeLineEdits(JSX, edits, noAnchor);
+  check(
+    '닫힘 over-reach 거부(</div> 누락)',
+    r.text === null && r.results[0].reason === 'closer-dropped',
+    `text=${r.text === null ? 'null' : '비어있지 않음'}, reason=${r.results[0].reason}`,
+  );
+}
+
+// 14. 닫힘 보존 시 정상 적용 — 동일 영역이라도 </div>를 교체 끝에서 재현하면 통과.
+{
+  const JSX = [
+    'export default function Demo() {',
+    '  return (',
+    '    <div>',
+    '      <Button onClick={() => refetch()}>초기화</Button>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const edits: LineEdit[] = [
+    {
+      from: 4,
+      to: 5,
+      content: [
+        '      <Button onClick={() => { reset(); refetch(); }}>초기화</Button>',
+        '    </div>', // 닫힘 재현 → 통과해야 함
+      ].join('\n'),
+    },
+  ];
+  const r = svc.computeLineEdits(JSX, edits, noAnchor);
+  check('닫힘 보존 시 정상 적용', r.text !== null && r.text!.includes('reset();') && r.text!.includes('</div>'));
+}
+
+// 15. 일반 코드 줄 삭제는 닫힘 가드와 무관 (false positive 방지)
+{
+  const edits: LineEdit[] = [{ from: 5, to: 5, content: '' }]; // useState 한 줄 삭제
+  const r = svc.computeLineEdits(FILE, edits, noAnchor);
+  check('일반 줄 삭제는 가드 통과', r.text !== null && !r.text!.includes('setAge'));
+}
+
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
