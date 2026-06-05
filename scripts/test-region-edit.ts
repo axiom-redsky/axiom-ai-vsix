@@ -542,6 +542,28 @@ console.log('\n기존 const 결정론 교체:');
     const { text } = applyStructuralEdit(C, { hookCode: 'const handleSearch = () => doOther();' });
     check('헬퍼 함수 재선언 → 교체 안 함(원본 유지)', text.includes('doSearch()') && !text.includes('doOther()'));
   }
+
+  // (f) useApi 페치 선언 재선언은 in-place 교체 안 함 — 엔드포인트 환각 차단(<replace> 채널 전용).
+  //     (실측: 부서 필터 요청에 모델이 의존성 헤더의 deptResponse를 베껴 DEPARTMENTS_ENDPOINT→'/api/departments'로 바꿔치움.)
+  {
+    const C = [
+      "import { useApi } from '@axiom/hooks';",
+      'const DEPARTMENTS_ENDPOINT = "/api/v1/departments";',
+      '',
+      'export default function P(): React.ReactNode {',
+      '  const { data: deptResponse } = useApi<TDeptRes>(DEPARTMENTS_ENDPOINT);',
+      '  return (<div>{deptResponse?.data?.length}</div>);',
+      '}',
+    ].join('\n');
+    const { text } = applyStructuralEdit(C, {
+      hookCode: "const { data: deptResponse } = useApi<TDeptRes>('/api/departments');",
+    });
+    check(
+      'useApi 페치 재선언 → 교체 안 함(엔드포인트 환각 차단)',
+      text.includes('useApi<TDeptRes>(DEPARTMENTS_ENDPOINT)') && !text.includes("useApi<TDeptRes>('/api/departments')"),
+    );
+    check('useApi 선언 1곳만(중복 추가 없음)', (text.match(/useApi<TDeptRes>/g) ?? []).length === 1);
+  }
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);

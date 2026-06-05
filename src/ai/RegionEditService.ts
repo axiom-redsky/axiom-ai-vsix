@@ -133,9 +133,13 @@ export function buildHybridPrompt(
     `영역의 최상위 태그는 바꾸지 마세요(예: <Select>로 시작하면 <Select>로 끝나야 함).\n` +
     `2) 새로 필요한 훅/state/타입 → <hook>…</hook> 안에 줄 단위로(들여쓰기 없이). import → <import module="모듈" named="A, B" /> 로. ` +
     `이것들의 위치는 신경 쓰지 마세요 — 확장이 올바른 위치에 자동 삽입합니다.\n` +
-    `예: <hook>type TDepartmentListResponse = { success: boolean; data: TDepartment[] };\n` +
-    `const { data: deptResponse } = useApi<TDepartmentListResponse>('/api/departments');\n` +
-    `const departments = deptResponse?.data ?? [];</hook>\n` +
+    // ⚠ 예시는 의도적으로 **중립 도메인(카테고리)** 을 쓴다 — 약한 모델이 예시를 그대로 베끼는(parroting)
+    //   경향이 있어, 실제 요청과 같은 도메인(부서·직원 등)으로 예시를 들면 그걸 정답으로 착각해 echo 한다
+    //   (실측: 부서 필터 요청에 예시의 deptResponse/departments/'/api/departments' 가 글자그대로 출력됨).
+    //   엔드포인트도 raw 문자열이 아니라 **상수**로 보여 scaffold 컨벤션을 함께 가르친다.
+    `예: <hook>type TCategoryListResponse = { success: boolean; data: TCategory[] };\n` +
+    `const { data: categoryResponse } = useApi<TCategoryListResponse>(CATEGORIES_ENDPOINT);\n` +
+    `const categories = categoryResponse?.data ?? [];</hook>\n` +
     `\n**훅 작성 규칙(위반 시 적용 거부됨):**\n` +
     `- ⛔ useApi·useState·useEffect 등 모든 훅은 **컴포넌트 최상위에서만** 호출. \`useEffect(()=>{ useApi(...) })\`처럼 ` +
     `effect/콜백/조건문 안에서 훅을 호출하지 마세요(React Rules of Hooks 위반).\n` +

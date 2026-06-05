@@ -2559,6 +2559,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
           }
 
+          // 중복 선언 게이트 — patch 가 기존 식별자를 **재선언**(예: 기존 useApi 를 통째로 다시 생성)해
+          // 같은 스코프에 중복 선언이 생기면 TS 컴파일 에러다. region 경로(RegionEditService 6.9)와 동일
+          // 취지를 patch 결과에도 적용한다. 원본에 이미 있던 중복은 막지 않고 "patch 가 새로 만든 중복"만
+          // 거부(오탐 방지) → 조용한 파손 대신 Full 재시도로 회복.
+          if (/\.(tsx|ts)$/.test(action.filePath)) {
+            const origDupes = new Set(findDuplicateDeclarations(originalContent));
+            const newDupes = findDuplicateDeclarations(mp.text).filter((d) => !origDupes.has(d));
+            if (newDupes.length > 0) {
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ❌ 중복 선언 발생 거부 (${action.filePath}): ${newDupes.join(', ')} — patch 가 기존 식별자를 재선언(교체 아님)`,
+              );
+              this._post({
+                type: 'token',
+                content:
+                  `\n\n> ❌ **중복 선언으로 거부됨**: \`${newDupes.join('`, `')}\` 가 같은 스코프에 두 번 선언됩니다 ` +
+                  `(모델이 기존 선언을 수정하지 않고 **통째로 다시 생성**한 것으로 보입니다). 그대로 적용하면 컴파일이 깨집니다. ` +
+                  `**Full로 재시도**하거나, 기존 선언의 해당 부분만 바꾸도록 더 구체적으로 요청하세요 ` +
+                  `(예: "기존 \`useApi\` params 에 \`department\` 한 줄만 추가해줘").\n`,
+              });
+              this._reportPatchFailure(action.filePath, [
+                `[중복 선언] patch 가 새로 만든 중복 선언: ${newDupes.join(', ')}`,
+              ]);
+              break;
+            }
+          }
+
           action.generatedCode = mp.text;
           this._corpusOutputChannel.appendLine(
             `[Axiom AI] multi-patch 적용 완료 (${action.filePath}, ${action.patches.length}개 블록)`,

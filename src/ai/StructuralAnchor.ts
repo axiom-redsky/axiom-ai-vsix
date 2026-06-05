@@ -517,6 +517,13 @@ function normDecl(s: string): string {
 const PRIMITIVE_RHS = /^(?:'[^']*'|"[^"]*"|`[^`$]*`|-?\d[\d_.]*|true|false)\s*(?:as\s+const\s*)?$/;
 /** RHS 시작이 화살표 함수/함수식인지(헬퍼 함수 재출력 헛 교체 방지). 문자열 속 `=>`는 head가 아니라 안전. */
 const ARROW_OR_FN_RHS = /^\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]+)?=>|[A-Za-z_$][\w$]*\s*=>)/;
+/**
+ * RHS 시작이 **데이터 페치 훅 호출**인지(useApi / use…Query / use…Mutation). 이런 선언은 의존성 헤더에
+ * 읽기 전용으로 노출되는데, 약한 모델이 그걸 그대로 베껴 `<hook>`에 재선언하며 엔드포인트·params를
+ * 환각으로 바꾸는 일이 잦다(실측: `useApi<T>(DEPARTMENTS_ENDPOINT)` → `useApi<T>('/api/departments')`로
+ * 조용히 교체돼 멀쩡한 부서 조회가 깨짐). 페치 호출의 엔드포인트/params 수정은 **명시적 <replace> 채널
+ * 전용**이지, 재선언 in-place 교체 대상이 아니다. (useState/useRef 등 UI 상태 초기값 변경은 정당하므로 제외.) */
+const DATA_FETCH_HOOK_RHS = /^\s*use(?:Api\b|[A-Z]\w*(?:Query|Mutation|Fetch)\b)/;
 
 /**
  * 기존 선언을 모델의 재선언으로 **결정론 교체**해도 되는지 판정한다(무손실·헛교체 방지 가드).
@@ -538,6 +545,9 @@ function canReplaceDecl(
   const rhsN = constRhs(newBody);
   if (rhsE === null || rhsN === null) return { ok: false, reason: 'RHS 파싱 불가' };
   if (ARROW_OR_FN_RHS.test(rhsE)) return { ok: false, reason: '함수/화살표 RHS — 교체 비대상' };
+  // 데이터 페치 훅(useApi 등) 선언은 재선언 in-place 교체 비대상 — 엔드포인트/params 수정은 <replace> 채널 전용.
+  // (모델이 의존성 헤더의 페치 선언을 베껴 엔드포인트를 환각으로 바꿔치우는 조용한 파손 차단.)
+  if (DATA_FETCH_HOOK_RHS.test(rhsE)) return { ok: false, reason: '데이터 페치 훅(useApi 등) RHS — 재선언 교체 비대상(<replace> 전용)' };
   const head = rhsE.trimStart()[0];
   if (head === '[' || head === '{') {
     const existingLits = literalTokens(rhsE);

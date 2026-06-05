@@ -434,6 +434,7 @@
     "test:line-edits": "node scripts/run-test-line-edits.mjs",
     "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs",
     "test:region-edit": "node scripts/test-region-edit.mjs",
+    "test:react-rules": "node scripts/run-test-react-rules.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:input": "node scripts/run-eval-input-quality.mjs",
     "eval:bigfile": "node scripts/run-eval-bigfile.mjs",

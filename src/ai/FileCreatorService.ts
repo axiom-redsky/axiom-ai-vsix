@@ -1175,58 +1175,125 @@ export class FileCreatorService {
    */
   static detectModuleScopeHookViolation(code: string): string | null {
     const lines = code.split('\n');
-    let braceDepth = 0;
+    // 맨 앞이 곧바로 훅 호출인 문장(예: 모듈 스코프 `useEffect(() => …)`).
+    const BARE_HOOK = /^(?:await\s+)?(use[A-Z]\w*)\s*(?:<[^()]*>)?\s*\(/;
+    // RHS **머리**가 곧바로 훅 호출인지(대입 `=` 바로 다음 토큰이 useXxx( ). 화살표/함수 RHS는 비대상.
+    const RHS_HOOK = /^(?:await\s+)?(use[A-Z]\w*)\s*(?:<[^()]*>)?\s*\(/;
 
-    for (let i = 0; i < lines.length; i++) {
+    /**
+     * 모듈 스코프 선언/훅 **문장 전체 텍스트**(joined)에서 모듈 스코프 훅 호출이면 훅 이름을, 아니면 null.
+     * 핵심: binding 이 여러 줄 구조분해(`const {⏎ … ⏎} = useApi(`)여도 잡되, 대입 `=` **직후**(RHS 머리)가
+     * 훅일 때만 본다 — 화살표/함수 컴포넌트(`const X = () => { … useState() }`)의 본문 훅을 오탐하지 않도록.
+     * (종전엔 훅 호출이 있는 줄의 depthBefore 만 봐서, 구조분해 `{` 가 depth 를 올려 모듈 스코프 useApi 가
+     *  탐지를 통째로 빠져나갔다 — 캡쳐 실패의 루트 원인.)
+     */
+    const moduleHookName = (joined: string): string | null => {
+      const bare = joined.match(BARE_HOOK);
+      if (bare) return bare[1];
+      const decl = joined.match(/^(?:export\s+)?(?:const|let|var)\s+/);
+      if (!decl) return null;
+      let rest = joined.slice(decl[0].length);
+      // 1) binding 패턴 건너뛰기: 구조분해면 매칭 닫힘까지, 아니면 식별자(+타입)
+      if (rest[0] === '{' || rest[0] === '[') {
+        let d = 0;
+        let k = 0;
+        for (; k < rest.length; k++) {
+          const ch = rest[k];
+          if (ch === '{' || ch === '[' || ch === '(') d++;
+          else if (ch === '}' || ch === ']' || ch === ')') {
+            d--;
+            if (d === 0) { k++; break; }
+          }
+        }
+        rest = rest.slice(k);
+      }
+      // 2) 대입 `=`(==·=>·<=·>=·!= 제외) 를 bracket depth 0 에서 찾는다(타입의 `=>` 등 skip).
+      let d = 0;
+      let eq = -1;
+      for (let k = 0; k < rest.length; k++) {
+        const ch = rest[k];
+        if (ch === '{' || ch === '[' || ch === '(' || ch === '<') d++;
+        else if (ch === '}' || ch === ']' || ch === ')' || ch === '>') d--;
+        else if (
+          d <= 0 && ch === '=' &&
+          rest[k + 1] !== '=' && rest[k + 1] !== '>' &&
+          rest[k - 1] !== '=' && rest[k - 1] !== '!' && rest[k - 1] !== '<' && rest[k - 1] !== '>'
+        ) { eq = k; break; }
+      }
+      if (eq === -1) return null;
+      const rhs = rest.slice(eq + 1).trimStart();
+      const m = rhs.match(RHS_HOOK);
+      return m ? m[1] : null;
+    };
+
+    const isSkippable = (t: string): boolean =>
+      t === '' ||
+      t.startsWith('import ') ||
+      t.startsWith('//') ||
+      t.startsWith('/*') ||
+      t.startsWith('*') ||
+      t.startsWith('type ') ||
+      t.startsWith('export type ') ||
+      t.startsWith('interface ') ||
+      t.startsWith('export interface ');
+    // 커스텀 훅 정의(function useXxx / const useXxx =)는 호출이 아님
+    const isHookDef = (t: string): boolean =>
+      /^(?:export\s+)?(?:default\s+)?function\s+use[A-Z]/.test(t) ||
+      /^(?:export\s+)?const\s+use[A-Z]\w*\s*=/.test(t);
+
+    const countBraces = (s: string): number => {
+      let d = 0;
+      for (const ch of s) {
+        if (ch === '{') d++;
+        else if (ch === '}') d--;
+      }
+      return d;
+    };
+
+    let braceDepth = 0;
+    let i = 0;
+    while (i < lines.length) {
       const line = lines[i];
       const trimmed = line.trim();
 
-      // 빈 줄, import, 주석, type/interface 선언은 brace만 카운트하고 건너뜀
-      if (
-        trimmed === '' ||
-        trimmed.startsWith('import ') ||
-        trimmed.startsWith('//') ||
-        trimmed.startsWith('/*') ||
-        trimmed.startsWith('*') ||
-        trimmed.startsWith('type ') ||
-        trimmed.startsWith('export type ') ||
-        trimmed.startsWith('interface ') ||
-        trimmed.startsWith('export interface ')
-      ) {
-        for (const ch of line) {
-          if (ch === '{') braceDepth++;
-          else if (ch === '}') braceDepth--;
-        }
+      if (isSkippable(trimmed) || isHookDef(trimmed)) {
+        braceDepth += countBraces(line);
+        i++;
         continue;
       }
 
-      // 커스텀 훅 정의(function useXxx / const useXxx =)는 호출이 아니므로 건너뜀
-      if (
-        trimmed.match(/^(export\s+)?(default\s+)?function\s+use[A-Z]/) ||
-        trimmed.match(/^(export\s+)?const\s+use[A-Z]\w*\s*=/)
-      ) {
-        for (const ch of line) {
-          if (ch === '{') braceDepth++;
-          else if (ch === '}') braceDepth--;
+      // 모듈 최상위(depth0)에서 시작하는 선언/훅 문장만 모듈 스코프 후보다.
+      if (braceDepth === 0) {
+        const startsDecl = /^(?:export\s+)?(?:const|let|var)\s/.test(trimmed);
+        const startsBareHook = BARE_HOOK.test(trimmed);
+        if (startsDecl || startsBareHook) {
+          // 문장이 균형을 이루는 끝줄까지 합쳐(괄호·중괄호·대괄호 모두) 한 텍스트로 검사한다.
+          let bal = 0;
+          let end = i;
+          let joined = '';
+          for (let j = i; j < lines.length && j < i + 80; j++) {
+            joined += (j > i ? ' ' : '') + lines[j].trim();
+            for (const ch of lines[j]) {
+              if (ch === '(' || ch === '[' || ch === '{') bal++;
+              else if (ch === ')' || ch === ']' || ch === '}') bal--;
+            }
+            end = j;
+            if (bal <= 0) break;
+          }
+          const hookName = moduleHookName(joined);
+          if (hookName) {
+            return `라인 ${i + 1}에서 \`${hookName}\`이 모듈 최상위(컴포넌트 함수 밖)에서 호출됨`;
+          }
+          // 훅 문장이 아니면(예: 모듈 const/일반 대입) 합쳐 읽은 만큼 depth 를 갱신하고 건너뛴다.
+          for (let j = i; j <= end; j++) braceDepth += countBraces(lines[j]);
+          i = end + 1;
+          continue;
         }
-        continue;
       }
 
-      const depthBefore = braceDepth;
-      for (const ch of line) {
-        if (ch === '{') braceDepth++;
-        else if (ch === '}') braceDepth--;
-      }
-
-      // 모듈 최상위(depth 0)에서 훅 호출 패턴 감지
-      if (depthBefore === 0) {
-        // use*(...) 또는 use*<Generic>(...) 모두 매칭 (제네릭 타입 인자 포함)
-        const hookCallMatch = trimmed.match(/\b(use[A-Z]\w*)\s*(?:<[^()]*>)?\s*\(/);
-        if (hookCallMatch) {
-          const hookName = hookCallMatch[1];
-          return `라인 ${i + 1}에서 \`${hookName}\`이 모듈 최상위(컴포넌트 함수 밖)에서 호출됨`;
-        }
-      }
+      // 그 외(함수/컴포넌트 선언, depth>0 본문 등)는 brace 만 갱신하고 한 줄 진행.
+      braceDepth += countBraces(line);
+      i++;
     }
 
     return null;
