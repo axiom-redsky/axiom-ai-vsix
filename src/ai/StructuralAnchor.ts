@@ -316,6 +316,45 @@ export interface ApplyResult {
   changes: string[];
 }
 
+/**
+ * 훅 코드 조각에서 import 문을 분리한다. 약한 모델이 새로 쓰는 컴포넌트의 import를 훅/코드 블록
+ * 안에 섞어 내는 경우가 있는데, 그대로 컴포넌트 본문에 삽입하면 함수 중간에 import가 박혀 컴파일
+ * 에러가 난다. import는 ImportRequest로 환산해 호출부가 파일 상단 채널로 보내게 하고, 나머지
+ * 코드만 본문 삽입 대상으로 남긴다. 멀티라인 named import(`import {⏎…⏎} from '...'`)도 합쳐 처리.
+ * side-effect import(`import './x'`)는 컴포넌트 본문에 부적합하므로 본문에서 제거만 한다.
+ */
+function extractImportsFromHookCode(hookCode: string): { imports: ImportRequest[]; rest: string } {
+  const lines = hookCode.split('\n');
+  const imports: ImportRequest[] = [];
+  const keep: string[] = [];
+  const isComplete = (s: string): boolean =>
+    /from\s*['"][^'"]+['"]/.test(s) || /;\s*$/.test(s.trim());
+  let i = 0;
+  while (i < lines.length) {
+    if (!/^\s*import\b/.test(lines[i])) {
+      keep.push(lines[i]);
+      i++;
+      continue;
+    }
+    let buf = lines[i];
+    let j = i;
+    while (!isComplete(buf) && j + 1 < lines.length) {
+      j++;
+      buf += ' ' + lines[j].trim();
+    }
+    const p = parseImportLine(buf);
+    if (p && (p.named.length > 0 || p.def)) {
+      imports.push({
+        module: p.module,
+        named: p.named.length > 0 ? p.named : undefined,
+        def: p.def ?? undefined,
+      });
+    }
+    i = j + 1;
+  }
+  return { imports, rest: keep.join('\n') };
+}
+
 /** 라인 배열의 앞·뒤 빈 줄을 제거하고 연속 빈 줄을 1줄로 접는다. */
 function tidyBlankLines(lines: string[]): string[] {
   const collapsed: string[] = [];
@@ -898,6 +937,9 @@ export function applyStructuralEdit(
   // removeCount=0 → 순수 삽입, content=[] → 순수 삭제.
   const ops: { atLine: number; removeCount: number; content: string[] }[] = [];
 
+  // 훅 코드 안에 모델이 섞어 낸 import를 걷어내 아래 import 채널(파일 상단)로 합류시킨다.
+  const hoistedImports: ImportRequest[] = [];
+
   // 1) 훅 코드 — react-app-scaffold 컨벤션: type/interface/enum 선언은 컴포넌트 본문이 아니라
   //    함수 바로 위(모듈 스코프)에 둔다. 모델이 둘을 섞어 내도 여기서 결정론적으로 분리한다.
   if (edit.hookCode && anchors.component) {
@@ -915,7 +957,17 @@ export function applyStructuralEdit(
     for (const r of repl.rejected) {
       changes.push(`재선언 '${r.name}' 교체 거부(${r.reason}) → 종전 동작(드롭) — 손실 적용 차단`);
     }
-    const effectiveHookCode = repl.reducedHook;
+    // import 분리 — 모델이 새로 쓰는 컴포넌트의 import(예: `import { Skeleton } from ...`)를 훅 코드
+    // 안에 섞어 내면, 그대로 본문에 삽입될 경우 함수 컴포넌트 중간에 import가 박혀 컴파일 에러가 난다
+    // (실측 버그). import 줄을 걷어내 ImportRequest로 환산해 아래 import 채널(파일 상단)로 보낸다.
+    const hookImportSplit = extractImportsFromHookCode(repl.reducedHook);
+    for (const imp of hookImportSplit.imports) hoistedImports.push(imp);
+    if (hookImportSplit.imports.length > 0) {
+      changes.push(
+        `훅 코드 속 import ${hookImportSplit.imports.length}건을 파일 상단으로 hoist — 본문 삽입 방지`,
+      );
+    }
+    const effectiveHookCode = hookImportSplit.rest;
 
     // 기존 top-level 선언 이름 — 같은 이름의 type/const를 또 모듈 스코프로 올리지 않도록(중복 선언 방지).
     const existingTopLevelNames = new Set(anchors.sections.map((s) => s.name));
@@ -1010,8 +1062,9 @@ export function applyStructuralEdit(
     changes.push('⚠️ 훅 코드가 주어졌으나 export default 컴포넌트를 찾지 못함 — 훅 삽입 건너뜀');
   }
 
-  // 2) import
-  if (edit.imports?.length) {
+  // 2) import — 모델이 명시한 imports + 훅 코드에서 걷어낸(hoist) import를 함께 처리한다.
+  const importReqs = [...(edit.imports ?? []), ...hoistedImports];
+  if (importReqs.length) {
     // 전체 소스의 import를 모듈별로 스캔한다. import 블록 중간에 주석(예: `//import X`)이 있으면
     // splitTsSections가 import 섹션을 쪼개 anchors.imports엔 첫 그룹만 잡힌다. 그 결과 주석 아래
     // import(예: react·lucide-react)가 중복 검출에서 누락돼 같은 모듈이 또 추가되는 버그가 있었다.
@@ -1026,7 +1079,7 @@ export function applyStructuralEdit(
       globalByModule.set(p.module, e);
     }
 
-    for (const req of edit.imports) {
+    for (const req of importReqs) {
       const existing = anchors.imports?.byModule.get(req.module);
       const wantNamed = req.named ?? [];
 

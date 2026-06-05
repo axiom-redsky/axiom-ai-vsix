@@ -156,7 +156,9 @@ export function buildHybridPrompt(
     `요청을 두 종류 출력으로 나누어 답하세요(둘 다 필요하면 둘 다 출력):\n` +
     `1) "편집 영역"의 JSX 수정 → <region>…</region> 안에 편집 영역 **전체를 다시** 쓰기. ` +
     `영역의 최상위 태그는 바꾸지 마세요(예: <Select>로 시작하면 <Select>로 끝나야 함).\n` +
-    `2) 새로 필요한 훅/state/타입 → <hook>…</hook> 안에 줄 단위로(들여쓰기 없이). import → <import module="모듈" named="A, B" /> 로. ` +
+    `2) 새로 필요한 훅/state/타입 → <hook>…</hook> 안에 줄 단위로(들여쓰기 없이). ` +
+    `<region>에서 새로 쓰는 컴포넌트·유틸의 import → <import module="모듈" named="A, B" /> **태그로만** 내보내세요. ` +
+    `⛔ \`import … from …\` **문장 자체를 <hook> 안에 쓰지 마세요** — 컴포넌트 함수 본문 중간에 박혀 컴파일이 깨집니다(import는 파일 최상단에만 와야 함). ` +
     `이것들의 위치는 신경 쓰지 마세요 — 확장이 올바른 위치에 자동 삽입합니다.\n` +
     // ⚠ 예시는 의도적으로 **중립 도메인(카테고리)** 을 쓴다 — 약한 모델이 예시를 그대로 베끼는(parroting)
     //   경향이 있어, 실제 요청과 같은 도메인(부서·직원 등)으로 예시를 들면 그걸 정답으로 착각해 echo 한다
@@ -165,6 +167,10 @@ export function buildHybridPrompt(
     `예: <hook>type TCategoryListResponse = { success: boolean; data: TCategory[] };\n` +
     `const { data: categoryResponse } = useApi<TCategoryListResponse>(CATEGORIES_ENDPOINT);\n` +
     `const categories = categoryResponse?.data ?? [];</hook>\n` +
+    // import는 <hook>이 아니라 <import> 태그로 — 약한 모델이 import 문을 <hook>에 섞어 함수 본문에
+    // 박던 실패(실측) 차단. 예시 컴포넌트(Badge)는 중립값이며 "실제 region에서 쓴 컴포넌트로 바꿔" 쓰라고 명시.
+    `예: <region>에서 새 컴포넌트 <Badge>를 썼다면 그 import는 ` +
+    `<import module="@axiom/components/ui" named="Badge" /> 로 (Badge 자리에 **실제로 쓴 컴포넌트 이름**을 넣으세요).\n` +
     `\n**훅 작성 규칙(위반 시 적용 거부됨):**\n` +
     `- ⛔ useApi·useState·useEffect 등 모든 훅은 **컴포넌트 최상위에서만** 호출. \`useEffect(()=>{ useApi(...) })\`처럼 ` +
     `effect/콜백/조건문 안에서 훅을 호출하지 마세요(React Rules of Hooks 위반).\n` +

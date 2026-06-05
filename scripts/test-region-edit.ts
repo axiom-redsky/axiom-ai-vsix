@@ -768,6 +768,47 @@ console.log('\n기존 const 결정론 교체:');
     const { text: t2 } = applyStructuralEdit(C, { hookCode: reDeclWrongEp }, { stripDeadInserts: true });
     check('엔드포인트 다른 재선언 → 교체 안 함(원본 엔드포인트 보존)', t2.includes('useApi<TEmployeeListResponse>(EMPLOYEES_ENDPOINT') && !t2.includes("'/api/staff'"));
   }
+
+  // (i) 훅 코드 안에 섞여 온 import → 본문에 안 박히고 파일 상단으로 hoist (실측 버그: Skeleton import가
+  //     함수 컴포넌트 중간 라인에 삽입돼 컴파일 에러). 멀티라인 import도 합쳐 처리.
+  {
+    const C = [
+      "import { useState } from 'react';",
+      '',
+      'export default function P(): React.ReactNode {',
+      "  const [v] = useState('');",
+      '  return (<div>{v}</div>);',
+      '}',
+    ].join('\n');
+    const { text, changes } = applyStructuralEdit(C, {
+      hookCode: [
+        "import { Skeleton } from '@axiom/components/ui';",
+        'const rows = 10;',
+      ].join('\n'),
+    });
+    const lines = text.split('\n');
+    const skeletonLine = lines.findIndex((l) => l.includes('import { Skeleton }'));
+    const fnLine = lines.findIndex((l) => l.includes('export default function P'));
+    check('훅 속 import → 파일 상단으로 hoist(컴포넌트 선언 위)', skeletonLine >= 0 && skeletonLine < fnLine, changes.join(' | '));
+    check('import는 본문에 박히지 않음(함수 뒤에 import 없음)', !lines.slice(fnLine).some((l) => /^\s*import\b/.test(l)));
+    check('import 아닌 코드(rows)는 보존됨', text.includes('const rows = 10;'));
+    check('hoist 변경 기록', changes.some((c) => c.includes('hoist')));
+  }
+
+  // (j) 이미 존재하는 모듈을 훅 코드 import로 또 들고 와도 중복 추가 안 함(merge/skip).
+  {
+    const C = [
+      "import { useState, useEffect } from 'react';",
+      '',
+      'export default function P(): React.ReactNode {',
+      '  return (<div />);',
+      '}',
+    ].join('\n');
+    const { text } = applyStructuralEdit(C, {
+      hookCode: "import { useState } from 'react';\nconst x = 1;",
+    });
+    check('훅 속 중복 import는 추가 안 됨(react 1줄 유지)', (text.match(/from 'react'/g) ?? []).length === 1, text);
+  }
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
