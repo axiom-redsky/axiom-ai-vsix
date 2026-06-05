@@ -69,6 +69,23 @@ function stripFences(s: string): string {
 }
 
 /**
+ * <hook> 안에 모델이 잘못 끼워 넣은 **다른 채널의 제어 태그**(<replace>·<region>·<import>)를 제거한다.
+ *
+ * 이 태그들은 modelOut 전체에서 각자 정규식으로 이미 파싱·적용되므로(예: <replace>는 결정론 교체로 적용),
+ * 훅 코드에 리터럴로 남으면 컴포넌트 본문에 **그대로 텍스트로 삽입돼 파일이 깨진다**(실측: 모델이
+ * `<hook>…<replace anchor=…>…</replace></hook>`처럼 중첩 출력 → `<replace>` 텍스트가 본문에 박힘).
+ * 닫는/여는 잔여 단독 태그까지 걷어내고 과도한 빈 줄을 접는다.
+ */
+function stripNestedControlTags(s: string): string {
+  return s
+    .replace(/<replace\s+anchor\s*=\s*"[^"]*"\s*>[\s\S]*?<\/replace>/g, '')
+    .replace(/<region>[\s\S]*?<\/region>/g, '')
+    .replace(/<import\s+[^>]*?\/?>/g, '')
+    .replace(/<\/?(?:hook|region|replace|import)\b[^>]*>/g, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+/**
  * 하이브리드 프롬프트 — JSX는 <region>, 새 훅/타입은 <hook>, import는 <import …/>.
  *
  * 입출력 점검 패널(RegionIoProbeProvider)이 "실제 운영 경로가 모델에 보내는 분리 입력"을
@@ -210,7 +227,11 @@ export async function runHybridRegionEdit(
 
   // 3) 파싱: <region> + <hook>(N개) + <import …/> + <replace anchor=…>(N개)
   const regionMatch = modelOut.match(/<region>([\s\S]*?)<\/region>/);
-  const hookMatches = [...modelOut.matchAll(/<hook>([\s\S]*?)<\/hook>/g)].map((m) => m[1].trim());
+  // 훅 조각에서 중첩 제어 태그(<replace> 등)를 제거 — 그 태그들은 아래에서 별도 파싱·적용되므로
+  // 훅에 리터럴로 남으면 본문에 텍스트로 삽입돼 깨진다. strip 후 빈 조각은 버린다.
+  const hookMatches = [...modelOut.matchAll(/<hook>([\s\S]*?)<\/hook>/g)]
+    .map((m) => stripNestedControlTags(m[1]).trim())
+    .filter((h) => h.length > 0);
   const importMatches = [...modelOut.matchAll(/<import\s+([^>]*?)\/?>/g)].map((m) => m[1]);
   const replaceBlocks: ReplaceBlock[] = [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
     .map((m) => ({ anchor: m[1].trim(), replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, '') }))

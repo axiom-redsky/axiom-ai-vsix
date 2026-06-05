@@ -317,6 +317,21 @@ await (async () => {
       check('useApi params <replace> + refetch() → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
       check('최종: useApi params에 department 반영', !!o.finalText && o.finalText.includes('department: dept'), `text=${(o.finalText ?? '').split('\n').find((l) => l.includes('useApi'))}`);
     }
+
+    // 중첩 제어 태그: 모델이 <replace>를 <hook> 안에 끼워 출력 → replace는 적용되지만 <replace> 텍스트가
+    //   본문에 리터럴로 박히는 버그(실측). 훅 조각에서 제어 태그를 strip해 깨진 삽입을 막는다.
+    {
+      const changedRegion = loc.region.replace('placeholder="부서"', 'placeholder="부서 선택"');
+      const model =
+        `<region>\n${changedRegion}\n</region>\n` +
+        `<hook>// 기존 useApi 호출문 수정\n` +
+        `<replace anchor="useApi<TResp>('/api/employees'">const { data, refetch } = useApi<TResp>('/api/employees', { params: { page: 1, department: dept } });</replace></hook>`;
+      const o = await runHybridRegionEdit(RSRC, Q, async () => model);
+      check('중첩 <replace>: applied (replace는 적용)', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+      check('중첩 <replace>: 본문에 <replace 리터럴 없음', !!o.finalText && !o.finalText.includes('<replace'), `leak=${(o.finalText ?? '').split('\n').filter((l) => l.includes('<replace')).join(' | ')}`);
+      check('중첩 <replace>: useApi params에 department 적용', !!o.finalText && o.finalText.includes('department: dept'));
+      check('중첩 <replace>: region 편집(부서 선택)도 보존', !!o.finalText && o.finalText.includes('부서 선택'));
+    }
   }
 })();
 
