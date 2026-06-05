@@ -344,7 +344,13 @@ function parseBindingPattern(pattern: string): string[] {
   const p = pattern.trim();
   if (!p) return [];
   if (/^[A-Za-z_$][\w$]*$/.test(p)) return [p];
-  if (!/^[{[]/.test(p)) return [];
+  // 타입 주석이 붙은 단순 바인딩: `name: Type[]` → name. (구조분해가 아니라 식별자+타입.)
+  // 이게 없으면 `const employeeStatusOptions: TStatusOption[] = …` 같은 타입 달린 const 가
+  // 이름 0개로 빠져나가 중복 선언 탐지에서 통째로 누락된다(같은 스코프 재선언을 못 막음).
+  if (!/^[{[]/.test(p)) {
+    const typed = p.match(/^([A-Za-z_$][\w$]*)\s*:/);
+    return typed ? [typed[1]] : [];
+  }
 
   const inner = p.slice(1, -1); // 바깥 {} 또는 [] 제거
   const parts: string[] = [];
