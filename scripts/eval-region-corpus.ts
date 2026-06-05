@@ -201,7 +201,7 @@ export const CASES: EvalCase[] = [
   //   엑셀/다운로드처럼 파일에 없는 어휘만 anchor-missing 가드로 못박는다.
 
   // EmployeeListPage — 부서/재직상태/투입상태 select, 검색, 페이지네이션, 테이블
-  { id: 'emp-list-dept-api', file: 'EmployeeListPage', query: '부서 셀렉트 옵션을 부서 목록 API로 받아오게 해줘', expectE2E: 'applied', note: '실파일: 부서 Select' },
+  { id: 'emp-list-dept-api', file: 'EmployeeListPage', query: '부서 셀렉트 옵션을 부서 목록 API로 받아오게 해줘', expectE2E: 'fallback', expectE2EReason: 'duplicate-decl', note: '실파일: 부서 Select — 파일에 이미 `const { data: deptResponse }`가 있는데 모델이 `const { data: deptResponse, isPending: isDeptPending }`로 재선언(isPending 새 바인딩이라 전체일치 dedup 통과) → deptResponse 중복. 중복 게이트가 차단 → full 폴백 정답(applied는 컴파일에러 잠재 골든이었음).' },
   { id: 'emp-list-status-code', file: 'EmployeeListPage', query: '재직상태 셀렉트를 공통코드로 채워줘', expectE2E: 'fallback', expectE2EReason: 'no-op', note: '실파일: 재직상태 Select — 파일에 이미 공통코드 API select 구현됨 → no-op이 정답' },
   { id: 'emp-list-phone-col', file: 'EmployeeListPage', query: '직원 테이블에 연락처 컬럼을 추가해줘', expectE2E: 'applied', note: '실파일: 테이블 컬럼 추가' },
   { id: 'emp-list-excel', file: 'EmployeeListPage', query: '엑셀 다운로드 버튼을 추가해줘', expectEligible: false, note: '실파일: 없는 기능 → full 가드(게이트 무관, 적용만 막으면 OK)' },

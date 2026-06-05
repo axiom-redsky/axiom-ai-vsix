@@ -17,7 +17,7 @@
  */
 import { splitTsSections } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
-import { isCrossCutting, extractControlInventory, EDIT_INTENT_RE } from './RegionIntent';
+import { isCrossCutting, extractControlInventory, EDIT_INTENT_RE, mappedListVars, impliedControlTags } from './RegionIntent';
 
 /** locate 잡음 토큰 — 'api'가 useApi에, '박스/사용/적용' 등이 엉뚱한 줄에 걸려 위치를 빗나가게 한다. */
 const LOCATE_STOP = new Set(['api', '박스', '사용', '적용', '현재', '화면', '해줘', '추가', 'box', '에서']);
@@ -66,9 +66,35 @@ function bridgeQueryTokens(tokens: string[]): string[] {
   return [...out];
 }
 
+/**
+ * 도메인 복합명사 접미사 — 화면 섹션 라벨에 흔히 붙는 꼬리말. 어근을 분리하는 데 쓴다.
+ * 조사(KOREAN_JOSA)와 같은 휴리스틱이지만 "명사+꼬리말" 복합어 전용이다.
+ */
+const DOMAIN_SUFFIXES = ['관리', '현황', '목록', '리스트', '이력', '내역', '정보', '상태', '대장', '조회', '등록'];
+
+/**
+ * 복합 도메인어를 어근으로 분해해 토큰을 보강한다(원본 토큰 유지). god component 에서 발견된 핵심 결함:
+ * "예산관리"가 tokenizeQuery 에서 한 덩어리로 나와, 섹션 내 앵커(placeholder "예산 상태 선택", value/state)에
+ * "예산"만 있는데 "예산관리"로는 0매칭 → 그 섹션이 점수를 못 얻고 전 섹션이 generic 토큰(select+상태)으로
+ * 동점 → 파일 맨 위 섹션으로 추락(실측 1/64). 어근 "예산"을 더하면 그 섹션의 앵커가 점수를 얻어 동점을 깬다.
+ * (접미사 "관리"가 모든 섹션 주석/타이틀에 있어도 그건 comment/title 라인이라 control 후보 점수에 안 섞인다.)
+ */
+function decomposeDomainCompounds(tokens: string[]): string[] {
+  const out = new Set<string>(tokens);
+  for (const t of tokens) {
+    for (const suf of DOMAIN_SUFFIXES) {
+      if (t.length > suf.length + 1 && t.endsWith(suf)) {
+        out.add(t.slice(0, -suf.length)); // 어근 길이 ≥2 (위 조건이 보장)
+        break; // 가장 먼저 맞는 접미사 하나만
+      }
+    }
+  }
+  return [...out];
+}
+
 export interface RegionSafety {
   ok: boolean;
-  gate: 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed' | 'cross-cutting' | 'ok';
+  gate: 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed' | 'cross-cutting' | 'ambiguous' | 'ok';
   reason: string;
 }
 
@@ -103,11 +129,46 @@ export interface LocatedRegion {
   controlInventory: string;
   /** region/hybrid splice 안전 판정 — ok=false면 full 입력으로 폴백 */
   safety: RegionSafety;
+  /**
+   * gate==='ambiguous' 일 때만 채워지는 후보 섹션 라벨들(없으면 빈 배열). 호출부가 "어느 구역인가요?"
+   * 되묻기에 쓴다 — 사용자가 라벨을 넣어 재요청하면 복합어 분해로 정확히 라우팅된다.
+   */
+  ambiguousCandidates: string[];
 }
 
 /** 문자열에서 첫 JSX 여는 태그 이름을 뽑는다(루트 태그 일치 후처리 게이트용). */
 export function firstJsxTag(s: string): string | null {
   return s.match(/<([A-Za-z][A-Za-z0-9]*)/)?.[1] ?? null;
+}
+
+/**
+ * 주어진 줄 위쪽(최대 60줄)에서 사람이 읽을 **섹션 랜드마크** 라벨을 찾는다(모호 되물음용).
+ * 우선순위: CardTitle → 헤딩(h1~6) → PageHeader title → JSX 섹션 주석(중괄호로 감싼 블록주석).
+ * 타입/훅 코드 주석·파일 헤더는 섹션 라벨이 아니므로 제외(되물음에 쓰레기 라벨 방지). 못 찾으면 null.
+ */
+function sectionLabelAbove(lines: string[], fromLine1Based: number): string | null {
+  for (let i = fromLine1Based - 1; i >= 0 && i >= fromLine1Based - 60; i--) {
+    const t = (lines[i] ?? '').trim();
+    let m = t.match(/<CardTitle[^>]*>([^<{]+)<\/CardTitle>/);
+    if (m && m[1].trim()) return m[1].trim();
+    m = t.match(/<h[1-6][^>]*>([^<{]+)<\/h[1-6]>/);
+    if (m && m[1].trim()) return m[1].trim();
+    if (/(?:PageHeader|Header)/.test(t)) {
+      m = t.match(/title="([^"]+)"/);
+      if (m && m[1].trim()) return m[1].trim();
+    }
+    // JSX 섹션 주석만(`{/* … */}`). 코드 주석(`//`·`/** */`)은 타입/훅 설명이라 섹션 라벨이 아님.
+    if (/^\{\s*\/\*/.test(t)) {
+      const inner = t
+        .replace(/^\{\s*\/\*+/, '')
+        .replace(/\*+\/\s*\}$/, '')
+        .replace(/=+/g, ' ')
+        .replace(/섹션\s*\d+\s*[:：]?/g, '')
+        .trim();
+      if (inner) return inner;
+    }
+  }
+  return null;
 }
 
 /**
@@ -216,6 +277,31 @@ function snapBlockFrom(lines: string[], openIdx: number): { startLine: number; e
 }
 
 /**
+ * 앵커 줄이 속한 **같은 섹션** 안의 `<table>` 로 경계를 찾는다(테이블 의도 교정용).
+ *
+ * "테이블에 연락처 컬럼 추가"에서 새 컬럼명("연락처")이 같은 섹션의 다른 요소(상세 카드 필드 등)에
+ * 우연히 매칭돼 표가 아닌 곳에 앵커되는 미스라우팅을 바로잡는다. 섹션 경계는 JSX 섹션 주석(중괄호로
+ * 감싼 블록주석)으로 잡고, 그 안에서 앵커에 **가장 가까운** 표로 스냅한다(다중 표 파일 오선택 방지).
+ * 섹션 주석이 없으면 파일 전체에서 가장 가까운 표(단일 컴포넌트·단일 표 케이스 커버).
+ */
+function findTableInSection(lines: string[], anchorLine: number): { startLine: number; endLine: number } | null {
+  const isSectionComment = (s: string): boolean => /^\{\s*\/\*/.test(s.trim());
+  let lo = 0;
+  let hi = lines.length;
+  for (let i = anchorLine - 2; i >= 0; i--) if (isSectionComment(lines[i])) { lo = i; break; }
+  for (let i = anchorLine; i < lines.length; i++) if (isSectionComment(lines[i])) { hi = i; break; }
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = lo; i < hi; i++) {
+    if (/^<(table|Table)\b/.test(lines[i].trim())) {
+      const d = Math.abs(i - (anchorLine - 1));
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+  }
+  return best >= 0 ? snapBlockFrom(lines, best) : null;
+}
+
+/**
  * 매칭 토큰이 "JSX 콘텐츠"(텍스트 노드 또는 따옴표 문자열 속성값) 안에 있는지 판정한다(앵커 품질, B).
  *
  * 한글 도메인어(부서·투입률·철수예정)는 거의 항상 JSX 텍스트나 placeholder/label 같은 문자열
@@ -234,6 +320,141 @@ function isContentAnchor(lineLower: string, token: string): boolean {
 }
 
 /**
+ * depsHeader 가지치기를 켜는 최소 (미가지치기) 헤더 글자 수. 이보다 얇으면 종전 전체 헤더를 유지한다.
+ *
+ * 트리거는 "파일 줄 수"가 아니라 **헤더가 실제로 비대한가**다. 줄 수는 헤더 크기와 느슨하게만 비례한다
+ * (600줄 god component는 헤더가 클 수 있고, 1500줄이어도 얇을 수 있다). 얇은 헤더를 가지치기하면 이웃
+ * 컨트롤 state 가시성(=재사용 금지 규칙의 근거)을 잃으면서 절약은 미미하다 — 그래서 비대할 때만 켠다.
+ * 측정: 기존 코퍼스 픽스처 최대 헤더 ≈ 3,936자 → 6,000자면 그것들은 전체 유지(회귀 0), god component만 가지친다.
+ */
+const DEPS_PRUNE_MIN_HEADER_CHARS = 6000;
+
+/** JS 예약어/흔한 비-식별 토큰 — 참조 식별자 추출 시 제외. */
+const JS_KEYWORDS = new Set([
+  'const', 'let', 'var', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break',
+  'continue', 'function', 'new', 'typeof', 'instanceof', 'void', 'delete', 'in', 'of', 'null',
+  'undefined', 'true', 'false', 'this', 'async', 'await', 'yield', 'import', 'from', 'export',
+  'default', 'as', 'type', 'interface', 'extends', 'implements', 'public', 'private', 'readonly',
+  'string', 'number', 'boolean', 'any', 'unknown', 'never', 'React',
+]);
+
+/** 텍스트의 식별자 토큰 집합(예약어 제외). 훅 전이 의존성 추적·타입 참조 판정 공용. */
+function identifiersIn(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/[A-Za-z_$][\w$]*/g)) if (!JS_KEYWORDS.has(m[0])) out.add(m[0]);
+  return out;
+}
+
+/** 한 문장이 선언하는 이름들. const/let/var + 구조분해(`[a, setA]`·`{ data: x }`) 처리. */
+function declaredNames(stmt: string): string[] {
+  const names: string[] = [];
+  for (const m of stmt.matchAll(/\b(?:const|let|var)\s+(\[[^\]]*\]|\{[^}]*\}|[A-Za-z_$][\w$]*)/g)) {
+    const decl = m[1];
+    if (decl[0] === '[' || decl[0] === '{') {
+      for (let part of decl.slice(1, -1).split(',')) {
+        part = part.trim();
+        if (decl[0] === '{' && part.includes(':')) part = part.slice(part.indexOf(':') + 1); // data: x → x
+        const id = part.replace(/[=:].*$/s, '').replace(/^\.\.\./, '').trim();
+        if (/^[A-Za-z_$][\w$]*$/.test(id)) names.push(id);
+      }
+    } else {
+      names.push(decl);
+    }
+  }
+  return names;
+}
+
+/** 한 줄의 ()/{}/[] 깊이 변화량. */
+function braceDelta(s: string): number {
+  let d = 0;
+  for (const ch of s) {
+    if (ch === '(' || ch === '{' || ch === '[') d++;
+    else if (ch === ')' || ch === '}' || ch === ']') d--;
+  }
+  return d;
+}
+
+/** 들여쓰기 무관, ()/{}/[] 균형으로 (이미 함수 본문 깊이에 있는) 줄들을 문장 단위로 끊는다. */
+function groupStatements(lines: string[]): string[] {
+  const stmts: string[] = [];
+  let buf: string[] = [];
+  let depth = 0;
+  for (const line of lines) {
+    buf.push(line);
+    depth += braceDelta(line);
+    const t = line.trim();
+    if (depth <= 0 && (t.endsWith(';') || t.endsWith('}'))) {
+      stmts.push(buf.join('\n'));
+      buf = [];
+      depth = 0;
+    }
+  }
+  if (buf.length) stmts.push(buf.join('\n'));
+  return stmts;
+}
+
+/**
+ * 큰 파일의 컴포넌트 선언부에서 **편집 영역이 참조하는 훅/state 선언만** 남긴다(전이 폐쇄).
+ *
+ * god component(수십 섹션의 훅이 한 return 전에 쌓임)에서 무관한 섹션들의 훅을 떨궈 depsHeader
+ * 폭주(①)를 막는다. 시드 = region이 쓰는 식별자(+ .map 목록 변수). 시드를 선언하는 문장을 잡고,
+ * 그 문장이 또 쓰는 식별자를 시드에 더해 고정점까지 확장한다. useEffect는 선언이 없어도 시드를
+ * 참조하면(동기화 effect 등) 남긴다. 주석은 다음 문장에 붙어 함께 유지/제거된다.
+ */
+function sliceRelevantHooks(hookLines: string[], region: string): string {
+  // 함수 시그니처 프리픽스(`export default function …() {`)를 떼어낸다. 그 여는 `{`가 본문 내내
+  // 닫히지 않아(닫는 `}`는 return 뒤) depth가 0으로 안 돌아오면 전체가 한 문장으로 뭉쳐 슬라이싱이
+  // 무력화된다. 본문을 처음 여는 줄(depth가 ≥1로 올라가는 줄) 다음부터 문장 단위로 그룹화한다.
+  let bodyStart = 0;
+  let d = 0;
+  for (let i = 0; i < hookLines.length; i++) {
+    d += braceDelta(hookLines[i]);
+    if (d >= 1) {
+      bodyStart = i + 1;
+      break;
+    }
+  }
+  const stmts = groupStatements(hookLines.slice(bodyStart));
+  const needed = identifiersIn(region);
+  for (const v of mappedListVars(region)) needed.add(v); // 필터/테이블 경로: 목록 변수와 그 useApi 보존
+  const keep = new Set<number>();
+  let prev = -1;
+  while (keep.size !== prev) {
+    prev = keep.size;
+    for (let i = 0; i < stmts.length; i++) {
+      if (keep.has(i)) continue;
+      const decl = declaredNames(stmts[i]);
+      const refs = identifiersIn(stmts[i]);
+      const isEffect = /\buse[A-Z]\w*Effect\b/.test(stmts[i]);
+      if (decl.some((d) => needed.has(d)) || (isEffect && [...refs].some((r) => needed.has(r)))) {
+        keep.add(i);
+        for (const r of refs) needed.add(r);
+        for (const d of decl) needed.add(d);
+      }
+    }
+  }
+  return stmts.filter((_, i) => keep.has(i)).join('\n');
+}
+
+/** region+훅슬라이스+backing이 참조하는 type/interface만(타입끼리 전이 참조 포함) 본문 배열로. */
+function selectReachableTypes(typeSecs: { name: string; body: string }[], seedText: string): string[] {
+  const needed = identifiersIn(seedText);
+  const keep = new Set<number>();
+  let prev = -1;
+  while (keep.size !== prev) {
+    prev = keep.size;
+    typeSecs.forEach((s, i) => {
+      if (keep.has(i)) return;
+      if (s.name && needed.has(s.name)) {
+        keep.add(i);
+        for (const r of identifiersIn(s.body)) needed.add(r);
+      }
+    });
+  }
+  return typeSecs.filter((_, i) => keep.has(i)).map((s) => s.body);
+}
+
+/**
  * 질문 토큰으로 편집 영역을 찾고(grep→스냅), 의존성 헤더를 추출하고, splice 안전성을 판정한다.
  *
  * ① grep — 잡음 토큰 제거 후, 토큰 매칭 점수가 가장 높은 라인을 편집 중심으로 잡는다.
@@ -246,9 +467,10 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   const baseTokens = tokenizeQuery(query)
     .map((t) => t.toLowerCase())
     .filter((t) => t.length >= 2 && !LOCATE_STOP.has(t));
-  // 한글 구조어 → 영문 컴포넌트 토큰 브리지(locate 한정). 한글 질문어가 영문 컴포넌트명과
-  // 0매칭이라 실제 컨트롤 줄이 점수를 못 얻던 가짜 폴백을 메운다.
-  const tokens = bridgeQueryTokens(baseTokens);
+  // 복합 도메인어 어근 분해("예산관리"→+"예산") 후 한글 구조어 → 영문 컴포넌트 토큰 브리지(locate 한정).
+  // 전자는 god component 섹션 라우팅(복합어가 섹션 내 앵커와 0매칭)을, 후자는 한글 질문어↔영문 컴포넌트명
+  // 0매칭을 메운다. 둘 다 원본 토큰을 유지한 채 보강만 하므로 기존 매칭은 그대로다.
+  const tokens = bridgeQueryTokens(decomposeDomainCompounds(baseTokens));
 
   // ① grep — 모든 줄을 점수화해 후보 목록을 만든다.
   //   (단일 최고점 줄 하나만 잡으면, 토큰을 우연히 가진 비-JSX 줄 — 상태/라벨 `const`, 주석 — 에
@@ -347,6 +569,20 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
     }
   }
 
+  // ②.9 테이블 의도 교정 — 모든 라우팅 경로 뒤. 표가 여럿이라 ②.5(유일 표)가 못 잡았고, chosen이
+  //     **표가 아닌** 요소에 스냅됐을 때(새 컬럼명 "연락처"가 같은 섹션 상세 카드에 우연 매칭 / 섹션
+  //     랜드마크가 Card로 스냅). 그 앵커가 속한 섹션의 <table>로 교정한다 — 컬럼 추가의 편집 단위는 표다.
+  if (chosen && chosenSnap && tokens.some((t) => TABLE_INTENT.has(t))) {
+    const chosenTag = firstJsxTag(lines.slice(chosenSnap.startLine - 1, chosenSnap.endLine).join('\n'));
+    if (chosenTag !== 'table' && chosenTag !== 'Table') {
+      const tbl = findTableInSection(lines, chosen.line);
+      if (tbl) {
+        chosen = { line: tbl.startLine, score: chosen.score, hit: chosen.hit };
+        chosenSnap = tbl;
+      }
+    }
+  }
+
   // 스냅되는 후보가 없으면 최고점 줄을 그대로 써서(원래 동작) 안전 게이트가 적절히 차단하게 둔다.
   const top = scored[0] ?? null;
   const bestLine = chosen?.line ?? top?.line ?? 1;
@@ -358,24 +594,13 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   const endLine = snap ? snap.endLine : Math.min(lines.length, bestLine + 15);
   const region = lines.slice(startLine - 1, endLine).join('\n');
 
-  // ③ 의존성 헤더
+  // ③ 의존성 헤더 (큰 파일은 관련성 가지치기로 ① depsHeader 폭주 차단)
   const sections = splitTsSections(source);
-  const headerParts: string[] = [];
-  for (const s of sections) {
-    if (s.kind === 'import' || s.kind === 'type' || s.kind === 'interface') headerParts.push(s.body);
-  }
-  const comp = sections.find((s) => s.kind === 'function' && /^export\s+default\b/.test(s.body.trimStart()));
-  if (comp) {
-    const compLines = lines.slice(comp.startLine - 1, comp.endLine);
-    const retIdx = compLines.findIndex((l) => /^\s*return\s*\(/.test(l));
-    const hookBlock = (retIdx >= 0 ? compLines.slice(0, retIdx) : compLines.slice(0, 30)).join('\n');
-    headerParts.push(`// [컴포넌트 선언부 — 기존 훅/state/import 참고용. 새 코드가 이들과 충돌·중복되지 않게]\n${hookBlock}`);
-  }
-  const depsHeader = headerParts.join('\n\n');
 
   // ③.5 grounding — 편집 영역이 참조하는 모듈 스코프 const 선언을 모은다(이름이 region에 등장하는 것만).
   //      depsHeader엔 top-level const가 없어, 모델이 기존 옵션 배열을 기억으로 재구성하다 항목을 흘린다
   //      (실측: 직급 select '수석 추가'에 기존 '사원' 누락). 실제 선언을 주입해 faithful 수정을 유도한다.
+  //      타입 가지치기 시드로도 쓰이므로 헤더보다 먼저 계산한다.
   const backingParts: string[] = [];
   for (const s of sections) {
     if (s.kind !== 'const') continue;
@@ -384,6 +609,46 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   }
   const backingDecls = backingParts.join('\n');
 
+  // 컴포넌트 선언부(return 전 훅/state) 원본 줄.
+  let hookLines: string[] = [];
+  const comp = sections.find((s) => s.kind === 'function' && /^export\s+default\b/.test(s.body.trimStart()));
+  if (comp) {
+    const compLines = lines.slice(comp.startLine - 1, comp.endLine);
+    const retIdx = compLines.findIndex((l) => /^\s*return\s*\(/.test(l));
+    hookLines = retIdx >= 0 ? compLines.slice(0, retIdx) : compLines.slice(0, 30);
+  }
+  const fullHookBlock = hookLines.join('\n');
+
+  // 전체(미가지치기) 헤더를 먼저 구성한다 — 종전 동작과 바이트 동일. 이 크기로 가지치기 여부를 정한다.
+  const fullParts: string[] = [];
+  for (const s of sections) {
+    if (s.kind === 'import' || s.kind === 'type' || s.kind === 'interface') fullParts.push(s.body);
+  }
+  if (fullHookBlock) {
+    fullParts.push(`// [컴포넌트 선언부 — 기존 훅/state/import 참고용. 새 코드가 이들과 충돌·중복되지 않게]\n${fullHookBlock}`);
+  }
+  const fullDepsHeader = fullParts.join('\n\n');
+
+  // 헤더가 비대할 때만 가지치기. 얇은 헤더는 전체 유지(회귀 0 + 이웃 state 가시성 보존).
+  const pruneDeps = fullDepsHeader.length >= DEPS_PRUNE_MIN_HEADER_CHARS;
+  let depsHeader: string;
+  if (!pruneDeps) {
+    depsHeader = fullDepsHeader;
+  } else {
+    // 가지치기: import 전체(작고 "재import 금지" 신호) + region/훅/backing이 참조하는 타입만 + 훅 슬라이스.
+    const hookBlock = sliceRelevantHooks(hookLines, region);
+    const leanParts: string[] = [];
+    for (const s of sections) if (s.kind === 'import') leanParts.push(s.body);
+    const typeSecs = sections.filter((s) => s.kind === 'type' || s.kind === 'interface');
+    leanParts.push(...selectReachableTypes(typeSecs, `${region}\n${hookBlock}\n${backingDecls}`));
+    if (hookBlock.trim()) {
+      leanParts.push(
+        `// [컴포넌트 선언부 — 편집 영역이 참조하는 훅/state만 발췌(읽기 전용). 새 코드가 이들과 충돌·중복되지 않게]\n${hookBlock}`,
+      );
+    }
+    depsHeader = leanParts.join('\n\n');
+  }
+
   // ③.7 컨트롤 인벤토리(B) — region 밖 기존 입력 컨트롤. 모델 재생성(중복) 방지용.
   const controlInventory = snap ? extractControlInventory(source, startLine, endLine) : '';
 
@@ -391,10 +656,81 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   // 이때 다중지점이어도 B(인벤토리)+C(<replace> params 보강)로 region 경로에서 성공시킨다.
   const hasServerParamsFilter = EDIT_INTENT_RE.test(query) && /useApi/.test(depsHeader) && /\bparams\s*:/.test(depsHeader);
 
+  // ④.0 모호 동점 판정 — 도메인어 없이 generic 토큰(전 섹션 공통: select/상태/테이블 등)만으로 이긴 경우.
+  //     god component 에서 사용자가 섹션을 특정하지 않으면 최고점이 수십 줄에서 동점이 되고, 정렬상
+  //     맨 위 섹션이 조용히 선택돼 엉뚱한 곳을 편집한다(실측: ② "상태 select 바꿔줘" → 섹션1). 이때는
+  //     단일 region 으로 의도를 표현할 수 없으므로 full 폴백(또는 호출부가 섹션 되물음)하게 막는다.
+  //     분별 토큰(예: "예산")이 하나라도 승리에 기여했으면 흔하지 않아 발동하지 않는다(오발 방지).
+  //     판정 핵심은 "라인 수"가 아니라 **동점 후보가 파일 전체에 퍼진 정도(spread)**다. 단일 표 안의
+  //     수많은 <td>/<tr> 줄도 동점이 되지만(클러스터) 그건 한 곳이라 모호가 아니다. god component 는
+  //     같은 generic 토큰이 수천 줄에 걸쳐 흩어진다. spread≥1000줄 조건이면 작은 파일(≤수백 줄)은
+  //     구조적으로 발동 불가 → 단일 컴포넌트·표 편집 오발 0.
+  const AMBIG_TOKEN_FREQ = 8; // 토큰이 이만큼 많은 줄에 등장하면 "흔함(비분별)"
+  const AMBIG_TIES = 8; // 최고점 동점 줄 최소 개수
+  const AMBIG_SPREAD = 1000; // 동점/컨트롤 후보가 이 줄 간격으로 흩어지면 "파일 전반"(작은 파일은 발동 불가)
+  const AMBIG_DIFFUSE_COUNT = 5; // 지목 컨트롤이 이만큼 다수면 "어느 것인지 불명확"
+  const tokenLineFreq = (tok: string): number => scored.reduce((n, s) => n + (s.hit.includes(tok) ? 1 : 0), 0);
+  const topLines = scored.filter((s) => s.score === bestScore).map((s) => s.line);
+  const spread = topLines.length > 1 ? Math.max(...topLines) - Math.min(...topLines) : 0;
+  const allGeneric = !!chosen && chosen.hit.length > 0 && chosen.hit.every((t) => tokenLineFreq(t) >= AMBIG_TOKEN_FREQ);
+  const genericTieAmbiguous = allGeneric && topLines.length >= AMBIG_TIES && spread >= AMBIG_SPREAD;
+
+  // 무앵커 모호 — 쿼리가 컨트롤 유형(input/select/button 등)을 가리키나 **강한 앵커(2+ 토큰 동시매칭)가
+  // 없고**(bestScore<2), 그 컨트롤이 파일 전반에 다수 흩어져 있을 때. "입력필드에 데이터 바인딩"처럼
+  // 어느 컨트롤인지 이름이 없는 모호 쿼리가 anchor-import/snap-failed/약한 단일토큰 랜드마크로 잘못
+  // 처리돼 full 실패하던 케이스(실측)를 되물음으로 전환한다. (단일토큰 우연 랜드마크는 강한 앵커가 아님.)
+  const noStrongAnchor = bestScore < MIN_REGION_SCORE;
+  const impliedTags = noStrongAnchor ? impliedControlTags(query) : [];
+  const controlOccurrences: number[] = [];
+  for (const tag of impliedTags) {
+    const re = new RegExp(`<${tag}(?![A-Za-z0-9])`);
+    for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) controlOccurrences.push(i + 1);
+  }
+  const controlSpread = controlOccurrences.length > 1 ? Math.max(...controlOccurrences) - Math.min(...controlOccurrences) : 0;
+  const diffuseControl = controlOccurrences.length >= AMBIG_DIFFUSE_COUNT && controlSpread >= AMBIG_SPREAD;
+
+  // 무앵커 모호(테이블판) — "테이블/컬럼 추가"인데 **어느 구역도 안 잡혔고**(chosen 없음) 표가 파일 전반에
+  // 다수일 때. 테이블 의도는 컨트롤 태그가 아니라(CONTROL_TAGS에 없음) diffuseControl 로 안 잡혀 full 로
+  // 떨어지던 유일한 회피가능 케이스(계기판 실측). 구역을 지목했으면(chosen 있음) region 유지 → 발동 안 함.
+  const wantsTable = tokens.some((t) => TABLE_INTENT.has(t) || t === 'table' || t === 'grid');
+  const tableOccurrences: number[] = [];
+  if (!chosen && wantsTable) {
+    for (let i = 0; i < lines.length; i++) if (/^<(table|Table)\b/.test(lines[i].trim())) tableOccurrences.push(i + 1);
+  }
+  const tableSpread = tableOccurrences.length > 1 ? Math.max(...tableOccurrences) - Math.min(...tableOccurrences) : 0;
+  const diffuseTable = tableOccurrences.length >= AMBIG_DIFFUSE_COUNT && tableSpread >= AMBIG_SPREAD;
+
+  const isAmbiguous = genericTieAmbiguous || diffuseControl || diffuseTable;
+  // diffuseControl/Table 을 우선 — 컨트롤/표 전체 목록이 generic-tie 보다 정확한 "어느 구역?" 후보를 준다.
+  const ambigReason = diffuseControl
+    ? `컨트롤 <${impliedTags.join('/')}> 가 파일 전반(${controlSpread}줄)에 ${controlOccurrences.length}곳 — 어느 것인지 쿼리에 이름이 없어 불명확 → 되물음.`
+    : diffuseTable
+      ? `테이블이 파일 전반(${tableSpread}줄)에 ${tableOccurrences.length}곳 — 어느 구역의 표인지 쿼리에 이름이 없어 불명확 → 되물음.`
+      : `generic 토큰(${chosen?.hit.join(', ')})만으로 ${topLines.length}개 동점 후보가 ${spread}줄에 걸쳐 흩어짐 — 어느 섹션인지 불명확(맨 위로 추락) → 되물음.`;
+
+  // 모호하면 후보 섹션 라벨을 모은다(되물음용). 후보 줄(주석/import 제외) 위의 섹션 랜드마크를 중복 없이.
+  const candidateLines = diffuseControl ? controlOccurrences : diffuseTable ? tableOccurrences : topLines;
+  const ambiguousCandidates: string[] = [];
+  if (isAmbiguous) {
+    const seen = new Set<string>();
+    for (const ln of candidateLines) {
+      if (isCommentOrImport(lines[ln - 1] ?? '')) continue; // 주석/import 줄은 섹션 앵커가 아님
+      const label = sectionLabelAbove(lines, ln);
+      if (label && !seen.has(label)) {
+        seen.add(label);
+        ambiguousCandidates.push(label);
+      }
+    }
+  }
+
   // ④ 안전 게이트
+  // 모호(ambiguous)를 먼저 본다 — 무앵커 모호(diffuseControl)는 anchor-import/snap-failed/anchor-missing
+  // 보다 정확한 진단이라 그 게이트들을 가린다(full 떨굼 대신 되물음). generic-tie 는 snap 통과 케이스라 순서 무관.
   const hitLine = (lines[bestLine - 1] ?? '').trim();
   let safety: RegionSafety;
-  if (bestScore <= 0) {
+  if (isAmbiguous) {
+    safety = { ok: false, gate: 'ambiguous', reason: ambigReason };
+  } else if (bestScore <= 0) {
     safety = { ok: false, gate: 'anchor-missing', reason: `grep 점수 0 — 질문 토큰이 파일에 없음(앵커 부재). splice 시 ${bestLine}줄(보통 import)로 추락해 파일 파손 위험.` };
   } else if (/^\/\/|^\/\*|^\*/.test(hitLine)) {
     safety = { ok: false, gate: 'anchor-comment', reason: `최고 매칭(${bestLine}줄)이 주석 — 코드 앵커가 아닌 우연 일치.` };
@@ -412,7 +748,7 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
     safety = { ok: true, gate: 'ok', reason: `코드줄 앵커(${bestLine}줄, 점수 ${bestScore}) + 완결 JSX 요소 스냅(${startLine}~${endLine}) — region/hybrid 안전.` };
   }
 
-  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, controlInventory, safety };
+  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, controlInventory, safety, ambiguousCandidates };
 }
 
 /**

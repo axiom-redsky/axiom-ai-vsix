@@ -9,7 +9,8 @@ import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
-import { runHybridRegionEdit } from '../ai/RegionEditService';
+import { runHybridRegionEdit, classifyRegionDecline } from '../ai/RegionEditService';
+import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
   splitIntoSections,
@@ -1777,6 +1778,46 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._postStatus('영역 편집 시도 중…');
     const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined);
     this._corpusOutputChannel.appendLine(outcome.diagnostics);
+
+    // region 사퇴 시 UX 분기 — 분류는 단일 정책(classifyRegionDecline)에 위임(계기판과 규칙 동기화).
+    if (outcome.status === 'fallback') {
+      const ux = classifyRegionDecline(query, source, outcome.reason ?? '');
+
+      // 모호 — 비슷한 구역이 많아 어디인지 불명확. 후보 구역을 제시하며 되묻는다(구역명 재요청 → 복합어 분해 라우팅).
+      if (ux === 'reask-ambiguous') {
+        const cands = outcome.ambiguousCandidates ?? [];
+        const SHOW = 8;
+        const list = cands.slice(0, SHOW).map((c) => `\`${c}\``).join(', ');
+        const more = cands.length > SHOW ? ` 외 ${cands.length - SHOW}개` : '';
+        const example = cands[0] ? `\n>\n> 예: \`${cands[0]}의 ${query.trim()}\`` : '';
+        this._post({
+          type: 'token',
+          content:
+            '\n\n---\n> ❓ **어느 영역을 수정할지 모호합니다.**\n>\n' +
+            (list
+              ? `> 이 화면엔 비슷한 구역이 여럿 있습니다: ${list}${more}.\n>\n> 위 중 **하나를 콕 집어** 다시 요청해 주세요.${example}\n`
+              : '> 이 화면엔 비슷한 구역이 여럿 있습니다. **어느 구역인지 명시**해 다시 요청해 주세요(예: "직원관리의 …").\n'),
+        });
+        this._history.push({ role: 'assistant', content: '(영역 모호 — 구역 명시 요청)' });
+        return true; // 되물음으로 처리 완료 — full 폴백/조용한 오편집 안 함
+      }
+
+      // 대상 부재 — 지목한 컨트롤이 파일에 0개(수정 의도). 조용한 full+실패 대신 "다른 파일?/추가?" 안내.
+      if (ux === 'inform-absent') {
+        const tags = impliedControlTags(query);
+        this._post({
+          type: 'token',
+          content:
+            '\n\n---\n> ⚠️ **이 파일에서 수정할 대상을 찾지 못했습니다.**\n>\n' +
+            `> 요청하신 \`${tags.join('/')}\` 컨트롤이 현재 파일 \`${filePath}\` 에 하나도 없습니다.\n>\n` +
+            '> · 수정하려는 화면이 **다른 파일**일 수 있어요 — 그 파일을 열고 다시 요청해 주세요.\n' +
+            '> · 새로 **추가**하려는 거면 "…을 추가해줘"라고 말씀해 주세요(그러면 새로 만듭니다).\n',
+        });
+        this._history.push({ role: 'assistant', content: '(대상 컨트롤 부재 — 파일 확인 요청)' });
+        return true; // 알림으로 처리 완료 — 조용한 full 폴백/실패 안 함
+      }
+      // ux === 'full' → 아래 기존 full 입력 흐름으로 폴백
+    }
 
     if (outcome.status !== 'applied' || !outcome.finalText) {
       // fallback/error → 기존 full 입력 흐름으로 (조용한 파손 대신 안전)

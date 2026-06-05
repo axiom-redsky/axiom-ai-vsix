@@ -20,6 +20,7 @@
  * 외부 의존성 0 — locateEditRegion + tokenizeQuery + 문자열 분석만.
  */
 import { locateEditRegion } from './RegionEdit';
+import { splitTsSections } from './CodeSectionExtractor';
 import { CONTAINER_TAGS, EDIT_INTENT_RE, countTag, firstJsxTag, impliedControlTags, mappedListVars } from './RegionIntent';
 
 export type FlagSeverity = 'high' | 'medium' | 'info';
@@ -59,6 +60,54 @@ export interface InputQualityReport {
   flags: InputQualityFlag[];
   /** high 심각도 플래그가 하나도 없으면 입력이 "충분(adequate)"하다고 본다. */
   adequate: boolean;
+  /** depsHeader 타입/인터페이스 관련성 — 큰 파일 ①(deps 폭주) 정량 지표. */
+  depsRelevance: DepsRelevance;
+}
+
+/**
+ * 소스의 type/interface 중 **실제 depsHeader 로 출하되는** 비중(가지치기 효과 계측).
+ *
+ * locateEditRegion 은 작은 파일에선 모든 type/interface 를 depsHeader 에 덤프하지만, 큰 파일
+ * (DEPS_PRUNE_MIN_LINES 이상)에선 region/훅/backing 이 참조하는 것만 남긴다([RegionEdit] ③ 가지치기).
+ * 이 지표는 "소스 타입 글자 중 몇 %가 실제로 헤더에 실렸나" = 가지치기 강도를 본다. depsHeader 에
+ * 정확히 그 본문이 포함됐는지(substring)로 출하 여부를 판정한다(파서 불필요·결정론).
+ *  - keepRatio 1.0  = 전부 출하(작은 파일/미가지치기) — 큰 파일이면 ① 폭주.
+ *  - keepRatio ↓    = 무관 타입을 떨궈냄(가지치기 성공). 낮을수록 입력이 가볍다.
+ */
+export interface DepsRelevance {
+  /** 소스 전체 type/interface 선언 수 */
+  sourceTypeCount: number;
+  /** 그중 depsHeader 에 실제 출하된 수 */
+  shippedTypeCount: number;
+  /** 소스 type/interface 총 글자 수 */
+  sourceTypeChars: number;
+  /** 출하된 type/interface 글자 수 */
+  shippedTypeChars: number;
+  /** shippedTypeChars / sourceTypeChars (0..1). 낮을수록 가지치기 강함(노이즈 적게 출하). */
+  keepRatio: number;
+}
+
+function analyzeDepsRelevance(source: string, depsHeader: string): DepsRelevance {
+  let sourceTypeCount = 0;
+  let shippedTypeCount = 0;
+  let sourceTypeChars = 0;
+  let shippedTypeChars = 0;
+  for (const s of splitTsSections(source)) {
+    if (s.kind !== 'type' && s.kind !== 'interface') continue;
+    sourceTypeCount++;
+    sourceTypeChars += s.body.length;
+    if (s.body && depsHeader.includes(s.body)) {
+      shippedTypeCount++;
+      shippedTypeChars += s.body.length;
+    }
+  }
+  return {
+    sourceTypeCount,
+    shippedTypeCount,
+    sourceTypeChars,
+    shippedTypeChars,
+    keepRatio: sourceTypeChars > 0 ? +(shippedTypeChars / sourceTypeChars).toFixed(3) : 0,
+  };
 }
 
 /** depsHeader에 그 변수가 **선언 바인딩**으로 등장하는지(읽기전용 출처 판정). */
@@ -176,6 +225,7 @@ export function analyzeInputQuality(source: string, query: string): InputQuality
     },
     flags,
     adequate: !flags.some((f) => f.severity === 'high'),
+    depsRelevance: analyzeDepsRelevance(source, depsHeader),
   };
   return report;
 }

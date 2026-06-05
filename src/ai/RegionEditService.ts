@@ -13,12 +13,14 @@
  *  즉 "조금이라도 의심스러우면 full" — 조용한 파일 파손을 만들지 않는다.
  */
 import { locateEditRegion, checkRegionRootTag } from './RegionEdit';
+import { impliedControlTags, countTag } from './RegionIntent';
 import {
   applyStructuralEdit,
   applyReplaceBlocks,
   findUnresolvedReferences,
   findUnresolvedJsxComponents,
   findUnusedInsertedBindings,
+  findDuplicateDeclarations,
   resolveKnownImports,
   type StructuralEdit,
   type ImportRequest,
@@ -34,6 +36,29 @@ export interface RegionEditOutcome {
   diagnostics: string;
   /** fallback/error 사유(게이트명 등) */
   reason?: string;
+  /** reason==='ambiguous' 일 때 호출부가 "어느 구역?" 되물을 후보 섹션 라벨들. */
+  ambiguousCandidates?: string[];
+}
+
+/**
+ * region 이 사퇴(fallback)했을 때 호스트가 취할 UX를 결정하는 **단일 정책**.
+ *
+ * ChatViewProvider(런타임)와 full 사유 계기판(eval:bigfile)이 이 함수를 공유해 분류가 갈라지지 않게 한다
+ * (분류 드리프트 = 계기판이 거짓이 됨). 반환:
+ *  - 'reask-ambiguous' : 어느 구역인지 모호 → "어느 구역?" 되물음.
+ *  - 'inform-absent'   : 지목한 컨트롤이 파일에 0개(수정 의도) → "대상 없음, 다른 파일?" 안내.
+ *  - 'full'            : 그 외 → 기존 full 입력 경로(정당 또는 미커버 — 계기판으로 추가 판단).
+ *
+ * @param gate locateEditRegion 의 safety.gate (= RegionEditOutcome.reason)
+ */
+export type RegionDeclineUx = 'reask-ambiguous' | 'inform-absent' | 'full';
+const ADD_INTENT_RE = /추가|만들|생성|넣어|새로|add|create/i;
+export function classifyRegionDecline(query: string, source: string, gate: string): RegionDeclineUx {
+  if (gate === 'ambiguous') return 'reask-ambiguous';
+  const tags = impliedControlTags(query);
+  const namedButAbsent = tags.length > 0 && tags.every((t) => countTag(source, t) === 0);
+  if (namedButAbsent && !ADD_INTENT_RE.test(query)) return 'inform-absent';
+  return 'full';
 }
 
 /** ```lang … ``` 코드펜스를 벗겨 순수 코드만 남긴다. */
@@ -157,6 +182,7 @@ export async function runHybridRegionEdit(
       status: 'fallback',
       reason: loc.safety.gate,
       diagnostics: `[regionEdit] 게이트 차단(${loc.safety.gate}) → full 폴백: ${loc.safety.reason}`,
+      ambiguousCandidates: loc.ambiguousCandidates,
     };
   }
 
@@ -307,6 +333,21 @@ export async function runHybridRegionEdit(
         status: 'fallback',
         reason: 'dead-binding',
         diagnostics: `[regionEdit] 미사용 삽입 선언(${dead.join(' / ')}) + region 편집 없음 — region이 표현 못 하는 편집(rename 등) 의심 → full 폴백`,
+      };
+    }
+  }
+
+  // 6.9) 중복 선언 게이트 — 삽입 훅이 기존 식별자를 **재선언**하면(예: 정적 options 배열을 API로 바꾸며
+  //      같은 이름 const 를 또 선언) 같은 스코프 중복 → TS 컴파일 에러. 모델이 "교체" 대신 "추가"한 경우다.
+  //      원본엔 없던 중복이 합성 결과에 새로 생겼으면 적용하지 말고 full 폴백(조용한 파손 방지).
+  if (hookCode.trim()) {
+    const origDupes = new Set(findDuplicateDeclarations(source));
+    const newDupes = findDuplicateDeclarations(composed).filter((d) => !origDupes.has(d));
+    if (newDupes.length > 0) {
+      return {
+        status: 'fallback',
+        reason: 'duplicate-decl',
+        diagnostics: `[regionEdit] 중복 선언 발생(${newDupes.join(', ')}) — 삽입 훅이 기존 식별자를 재선언(교체 아님) → full 폴백`,
       };
     }
   }
