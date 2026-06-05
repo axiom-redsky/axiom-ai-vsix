@@ -6,6 +6,7 @@
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
 import { runHybridRegionEdit, buildHybridPrompt } from '../src/ai/RegionEditService';
+import { selectScaffoldContracts, buildContractSection } from '../src/ai/ScaffoldContracts';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 const SRC = [
@@ -325,7 +326,7 @@ console.log('\nbuildHybridPrompt — 서버 params 규칙 트리거:');
   const deps = "const { data, refetch } = useApi<TResp>('/api/employees', { params: { page: 1 } });";
   const p = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '부서 select 변경 시 refetch 파라미터가 빠졌다', '');
   check('refetch/파라미터 요청 → 서버 params 규칙 노출', p.includes('필터·검색·파라미터 구현 규칙'));
-  check('refetch 인자 금지 지침 포함', p.includes('refetch에 인자를 넘기지 마세요'));
+  check('refetch 인자 금지 지침 포함(useApi 계약 카드)', p.includes('인자를 받지 않습니다'));
 
   // params 없는 useApi엔 노출 안 함(노이즈 방지)
   const depsNoParams = "const { data } = useApi<TResp>('/api/employees');";
@@ -335,6 +336,49 @@ console.log('\nbuildHybridPrompt — 서버 params 규칙 트리거:');
   // 무관한 요청(필터/refetch 키워드 없음) → 비노출
   const p3 = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '버튼 색을 바꿔줘', '');
   check('무관 요청 → 규칙 비노출', !p3.includes('필터·검색·파라미터 구현 규칙'));
+}
+
+// ─── ScaffoldContracts — 트리거 기반 scaffold 계약 자동 주입(일반화 메커니즘) ──────────────
+console.log('\nScaffoldContracts — 계약 카드 트리거 주입:');
+{
+  const ids = (ctx: { deps: string; region: string; query: string }): string[] =>
+    selectScaffoldContracts(ctx).map((c) => c.id);
+
+  // useApi 카드: deps에 useApi 있으면 발동 + refetch 계약 본문 포함
+  {
+    const ctx = { deps: "const { data } = useApi<TResp>('/api/x', { params: {} });", region: '<div/>', query: '버튼 추가' };
+    check('useApi: deps에 useApi → 카드 발동', ids(ctx).includes('use-api'));
+    check('useApi 카드: refetch 무인자 계약 포함', buildContractSection(ctx).includes('인자를 받지 않습니다'));
+  }
+  // useApi 카드: region에 refetch만 있어도 발동(deps에 없어도)
+  check('useApi: region refetch → 카드 발동', ids({ deps: '', region: 'onClick={() => refetch()}', query: '수정' }).includes('use-api'));
+  // useApi 카드: 쿼리만 데이터 조회 의도여도 발동
+  check('useApi: 쿼리 "목록 조회" → 카드 발동', ids({ deps: '', region: '<div/>', query: '직원 목록을 조회해서 보여줘' }).includes('use-api'));
+
+  // 라우터 카드: 이동 의도 쿼리 → 발동 / 무관 쿼리 → 비발동
+  check('router: "페이지 이동" 쿼리 → 카드 발동', ids({ deps: '', region: '<div/>', query: '상세 페이지로 이동하는 버튼' }).includes('router'));
+  check('router: 무관 쿼리 → 비발동', !ids({ deps: '', region: '<div/>', query: '글자색 변경' }).includes('router'));
+
+  // 타입 네이밍 카드: 선언 형태/타입 언급 → 발동, JSX type="text" 속성엔 오발동 안 함
+  check('type: region에 type 선언 → 카드 발동', ids({ deps: '', region: 'type TFoo = { a: number };', query: '수정' }).includes('type-naming'));
+  check('type: JSX type="text" 속성엔 오발동 안 함', !ids({ deps: '', region: '<input type="text" />', query: '입력칸 추가' }).includes('type-naming'));
+  check('type: "응답 타입" 쿼리 → 카드 발동', ids({ deps: '', region: '<div/>', query: 'API 응답 타입을 정의해줘' }).includes('type-naming'));
+
+  // 아무 카드도 발동 안 하면 섹션 자체가 빈 문자열
+  check('무관 컨텍스트 → 계약 섹션 없음', buildContractSection({ deps: '', region: '<div/>', query: '글자색 변경' }) === '');
+
+  // 발동 카드는 레지스트리 순서대로(결정론)
+  {
+    const ctx = { deps: "useApi<T>('/x')", region: '<div/>', query: '상세로 이동하는 타입 정의' };
+    const order = ids(ctx);
+    check('발동 카드는 레지스트리 순서(use-api→router→type)', JSON.stringify(order) === JSON.stringify(['use-api', 'router', 'type-naming']), `order=${order.join(',')}`);
+  }
+
+  // buildHybridPrompt가 계약 섹션을 실제로 주입하는가(통합)
+  {
+    const p = buildHybridPrompt("const { data } = useApi<T>('/x');", '<Select/>', 1, 5, undefined, undefined, '부서 select 수정', '');
+    check('buildHybridPrompt: useApi 계약 섹션 주입됨', p.includes('react-app-scaffold 계약') && p.includes('인자를 받지 않습니다'));
+  }
 }
 
 // ─── findUnresolvedReferences — 의존성 게이트 import 전체 스캔(useState 오탐 수정) ──────

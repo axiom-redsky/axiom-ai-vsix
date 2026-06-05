@@ -14,6 +14,7 @@
  */
 import { locateEditRegion, checkRegionRootTag } from './RegionEdit';
 import { impliedControlTags, countTag } from './RegionIntent';
+import { buildContractSection } from './ScaffoldContracts';
 import {
   applyStructuralEdit,
   applyReplaceBlocks,
@@ -90,6 +91,9 @@ export function buildHybridPrompt(
   // 트리거: 필터·검색·정렬뿐 아니라 **refetch·파라미터 추가** 요청도 같은 "서버 params 우선" 규칙 대상이다.
   // (실측: "select 변경 시 refetch에 부서 파라미터가 빠졌다" 요청은 필터 키워드가 없어 이 지침이 안 떠,
   //  모델이 refetch(params)라는 잘못된 API 사용을 창작했다 — refetch는 인자로 params를 받지 않는다.)
+  // scaffold 계약 자동 주입(트리거 기반) — deps/region/query에 관련된 가이드 카드만 끼운다.
+  // region 경로는 RAG/coreRules를 안 보내므로(토큰 절약), 이 압축 카드가 useApi·라우터·타입 계약을 가르친다.
+  const contractSection = buildContractSection({ deps: depsHeader, region, query });
   const wantsFilter = /필터|filter|검색|search|정렬|sort|refetch|파라미터|파라메터|parameter|매개변수/i.test(query);
   const hasServerParams = /useApi/.test(depsHeader) && /\bparams\s*:/.test(depsHeader);
   const filterSection =
@@ -99,10 +103,8 @@ export function buildHybridPrompt(
         `**params에 조건을 추가**해 처리하세요 — 선택 state를 params에 넣으면 됩니다(useApi는 params 변경 시 자동 재조회).\n` +
         `- ✅ **기존 useApi 호출문을 통째로 수정**할 때는 \`<replace anchor="문장 안의 식별 문자열">…새 문장 전체…</replace>\` 로 출력하세요. ` +
         `확장이 그 문장을 찾아 결정론적으로 교체합니다. 예: \`<replace anchor="useApi<T>(EMPLOYEES_ENDPOINT">const { data } = useApi<T>(EMPLOYEES_ENDPOINT, { params: { …기존…, status: selectedStatus === 'all' ? undefined : selectedStatus } });</replace>\` ` +
-        `(기존 params를 **하나도 빠뜨리지 말고** 전부 포함한 채 조건만 덧붙이세요.)\n` +
-        `- ⛔ **refetch에 인자를 넘기지 마세요.** \`refetch()\`는 TanStack Query 재조회 함수로 **params를 인자로 받지 않습니다** ` +
-        `(\`refetch({ params: … })\`는 틀린 사용 — 무시됨). 파라미터를 바꾸려면 위처럼 **useApi의 \`params\`를 \`<replace>\`로 수정**하면 ` +
-        `params 변경만으로 자동 재조회됩니다. (refetch()는 인자 없이 현재 params로 다시 가져오기만.)\n` +
+        `(기존 params를 **하나도 빠뜨리지 말고** 전부 포함한 채 조건만 덧붙이세요. ` +
+        `refetch에 인자를 넘기지 말고 — useApi의 \`params\`만 바꾸면 자동 재조회됩니다. 위 'useApi 데이터 훅' 계약 참고.)\n` +
         `- ⛔ **클라이언트 필터 금지**: \`list.filter(...)\` 결과를 가져온 목록 state에 \`setState\`로 덮어쓰지 마세요 ` +
         `(원본이 사라져 복구 불가 — 파괴적).\n` +
         `- ⛔ 테이블 **행(row)마다 새 입력 컴포넌트(<Select> 등)를 만들지 마세요**. 요청이 '필터'면 상단 필터 컨트롤만 다룹니다.\n`
@@ -159,7 +161,8 @@ export function buildHybridPrompt(
     `(이 선택값은 UI 상태라 useState가 맞습니다 — 위 '서버 데이터 미러링 금지'는 API 응답 목록에만 해당.)\n` +
     `- ⛔ **요청한 컨트롤에 필요한 것만** 출력하세요. 의존성 헤더에 이미 있는 검색/페이지네이션/다른 select 등 ` +
     `무관한 훅·핸들러·상수(handleSearch, PAGE_LIMIT 등)를 새로 만들거나 옮기지 마세요.\n` +
-    `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n` +
+    `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n\n` +
+    contractSection +
     filterSection +
     `\n` +
     specSection +
