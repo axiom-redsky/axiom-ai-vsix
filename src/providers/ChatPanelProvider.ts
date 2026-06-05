@@ -185,7 +185,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         const stripLatest = (s: string) => s.replace(/:latest$/, '');
         const want = stripLatest(llm.model);
         if (ids.some((id) => stripLatest(id) === want)) {
-          this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+          const note = await this._autoAlignProvider(llm, headers, controller.signal);
+          this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공${note}` });
           return;
         }
         if (ids.length > 0) {
@@ -214,7 +215,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       });
 
       if (chatRes.ok || chatRes.status === 200) {
-        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공` });
+        const note = await this._autoAlignProvider(llm, headers, controller.signal);
+        this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공${note}` });
         return;
       }
       if (chatRes.status === 401 || chatRes.status === 403) {
@@ -236,6 +238,39 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * 연결 테스트 성공 시 서버 방언을 감지해 axiom-ai.llm.provider를 자동 정렬한다.
+   *
+   * 동기: 연결 테스트(/v1/*)와 실제 chat(provider별 경로)이 분리돼 있어, provider가 어긋나면
+   * "연결 성공인데 chat 404"가 난다(예: 서버는 OpenAI 호환인데 provider=ollama → POST /api/chat 404).
+   * 판별 신호는 /api/tags다 — Ollama는 /v1/*·/api/* 둘 다 열지만 vLLM·LM Studio는 /api/tags가 없다.
+   * 따라서 /api/tags가 있으면 ollama(/api/chat+think:false가 thinking을 확실히 끔), 없으면 openai로 본다.
+   *
+   * @returns 사용자에게 덧붙일 안내 문자열(변경 없으면 빈 문자열)
+   */
+  private async _autoAlignProvider(
+    llm: AxiomSettings['llm'],
+    headers: Record<string, string>,
+    signal: AbortSignal,
+  ): Promise<string> {
+    let detected: 'openai' | 'ollama';
+    try {
+      const tagsRes = await fetch(new URL('/api/tags', llm.endpoint).toString(), { method: 'GET', headers, signal });
+      // /api/tags 200 = Ollama 네이티브 존재 → ollama. 404 등(res.ok=false) = 비-Ollama → openai.
+      detected = tagsRes.ok ? 'ollama' : 'openai';
+    } catch {
+      // 네트워크/abort 등 감지 불가 → 현재 설정 유지(섣불리 바꾸지 않음).
+      return '';
+    }
+
+    const cfg = vscode.workspace.getConfiguration('axiom-ai');
+    const current = cfg.get<'openai' | 'ollama'>('llm.provider', 'ollama');
+    if (current === detected) return '';
+
+    await cfg.update('llm.provider', detected, vscode.ConfigurationTarget.Global);
+    return ` · 서버 방언을 '${detected}'로 감지해 provider를 자동 설정했습니다(이전: '${current}'). 이제 채팅도 같은 경로를 씁니다.`;
   }
 
   /**
