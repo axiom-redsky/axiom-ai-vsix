@@ -719,6 +719,108 @@ function extractComponentReplacements(
   return { reduced: kept.join('\n'), ops, replaced };
 }
 
+/** useApi 호출의 **첫 인자(엔드포인트 표현식)** 를 추출한다. 페치 선언이 아니면 null. */
+function useApiEndpoint(body: string): string | null {
+  const rhs = constRhs(body);
+  if (rhs === null || !DATA_FETCH_HOOK_RHS.test(rhs)) return null;
+  const open = rhs.indexOf('('); // 제네릭은 < >, 호출 괄호가 첫 '('
+  if (open < 0) return null;
+  let depth = 0;
+  let arg = '';
+  for (let i = open; i < rhs.length; i++) {
+    const ch = rhs[i];
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++;
+      if (depth === 1 && ch === '(') continue; // 여는 호출 괄호 자체는 인자 아님
+    } else if (ch === ')' || ch === ']' || ch === '}') {
+      depth--;
+      if (depth === 0) break;
+    } else if (ch === ',' && depth === 1) {
+      break; // 첫 인자 끝
+    }
+    if (depth >= 1) arg += ch;
+  }
+  return arg.trim() || null;
+}
+
+/** 모델 조각 본문을 base 들여쓰기로 재정렬(모델의 상대 들여쓰기 보존 + base 부여). */
+function reindentBody(body: string, indent: string): string[] {
+  const lines = body.split('\n');
+  const base = lines[0].match(/^[ \t]*/)?.[0].length ?? 0;
+  return lines.map((l) => {
+    if (l.trim() === '') return '';
+    const cur = l.match(/^[ \t]*/)?.[0].length ?? 0;
+    return indent + l.slice(Math.min(base, cur));
+  });
+}
+
+/**
+ * **기존 useApi 페치 선언의 params/옵션 수정**을 모델의 재선언으로부터 결정론적으로 적용한다(멀티라인 포함).
+ *
+ * 약한 모델은 "useApi에 부서 파라미터 추가" 같은 요청을 <replace>가 아니라 **같은 훅을 <hook>에 통째로 재선언**
+ * (같은 엔드포인트 + 새 params)하는 식으로 자주 표현한다. 그 재선언은 바인딩이 전부 기존과 겹쳐
+ * dropDuplicateDeclarations에 먹혀 **조용히 사라지고**(실측: response/isPending/… 드롭 → 부서 params 미적용),
+ * 사용자는 "수정이 안 됐다"고 느낀다.
+ *
+ * 안전 조건(엔드포인트 환각 차단 — [[project_fetch_hook_replace_only]]의 우려를 유지):
+ *  - 바인딩 집합이 기존 useApi 선언과 **정확히 일치** + RHS가 useApi 페치 + 내용이 실제로 다름.
+ *  - **엔드포인트(첫 인자)가 기존과 동일**할 때만 교체한다. 엔드포인트가 다르면(상수→리터럴 등) 환각 위험이라
+ *    교체하지 않고 종전 경로(드롭)로 둔다. 즉 "같은 API의 params만 바뀐" 안전한 수정만 in-place 적용.
+ */
+function extractFetchHookParamReplacements(
+  hookRest: string,
+  sourceLines: string[],
+  range: { startLine: number; endLine: number },
+): { reduced: string; ops: ConstReplaceOp[]; replaced: string[] } {
+  const ops: ConstReplaceOp[] = [];
+  const replaced: string[] = [];
+
+  // 컴포넌트 본문의 useApi 페치 선언을 (멀티라인 포함) 완결 문장 단위로 인덱싱: 정렬 바인딩키 → 위치/본문/엔드포인트.
+  // 깊이 추적은 **선언 시작 라인(const/let/var)부터** 시작한다 — 함수 래퍼의 여는 `{`를 세면 본문 전체가
+  // depth>0로 묶여 어떤 문장도 닫히지 않는다(실측 버그).
+  const existing = new Map<string, { start0: number; end0: number; body: string; endpoint: string | null }>();
+  const lastIdx = Math.min(range.endLine, sourceLines.length) - 1;
+  for (let i = range.startLine - 1; i <= lastIdx; i++) {
+    if (!/^\s*(?:const|let|var)\s/.test(sourceLines[i])) continue;
+    let depth = 0;
+    let end = i;
+    for (let j = i; j <= lastIdx; j++) {
+      const { open, close } = countDelimiters(sourceLines[j]);
+      depth += open - close;
+      end = j;
+      if (depth <= 0 && /;\s*$/.test(stripTrailingLineComment(sourceLines[j]).trimEnd())) break;
+    }
+    const body = sourceLines.slice(i, end + 1).join('\n');
+    const b = declBindings(body);
+    const rhs = constRhs(body);
+    if (b.length > 0 && rhs !== null && DATA_FETCH_HOOK_RHS.test(rhs)) {
+      existing.set([...b].sort().join(','), { start0: i, end0: end, body, endpoint: useApiEndpoint(body) });
+    }
+    i = end; // 소비한 라인 건너뛰기
+  }
+  if (existing.size === 0) return { reduced: hookRest, ops, replaced };
+
+  const kept: string[] = [];
+  for (const stmt of splitStatements(hookRest)) {
+    const b = declBindings(stmt);
+    const rhs = constRhs(stmt);
+    if (b.length > 0 && rhs !== null && DATA_FETCH_HOOK_RHS.test(rhs)) {
+      const ex = existing.get([...b].sort().join(','));
+      if (ex && normDecl(ex.body) !== normDecl(stmt)) {
+        const newEp = useApiEndpoint(stmt);
+        if (ex.endpoint && newEp && ex.endpoint === newEp) {
+          const indent = sourceLines[ex.start0].match(/^[ \t]*/)?.[0] ?? '';
+          ops.push({ atLine: ex.start0 + 1, removeCount: ex.end0 - ex.start0 + 1, content: reindentBody(stmt, indent) });
+          replaced.push(b.join(', '));
+          continue; // 소비 — 드롭 경로로 안 보냄
+        }
+      }
+    }
+    kept.push(stmt);
+  }
+  return { reduced: kept.join('\n'), ops, replaced };
+}
+
 /**
  * 구조 앵커를 이용해 모델이 낸 조각을 결정론적으로 적용한다.
  * search/replace, 라인 번호 추측, 전체 파일 재작성 없이 동작한다.
@@ -772,10 +874,21 @@ export function applyStructuralEdit(
       changes.push(`컴포넌트 선언 '${name}' in-place 교체 — 기존 바인딩 초기값/내용 수정`);
     }
 
+    // 0.6) 기존 useApi 페치 선언의 params/옵션 수정(같은 엔드포인트 재선언) → 멀티라인 in-place 교체.
+    //      드롭(중복) 전에 가로채야 한다 — 안 그러면 부서 params 추가 같은 수정이 중복 드롭으로 조용히 사라진다.
+    const fetchRepl = extractFetchHookParamReplacements(compRepl.reduced, lines, {
+      startLine: anchors.component.startLine,
+      endLine: anchors.component.endLine,
+    });
+    for (const op of fetchRepl.ops) ops.push(op);
+    for (const name of fetchRepl.replaced) {
+      changes.push(`기존 useApi 페치 '${name}' params/옵션 in-place 교체 (같은 엔드포인트) — 영역 밖 선언 수정`);
+    }
+
     // 컴포넌트 본문 코드에 삽입하기 전, 대상 파일(모듈+컴포넌트 본문)에 **이미 선언된 이름을 다시
     // 선언하는** 문장을 드롭한다(중복 선언 = 컴파일 에러 방지). 기존 이름은 그대로 재사용된다.
     const existingBindings = collectDeclaredBindings(norm);
-    const dedup = dropDuplicateDeclarations(compRepl.reduced, existingBindings);
+    const dedup = dropDuplicateDeclarations(fetchRepl.reduced, existingBindings);
     let rest = dedup.text;
     if (dedup.dropped.length > 0) {
       changes.push(`중복 선언 드롭(이미 존재): ${dedup.dropped.join(' / ')}`);
@@ -785,7 +898,7 @@ export function applyStructuralEdit(
     //    식별자도 "사용처 universe"에 포함해야 한다. norm(원본)엔 옛 식별자(deptResponse)만 있어, 교체로
     //    새로 참조되는 departmentResponse 가 universe에서 빠지면 죽은 선언으로 오인돼 strip → 교체된
     //    departments 가 미정의 식별자를 가리키는 댕글링이 된다(실측 버그).
-    const replacementUniverse = [...repl.ops, ...compRepl.ops].flatMap((op) => op.content).join('\n');
+    const replacementUniverse = [...repl.ops, ...compRepl.ops, ...fetchRepl.ops].flatMap((op) => op.content).join('\n');
     if (opts.stripDeadInserts && rest.trim()) {
       const s = stripDeadStatements(rest, norm + '\n' + replacementUniverse);
       rest = s.code;

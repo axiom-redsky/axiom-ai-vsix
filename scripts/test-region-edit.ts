@@ -717,6 +717,57 @@ console.log('\n기존 const 결정론 교체:');
     check('인플레이스 교체가 참조하는 새 바인딩은 strip 안 함', text.includes('departmentResponse'), changes.join(' | '));
     check('departments 가 새 바인딩을 가리킴(댕글링 아님)', /const departments = departmentResponse\?\.data/.test(text), changes.join(' | '));
   }
+
+  // (h) 기존 useApi 페치 params 수정: 모델이 같은 엔드포인트로 멀티라인 재선언(부서 params 추가) → 중복 드롭 대신
+  //     in-place 교체로 살린다(실측 버그: 부서 params가 중복 드롭으로 조용히 사라져 "수정 안 됨").
+  {
+    const C = [
+      "import { useApi } from '@axiom/hooks';",
+      "const EMPLOYEES_ENDPOINT = '/api/employees';",
+      '',
+      'export default function P(): React.ReactNode {',
+      "  const [selectedDepartment] = useState('all');",
+      '  const {',
+      '    data: response,',
+      '    isPending,',
+      '    error,',
+      '    refetch,',
+      '    isFetching,',
+      '  } = useApi<TEmployeeListResponse>(EMPLOYEES_ENDPOINT, {',
+      '    params: {',
+      '      page: currentPage,',
+      '      limit: PAGE_LIMIT,',
+      '    },',
+      '  });',
+      '  return (<div>{response?.data?.length}</div>);',
+      '}',
+    ].join('\n');
+    // 모델이 같은 useApi를 통째로 재선언(같은 엔드포인트 + department params 추가)
+    const reDecl = [
+      'const {',
+      '  data: response,',
+      '  isPending,',
+      '  error,',
+      '  refetch,',
+      '  isFetching,',
+      '} = useApi<TEmployeeListResponse>(EMPLOYEES_ENDPOINT, {',
+      '  params: {',
+      '    page: currentPage,',
+      '    limit: PAGE_LIMIT,',
+      "    department: selectedDepartment === 'all' ? undefined : selectedDepartment,",
+      '  },',
+      '});',
+    ].join('\n');
+    const { text, changes } = applyStructuralEdit(C, { hookCode: reDecl }, { stripDeadInserts: true });
+    check('useApi params 수정: department 적용됨(중복 드롭으로 안 사라짐)', text.includes("department: selectedDepartment === 'all'"), changes.join(' | '));
+    check('useApi params 수정: in-place 교체(중복 추가 없음 — 1곳)', (text.match(/useApi<TEmployeeListResponse>/g) ?? []).length === 1, changes.join(' | '));
+    check('useApi params 수정: 교체 변경 기록', changes.some((c) => c.includes('페치') && c.includes('in-place 교체')));
+
+    // 엔드포인트가 다르면(환각) 교체 안 함 — 종전대로 드롭(원본 엔드포인트 보존).
+    const reDeclWrongEp = reDecl.replace('useApi<TEmployeeListResponse>(EMPLOYEES_ENDPOINT', "useApi<TEmployeeListResponse>('/api/staff'");
+    const { text: t2 } = applyStructuralEdit(C, { hookCode: reDeclWrongEp }, { stripDeadInserts: true });
+    check('엔드포인트 다른 재선언 → 교체 안 함(원본 엔드포인트 보존)', t2.includes('useApi<TEmployeeListResponse>(EMPLOYEES_ENDPOINT') && !t2.includes("'/api/staff'"));
+  }
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
