@@ -19,6 +19,19 @@ import { splitTsSections, countDelimiters, stripTrailingLineComment, type CodeSe
  */
 const HOOK_CALL = /\buse[A-Z]\w*\s*[(<]/;
 
+/**
+ * 영역 1 — 변수/상태 선언부: useState / useRef.
+ * react-app-scaffold 컨벤션상 함수 컴포넌트 최상단에 위치한다.
+ * (useMemo/useCallback은 페치 데이터에 의존할 수 있어 일부러 제외 — 영역 3로 둔다.)
+ */
+const STATE_HOOK = /\buse(?:State|Ref)\s*[(<]/;
+
+/**
+ * 영역 2 — 데이터 페치 훅: useApi / useXxxQuery / useXxxMutation / useXxxFetch.
+ * 변수/상태 선언부 다음, useEffect·핸들러 앞에 위치한다.
+ */
+const FETCH_HOOK = /\buse(?:Api\b|[A-Z]\w*(?:Query|Mutation|Fetch)\b)\s*[(<]/;
+
 export interface ComponentAnchor {
   /** export default 컴포넌트 함수 이름 */
   name: string;
@@ -27,12 +40,26 @@ export interface ComponentAnchor {
   /** 컴포넌트 함수 끝 라인 (1-based) */
   endLine: number;
   /**
-   * 새 훅(useApi 등)을 삽입할 라인 (1-based, "이 라인 앞에 삽입").
-   * 우선순위: 마지막 훅 문장 다음 → return 문 앞 → 함수 여는 중괄호 다음.
+   * 새 데이터 페치 훅(useApi 등)을 삽입할 라인 (1-based, "이 라인 앞에 삽입").
+   * react-app-scaffold 컨벤션의 "영역 2"(useApi 선언부): 변수/상태·페치 선언 다음, useEffect·핸들러 앞.
+   * 우선순위: 마지막 페치 훅 다음 → 마지막 상태(useState/useRef) 다음 → 첫 effect/핸들러 앞 → return 앞 → 여는 중괄호 다음.
    */
   hookInsertLine: number;
-  /** 삽입점이 어떻게 결정됐는지 (진단용) */
-  hookInsertReason: 'after-last-hook' | 'before-return' | 'after-open-brace';
+  /** 페치 훅 삽입점이 어떻게 결정됐는지 (진단용) */
+  hookInsertReason:
+    | 'after-last-fetch'
+    | 'after-last-state'
+    | 'before-other'
+    | 'before-return'
+    | 'after-open-brace';
+  /**
+   * 새 상태 선언(useState/useRef)을 삽입할 라인 (1-based, "이 라인 앞에 삽입").
+   * react-app-scaffold 컨벤션의 "영역 1"(변수/상태 선언부): 함수 컴포넌트 최상단, useApi 앞.
+   * 우선순위: 마지막 상태 선언 다음 → 여는 중괄호 다음.
+   */
+  stateInsertLine: number;
+  /** 상태 삽입점이 어떻게 결정됐는지 (진단용) */
+  stateInsertReason: 'after-last-state' | 'after-open-brace';
   /** 컴포넌트 본문 들여쓰기 (탭/스페이스 그대로) */
   bodyIndent: string;
 }
@@ -86,7 +113,11 @@ function computeComponentAnchor(section: CodeSection): ComponentAnchor {
   let openBraceIdx = 0; // 본문 시작(여는 중괄호) 라인 인덱스(0-based, section 내부 상대)
 
   let stmtStart: number | null = null; // 현재 최상위 문장 시작 idx
-  let lastHookEndIdx: number | null = null;
+  // 컨벤션 영역별 경계 추적:
+  //  영역1=상태(useState/useRef), 영역2=페치(useApi 등), 영역3=effect·핸들러·일반.
+  let lastStateEndIdx: number | null = null; // 마지막 상태 선언 끝 idx
+  let lastFetchEndIdx: number | null = null; // 마지막 페치 훅 끝 idx
+  let firstOtherStartIdx: number | null = null; // 첫 영역3(effect/핸들러/일반) 시작 idx
   let returnIdx: number | null = null;
   let bodyIndent = '';
 
@@ -119,8 +150,14 @@ function computeComponentAnchor(section: CodeSection): ComponentAnchor {
         returnIdx = stmtStart;
         break; // 첫 본문 최상위 return에서 중단
       }
-      if (HOOK_CALL.test(text)) {
-        lastHookEndIdx = i;
+      // 문장을 컨벤션 영역으로 분류한다. 페치 먼저 검사(useApi 우선) → 상태 → 그 외.
+      if (FETCH_HOOK.test(text)) {
+        lastFetchEndIdx = i;
+      } else if (STATE_HOOK.test(text)) {
+        lastStateEndIdx = i;
+      } else if (firstOtherStartIdx === null) {
+        // useEffect·핸들러·useMemo·일반 const 등 → 영역3. 첫 등장 위치만 기록(페치 삽입의 상한선).
+        firstOtherStartIdx = stmtStart;
       }
       stmtStart = null;
     }
@@ -128,25 +165,45 @@ function computeComponentAnchor(section: CodeSection): ComponentAnchor {
     if (opened && depth === 0) break; // 함수 닫힘
   }
 
-  let insertIdx0: number;
-  let reason: ComponentAnchor['hookInsertReason'];
-  if (lastHookEndIdx !== null) {
-    insertIdx0 = lastHookEndIdx + 1;
-    reason = 'after-last-hook';
+  // 영역 2(useApi) 삽입점: 마지막 페치 → 마지막 상태 → 첫 영역3 앞 → return 앞 → 여는 중괄호 다음.
+  let fetchIdx0: number;
+  let fetchReason: ComponentAnchor['hookInsertReason'];
+  if (lastFetchEndIdx !== null) {
+    fetchIdx0 = lastFetchEndIdx + 1;
+    fetchReason = 'after-last-fetch';
+  } else if (lastStateEndIdx !== null) {
+    fetchIdx0 = lastStateEndIdx + 1;
+    fetchReason = 'after-last-state';
+  } else if (firstOtherStartIdx !== null) {
+    fetchIdx0 = firstOtherStartIdx;
+    fetchReason = 'before-other';
   } else if (returnIdx !== null) {
-    insertIdx0 = returnIdx;
-    reason = 'before-return';
+    fetchIdx0 = returnIdx;
+    fetchReason = 'before-return';
   } else {
-    insertIdx0 = openBraceIdx + 1;
-    reason = 'after-open-brace';
+    fetchIdx0 = openBraceIdx + 1;
+    fetchReason = 'after-open-brace';
+  }
+
+  // 영역 1(useState/useRef) 삽입점: 마지막 상태 선언 다음 → 여는 중괄호 다음(최상단).
+  let stateIdx0: number;
+  let stateReason: ComponentAnchor['stateInsertReason'];
+  if (lastStateEndIdx !== null) {
+    stateIdx0 = lastStateEndIdx + 1;
+    stateReason = 'after-last-state';
+  } else {
+    stateIdx0 = openBraceIdx + 1;
+    stateReason = 'after-open-brace';
   }
 
   return {
     name: section.name,
     startLine: section.startLine,
     endLine: section.endLine,
-    hookInsertLine: base + insertIdx0,
-    hookInsertReason: reason,
+    hookInsertLine: base + fetchIdx0,
+    hookInsertReason: fetchReason,
+    stateInsertLine: base + stateIdx0,
+    stateInsertReason: stateReason,
     bodyIndent: bodyIndent || '\t',
   };
 }
@@ -906,13 +963,22 @@ export function applyStructuralEdit(
     }
 
     // 1-a) 훅/일반 코드 → 컴포넌트 본문(들여쓰기 부여)
+    //      react-app-scaffold 선언 순서 컨벤션에 따라 삽입 위치를 종류별로 라우팅한다:
+    //       · 순수 상태 선언(useState/useRef만, 페치·effect 없음) → 영역 1(최상단, useApi 앞).
+    //       · 그 외(useApi 등 페치, effect/핸들러, 혼합) → 영역 2(상태·페치 다음, effect/핸들러 앞).
+    //      블록 분할은 무손실 보장이 어려워(splitTsSections가 bare 표현식문을 누락) 블록 전체를
+    //      지배적 종류로 한 번에 라우팅한다.
     if (rest.trim()) {
       const indent = anchors.component.bodyIndent;
       const content = rest.split('\n').map((l) => (l ? indent + l : l));
-      ops.push({ atLine: anchors.component.hookInsertLine, removeCount: 0, content });
+      const isPureState =
+        STATE_HOOK.test(rest) && !FETCH_HOOK.test(rest) && !/\buse(?:Effect|LayoutEffect)\s*\(/.test(rest);
+      const atLine = isPureState ? anchors.component.stateInsertLine : anchors.component.hookInsertLine;
+      const reason = isPureState ? anchors.component.stateInsertReason : anchors.component.hookInsertReason;
+      const region = isPureState ? '영역1(상태)' : '영역2(useApi/그외)';
+      ops.push({ atLine, removeCount: 0, content });
       changes.push(
-        `훅 삽입: 컴포넌트 '${anchors.component.name}' 라인 ${anchors.component.hookInsertLine} 앞 ` +
-          `(${anchors.component.hookInsertReason})`,
+        `훅 삽입: 컴포넌트 '${anchors.component.name}' 라인 ${atLine} 앞 ${region} (${reason})`,
       );
     }
 

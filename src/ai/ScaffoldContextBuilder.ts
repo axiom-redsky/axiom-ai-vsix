@@ -251,6 +251,12 @@ ${routerImportRule}
 - **접두사 없는 interface/type 선언 절대 금지** → \`interface BenchMember\`, \`type BenchMember\` 형식 금지
 - **선언 위치**: \`type\`·\`interface\`·\`enum\` 등 타입 선언은 함수 컴포넌트 **본문 안에 두지 말 것**. 같은 파일 안에 둘 경우 \`export default function\` 컴포넌트 **바로 위(모듈 스코프)** 에 선언한다 — 컴포넌트 함수 \`{ ... }\` 안에서 \`type\`/\`interface\`를 선언하지 않는다.
 
+## 함수 컴포넌트 내부 선언 순서 (반드시 준수)
+함수 컴포넌트 본문 안의 선언은 아래 순서로 배치합니다(새 코드 추가·수정 시에도 이 순서를 유지):
+1. **변수/상태 선언부**: \`useState\`, \`useRef\` 등 상태·ref 선언을 함수 컴포넌트 **최상단**에 둔다.
+2. **useApi 선언부**: 데이터 페치 훅(\`useApi\` 등) 선언을 그 **다음(두 번째 영역)** 에 둔다. 변수/상태 선언부가 없으면 함수 컴포넌트 최상단에 둔다.
+3. **그 외**: \`useEffect\`, 일반 함수, \`handleXxx\` 핸들러 함수는 그 **다음 순위**에 둔다.
+
 ## 프로젝트 스택
 React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, TailwindCSS 4
 해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)${this._libraryVersions ? `\n\n## 설치된 라이브러리 버전\n${this._libraryVersions}` : ''}`;

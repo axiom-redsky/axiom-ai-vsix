@@ -32,7 +32,7 @@ project: react-app-scaffold
 
 ## React 코드 패턴
 
-- keywords: [component, 컴포넌트, button, 버튼, input, 입력, table, 테이블, dialog, 모달, select, 드롭다운, form, 폼, card, badge, tabs, tailwind, 스타일, shadcn, @axiom/components, layout, 레이아웃, pascalcase]
+- keywords: [component, 컴포넌트, button, 버튼, input, 입력, table, 테이블, dialog, 모달, select, 드롭다운, form, 폼, card, badge, tabs, tailwind, 스타일, shadcn, @axiom/components, layout, 레이아웃, pascalcase, 선언순서, 선언위치, hook순서, usestate, useref, useapi, useeffect, handler, 핸들러, 컴포넌트구조, 코드구조]
   files: [react/component.md]
 
 ## 기존 항목 (수동 관리)
