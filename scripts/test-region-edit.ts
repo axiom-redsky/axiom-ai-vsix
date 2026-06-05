@@ -5,7 +5,7 @@
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
-import { runHybridRegionEdit } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit, buildHybridPrompt } from '../src/ai/RegionEditService';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 const SRC = [
@@ -270,7 +270,72 @@ await (async () => {
       check('grounding+lossy → no-op 폴백(손실 차단)', o.status === 'fallback' && o.reason === 'no-op', `status=${o.status}, reason=${o.reason}`);
     }
   }
+
+  // refetch 인자 게이트(4.5): 모델이 "파라미터 추가"를 refetch({ params })로 잘못 구현 → refetch-params 폴백.
+  //   올바른 수정(useApi params를 <replace>로 수정 + refetch() 인자 없음)은 applied.
+  {
+    const RSRC = [
+      "import { useState } from 'react';",
+      "import { useApi } from '@axiom/hooks';",
+      "import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@axiom/components/ui';",
+      '',
+      'type TResp = { total: number };',
+      '',
+      'export default function Page(): React.ReactNode {',
+      "  const [dept, setDept] = useState('all');",
+      "  const { data, refetch } = useApi<TResp>('/api/employees', { params: { page: 1 } });",
+      '  return (',
+      '    <div className="toolbar">',
+      '      <Select value={dept} onValueChange={(v) => { setDept(v); refetch(); }}>',
+      '        <SelectTrigger><SelectValue placeholder="부서" /></SelectTrigger>',
+      '        <SelectContent>',
+      '          <SelectItem value="all">전체</SelectItem>',
+      '        </SelectContent>',
+      '      </Select>',
+      '    </div>',
+      '  );',
+      '}',
+    ].join('\n');
+    const Q = '부서 select 변경 시 refetch 파라미터 추가';
+    const loc = locateEditRegion(RSRC, Q);
+    check('refetch 시나리오: 영역에 refetch() 포함', loc.safety.ok && loc.region.includes('refetch()'), `gate=${loc.safety.gate}`);
+
+    // 잘못된 출력: refetch({ params }) → 폴백 (영역 루트 태그 보존하려 실제 region에서 파생)
+    {
+      const badRegion = loc.region.replace('refetch();', 'refetch({ params: { page: 1, department: v } });');
+      const o = await runHybridRegionEdit(RSRC, Q, async () => `<region>\n${badRegion}\n</region>`);
+      check('refetch({ params }) 잘못된 사용 → refetch-params 폴백', o.status === 'fallback' && o.reason === 'refetch-params', `status=${o.status}, reason=${o.reason}`);
+    }
+
+    // 올바른 출력: useApi params를 <replace>로 수정 + refetch() 그대로 → applied
+    {
+      const model =
+        `<region>\n${loc.region}\n</region>\n` +
+        `<replace anchor="useApi<TResp>('/api/employees'">const { data, refetch } = useApi<TResp>('/api/employees', { params: { page: 1, department: dept === 'all' ? undefined : dept } });</replace>`;
+      const o = await runHybridRegionEdit(RSRC, Q, async () => model);
+      check('useApi params <replace> + refetch() → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+      check('최종: useApi params에 department 반영', !!o.finalText && o.finalText.includes('department: dept'), `text=${(o.finalText ?? '').split('\n').find((l) => l.includes('useApi'))}`);
+    }
+  }
 })();
+
+// ─── buildHybridPrompt — refetch·파라미터 요청도 서버 params 규칙 노출(트리거 확장) ──────────
+console.log('\nbuildHybridPrompt — 서버 params 규칙 트리거:');
+{
+  const deps = "const { data, refetch } = useApi<TResp>('/api/employees', { params: { page: 1 } });";
+  const p = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '부서 select 변경 시 refetch 파라미터가 빠졌다', '');
+  check('refetch/파라미터 요청 → 서버 params 규칙 노출', p.includes('필터·검색·파라미터 구현 규칙'));
+  check('refetch 인자 금지 지침 포함', p.includes('refetch에 인자를 넘기지 마세요'));
+
+  // params 없는 useApi엔 노출 안 함(노이즈 방지)
+  const depsNoParams = "const { data } = useApi<TResp>('/api/employees');";
+  const p2 = buildHybridPrompt(depsNoParams, '<Select/>', 1, 5, undefined, undefined, '부서 refetch 파라미터', '');
+  check('params 없는 useApi → 규칙 비노출', !p2.includes('필터·검색·파라미터 구현 규칙'));
+
+  // 무관한 요청(필터/refetch 키워드 없음) → 비노출
+  const p3 = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '버튼 색을 바꿔줘', '');
+  check('무관 요청 → 규칙 비노출', !p3.includes('필터·검색·파라미터 구현 규칙'));
+}
 
 // ─── findUnresolvedReferences — 의존성 게이트 import 전체 스캔(useState 오탐 수정) ──────
 console.log('\nfindUnresolvedReferences — 쪼개진/멀티라인 import 해소:');
@@ -563,6 +628,35 @@ console.log('\n기존 const 결정론 교체:');
       text.includes('useApi<TDeptRes>(DEPARTMENTS_ENDPOINT)') && !text.includes("useApi<TDeptRes>('/api/departments')"),
     );
     check('useApi 선언 1곳만(중복 추가 없음)', (text.match(/useApi<TDeptRes>/g) ?? []).length === 1);
+  }
+
+  // (g) strip 게이트가 인플레이스 교체 내용이 참조하는 새 바인딩을 죽은 선언으로 오인하지 않는다.
+  //     (실측 버그: 모델이 deptResponse→departmentResponse rename. `departments` 는 in-place 교체로
+  //      새 RHS(departmentResponse?.data)를 갖지만 그 교체 내용이 strip universe에서 빠져, 새로 삽입된
+  //      departmentResponse useApi 가 미사용으로 strip → departments 가 미정의 식별자를 가리키는 댕글링.)
+  {
+    const C = [
+      "import { useApi } from '@axiom/hooks';",
+      "const DEPT_ENDPOINT = '/api/departments';",
+      '',
+      'export default function P(): React.ReactNode {',
+      '  const { data: deptResponse } = useApi<TDeptRes>(DEPT_ENDPOINT);',
+      '  const departments = deptResponse?.data ?? [];',
+      '  return (<div>{departments.length}</div>);',
+      '}',
+    ].join('\n');
+    const { text, changes } = applyStructuralEdit(
+      C,
+      {
+        hookCode: [
+          'const { data: departmentResponse } = useApi<TDeptRes>(DEPT_ENDPOINT);',
+          'const departments = departmentResponse?.data ?? [];',
+        ].join('\n'),
+      },
+      { stripDeadInserts: true },
+    );
+    check('인플레이스 교체가 참조하는 새 바인딩은 strip 안 함', text.includes('departmentResponse'), changes.join(' | '));
+    check('departments 가 새 바인딩을 가리킴(댕글링 아님)', /const departments = departmentResponse\?\.data/.test(text), changes.join(' | '));
   }
 }
 

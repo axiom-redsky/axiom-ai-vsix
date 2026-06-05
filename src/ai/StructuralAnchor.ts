@@ -781,8 +781,13 @@ export function applyStructuralEdit(
       changes.push(`중복 선언 드롭(이미 존재): ${dedup.dropped.join(' / ')}`);
     }
     // region이 실제 편집된 경우, 모델이 덤으로 붙인 미사용 곁다리 선언을 걷어낸다(깨끗한 출력).
+    // ⚠ 인플레이스 교체 op의 새 내용(예: `const departments = departmentResponse?.data`)이 참조하는
+    //    식별자도 "사용처 universe"에 포함해야 한다. norm(원본)엔 옛 식별자(deptResponse)만 있어, 교체로
+    //    새로 참조되는 departmentResponse 가 universe에서 빠지면 죽은 선언으로 오인돼 strip → 교체된
+    //    departments 가 미정의 식별자를 가리키는 댕글링이 된다(실측 버그).
+    const replacementUniverse = [...repl.ops, ...compRepl.ops].flatMap((op) => op.content).join('\n');
     if (opts.stripDeadInserts && rest.trim()) {
-      const s = stripDeadStatements(rest, norm);
+      const s = stripDeadStatements(rest, norm + '\n' + replacementUniverse);
       rest = s.code;
       if (s.dropped.length > 0) changes.push(`미사용 곁다리 선언 strip: ${s.dropped.join(' / ')}`);
     }
