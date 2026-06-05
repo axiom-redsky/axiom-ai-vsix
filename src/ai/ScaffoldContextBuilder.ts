@@ -131,6 +131,29 @@ export class ScaffoldContextBuilder {
   }
 
   /**
+   * 인사·감사·맞장구 등 비액션(non-actionable) 잡담인지 판단한다.
+   * 파일이 열려 있다는 이유만으로 이런 입력이 시나리오 C(파일 수정)로 빠지는 것을 막는다.
+   * _isExplicitEditOrCreate가 우선 적용되므로(isQnAGated 참조) 여기서는 짧은 인사/맞장구 신호만 본다(보수적).
+   */
+  private _isSmalltalk(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) return true; // 빈 입력
+    // 웃음·감탄·문장부호만으로 이뤄진 입력(ㅋㅋ, ㅎㅎ, ..., ~~)
+    if (/^[ㅋㅎㅠㅜ\s~!?.,]+$/.test(trimmed) && /[ㅋㅎㅠㅜ]/.test(trimmed)) return true;
+    const q = trimmed.toLowerCase();
+    // 긴 문장은 실제 요청일 가능성이 높으므로, 부호·공백 제거 후 짧은 입력만 잡담 후보로 본다.
+    const compact = q.replace(/[\s!.~?,'"`]/g, '');
+    if (compact.length > 20) return false;
+    const greetings = [
+      '안녕', '하이', 'hi', 'hello', 'hey', 'ㅎㅇ', '반가', '방가',
+      '고마', '감사', 'thank', 'thx', '수고', '굿', 'good job',
+      '잘가', 'bye', 'ㅂㅂ', '바이', '좋아', '좋네', 'nice', '오케', 'okay', '테스트', 'test',
+      '잘했', '멋지', '훌륭',
+    ];
+    return greetings.some((g) => q.includes(g));
+  }
+
+  /**
    * 고정 스캐폴딩(규칙·가이드 + 현재 파일)의 보수적 추정 글자 수.
    * 적응형 예산 계산의 상수로만 쓰인다(정밀 측정 아님 — 소형 윈도우 보호용 안전 마진).
    */
@@ -394,14 +417,10 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
       domainChars: domainSection.length,
     };
 
-    // Q&A 게이팅(프롬프트 다이어트): 조회·설명형 질문이면 파일이 열려 있어도 시나리오 C로 가지 않고
-    // 출력 모드·생성 지시문을 통째로 생략한다. 의도 분류를 파일 열림 기반 시나리오 추론보다 우선시킨다.
-    // 보수적: 생성/수정 신호가 조금이라도 있으면(_isExplicitEditOrCreate) 게이팅하지 않는다.
-    if (
-      diet.qnaGating &&
-      this._isQnAQuery(userQuery) &&
-      !this._isExplicitEditOrCreate(userQuery)
-    ) {
+    // 대화 게이팅(프롬프트 다이어트): 조회·설명형 질문이나 인사·잡담이면 파일이 열려 있어도 시나리오 C로
+    // 가지 않고 출력 모드·생성 지시문을 통째로 생략한다. 의도 분류를 파일 열림 기반 시나리오 추론보다
+    // 우선시킨다. 판정은 isQnAGated 단일 진실원을 사용해 후처리부(ChatViewProvider)와 항상 일치시킨다.
+    if (this.isQnAGated(userQuery)) {
       const qnaRules = this._buildCoreRules({
         includeNavigation: this._hasNavigationIntent(userQuery),
         includeFileScope: false,
@@ -875,13 +894,19 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
   }
 
   /**
-   * buildSystemPrompt가 이 쿼리를 Q&A로 게이팅하는지(=axiom-action 생성 지시를 빼는지) 여부.
-   * 호출자(ChatViewProvider)가 응답 후처리에서 동일한 판단을 따르게 해, 설명형 질문을
-   * 파일 수정 모드로 강제 진입시키지 않도록 한다.
+   * buildSystemPrompt가 이 쿼리를 대화(Q&A·잡담)로 게이팅하는지(=axiom-action 생성 지시를 빼는지) 여부.
+   * 호출자(ChatViewProvider)가 응답 후처리에서 동일한 판단을 따르게 해, 설명형 질문이나
+   * 인사·잡담을 파일 수정 모드로 강제 진입시키지 않도록 한다(프롬프트 생성부·후처리부 단일 진실원).
+   *
+   * 보수적: 생성/수정 신호가 조금이라도 있으면(_isExplicitEditOrCreate) 무조건 게이팅하지 않는다.
+   * 그 외에 ① 조회·설명형 질문이거나 ② 인사·감사·맞장구 같은 비액션 잡담이면 게이팅한다.
+   * 후자가 없으면 도메인 파일이 열려 있다는 이유만으로 "안녕" 같은 입력도 시나리오 C(수정)로 빠진다.
    */
   isQnAGated(userQuery: string): boolean {
     const diet = ExtensionConfig.getPromptDietConfig();
-    return diet.qnaGating && this._isQnAQuery(userQuery) && !this._isExplicitEditOrCreate(userQuery);
+    if (!diet.qnaGating) return false;
+    if (this._isExplicitEditOrCreate(userQuery)) return false;
+    return this._isQnAQuery(userQuery) || this._isSmalltalk(userQuery);
   }
 
   /** .axiom/knowledge/ 폴더가 존재하면 경로를 반환한다. */
