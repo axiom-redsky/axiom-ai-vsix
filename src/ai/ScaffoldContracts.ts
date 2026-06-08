@@ -88,6 +88,29 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `- API 응답/요청 타입은 \`type\` + \`T\`(interface 금지). Props 타입은 \`type\`, 접두사 없음.\n` +
       `- \`type\`/\`interface\`/\`enum\`은 컴포넌트 본문 안이 아니라 \`export default function\` **바로 위(모듈 스코프)** 에 선언합니다.`,
   },
+  {
+    id: 'date-picker',
+    title: '날짜 선택 — Calendar 드롭다운 패턴 (레시피)',
+    // 요청이 Calendar/달력/날짜선택을 언급하거나, 편집 영역에 <Input type="date">가 있으면 발동.
+    // 약한 모델이 컴포넌트 교체+부수훅(open state·ref·click-outside effect·JSX) 4부품을 1-shot으로
+    // 코디네이트 못 해 import만 하고 멈추는 실패(실측)를, "정확한 골격"을 줘 슬롯 채우기로 낮춘다.
+    applies: ({ region, query }) =>
+      /\btype\s*=\s*["']date["']/.test(region) ||
+      /\bCalendar\b|캘린더|달력|날짜\s*선택|날짜\s*입력|date\s*picker|date-picker|datepicker/i.test(query),
+    card:
+      `- \`<Input type="date">\`(또는 날짜 입력)를 \`Calendar\`(@axiom/components/ui) 드롭다운으로 바꿀 때는 ` +
+      `**아래 4부품을 모두** 출력하세요 — 하나라도 빠지면 달력이 동작하지 않습니다(import만 추가하고 끝내지 마세요):\n` +
+      `  1) import: \`<import module="@axiom/components/ui" named="Calendar" />\`\n` +
+      `  2) \`<hook>\`에 **열림 state + 바깥영역 ref** (이 컨트롤 전용 새 이름으로): ` +
+      `\`const [pickerOpen, setPickerOpen] = useState(false);\` 와 \`const pickerRef = useRef<HTMLDivElement>(null);\`\n` +
+      `  3) \`<hook>\`에 **바깥 클릭 시 닫기 effect** — 이 \`useEffect\`는 미러링이 아니라 정당한 UI 패턴이므로 ` +
+      `**반드시 추가**하세요: ` +
+      `\`useEffect(() => { const h = (e: MouseEvent): void => { if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);\`\n` +
+      `  4) \`<region>\`의 입력칸을 **버튼 + 조건부 Calendar**로(영역 최상위 태그는 그대로 유지): ` +
+      `\`<div ref={pickerRef} className="relative"><Button variant="outline" onClick={() => setPickerOpen((v) => !v)}>{날짜값 || '날짜 선택'}</Button>{pickerOpen && <Calendar mode="single" selected={…} onSelect={(d) => { …기존 문자열 state에 반영…; setPickerOpen(false); }} />}</div>\`\n` +
+      `- ⚠ 기존 날짜 문자열 state(API 전송용 \`yyyy-MM-dd\` 등)는 **그대로 유지**하고 Calendar 선택 결과를 그 state에 반영하세요 ` +
+      `— 서버 전송 포맷을 깨지 않도록 새 미러 state를 만들지 마세요.`,
+  },
 ];
 
 /** 주어진 컨텍스트에 발동하는 계약 카드들을 레지스트리 순서로 반환. */

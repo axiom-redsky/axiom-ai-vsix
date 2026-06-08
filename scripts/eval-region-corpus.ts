@@ -102,6 +102,61 @@ const MEMBER_LIST = [
   /* 60 */ '}',
 ].join('\n');
 
+/**
+ * 등록 폼 페이지 — `<Input type="date">` 입사일 입력 포함.
+ * "input을 Calendar로 바꿔줘"류(컴포넌트 교체 + 부수 훅: open state·ref·click-outside effect)
+ * 측정용. 약한 모델이 1-shot·다채널로 4부품을 코디네이트 못 해 import만 하고 멈추는 실패를
+ * 재현/계측하는 합성 픽스처(실파일 EmployeeFormPage의 충실한 축약). 입사일 블록은 자체 완결
+ * `<div className="mb-4">` 라 locate 스냅이 가능하고 root-tag(<div>) 유지로 재작성 가능.
+ */
+const EMPLOYEE_FORM = [
+  /*  1 */ "import { useState } from 'react';",
+  /*  2 */ "import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@axiom/components/ui';",
+  /*  3 */ '',
+  /*  4 */ 'type TEmployeeForm = { name: string; hireDate: string; department: string };',
+  /*  5 */ '',
+  /*  6 */ 'export default function EmployeeFormPage(): React.ReactNode {',
+  /*  7 */ "  const [name, setName] = useState('');",
+  /*  8 */ "  const [hireDate, setHireDate] = useState('');",
+  /*  9 */ "  const [department, setDepartment] = useState('');",
+  /* 10 */ '',
+  /* 11 */ '  const handleSubmit = (): void => {',
+  /* 12 */ '    // 등록 처리',
+  /* 13 */ '  };',
+  /* 14 */ '',
+  /* 15 */ '  return (',
+  /* 16 */ '    <div className="form-page">',
+  /* 17 */ '      <div className="mb-4">',
+  /* 18 */ '        <label className="block text-sm font-medium mb-1">이름 *</label>',
+  /* 19 */ '        <Input value={name} onChange={(e) => setName(e.target.value)} />',
+  /* 20 */ '      </div>',
+  /* 21 */ '      <div className="mb-4">',
+  /* 22 */ '        <label className="block text-sm font-medium mb-1">입사일 *</label>',
+  /* 23 */ '        <Input',
+  /* 24 */ '          type="date"',
+  /* 25 */ '          value={hireDate}',
+  /* 26 */ '          onChange={(e) => setHireDate(e.target.value)}',
+  /* 27 */ '          className="h-9 bg-muted/60"',
+  /* 28 */ '        />',
+  /* 29 */ '      </div>',
+  /* 30 */ '      <div className="mb-4">',
+  /* 31 */ '        <label className="block text-sm font-medium mb-1">부서</label>',
+  /* 32 */ '        <Select value={department} onValueChange={setDepartment}>',
+  /* 33 */ '          <SelectTrigger>',
+  /* 34 */ '            <SelectValue placeholder="부서" />',
+  /* 35 */ '          </SelectTrigger>',
+  /* 36 */ '          <SelectContent>',
+  /* 37 */ '            <SelectItem value="dev">개발팀</SelectItem>',
+  /* 38 */ '            <SelectItem value="hr">인사팀</SelectItem>',
+  /* 39 */ '          </SelectContent>',
+  /* 40 */ '        </Select>',
+  /* 41 */ '      </div>',
+  /* 42 */ '      <Button onClick={handleSubmit}>등록</Button>',
+  /* 43 */ '    </div>',
+  /* 44 */ '  );',
+  /* 45 */ '}',
+].join('\n');
+
 /** 작은 폼 페이지 — 비-JSX 상수 편집(snap-failed) 케이스용. */
 const SMALL_FORM = [
   /*  1 */ "import { useState } from 'react';",
@@ -144,6 +199,7 @@ function loadDiskFixtures(): Record<string, string> {
 export const FIXTURES: Record<string, string> = {
   MEMBER_LIST,
   SMALL_FORM,
+  EMPLOYEE_FORM,
   ...loadDiskFixtures(),
 };
 
@@ -273,4 +329,10 @@ export const CASES: EvalCase[] = [
 
   // 다중 컨트롤: 한 질문이 두 타깃을 건드림 — locate 단일 스냅의 한계 가설
   { id: 'multi-control', file: 'MEMBER_LIST', query: '재직상태 필터와 입사일 컬럼을 둘 다 손봐줘', note: '편집유형:다중 타깃 — locate 단일 선택 한계 가설' },
+
+  // ══ 컴포넌트 교체 + 부수 훅(약한 모델 1-shot 코디네이트 한계) ══════════════════════════════
+  //   <Input type="date"> → Calendar 드롭다운: import·open state·ref·click-outside effect·JSX 4부품을
+  //   한 응답에서 동시에 내야 함. 실측 가설: 약한 모델이 import만 하고 state/ref/effect 누락(곱셈 붕괴).
+  //   date-picker 계약카드(ScaffoldContracts) 전/후 적용률 비교 대상. expect는 비워 측정만(녹화 후 못박음).
+  { id: 'calendar-picker', file: 'EMPLOYEE_FORM', query: '입사일 입력 input을 Calendar 컴포넌트를 이용하여 선택할 수 있게 적용해줘.', expectE2E: 'applied', note: '편집유형:컴포넌트 교체+부수훅(Calendar 드롭다운) — 4부품 1-shot 코디네이트. B(date-picker 계약카드) 검증됨: 카드 없을 땐 import만/hook 누락(실측 스크린샷)이었으나, 카드 주입 후 qwen3-coder-64k가 import·open state·ref·click-outside effect·버튼+조건부 Calendar 4부품 완비 → applied. react(useRef/useEffect)는 의존성 게이트가 자동 보강, hireDate 문자열 state 보존.' },
 ];
