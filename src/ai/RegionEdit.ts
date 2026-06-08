@@ -196,16 +196,26 @@ function sectionLabelAbove(lines: string[], fromLine1Based: number): string | nu
  */
 function regionLabel(lines: string[], snap: { startLine: number; endLine: number }): string {
   const body = lines.slice(snap.startLine - 1, snap.endLine);
+  const clean = (s: string): string => s.trim().replace(/\s*\*\s*$/, '').trim();
+  // 1) 영역 안 <label>텍스트</label> (필드 라벨)
   for (const ln of body) {
     const m = ln.match(/<label[^>]*>([^<{][^<]*)<\/label>/);
-    if (m && m[1].trim()) return m[1].trim().replace(/\s*\*\s*$/, '').trim();
+    if (m && m[1].trim()) return clean(m[1]);
   }
+  // 2) 영역 **바로 위 형제 <label>** — `<label>부서</label><Select>…` 패턴(스냅이 컨트롤 자체일 때).
+  //    이게 없으면 Select가 첫 옵션 텍스트("개발팀"·"전체")로 잘못 라벨링돼 모델이 못 고른다.
+  for (let i = snap.startLine - 2; i >= 0 && i >= snap.startLine - 4; i--) {
+    const m = (lines[i] ?? '').match(/<label[^>]*>([^<{][^<]*)<\/label>/);
+    if (m && m[1].trim()) return clean(m[1]);
+  }
+  // 3) 섹션 라벨(주석/헤딩/PageHeader) — 옵션 텍스트보다 우선(예: `{/* 재직상태 필터 */}`).
+  const sec = sectionLabelAbove(lines, snap.startLine);
+  if (sec) return sec;
+  // 4) 영역 안 첫 JSX 텍스트(최후 — 옵션 텍스트라도 없는 것보단 낫다).
   for (const ln of body) {
     const m = ln.match(/>\s*([^<>{}\n][^<>{}]*?)\s*</);
     if (m && /[가-힣A-Za-z]/.test(m[1]) && m[1].trim().length > 1) return m[1].trim();
   }
-  const sec = sectionLabelAbove(lines, snap.startLine);
-  if (sec) return sec;
   return (body[0] ?? '').trim().slice(0, 40);
 }
 
@@ -808,11 +818,17 @@ export function locateEditRegion(
   const candidates: RegionCandidate[] = [];
   {
     const seen = new Set<string>();
+    const seenLabel = new Set<string>();
     const push = (s: { startLine: number; endLine: number }, sc: number): void => {
       const k = `${s.startLine}-${s.endLine}`;
       if (seen.has(k)) return;
+      const label = regionLabel(lines, s);
+      // 같은 라벨 중복 제거 — 같은 필드를 div/컨트롤 두 레벨로 snap한 중복(입사일|입사일)은 모델이
+      // 구별 못 하므로 첫(점수 높은) 것만 남긴다.
+      if (seenLabel.has(label)) return;
       seen.add(k);
-      candidates.push({ startLine: s.startLine, endLine: s.endLine, label: regionLabel(lines, s), score: sc });
+      seenLabel.add(label);
+      candidates.push({ startLine: s.startLine, endLine: s.endLine, label, score: sc });
     };
     if (chosenSnap) push(chosenSnap, bestScore); // 채택 영역 항상 첫째
     for (const cand of scored) {

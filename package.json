@@ -443,7 +443,9 @@
     "probe:real": "node scripts/run-probe-eval-real.mjs",
     "eval:e2e": "node scripts/run-eval-e2e.mjs",
     "eval:e2e:record": "node scripts/run-eval-e2e.mjs --record",
-    "eval:e2e:bless": "node scripts/run-eval-e2e.mjs --bless"
+    "eval:e2e:bless": "node scripts/run-eval-e2e.mjs --bless",
+    "eval:disambig": "node scripts/run-eval-disambig.mjs",
+    "eval:disambig:record": "node scripts/run-eval-disambig.mjs --record"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
