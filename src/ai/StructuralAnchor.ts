@@ -271,6 +271,11 @@ function computeImportAnchor(section: CodeSection): ImportAnchor {
     const parsed = parseImportLine(line);
     if (!parsed) return;
     const entry = byModule.get(parsed.module) ?? { named: new Set<string>(), def: null, lineIndex0: idx };
+    // 머지 대상 라인은 named {} 가 있는 줄을 우선한다. 같은 모듈이 `import type React from 'react'`
+    // (브레이스 없음) + `import { useState } from 'react'` 처럼 여러 줄로 나뉘면 lineIndex0가 첫 줄
+    // (type/default 전용)에 고정돼, named 머지가 {} 를 못 찾고 조용히 no-op 되던 버그를 막는다(실측:
+    // 실파일의 `import type React` 선두 줄 때문에 useRef/useEffect 보강 실패 → 불필요한 full 폴백).
+    if (parsed.named.length > 0 && entry.named.size === 0) entry.lineIndex0 = idx;
     for (const n of parsed.named) entry.named.add(n);
     if (parsed.def) entry.def = parsed.def;
     byModule.set(parsed.module, entry);
@@ -1109,6 +1114,12 @@ export function applyStructuralEdit(
         if (updated !== line) {
           lines[absLineIdx0] = updated;
           changes.push(`import merge: ${req.module} 에 ${missing.join(', ')} 추가`);
+        } else if (missing.length > 0) {
+          // 대상 줄에 named {} 가 없음(default/type 전용 import, 예: `import React from 'react'`) →
+          // 머지할 자리가 없으므로 별도 named import 줄을 그 아래 추가한다(조용한 no-op 방지).
+          const newLine = `import { ${missing.join(', ')} } from '${req.module}';`;
+          ops.push({ atLine: absLineIdx0 + 2, removeCount: 0, content: [newLine] });
+          changes.push(`import 추가(별도 named): ${newLine}`);
         }
       } else {
         // 새 import 라인 — 마지막 "실제" import 줄 바로 뒤에 삽입.

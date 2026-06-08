@@ -5,7 +5,7 @@
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
-import { runHybridRegionEdit, buildHybridPrompt } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick } from '../src/ai/RegionEditService';
 import { selectScaffoldContracts, buildContractSection } from '../src/ai/ScaffoldContracts';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
@@ -513,6 +513,53 @@ console.log('\n앵커 품질 스코어링(B):');
   ].join('\n');
   const r = locateEditRegion(SCATTER, '금액 표시를 바꿔줘');
   check('콘텐츠어 흩어짐 → 모호로 폴백', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+{
+  // 후보 노출(disambiguation 입력): 우선순위는 모델이 정하므로 locate는 입사일·기술스택을 **둘 다**
+  // 후보로 내놓고 각 필드 라벨을 정확히 달아야 한다(모델이 질문어로 고를 수 있게). 흔한 'input'이
+  // 기술스택을 count로 이겨 휴리스틱 chosen이 틀려도, 후보 목록엔 입사일이 라벨과 함께 있어야 한다.
+  const MULTI = [
+    'export default function P(): React.ReactNode {',
+    "  const [hireDate, setHireDate] = useState('');",
+    "  const [skill, setSkill] = useState('');",
+    '  return (',
+    '    <div>',
+    '      <div className="mb-4">',
+    '        <label>입사일 *</label>',
+    '        <Input type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />',
+    '      </div>',
+    '      <div className="mb-4">',
+    '        <label>기술 스택</label>',
+    '        <Input value={skill} placeholder="기술스택 직접 입력..." />',
+    '      </div>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(MULTI, '입사일 입력 input을 Calendar로 바꿔줘');
+  const labels = r.candidates.map((c) => c.label);
+  check('후보에 입사일 라벨 포함(disambiguation 입력)', labels.includes('입사일'), `labels=${JSON.stringify(labels)}`);
+  // forcedRegion 재타겟: 모델이 입사일 후보를 고르면 그 영역으로 정확히 재타겟돼야 한다.
+  const cand = r.candidates.find((c) => c.label === '입사일');
+  const r2 = cand ? locateEditRegion(MULTI, '입사일 input을 Calendar로', { startLine: cand.startLine, endLine: cand.endLine }) : r;
+  check(
+    'forcedRegion 재타겟 → 입사일 영역',
+    !!cand && r2.safety.ok && /입사일/.test(r2.region) && !/기술스택/.test(r2.region),
+    `gate=${r2.safety.gate} region=${JSON.stringify(r2.region.slice(0, 40))}`,
+  );
+}
+{
+  // disambiguation 프롬프트/파싱 단위 — 번호만 받고, 0/범위밖은 null(불확실).
+  const cands = [
+    { startLine: 10, endLine: 14, label: '입사일', score: 1 },
+    { startLine: 20, endLine: 24, label: '기술 스택', score: 2 },
+  ];
+  const prompt = buildDisambiguationPrompt('입사일 input을 Calendar로', cands);
+  check('disambiguation 프롬프트에 후보 라벨·번호 포함', /1\)\s*입사일/.test(prompt) && /2\)\s*기술 스택/.test(prompt), prompt.slice(0, 30));
+  check('파싱: "1" → 첫 후보', parseDisambiguationPick('1', cands)?.label === '입사일', '');
+  check('파싱: "2번이요" → 둘째 후보', parseDisambiguationPick('2번이요', cands)?.label === '기술 스택', '');
+  check('파싱: "0"(불확실) → null', parseDisambiguationPick('0', cands) === null, '');
+  check('파싱: 범위밖 → null', parseDisambiguationPick('9', cands) === null, '');
 }
 {
   // 주석 속 단어는 앵커 아님(우연일치 배제) → 폴백.

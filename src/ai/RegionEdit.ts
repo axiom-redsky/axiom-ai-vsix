@@ -134,6 +134,24 @@ export interface LocatedRegion {
    * 되묻기에 쓴다 — 사용자가 라벨을 넣어 재요청하면 복합어 분해로 정확히 라우팅된다.
    */
   ambiguousCandidates: string[];
+  /**
+   * 질문 토큰을 가진 상위 후보들을 완결 요소로 snap한 **distinct 영역 목록**(모델 객관식 disambiguation용).
+   * 결정론 휴리스틱이 우선순위를 보편적으로 알 수 없으므로(예: '입사일' vs 흔한 'input'), 호출부가 이
+   * 후보들을 모델에 객관식으로 제시해 의미적으로 고르게 한다. 라벨은 사람/모델이 읽을 영역 식별자.
+   */
+  candidates: RegionCandidate[];
+}
+
+/** 모델 객관식 disambiguation에 제시할 편집 영역 후보. */
+export interface RegionCandidate {
+  /** 1-based, 포함 */
+  startLine: number;
+  /** 1-based, 포함 */
+  endLine: number;
+  /** 사람/모델이 읽을 영역 라벨(필드 라벨 텍스트 우선, 없으면 섹션 라벨/첫 줄). */
+  label: string;
+  /** 그 영역을 대표한 후보 줄의 grep 점수(참고용). */
+  score: number;
 }
 
 /** 문자열에서 첫 JSX 여는 태그 이름을 뽑는다(루트 태그 일치 후처리 게이트용). */
@@ -169,6 +187,26 @@ function sectionLabelAbove(lines: string[], fromLine1Based: number): string | nu
     }
   }
   return null;
+}
+
+/**
+ * 후보 영역의 사람/모델 친화 라벨을 뽑는다(객관식 disambiguation용).
+ * 우선순위: 영역 내 `<label>텍스트</label>` → 영역 내 첫 JSX 텍스트 노드 → 위쪽 섹션 라벨 → 첫 줄.
+ * 필드 라벨(이름·입사일 등)을 우선해, 모델이 질문어와 매칭해 정확히 고를 수 있게 한다.
+ */
+function regionLabel(lines: string[], snap: { startLine: number; endLine: number }): string {
+  const body = lines.slice(snap.startLine - 1, snap.endLine);
+  for (const ln of body) {
+    const m = ln.match(/<label[^>]*>([^<{][^<]*)<\/label>/);
+    if (m && m[1].trim()) return m[1].trim().replace(/\s*\*\s*$/, '').trim();
+  }
+  for (const ln of body) {
+    const m = ln.match(/>\s*([^<>{}\n][^<>{}]*?)\s*</);
+    if (m && /[가-힣A-Za-z]/.test(m[1]) && m[1].trim().length > 1) return m[1].trim();
+  }
+  const sec = sectionLabelAbove(lines, snap.startLine);
+  if (sec) return sec;
+  return (body[0] ?? '').trim().slice(0, 40);
 }
 
 /**
@@ -462,7 +500,11 @@ function selectReachableTypes(typeSecs: { name: string; body: string }[], seedTe
  * ③ 의존성 헤더 — import + 타입/인터페이스 + 컴포넌트 훅/state 선언부(첫 return 전까지).
  * ④ 안전 게이트 — anchor-missing(점수0)·anchor-comment·anchor-import·snap-failed.
  */
-export function locateEditRegion(source: string, query: string): LocatedRegion {
+export function locateEditRegion(
+  source: string,
+  query: string,
+  forcedRegion?: { startLine: number; endLine: number },
+): LocatedRegion {
   const lines = source.split('\n');
   const baseTokens = tokenizeQuery(query)
     .map((t) => t.toLowerCase())
@@ -510,6 +552,10 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
       break;
     }
   }
+
+  // (우선순위 판단 — 흔한 토큰이 모인 곳 vs 특이 도메인어가 가리키는 곳 — 은 결정론 휴리스틱이 보편적으로
+  //  풀 수 없다. 그 판단은 호출부의 모델 객관식 disambiguation(아래 candidates + RegionEditService)에
+  //  위임한다. locate는 후보를 정확히 추리는 데 집중하고, 최종 선택은 의미를 아는 모델이 한다.)
 
   // ②.5 구조 랜드마크 라우팅 — "테이블/컬럼" 의도인데 표 여는 줄이 2점을 못 얻거나(가짜 폴백),
   //     "투입 이력"이 탭·헤딩에 걸려 표 밖에 스냅됐을 때, 파일에 표가 하나뿐이면 그 표로 교정한다.
@@ -581,6 +627,15 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
         chosenSnap = tbl;
       }
     }
+  }
+
+  // forcedRegion — 호출부(모델 객관식 disambiguation)가 영역을 직접 지정한 경우. 휴리스틱 선택을
+  //   덮어쓰고 그 영역으로 payload를 빌드한다. 모델이 의미로 골랐으므로 모호 게이트는 우회한다.
+  if (forcedRegion) {
+    const fLow = lines.slice(forcedRegion.startLine - 1, forcedRegion.endLine).join('\n').toLowerCase();
+    const fhit = tokens.filter((t) => fLow.includes(t));
+    chosen = { line: forcedRegion.startLine, score: Math.max(MIN_REGION_SCORE, fhit.length || 1), hit: fhit };
+    chosenSnap = forcedRegion;
   }
 
   // 스냅되는 후보가 없으면 최고점 줄을 그대로 써서(원래 동작) 안전 게이트가 적절히 차단하게 둔다.
@@ -700,7 +755,7 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
   const tableSpread = tableOccurrences.length > 1 ? Math.max(...tableOccurrences) - Math.min(...tableOccurrences) : 0;
   const diffuseTable = tableOccurrences.length >= AMBIG_DIFFUSE_COUNT && tableSpread >= AMBIG_SPREAD;
 
-  const isAmbiguous = genericTieAmbiguous || diffuseControl || diffuseTable;
+  const isAmbiguous = !forcedRegion && (genericTieAmbiguous || diffuseControl || diffuseTable);
   // diffuseControl/Table 을 우선 — 컨트롤/표 전체 목록이 generic-tie 보다 정확한 "어느 구역?" 후보를 준다.
   const ambigReason = diffuseControl
     ? `컨트롤 <${impliedTags.join('/')}> 가 파일 전반(${controlSpread}줄)에 ${controlOccurrences.length}곳 — 어느 것인지 쿼리에 이름이 없어 불명확 → 되물음.`
@@ -748,7 +803,27 @@ export function locateEditRegion(source: string, query: string): LocatedRegion {
     safety = { ok: true, gate: 'ok', reason: `코드줄 앵커(${bestLine}줄, 점수 ${bestScore}) + 완결 JSX 요소 스냅(${startLine}~${endLine}) — region/hybrid 안전.` };
   }
 
-  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, controlInventory, safety, ambiguousCandidates };
+  // ⑤ 후보 목록 — 질문 토큰을 가진 상위 후보를 완결 요소로 snap해 distinct 영역으로 모은다(객관식용).
+  //    채택 영역(chosenSnap)을 항상 포함시키고, 점수 높은 순으로 최대 6개. 호출부가 모델에 제시한다.
+  const candidates: RegionCandidate[] = [];
+  {
+    const seen = new Set<string>();
+    const push = (s: { startLine: number; endLine: number }, sc: number): void => {
+      const k = `${s.startLine}-${s.endLine}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      candidates.push({ startLine: s.startLine, endLine: s.endLine, label: regionLabel(lines, s), score: sc });
+    };
+    if (chosenSnap) push(chosenSnap, bestScore); // 채택 영역 항상 첫째
+    for (const cand of scored) {
+      if (cand.score < 1 || candidates.length >= 6) break;
+      if (isCommentOrImport(lines[cand.line - 1] ?? '')) continue;
+      const s = snapToElement(lines, cand.line);
+      if (s) push(s, cand.score);
+    }
+  }
+
+  return { lines, bestLine, bestScore, matched: [...matched], startLine, endLine, region, depsHeader, backingDecls, controlInventory, safety, ambiguousCandidates, candidates };
 }
 
 /**

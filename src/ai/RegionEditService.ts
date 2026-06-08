@@ -12,7 +12,7 @@
  *  - 삽입 조각의 타입/훅이 최종 파일에서 해소 안 됨(의존성 폐쇄 실패) → fallback.
  *  즉 "조금이라도 의심스러우면 full" — 조용한 파일 파손을 만들지 않는다.
  */
-import { locateEditRegion, checkRegionRootTag } from './RegionEdit';
+import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './RegionEdit';
 import { impliedControlTags, countTag } from './RegionIntent';
 import { buildContractSection } from './ScaffoldContracts';
 import {
@@ -60,6 +60,41 @@ export function classifyRegionDecline(query: string, source: string, gate: strin
   const namedButAbsent = tags.length > 0 && tags.every((t) => countTag(source, t) === 0);
   if (namedButAbsent && !ADD_INTENT_RE.test(query)) return 'inform-absent';
   return 'full';
+}
+
+/**
+ * 호출부가 주입하는 "영역 객관식 disambiguation" 콜백. 결정론 locate가 추린 후보를 받아
+ * 모델에게 의미적으로 고르게 하고, 고른 영역의 라인범위를 돌려준다(불확실/실패 시 null).
+ */
+export type RegionDisambiguator = (
+  query: string,
+  candidates: RegionCandidate[],
+) => Promise<{ startLine: number; endLine: number } | null>;
+
+/**
+ * 객관식 disambiguation 프롬프트 — 후보를 번호 목록으로 제시하고 번호만 받게 한다(약한 모델 친화).
+ * 결정론 locate가 못 정하는 우선순위(예: '입사일' vs 흔한 'input')를 모델의 언어 이해로 메운다.
+ */
+export function buildDisambiguationPrompt(query: string, candidates: RegionCandidate[]): string {
+  const list = candidates.map((c, i) => `${i + 1}) ${c.label} (${c.startLine}줄)`).join('\n');
+  return (
+    `사용자 코드 편집 요청: "${query}"\n\n` +
+    `아래는 그 요청이 가리킬 수 있는 편집 영역 후보입니다. **사용자가 의도한 영역의 번호 하나만** 답하세요.\n` +
+    `어느 것인지 애매하거나 후보에 없으면 0을 답하세요. 설명 없이 숫자만.\n\n` +
+    `${list}\n\n답(번호만):`
+  );
+}
+
+/**
+ * disambiguation 모델 출력에서 고른 후보를 파싱한다. 첫 정수만 본다.
+ * 1..N 범위면 해당 후보, 0/범위밖/없음이면 null(=불확실 → 호출부가 휴리스틱 유지 또는 사용자 되묻기).
+ */
+export function parseDisambiguationPick(output: string, candidates: RegionCandidate[]): RegionCandidate | null {
+  const m = output.match(/\d+/);
+  if (!m) return null;
+  const n = parseInt(m[0], 10);
+  if (n < 1 || n > candidates.length) return null;
+  return candidates[n - 1];
 }
 
 /** ```lang … ``` 코드펜스를 벗겨 순수 코드만 남긴다. */
@@ -209,8 +244,24 @@ export async function runHybridRegionEdit(
   query: string,
   callModel: (system: string, user: string) => Promise<string>,
   referencedSpec?: string,
+  disambiguate?: RegionDisambiguator,
 ): Promise<RegionEditOutcome> {
-  const loc = locateEditRegion(source, query);
+  let loc = locateEditRegion(source, query);
+
+  // 0) 영역 객관식 disambiguation — 결정론 휴리스틱은 우선순위를 보편적으로 알 수 없다(예: '입사일' vs
+  //    흔한 'input'). 후보가 2개 이상이면 모델에게 의미로 고르게 하고, 고른 영역으로 재타겟한다.
+  //    모델이 불확실(null)이거나 같은 영역을 고르면 휴리스틱 결과를 그대로 둔다. disambiguate 미주입
+  //    (eval 하니스 등)이면 종전과 100% 동일.
+  if (disambiguate && loc.candidates.length >= 2) {
+    try {
+      const pick = await disambiguate(query, loc.candidates);
+      if (pick && (pick.startLine !== loc.startLine || pick.endLine !== loc.endLine)) {
+        loc = locateEditRegion(source, query, pick);
+      }
+    } catch {
+      /* disambiguation 실패 → 휴리스틱 결과 유지(파손 없음) */
+    }
+  }
 
   // 1) 전제조건 안전 게이트
   if (!loc.safety.ok) {

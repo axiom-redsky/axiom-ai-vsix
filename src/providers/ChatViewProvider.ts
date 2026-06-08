@@ -9,7 +9,7 @@ import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
-import { runHybridRegionEdit, classifyRegionDecline } from '../ai/RegionEditService';
+import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick } from '../ai/RegionEditService';
 import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
@@ -1791,8 +1791,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
     }
 
+    // 영역 객관식 disambiguation — 결정론 locate가 추린 후보를 모델이 의미로 고르게 한다(우선순위를
+    // 휴리스틱이 보편적으로 못 정하는 문제 해소). 번호만 받는 초경량 호출이라 약한 모델도 안정적이다.
+    const disambiguate = async (
+      q: string,
+      candidates: { startLine: number; endLine: number; label: string; score: number }[],
+    ): Promise<{ startLine: number; endLine: number } | null> => {
+      try {
+        const prompt = buildDisambiguationPrompt(q, candidates);
+        const messages: ChatMessage[] = [
+          { role: 'system', content: '당신은 코드 편집 영역 선택기입니다. 후보 번호 하나만 숫자로 답하세요. 애매하면 0.' },
+          { role: 'user', content: prompt },
+        ];
+        let out = '';
+        for await (const token of this._llm.streamChat(messages, config, signal, () => {})) out += token;
+        const pick = parseDisambiguationPick(out, candidates);
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 영역 disambiguation: 후보 ${candidates.length}개 → 모델 응답 ${JSON.stringify(out.trim().slice(0, 20))} → ` +
+            (pick ? `선택 "${pick.label}"(${pick.startLine}~${pick.endLine})` : '불확실(휴리스틱 유지)'),
+        );
+        return pick ? { startLine: pick.startLine, endLine: pick.endLine } : null;
+      } catch {
+        return null;
+      }
+    };
+
     this._postStatus('영역 편집 시도 중…');
-    const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined);
+    const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined, disambiguate);
     this._corpusOutputChannel.appendLine(outcome.diagnostics);
 
     // region 사퇴 시 UX 분기 — 분류는 단일 정책(classifyRegionDecline)에 위임(계기판과 규칙 동기화).
