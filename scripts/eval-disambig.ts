@@ -36,9 +36,14 @@ interface DCase {
 
 // 합성(커밋 가능) 픽스처 기반 케이스. 디스크 실파일(.gitignore)은 로컬에서만 자동 합류.
 const CASES: DCase[] = [
+  // ── 직접 라벨 매칭(쉬움) ──────────────────────────────────────────────────
   { id: 'emp-hiredate', file: 'EMPLOYEE_FORM', query: '입사일 input을 Calendar로 적용해줘', expect: '입사일', note: '여러 필드 중 입사일(흔한 input이 다른 필드 누르는 케이스)' },
   { id: 'emp-name', file: 'EMPLOYEE_FORM', query: '이름 입력칸 안내문구를 바꿔줘', expect: '이름', note: '이름 필드' },
   { id: 'mem-status', file: 'MEMBER_LIST', query: '재직상태 필터를 공통코드 api로 바꿔줘', expect: '재직상태 필터', note: 'Select(옵션 텍스트 노이즈 속 정답)' },
+  // ── 부분/의미 매칭(어려움) — 쿼리어가 라벨과 정확히 같지 않음. 키워드가 아니라 의미로 골라야 함 ──
+  { id: 'emp-hiredate-sem', file: 'EMPLOYEE_FORM', query: '입사 날짜 input을 달력으로 골라줘', expect: '입사일', note: '의미: "입사 날짜"→입사일(라벨과 불일치)' },
+  { id: 'emp-name-2', file: 'EMPLOYEE_FORM', query: '직원 이름 입력 필드 고쳐', expect: '이름', note: '"직원 이름"→이름' },
+  { id: 'mem-status-sem', file: 'MEMBER_LIST', query: '상태 셀렉트를 공통코드 api로', expect: '재직상태 필터', note: '의미: "상태"→재직상태 필터(옵션 "전체" 노이즈 무시해야)' },
 ];
 
 interface Recording {
