@@ -34,6 +34,8 @@ export interface PageCreationState {
   pageName: string;
   /** 도메인 후보 목록 (탐색기 스캔 결과) */
   domainCandidates: string[];
+  /** 사용자 페이지 영문명 입력 대기 중 여부 (한국어 이름 요청 시 이름 되묻기 단계) */
+  waitingForName?: boolean;
   /** 사용자 도메인 선택 대기 중 여부 */
   waitingForDomain: boolean;
   /** 확정된 도메인 */

@@ -192,6 +192,11 @@
           "default": false,
           "description": "[실험] 영역(region/hybrid) 편집. TSX 수정 요청에서 확장이 편집 영역을 결정론적으로 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성하고, 새 훅/import는 구조적으로 삽입합니다. 게이트 미통과·의존성 미해소 시 기존 전체 입력 방식으로 자동 폴백합니다(파일 파손 방지). 폐쇄망 점진 도입용, 기본 꺼짐."
         },
+        "axiom-ai.experimental.pageCreationLlmMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "[실험] 페이지 생성 시 페이지 본문을 LLM으로 생성합니다. 기본 꺼짐(템플릿 모드): 정본 최소 스켈레톤(헤더+플레이스홀더)을 결정론적으로 생성해 약한 모델이 useApi 시그니처·$router import·존재하지 않는 타입을 지어내 컴파일 불가 코드를 박는 문제를 차단합니다. 켜면 데이터 페치까지 LLM이 생성하지만 약한 모델에선 부정확할 수 있습니다."
+        },
         "axiom-ai.scenarioC.compactModes": {
           "type": "boolean",
           "default": true,

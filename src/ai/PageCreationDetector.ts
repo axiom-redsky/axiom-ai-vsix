@@ -10,12 +10,12 @@ export interface PageCreationIntent {
 /**
  * 채팅 입력에서 페이지 생성 인텐트와 페이지명을 추출한다.
  *
- * 인식 패턴:
+ * 인식 패턴(입력한 이름을 그대로 존중 — Page 접미사 강제 안 함):
  * - "AccountListPage 페이지를 만들어줘" → pageName: "AccountListPage"
- * - "AccountList 페이지 만들어줘"       → pageName: "AccountListPage" (Page 접미사 자동 추가)
+ * - "AccountList 페이지 만들어줘"       → pageName: "AccountList" (입력 그대로)
  * - "AccountListPage 화면을 만들어줘"   → pageName: "AccountListPage" (화면 키워드 인식)
- * - "account-list 페이지 생성해줘"      → pageName: "AccountListPage" (kebab-case → PascalCase)
- * - "계좌 목록 페이지 만들어줘"          → isPageCreation: true, pageName: null (LLM에 위임)
+ * - "account-list 페이지 생성해줘"      → pageName: "AccountList" (kebab-case → PascalCase)
+ * - "계좌 목록 페이지 만들어줘"          → isPageCreation: true, pageName: null (되묻기/위임)
  */
 export class PageCreationDetector {
   /** 페이지 생성 의도를 나타내는 한국어/영어 키워드 */
@@ -47,10 +47,27 @@ export class PageCreationDetector {
       return { isPageCreation: false, pageName: null, rawName: null };
     }
 
+    // 명시적으로 입력한 이름은 그대로 존중한다(Page 접미사 강제 안 함).
     const rawName = this._extractRawName(userInput);
-    const pageName = rawName ? this._normalizeToPascalCasePage(rawName) : null;
+    const pageName = rawName ? this._toPascalCase(rawName) : null;
 
     return { isPageCreation: true, pageName, rawName };
+  }
+
+  /**
+   * 사용자가 이름 되묻기 단계에서 직접 입력한 문자열을 컴포넌트명으로 정규화한다.
+   * 명시적으로 입력한 이름은 그대로 존중한다: 확장자(.tsx 등)만 제거하고 Page 접미사를
+   * 강제하지 않는다. kebab/snake-case만 PascalCase로 변환한다.
+   * 영문 식별자(PascalCase/kebab/snake)를 찾지 못하면 null(재입력 요청용).
+   *
+   * - "EmployeeList2.tsx" → "EmployeeList2"  (확장자 제거, Page 미강제)
+   * - "EmployeeList2Page" → "EmployeeList2Page"
+   * - "account-list"      → "AccountList"
+   */
+  normalizeName(input: string): string | null {
+    const withoutExt = input.replace(/\.(tsx?|jsx?)\b/gi, ' ');
+    const raw = this._extractRawName(withoutExt);
+    return raw ? this._toPascalCase(raw) : null;
   }
 
   private _isPageCreationRequest(input: string): boolean {
@@ -70,47 +87,64 @@ export class PageCreationDetector {
    * 순수 한국어 이름은 null 반환 (LLM에 네이밍 위임).
    */
   private _extractRawName(input: string): string | null {
+    // "내용은 EmployeeListPage.tsx 파일 내용으로 채워줘"처럼 채울 내용의 출처로 지정한
+    // 기존 파일 참조는 만들 페이지명이 아니므로 후보에서 제거한다(안 그러면 출처 파일명을
+    // 만들 이름으로 오인해 기존 파일을 덮어쓴다).
+    const scope = this._stripContentSourceRefs(input);
+
     // PascalCase 식별자 (예: AccountListPage, AccountList)
-    const pascalMatch = input.match(/\b([A-Z][a-zA-Z0-9]+(?:[A-Z][a-zA-Z0-9]*)*)\b/);
+    const pascalMatch = scope.match(/\b([A-Z][a-zA-Z0-9]+(?:[A-Z][a-zA-Z0-9]*)*)\b/);
     if (pascalMatch?.[1]) {
       // 단독 대문자 약어 제외 (예: "UI", "API")
       if (pascalMatch[1].length > 2) return pascalMatch[1];
     }
 
     // kebab-case 또는 snake_case (예: account-list, account_list)
-    const kebabMatch = input.match(/\b([a-z][a-z0-9]*(?:[-_][a-z0-9]+)+)\b/);
+    const kebabMatch = scope.match(/\b([a-z][a-z0-9]*(?:[-_][a-z0-9]+)+)\b/);
     if (kebabMatch?.[1]) return kebabMatch[1];
 
     return null;
   }
 
   /**
-   * 다양한 포맷의 이름을 PascalCase로 변환하고 Page 접미사를 보장한다.
+   * 채울 내용의 출처로 지정한 기존 파일 참조를 페이지명 후보에서 제거한다.
+   * 이 토큰들은 "만들 페이지명"이 아니라 "내용 출처"이므로, 남겨두면 만들 이름으로
+   * 오인되어 기존 파일을 덮어쓴다.
    *
-   * - "AccountList"      → "AccountListPage"
-   * - "AccountListPage"  → "AccountListPage" (이미 Page 접미사)
-   * - "account-list"     → "AccountListPage"
-   * - "account_list"     → "AccountListPage"
+   * - "내용은 EmployeeListPage.tsx 파일 내용으로 채워줘" → 출처 파일 제거
+   * - "EmployeeListPage 파일 내용으로 채워줘"            → "… 파일" 앞 식별자 제거
+   * - "EmployeeList2.tsx 페이지 만들어줘"                → 보존(파일명이 곧 만들 이름)
    */
-  private _normalizeToPascalCasePage(raw: string): string {
-    let pascal: string;
+  private _stripContentSourceRefs(input: string): string {
+    // 1) 확장자를 가진 파일 참조 (예: EmployeeListPage.tsx)
+    //    단, 바로 뒤에 생성 키워드(페이지/화면/page)가 오면 만들 이름이므로 보존한다.
+    let scope = input.replace(/\b[A-Za-z][\w-]*\.(?:tsx?|jsx?)\b/g, (match, offset: number) => {
+      const after = input.slice(offset + match.length);
+      return /^\s*(?:페이지|화면|page)/i.test(after) ? match : ' ';
+    });
 
-    if (/^[A-Z]/.test(raw)) {
-      // 이미 PascalCase
-      pascal = raw;
-    } else {
-      // kebab-case / snake_case → PascalCase
-      pascal = raw
-        .split(/[-_]/)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join('');
-    }
+    // 2) "… 파일" 바로 앞의 식별자 (예: "EmployeeListPage 파일 내용으로")
+    //    (한글은 JS 정규식에서 단어문자가 아니므로 파일 뒤에 \b를 쓰지 않는다)
+    scope = scope.replace(/\b[A-Za-z][\w-]*(?=\s*파일(?![가-힣]))/g, ' ');
 
-    // Page 접미사가 없으면 추가
-    if (!pascal.endsWith('Page')) {
-      pascal += 'Page';
-    }
+    return scope;
+  }
 
-    return pascal;
+  /**
+   * 추출한 이름 후보를 PascalCase로 변환한다. 입력 이름을 그대로 존중하므로
+   * Page 접미사는 강제하지 않는다(이미 PascalCase면 그대로 반환).
+   *
+   * - "AccountList"      → "AccountList"
+   * - "AccountListPage"  → "AccountListPage"
+   * - "account-list"     → "AccountList"
+   * - "account_list"     → "AccountList"
+   */
+  private _toPascalCase(raw: string): string {
+    if (/^[A-Z]/.test(raw)) return raw; // 이미 PascalCase → 입력 그대로
+
+    return raw
+      .split(/[-_]/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join('');
   }
 }

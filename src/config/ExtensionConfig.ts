@@ -153,6 +153,16 @@ export class ExtensionConfig {
     return ExtensionConfig._cfg().get<boolean>('experimental.regionEdit', false);
   }
 
+  /**
+   * 페이지 생성 시 페이지 본문을 LLM으로 생성할지 여부.
+   * 기본 false(템플릿 모드): 정본 최소 스켈레톤을 결정론적으로 생성 — 약한 모델이 useApi 시그니처·
+   * $router import·존재하지 않는 타입을 지어내 컴파일 불가 코드를 박는 문제를 원천 차단한다.
+   * true: 실험적 LLM 생성(데이터 페치까지). 약한 모델에선 부정확할 수 있어 옵트인.
+   */
+  static isPageCreationLlmMode(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('experimental.pageCreationLlmMode', false);
+  }
+
   /** 사용자가 설정한 오프라인 stubs 보강 폴더 */
   static getUserStubsFolder(): string {
     return ExtensionConfig._cfg().get<string>('stubs.userStubsFolder', '');

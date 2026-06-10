@@ -672,6 +672,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._postStatus(ExtensionConfig.getLlmConfig().model);
         return;
       }
+      if (this._pageCreationState.waitingForName) {
+        await this._handlePageCreationNameInput(text.trim());
+        return;
+      }
       if (this._pageCreationState.waitingForDomain) {
         await this._handlePageCreationDomainInput(text.trim());
         return;
@@ -735,7 +739,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     // 페이지 생성 인텐트 감지
     const pageIntent = this._pageCreationDetector.detect(text);
-    if (pageIntent.isPageCreation && pageIntent.pageName) {
+    if (pageIntent.isPageCreation) {
+      // pageName이 null(순수 한국어 이름)이어도 생성 워크플로우로 진입해 영문명을 되묻는다.
+      // 그러지 않으면 "직원 리스트 화면 만들어줘" 같은 요청이 파일 수정/영역 편집 경로로 새어
+      // 열려 있던 도메인 파일을 엉뚱하게 수정한다.
       await this._startPageCreation(pageIntent.pageName, text);
       return;
     }
@@ -3462,9 +3469,35 @@ import 변경 또는 2곳 이상 수정이면:
    * 페이지 생성 플로우 진입점.
    * 도메인 자동 감지를 시도하고, 불명확하면 대화형으로 도메인을 확인한다.
    */
-  private async _startPageCreation(pageName: string, originalText: string): Promise<void> {
+  private async _startPageCreation(pageName: string | null, originalText: string): Promise<void> {
     this._history.push({ role: 'user', content: originalText });
 
+    // 페이지명을 추출하지 못했으면(순수 한국어 이름) 영문 PascalCase 이름을 먼저 되묻는다.
+    if (!pageName) {
+      this._pageCreationState = {
+        pageName: '',
+        domainCandidates: [],
+        waitingForName: true,
+        waitingForDomain: false,
+        resolvedDomain: null,
+      };
+      this._post({
+        type: 'token',
+        content:
+          '생성할 페이지의 **영문 이름**을 PascalCase로 입력해주세요.\n예: `EmployeeList2Page`, `AccountListPage` (취소: `/cancel`)',
+      });
+      this._post({ type: 'done' });
+      this._postStatus('페이지 생성 — 영문명 입력 대기');
+      return;
+    }
+
+    await this._promptForDomain(pageName);
+  }
+
+  /**
+   * 페이지명이 확정된 뒤 대상 도메인을 결정한다(에디터 감지 → 단일/복수 도메인 선택).
+   */
+  private async _promptForDomain(pageName: string): Promise<void> {
     // 1. 현재 에디터 파일 경로에서 도메인 자동 감지
     const editorDomain = this._detectDomainFromEditor();
 
@@ -3542,6 +3575,32 @@ import 변경 또는 2곳 이상 수정이면:
   }
 
   /**
+   * 영문 페이지명 되묻기 응답 처리. PascalCase로 정규화하고 Page 접미사를 보장한다.
+   * 영문 식별자를 인식하지 못하면 재입력을 요청한다.
+   */
+  private async _handlePageCreationNameInput(input: string): Promise<void> {
+    if (!this._pageCreationState) return;
+
+    const pageName = this._pageCreationDetector.normalizeName(input);
+    if (!pageName) {
+      this._post({
+        type: 'token',
+        content:
+          '영문 이름을 인식하지 못했습니다. PascalCase 영문으로 입력해주세요.\n예: `EmployeeList2Page`, `account-list` (취소: `/cancel`)',
+      });
+      this._post({ type: 'done' });
+      return;
+    }
+
+    this._pageCreationState = {
+      ...this._pageCreationState,
+      pageName,
+      waitingForName: false,
+    };
+    await this._promptForDomain(pageName);
+  }
+
+  /**
    * 도메인 선택/입력 응답 처리.
    * 도메인이 확정되면 vLLM 헬스체크 후 온라인/오프라인 분기로 생성을 진행한다.
    */
@@ -3587,8 +3646,13 @@ import 변경 또는 2곳 이상 수정이면:
       content: `\`${resolvedDomain}\` 도메인에 **${pageName}** 페이지를 생성합니다...\n\n`,
     });
 
-    // 헬스체크 없이 바로 LLM 호출 시도 — _createPageWithLlm 내부에 자동 폴백 포함
-    await this._createPageWithLlm(pageName, resolvedDomain);
+    // 기본: 결정론적 템플릿(최소 스켈레톤)으로 생성 — 약한 모델의 잘못된 useApi/$router/타입 환각 차단.
+    // 실험 플래그(pageCreationLlmMode)가 켜져 있으면 LLM이 본문(데이터 페치 포함)을 생성한다.
+    if (ExtensionConfig.isPageCreationLlmMode()) {
+      await this._createPageWithLlm(pageName, resolvedDomain);
+    } else {
+      await this._createPageFromTemplate(pageName, resolvedDomain);
+    }
 
     this._pageCreationState = null;
   }
@@ -3647,7 +3711,7 @@ import 변경 또는 2곳 이상 수정이면:
       if (wasFallback) {
         // 스트리밍 도중 폴백 발생 → 오프라인 템플릿으로 재시도
         this._post({ type: 'token', content: '\n\n⚠️ LLM 연결이 끊겼습니다. 오프라인 템플릿으로 생성합니다.\n\n' });
-        await this._createPageOffline(pageName, domain);
+        await this._createPageFromTemplate(pageName, domain, true);
         return;
       }
 
@@ -3712,11 +3776,19 @@ import 변경 또는 2곳 이상 수정이면:
   }
 
   /**
-   * vLLM이 오프라인일 때: axiom-action 블록을 직접 조합하여 파일을 생성한다.
+   * 페이지 본문 + 라우터 등록을 **결정론적 템플릿**으로 생성한다(LLM 미사용).
+   * 정본 최소 스켈레톤(헤더 + 플레이스홀더)을 만들어 약한 모델이 useApi 시그니처·$router import·
+   * 존재하지 않는 타입을 지어내 컴파일 불가 코드를 박는 문제를 원천 차단한다.
    * 도메인 존재 여부에 따라 시나리오 A(2개 액션) / B(3개 액션)를 적용한다.
+   *
+   * @param offlineFallback true면 vLLM 연결 실패로 인한 폴백(경고 헤더), false면 의도된 템플릿 모드.
    */
-  private async _createPageOffline(pageName: string, domain: string): Promise<void> {
-    this._postStatus('오프라인 모드 — 템플릿 생성 중…');
+  private async _createPageFromTemplate(
+    pageName: string,
+    domain: string,
+    offlineFallback = false,
+  ): Promise<void> {
+    this._postStatus(offlineFallback ? '오프라인 모드 — 템플릿 생성 중…' : '템플릿 생성 중…');
 
     const wsRoot = this._getWorkspaceRoot();
     const domainExists = wsRoot
@@ -3727,8 +3799,12 @@ import 변경 또는 2곳 이상 수정이면:
 
     const actions = this._buildOfflinePageActions(pageName, domain, routePath, domainExists, wsRoot);
 
-    const offlineMsg = [
-      `> ⚠️ **오프라인 모드** — vLLM 서버에 연결할 수 없어 기본 템플릿으로 생성합니다.`,
+    const header = offlineFallback
+      ? `> ⚠️ **오프라인 모드** — vLLM 서버에 연결할 수 없어 기본 템플릿으로 생성합니다.`
+      : `> 🧩 **기본 템플릿** — 최소 스켈레톤 페이지를 생성합니다. 화면 내용은 이후 수정 요청으로 채우세요.`;
+
+    const templateMsg = [
+      header,
       '',
       `**생성 파일**`,
       `- \`src/domains/${domain}/pages/${pageName}.tsx\``,
@@ -3740,11 +3816,11 @@ import 변경 또는 2곳 이상 수정이면:
         : '',
     ].filter(Boolean).join('\n');
 
-    this._post({ type: 'token', content: offlineMsg });
+    this._post({ type: 'token', content: templateMsg });
 
-    this._history.push({ role: 'assistant', content: offlineMsg });
+    this._history.push({ role: 'assistant', content: templateMsg });
     this._post({ type: 'done' });
-    this._postStatus('⚠️ 오프라인 모드');
+    this._postStatus(offlineFallback ? '⚠️ 오프라인 모드' : ExtensionConfig.getLlmConfig().model);
 
     for (const action of actions) {
       const result = await this._fileCreator.createFile(action);
@@ -3899,12 +3975,27 @@ export default routes;`;
    * 1. `];` 앞에 추가
    * 2. (폴백) 들여쓰기된 `]` 앞에 추가
    */
+  private _escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   private _appendToExistingRouter(
     existing: string,
     pageName: string,
     domain: string,
     routePath: string,
   ): string {
+    // 동일 path 또는 동일 컴포넌트가 이미 등록돼 있으면 중복 항목을 추가하지 않는다.
+    const pathAlreadyRouted = new RegExp(
+      `path:\\s*['"]${this._escapeRegExp(routePath)}['"]`,
+    ).test(existing);
+    const elementAlreadyRouted = new RegExp(
+      `element:\\s*<${this._escapeRegExp(pageName)}\\s*/>`,
+    ).test(existing);
+    if (pathAlreadyRouted || elementAlreadyRouted) {
+      return existing;
+    }
+
     const loadableImportLine = `import loadable from '@loadable/component';`;
     const importLine = `const ${pageName} = loadable(() => import('@/domains/${domain}/pages/${pageName}'));`;
 
