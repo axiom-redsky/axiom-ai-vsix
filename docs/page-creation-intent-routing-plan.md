@@ -80,26 +80,25 @@
 - [x] `_appendToExistingRouter`에 동일 path / 동일 `element:<Page/>` 중복 가드 + `_escapeRegExp` 헬퍼. → [ChatViewProvider.ts:3984](../src/providers/ChatViewProvider.ts#L3984)
 - [x] 8개 입력 케이스 수동 검증 전부 PASS, `tsc --noEmit` 클린.
 
-### 4.2 중기 — 다음 작업 (레버 가장 큼) ⬜
+### 4.2 중기 — **1차 구현 완료 ✅** (2026-06-11, 페이지 파일 충돌 가드)
 
 **목표: 미래의 어떤 오파싱도 조용히 파괴 못 하게.**
 
-- [ ] 페이지 생성 시 **이름 충돌 확인**을 페이지 파일·라우터 경로에 추가
-  - 현재 [FileCreatorService.ts:1041](../src/ai/FileCreatorService.ts#L1041) `createFile`에는 "이미 존재합니다, 덮어쓸까요?" 확인이 **이미 있음**.
-  - 그러나 라우터는 [updateFile](../src/ai/FileCreatorService.ts#L977)로 들어가 **묻지 않고 덮어씀** → 중복 라우트가 샌 경로.
-  - 작업: 페이지 생성 워크플로우 진입 시점([_startPageCreation](../src/providers/ChatViewProvider.ts#L3472) 또는 [_finalizePageCreation 직전](../src/providers/ChatViewProvider.ts#L3610))에서 `src/domains/<domain>/pages/<PageName>.tsx` 존재 여부를 먼저 검사 → 존재하면 **"이미 존재 — 덮어쓰기 / 다른 이름 / 취소"** 3지 선택을 채팅으로 되묻기. (createFile의 OS InputBox 경고보다 워크플로우 초입에서 막는 게 UX상 깔끔)
-  - 라우터 dedup은 4.1에서 가드했으나, "다른 이름" 선택 시 routePath도 새로 산정되는지 확인.
+- [x] 페이지 생성 시 **이름 충돌 확인**을 페이지 파일 경로에 추가
+  - 도메인 확정 직후([_handlePageCreationDomainInput](../src/providers/ChatViewProvider.ts#L3607))에서 `_maybeGenerateOrAskCollision(pageName, domain)` 호출 → `src/domains/<domain>/pages/<PageName>.tsx` 존재 시 **"1) 덮어쓰기 2) 다른 이름 3) 취소"** 3지 되묻기(`waitingForCollision` 상태 + [_handlePageCreationCollisionInput](../src/providers/ChatViewProvider.ts)). "다른 이름"은 정규화 후 **재충돌검사**(같은 이름 재입력 시 무한 덮어쓰기 방지).
+  - 라우터 dedup은 4.1에서 가드 완료. "다른 이름" 경로는 이름 변경→도메인 재확정→재충돌검사를 거쳐 routePath도 새 이름으로 재산정됨.
+- [ ] (남음) 회귀 테스트: 같은 이름 재생성 시 ① 덮어쓰기 안 됨 ② 라우트 중복 안 됨 ③ 되묻기 발생 — `eval:e2e` 또는 신규 단위테스트로 고정.
 
-- [ ] 회귀 테스트: 같은 이름 재생성 시 ① 덮어쓰기 안 됨 ② 라우트 중복 안 됨 ③ 되묻기 발생 — 케이스를 `eval:e2e` 또는 신규 단위테스트로 고정.
+### 4.3 장기 — **1차 슬라이스 구현 완료 ✅** (2026-06-11, 플래그 off · 실모델 검증 대기)
 
-### 4.3 장기 — 구조 개선 (두더지잡기 탈출) ⬜
-
-- [ ] **의도 분류 + 슬롯 추출을 단일 구조화 모델 호출로 이전.**
-  - 출력 스키마(예): `{ intent: 'create'|'modify'|'qna'|'smalltalk', pageName: string|null, domain: string|null, contentSource: string|null }`
-  - 약한 모델도 이런 얕은 추출은 정규식보다 잘함. 단 **JSON 강제 + 실패 시 정규식 폴백** 필수(모델 부재·타임아웃 대비).
-  - 진입점: [ChatViewProvider.ts:741](../src/providers/ChatViewProvider.ts#L741) 이전에 분류 호출을 두고, `PageCreationDetector`는 폴백/패스트패스로 강등.
-- [ ] 실행 레이어는 결정론 + 방어적 유지(4.2 가드가 전제).
-- [ ] 검증: 기존 `eval:e2e`(record/replay) + `eval:disambig` 하니스로 분류 정확도·회귀 측정. 약한 모델은 **실모델 record로만** 검증(메모리 규칙).
+- [x] **의도 분류 + 슬롯 추출을 단일 구조화 모델 호출로 이전.** → 신규 [IntentClassifier.ts](../src/ai/IntentClassifier.ts)
+  - 출력 스키마: `{ intent: 'create_page'|'modify_file'|'qna'|'smalltalk'|'other', pageName, domain, contentSource, targetFile }`.
+  - **JSON 강제 + 파싱 실패/모델 부재 시 정규식 폴백**(`parseIntent`가 null → 기존 `PageCreationDetector`). 닫는 `}` 오면 조기 종료(토큰 절약). few-shot 예시는 중립 도메인(catalog/inventory/billing)으로([[project_fewshot_parroting]]).
+  - 진입점: [ChatViewProvider.ts](../src/providers/ChatViewProvider.ts) `_handleMessage` 슬래시커맨드 분기 뒤·`PageCreationDetector` 앞에 `_classifyIntent` 호출. `create_page`→생성 워크플로우, 그 외→정규식 생성 분기 건너뛰고 일반 흐름. **분류 결과를 채팅에 한 줄 표시**(`formatIntentForChat`, "🧭 의도 분석: …").
+  - 설정 플래그 `axiom-ai.experimental.intentClassifier`(기본 off, [ExtensionConfig.isIntentClassifierEnabled](../src/config/ExtensionConfig.ts)).
+- [x] 실행 레이어는 결정론 + 방어적 유지(4.2 충돌 가드가 전제).
+- [ ] (남음) 검증: `eval:e2e`(record/replay) + `eval:disambig`로 분류 정확도·회귀 측정. 약한 모델은 **실모델 record로만** 검증(메모리 규칙). 현재 `parseIntent` 단위 robustness만 검증됨(fenced/prose/bad-enum→null).
+- [ ] (남음) 슬롯 스레딩: `contentSource`/`targetFile`를 하류(`_loadReferencedFiles`·`_resolveTargetFile`)에 직접 전달(현재는 텍스트 재파싱에 의존 — 라우팅은 맞지만 슬롯은 미사용).
 
 ---
 

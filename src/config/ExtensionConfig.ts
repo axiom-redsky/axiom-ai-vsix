@@ -154,6 +154,16 @@ export class ExtensionConfig {
   }
 
   /**
+   * 실험: 의도 분류기. 메시지를 정규식 게이트로 분기하기 전에 모델에게 "이게 무슨 요청이야?"를
+   * 먼저 물어(작은 JSON 한 줄) 분류·슬롯 추출을 위임한다. 파싱 실패·모델 부재 시 기존 정규식
+   * (PageCreationDetector 등)으로 폴백하므로 회귀 위험이 없다. 분류 결과는 채팅에 한 줄로 표시한다.
+   * 약한 모델 실동작은 실모델로만 검증되므로 폐쇄망 점진 도입을 위해 기본 off.
+   */
+  static isIntentClassifierEnabled(): boolean {
+    return ExtensionConfig._cfg().get<boolean>('experimental.intentClassifier', false);
+  }
+
+  /**
    * 페이지 생성 시 페이지 본문을 LLM으로 생성할지 여부.
    * 기본 false(템플릿 모드): 정본 최소 스켈레톤을 결정론적으로 생성 — 약한 모델이 useApi 시그니처·
    * $router import·존재하지 않는 타입을 지어내 컴파일 불가 코드를 박는 문제를 원천 차단한다.

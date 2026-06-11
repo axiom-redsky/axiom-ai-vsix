@@ -865,6 +865,13 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
    * 3. kebab-case 페이지명 첫 세그먼트: "account-list-page" → "account"
    */
   private _extractDomainFromQuery(query: string): string | null {
+    // 참조 소스 파일 경로(예: "/src/publishing/employee/pages/EmployeeListPage.tsx")는
+    // "복사해 올 원본"이지 "만들 대상"이 아니다. 그 경로 안의 PascalCase 페이지명(EmployeeListPage)이나
+    // 폴더 세그먼트가 도메인 힌트로 오인되면, "현재 화면에 …의 jsx를 넣어줘" 같은 *수정* 요청이
+    // 시나리오 A(신규 페이지 생성)로 빠져 라우터만 엉뚱하게 손대고 현재 파일은 그대로 남는다.
+    // → 확장자가 붙은 파일 참조 토큰은 패턴 매칭 전에 제거한다(맨이름 "EmployeeListPage"는 보존).
+    query = query.replace(/[\w./\\-]+\.(?:tsx?|jsx?|md|json|ya?ml|css)\b/gi, ' ');
+
     // 1순위: 명시적 도메인 언급 패턴
     const explicitPatterns = [
       /([a-zA-Z][a-zA-Z0-9-_]*)\s*업무/,

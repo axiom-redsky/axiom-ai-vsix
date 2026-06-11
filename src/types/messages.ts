@@ -40,6 +40,8 @@ export interface PageCreationState {
   waitingForDomain: boolean;
   /** 확정된 도메인 */
   resolvedDomain: string | null;
+  /** 동일 페이지 파일이 이미 존재해 덮어쓰기/다른이름/취소 응답 대기 중 여부 (충돌 안전망) */
+  waitingForCollision?: boolean;
 }
 
 // /spec wizard 상태 머신 (ChatViewProvider 내부 + 웹뷰 상태 표시용)

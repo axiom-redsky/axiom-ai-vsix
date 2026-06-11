@@ -9,7 +9,7 @@ import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
-import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick } from '../ai/RegionEditService';
+import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance } from '../ai/RegionEditService';
 import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
@@ -23,6 +23,7 @@ import {
   formatExactPathDirective,
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
+import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult } from '../ai/IntentClassifier';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
@@ -224,9 +225,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _loadReferencedFiles(
     text: string,
     currentFilePath?: string,
-  ): Promise<{ block: string; loaded: string[]; unmatchedApiPaths: string[] }> {
+  ): Promise<{ block: string; loaded: string[]; unmatchedApiPaths: string[]; contents: string[] }> {
     const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) return { block: '', loaded: [], unmatchedApiPaths: [] };
+    if (!folders || folders.length === 0) return { block: '', loaded: [], unmatchedApiPaths: [], contents: [] };
     const root = folders[0].uri;
 
     const EXT = 'md|markdown|json|ya?ml|txt|ts|tsx|js|jsx|css|html?';
@@ -239,7 +240,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     for (const m of text.matchAll(new RegExp(`@[\\w.\\-]+\\.(?:${EXT})\\b`, 'gi'))) {
       candidates.add(m[0]);
     }
-    if (candidates.size === 0) return { block: '', loaded: [], unmatchedApiPaths: [] };
+    // (c) 워크스페이스 루트 파일 — 명시적 `/` 또는 `./` 접두(디렉터리 세그먼트 없음): /api-spec.md, ./spec.md
+    //     (a)는 디렉터리(`dir/`)를 요구해 루트 파일을 놓친다. 사용자가 "참조 파일은 /api-spec.md"라고
+    //     명시해도 주입이 안 돼 모델이 응답 타입을 추측·미선언 → 의존성 게이트가 거부하던 dead-end의 뿌리.
+    //     캐주얼 멘션(슬래시 없는 `config.js`)은 잡지 않아 보수적이다.
+    for (const m of text.matchAll(new RegExp(`(?:^|[\\s'"(\`])(\\.?\\/[\\w.\\-]+\\.(?:${EXT}))\\b`, 'gi'))) {
+      candidates.add(m[1]);
+    }
+    if (candidates.size === 0) return { block: '', loaded: [], unmatchedApiPaths: [], contents: [] };
 
     const PER_FILE_CAP = 8000;
     const TOTAL_CAP = 16000;
@@ -302,7 +310,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       total += injected.length;
     }
 
-    if (blocks.length === 0) return { block: '', loaded: [], unmatchedApiPaths: [] };
+    if (blocks.length === 0) return { block: '', loaded: [], unmatchedApiPaths: [], contents: [] };
     // 따옴표로 지정했으나 주입된 스펙 어디에도 없는 경로 — 사용자에게 정보성 경고 한 번
     const unmatched = unmatchedApiPaths(loadedContents, apiPaths);
     const directive = formatExactPathDirective([...matchedPaths]);
@@ -321,7 +329,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       `**스펙을 따르고, 더미 데이터의 필드명은 타입에 쓰지 마세요.** ` +
       `(예: 더미가 \`name\`이어도 스펙 response가 \`employee_name\`이면 타입은 \`employee_name\`)\n\n` +
       blocks.join('\n\n---\n\n');
-    return { block, loaded, unmatchedApiPaths: unmatched };
+    return { block, loaded, unmatchedApiPaths: unmatched, contents: loadedContents };
   }
 
   /**
@@ -676,6 +684,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this._handlePageCreationNameInput(text.trim());
         return;
       }
+      if (this._pageCreationState.waitingForCollision) {
+        await this._handlePageCreationCollisionInput(text.trim());
+        return;
+      }
       if (this._pageCreationState.waitingForDomain) {
         await this._handlePageCreationDomainInput(text.trim());
         return;
@@ -737,9 +749,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // 페이지 생성 인텐트 감지
+    // 의도 분류기(실험): 정규식 분기 전에 모델에게 "이게 무슨 요청이야?"를 먼저 묻고, 결과를
+    // 채팅에 한 줄로 표시한다. 신뢰 가능한 분류면 그대로 라우팅하고, 분류 실패(null)·'other'면
+    // 아래 기존 PageCreationDetector 정규식으로 폴백한다(회귀 0).
+    let intent: IntentResult | null = null;
+    if (ExtensionConfig.isIntentClassifierEnabled()) {
+      this._postStatus('의도 분석 중…');
+      intent = await this._classifyIntent(text);
+      if (intent) {
+        this._post({ type: 'token', content: `\n> ${formatIntentForChat(intent)}\n` });
+        if (intent.intent === 'create_page') {
+          // 분류기 pageName은 방어적으로 정규화(소문자·확장자 등) — 인식 못 하면 null로 되묻기.
+          const pn = intent.pageName ? this._pageCreationDetector.normalizeName(intent.pageName) : null;
+          await this._startPageCreation(pn, text);
+          return;
+        }
+        // modify_file·qna·smalltalk → 페이지 생성 분기를 건너뛰고 일반(수정/Q&A) 흐름으로.
+      }
+    }
+
+    // 페이지 생성 인텐트 감지 (분류기가 생성으로 확정하지 않았을 때의 폴백/기본 경로)
+    // 분류기가 create_page 외로 **확정**했으면(=null도 'other'도 아님) 정규식 생성 분기를 건너뛴다.
+    const classifierRoutedAway = intent !== null && intent.intent !== 'other';
     const pageIntent = this._pageCreationDetector.detect(text);
-    if (pageIntent.isPageCreation) {
+    if (!classifierRoutedAway && pageIntent.isPageCreation) {
       // pageName이 null(순수 한국어 이름)이어도 생성 워크플로우로 진입해 영문명을 되묻는다.
       // 그러지 않으면 "직원 리스트 화면 만들어줘" 같은 요청이 파일 수정/영역 편집 경로로 새어
       // 열려 있던 도메인 파일을 엉뚱하게 수정한다.
@@ -1798,6 +1831,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
     }
 
+    // 참조(내용 출처) 파일의 import를 심볼→모듈 ground truth로 추출 → 모델의 import 경로 환각 교정용.
+    // (예: 출처 파일이 PageHeader를 @axiom/components/layout에서 가져오는데 모델이 @axiom/components/ui로
+    //  뭉뚱그릴 때, 출처 기준으로 결정론 교정한다.)
+    const referenceImports = buildImportProvenance(refResult.contents);
+
     // 영역 객관식 disambiguation — 결정론 locate가 추린 후보를 모델이 의미로 고르게 한다(우선순위를
     // 휴리스틱이 보편적으로 못 정하는 문제 해소). 번호만 받는 초경량 호출이라 약한 모델도 안정적이다.
     const disambiguate = async (
@@ -1824,7 +1862,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     };
 
     this._postStatus('영역 편집 시도 중…');
-    const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined, disambiguate);
+    const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined, disambiguate, referenceImports);
     this._corpusOutputChannel.appendLine(outcome.diagnostics);
 
     // region 사퇴 시 UX 분기 — 분류는 단일 정책(classifyRegionDecline)에 위임(계기판과 규칙 동기화).
@@ -3641,20 +3679,96 @@ import 변경 또는 2곳 이상 수정이면:
       resolvedDomain,
     };
 
+    await this._maybeGenerateOrAskCollision(pageName, resolvedDomain);
+  }
+
+  /**
+   * 충돌 안전망(§4.2): 같은 페이지 파일이 이미 있으면 **묻지 않고 덮어쓰지 말고** 되묻는다.
+   * 분류기/정규식이 이름을 잘못 뽑아도(예: 참조 파일명을 만들 이름으로 오인) 기존 파일 파괴를 막는
+   * 마지막 방어선. 충돌이 없으면 곧바로 생성한다.
+   */
+  private async _maybeGenerateOrAskCollision(pageName: string, domain: string): Promise<void> {
+    const wsRoot = this._getWorkspaceRoot();
+    const pageRel = `src/domains/${domain}/pages/${pageName}.tsx`;
+    if (wsRoot && fs.existsSync(path.join(wsRoot, pageRel))) {
+      this._pageCreationState = {
+        pageName,
+        domainCandidates: this._pageCreationState?.domainCandidates ?? [domain],
+        waitingForDomain: false,
+        resolvedDomain: domain,
+        waitingForCollision: true,
+      };
+      this._post({
+        type: 'token',
+        content:
+          `\n> ⚠️ **\`${pageRel}\` 파일이 이미 있습니다.** 기존 파일을 실수로 덮어쓰지 않도록 확인합니다.\n>\n` +
+          `> **1)** 덮어쓰기   **2)** 다른 이름   **3)** 취소 — 번호 또는 새 이름을 입력하세요. (취소: \`/cancel\`)\n`,
+      });
+      this._post({ type: 'done' });
+      this._postStatus('페이지 생성 — 덮어쓰기 확인 대기');
+      return;
+    }
+    await this._proceedPageGeneration(pageName, domain);
+  }
+
+  /** 도메인·이름이 확정되고 충돌이 없을 때 실제 생성으로 분기한다. */
+  private async _proceedPageGeneration(pageName: string, domain: string): Promise<void> {
     this._post({
       type: 'token',
-      content: `\`${resolvedDomain}\` 도메인에 **${pageName}** 페이지를 생성합니다...\n\n`,
+      content: `\`${domain}\` 도메인에 **${pageName}** 페이지를 생성합니다...\n\n`,
     });
 
     // 기본: 결정론적 템플릿(최소 스켈레톤)으로 생성 — 약한 모델의 잘못된 useApi/$router/타입 환각 차단.
     // 실험 플래그(pageCreationLlmMode)가 켜져 있으면 LLM이 본문(데이터 페치 포함)을 생성한다.
     if (ExtensionConfig.isPageCreationLlmMode()) {
-      await this._createPageWithLlm(pageName, resolvedDomain);
+      await this._createPageWithLlm(pageName, domain);
     } else {
-      await this._createPageFromTemplate(pageName, resolvedDomain);
+      await this._createPageFromTemplate(pageName, domain);
     }
 
     this._pageCreationState = null;
+  }
+
+  /**
+   * 페이지 파일 충돌 시 사용자 응답 처리: 1=덮어쓰기, 3=취소, 그 외(2 또는 새 이름)=다른 이름.
+   * 새 이름은 정규화 후 다시 충돌검사를 거친다(같은 이름 재입력 시 무한 덮어쓰기 방지).
+   */
+  private async _handlePageCreationCollisionInput(input: string): Promise<void> {
+    if (!this._pageCreationState) return;
+    const { pageName, resolvedDomain } = this._pageCreationState;
+    if (!resolvedDomain) {
+      this._pageCreationState = null;
+      return;
+    }
+
+    // 1) 덮어쓰기
+    if (/^(1|덮어쓰기|덮어써|overwrite|y|yes)$/i.test(input)) {
+      this._pageCreationState = { ...this._pageCreationState, waitingForCollision: false };
+      await this._proceedPageGeneration(pageName, resolvedDomain);
+      return;
+    }
+    // 3) 취소
+    if (/^(3|취소|cancel|n|no)$/i.test(input)) {
+      this._pageCreationState = null;
+      this._post({ type: 'token', content: '페이지 생성을 취소했습니다.' });
+      this._post({ type: 'done' });
+      this._postStatus(ExtensionConfig.getLlmConfig().model);
+      return;
+    }
+    // 2) 다른 이름: "2"만 입력 → 이름 되묻기 / 새 이름 직접 입력 → 정규화 후 재충돌검사
+    const newName = /^2$/.test(input) ? null : this._pageCreationDetector.normalizeName(input);
+    if (!newName) {
+      this._pageCreationState = { ...this._pageCreationState, waitingForCollision: false, waitingForName: true };
+      this._post({
+        type: 'token',
+        content: '새 **영문 이름**(PascalCase)을 입력해주세요. 예: `EmployeeList2Page` (취소: `/cancel`)',
+      });
+      this._post({ type: 'done' });
+      this._postStatus('페이지 생성 — 영문명 입력 대기');
+      return;
+    }
+    this._pageCreationState = { ...this._pageCreationState, pageName: newName, waitingForCollision: false };
+    await this._maybeGenerateOrAskCollision(newName, resolvedDomain);
   }
 
   /**
@@ -4056,29 +4170,83 @@ export default routes;`;
     domainPascal: string,
   ): string {
     const importLine = `import ${domainPascal}Router from '@/domains/${domain}/router';`;
+    const routeEntry = `  { path: '/${domain}', element: <RootLayout />, children: ${domainPascal}Router },`;
 
-    let withImport: string;
-    if (existing.includes(importLine)) {
-      withImport = existing;
-    } else {
-      // 1순위: 마지막 Router import 뒤
-      withImport = existing.replace(
-        /(import \w+Router from [^\n]+\n)(?!import \w+Router)/,
-        `$1${importLine}\n`,
-      );
-      if (withImport === existing) {
-        // 2순위: const routes 선언 바로 앞
-        withImport = existing.replace(/^(const routes\b)/m, `${importLine}\n$1`);
+    const lines = existing.split('\n');
+
+    // 줄 단위로 "살아있는 코드"인지 판정한다(// 라인 주석과 /* */ 블록 주석을 모두 무시).
+    // 사용자가 주석으로 넣어둔 import/route 때문에 중복 판정·잘못된 위치 삽입이 일어나던 것을 막는다.
+    let inBlock = false;
+    const isActive: boolean[] = lines.map((line) => {
+      const trimmed = line.trim();
+      if (inBlock) {
+        if (trimmed.includes('*/')) inBlock = false;
+        return false;
+      }
+      if (trimmed.startsWith('/*')) {
+        if (!trimmed.includes('*/')) inBlock = true;
+        return false;
+      }
+      if (trimmed.startsWith('//')) return false;
+      return true;
+    });
+
+    // ── import 추가 ──────────────────────────────────────────────────
+    const alreadyImported = lines.some((l, i) => isActive[i] && l.includes(importLine));
+    if (!alreadyImported) {
+      // 1순위: 마지막 (활성) Router import 뒤
+      let lastRouterImport = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (isActive[i] && /^\s*import\s+\w+Router\s+from\s+/.test(lines[i])) {
+          lastRouterImport = i;
+        }
+      }
+      if (lastRouterImport >= 0) {
+        lines.splice(lastRouterImport + 1, 0, importLine);
+        isActive.splice(lastRouterImport + 1, 0, true);
+      } else {
+        // 2순위: 활성 `const routes` 선언 바로 앞
+        const routesDeclIdx = lines.findIndex(
+          (l, i) => isActive[i] && /^\s*const\s+routes\b/.test(l),
+        );
+        const insertAt = routesDeclIdx >= 0 ? routesDeclIdx : 0;
+        lines.splice(insertAt, 0, importLine);
+        isActive.splice(insertAt, 0, true);
       }
     }
 
-    const routeEntry = `  { path: '/${domain}', element: <RootLayout />, children: ${domainPascal}Router },`;
-
-    let result = withImport.replace(/(\];)/, `${routeEntry}\n$1`);
-    if (result === withImport) {
-      result = withImport.replace(/^(\s*\])/m, `${routeEntry}\n$1`);
+    // ── routes 항목 추가 ─────────────────────────────────────────────
+    // 활성 `const routes ... = [` 를 찾아, 대괄호 깊이를 세서 그 배열의 닫는 `]` 직전에 삽입.
+    const routesStart = lines.findIndex(
+      (l, i) => isActive[i] && /^\s*const\s+routes\b[^=]*=\s*\[/.test(l),
+    );
+    let inserted = false;
+    if (routesStart >= 0) {
+      let depth = 0;
+      for (let i = routesStart; i < lines.length; i++) {
+        if (!isActive[i]) continue;
+        for (const ch of lines[i]) {
+          if (ch === '[') depth++;
+          else if (ch === ']') depth--;
+        }
+        if (depth <= 0) {
+          // i번째 줄이 배열을 닫는다 → 그 줄 앞에 항목 삽입
+          lines.splice(i, 0, routeEntry);
+          inserted = true;
+          break;
+        }
+      }
     }
-    return result;
+    if (!inserted) {
+      // 폴백: 첫 번째 활성 `];` 앞
+      const closeIdx = lines.findIndex((l, i) => isActive[i] && /\];/.test(l));
+      if (closeIdx >= 0) {
+        lines.splice(closeIdx, 0, routeEntry);
+        inserted = true;
+      }
+    }
+
+    return lines.join('\n');
   }
 
   /** 현재 활성 에디터 파일 경로에서 도메인명을 추출한다. */
@@ -4091,6 +4259,60 @@ export default routes;`;
   }
 
   /** 워크스페이스 src/domains/ 폴더를 스캔하여 도메인 목록을 반환한다. */
+  /**
+   * 의도 분류기(실험): 정규식 게이트 앞에서 모델에게 의도·슬롯을 먼저 묻는다.
+   * region disambiguation과 같은 경량·제약 호출이라 약한 모델도 안정적이다.
+   * 모델 부재·타임아웃·파싱 실패 시 null을 돌려 호출부가 기존 정규식으로 폴백하게 한다(회귀 0).
+   */
+  private async _classifyIntent(query: string): Promise<IntentResult | null> {
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const editorRel = vscode.window.activeTextEditor
+      ? this._toWorkspaceRel(vscode.window.activeTextEditor.document.fileName)
+      : null;
+    const hasSelection = !!vscode.window.activeTextEditor && !vscode.window.activeTextEditor.selection.isEmpty;
+
+    const prompt = buildIntentPrompt(query, {
+      currentFile: editorRel,
+      hasSelection,
+      domains: this._scanWorkspaceDomains(),
+    });
+
+    const ctrl = new AbortController();
+    try {
+      let fellBack = false;
+      let out = '';
+      for await (const token of this._llm.streamChat(
+        [
+          { role: 'system', content: '당신은 의도 분류기입니다. JSON 한 줄만 출력하세요.' },
+          { role: 'user', content: prompt },
+        ],
+        config,
+        ctrl.signal,
+        () => { fellBack = true; },
+      )) {
+        out += token;
+        // JSON 한 줄이면 충분 — 닫는 중괄호가 오면 조기 종료(토큰 절약).
+        if (out.includes('}')) { ctrl.abort(); break; }
+      }
+      if (fellBack) return null; // 모델 연결 끊김 → 정규식 폴백
+      const result = parseIntent(out);
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 의도 분류: ${result ? JSON.stringify(result) : `파싱 실패(원문: ${out.trim().slice(0, 80)})`}`,
+      );
+      return result;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 절대/상대 파일 경로를 워크스페이스 상대(슬래시) 경로로 변환한다. */
+  private _toWorkspaceRel(fileName: string): string {
+    const wsRoot = this._getWorkspaceRoot();
+    if (!wsRoot) return fileName;
+    const rel = path.relative(wsRoot, fileName);
+    return rel.startsWith('..') ? fileName : rel.replace(/\\/g, '/');
+  }
+
   private _scanWorkspaceDomains(): string[] {
     const wsRoot = this._getWorkspaceRoot();
     if (!wsRoot) return [];

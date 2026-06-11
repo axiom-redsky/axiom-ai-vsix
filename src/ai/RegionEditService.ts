@@ -97,6 +97,97 @@ export function parseDisambiguationPick(output: string, candidates: RegionCandid
   return candidates[n - 1];
 }
 
+/**
+ * 참조(내용 출처) 파일들의 import 문에서 **심볼 → 모듈 경로** 맵을 만든다.
+ *
+ * region 편집이 참조 파일의 JSX를 가져올 때, 그 JSX가 쓰는 컴포넌트(PageHeader·StatusBadge 등)의
+ * **정답 import 경로는 참조 파일 맨 위에 이미 적혀 있다.** 약한 모델은 이를 베끼지 않고 프롬프트 예시의
+ * 모듈(@axiom/components/ui)로 경로를 뭉뚱그려 환각한다. 이 맵을 ground truth로 써서 모델이 추측한
+ * 경로를 결정론적으로 교정한다(reconcileImportsWithReference).
+ *
+ * 별칭(`X as Y`)은 JSX에서 실제로 쓰는 **로컬명(Y)** 을 키로 둔다. type-only import는 건너뛴다.
+ */
+export function buildImportProvenance(refContents: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const importRe = /import\s+(type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g;
+  for (const content of refContents) {
+    let m: RegExpExecArray | null;
+    while ((m = importRe.exec(content)) !== null) {
+      if (m[1]) continue; // `import type …` 전체는 값 심볼이 아니므로 제외
+      const clause = m[2].trim();
+      const mod = m[3];
+
+      // named: { A, B as C, type D }
+      const namedBlock = clause.match(/\{([\s\S]*?)\}/);
+      if (namedBlock) {
+        for (const part of namedBlock[1].split(',')) {
+          const t = part.trim();
+          if (!t || /^type\s/.test(t)) continue; // 개별 type 항목 제외
+          const local = t.split(/\s+as\s+/i).pop()!.trim();
+          if (/^[A-Za-z_$][\w$]*$/.test(local)) map.set(local, mod);
+        }
+      }
+
+      // namespace: * as NS
+      const ns = clause.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
+      if (ns) map.set(ns[1], mod);
+
+      // default: 이름블록·네임스페이스를 떼고 남은 선두 식별자
+      const rest = clause.replace(/\{[\s\S]*?\}/, '').replace(/\*\s+as\s+[A-Za-z_$][\w$]*/, '');
+      const def = rest.split(',')[0]?.trim();
+      if (def && /^[A-Za-z_$][\w$]*$/.test(def)) map.set(def, mod);
+    }
+  }
+  return map;
+}
+
+/**
+ * 모델이 낸 import 목록을, 참조 파일에서 추출한 provenance(심볼→정답 모듈)로 교정한다.
+ * 참조가 심볼을 다른 모듈로 선언했으면 그 모듈로 옮기고, 모듈별로 다시 묶는다.
+ * provenance에 없는 심볼(참조가 안 가진 것)은 모델 경로를 그대로 둔다.
+ *
+ * @returns 교정된 imports + 사람이 읽는 교정 내역(진단 로그용).
+ */
+export function reconcileImportsWithReference(
+  imports: ImportRequest[],
+  provenance: Map<string, string>,
+): { imports: ImportRequest[]; corrections: string[] } {
+  if (provenance.size === 0 || imports.length === 0) return { imports, corrections: [] };
+
+  const corrections: string[] = [];
+  type Entry = { kind: 'named' | 'def'; symbol: string; module: string };
+  const entries: Entry[] = [];
+  for (const imp of imports) {
+    if (imp.named) for (const s of imp.named) entries.push({ kind: 'named', symbol: s, module: imp.module });
+    if (imp.def) entries.push({ kind: 'def', symbol: imp.def, module: imp.module });
+  }
+  for (const e of entries) {
+    const truth = provenance.get(e.symbol);
+    if (truth && truth !== e.module) {
+      corrections.push(`${e.symbol}: ${e.module} → ${truth}`);
+      e.module = truth;
+    }
+  }
+  if (corrections.length === 0) return { imports, corrections: [] };
+
+  // 모듈별 재그룹(named 합치고 def 보존).
+  const byModule = new Map<string, { named: string[]; def?: string }>();
+  for (const e of entries) {
+    let g = byModule.get(e.module);
+    if (!g) { g = { named: [] }; byModule.set(e.module, g); }
+    if (e.kind === 'named') { if (!g.named.includes(e.symbol)) g.named.push(e.symbol); }
+    else g.def = e.symbol;
+  }
+  const out: ImportRequest[] = [];
+  for (const [module, g] of byModule) {
+    const req: ImportRequest = { module };
+    if (g.named.length) req.named = g.named;
+    if (g.def) req.def = g.def;
+    out.push(req);
+  }
+  return { imports: out, corrections };
+}
+
 /** ```lang … ``` 코드펜스를 벗겨 순수 코드만 남긴다. */
 function stripFences(s: string): string {
   const m = s.match(/```[a-zA-Z]*\n([\s\S]*?)\n```/);
@@ -245,6 +336,7 @@ export async function runHybridRegionEdit(
   callModel: (system: string, user: string) => Promise<string>,
   referencedSpec?: string,
   disambiguate?: RegionDisambiguator,
+  referenceImports?: Map<string, string>,
 ): Promise<RegionEditOutcome> {
   let loc = locateEditRegion(source, query);
 
@@ -308,6 +400,17 @@ export async function runHybridRegionEdit(
       return req;
     })
     .filter((r) => r.module);
+
+  // 3.5) import 경로 교정 — 참조(내용 출처) 파일이 ground truth. 모델이 컴포넌트 import 경로를
+  //   프롬프트 예시 모듈(@axiom/components/ui)로 뭉뚱그려 환각하는 것을, 참조 파일의 실제 import로
+  //   결정론적으로 바로잡는다(예: PageHeader·StatusBadge를 올바른 모듈로 이동). 참조 없으면 no-op.
+  let importCorrections: string[] = [];
+  if (referenceImports && referenceImports.size > 0) {
+    const rec = reconcileImportsWithReference(imports, referenceImports);
+    imports.length = 0;
+    imports.push(...rec.imports);
+    importCorrections = rec.corrections;
+  }
 
   // 아무 산출물도 없으면(빈 응답) full로 넘긴다 — region이 줄 수 있는 게 없음.
   if (!newRegion.trim() && !hookCode.trim() && imports.length === 0 && replaceBlocks.length === 0) {
@@ -464,9 +567,12 @@ export async function runHybridRegionEdit(
     return { status: 'fallback', reason: 'no-op', diagnostics: '[regionEdit] 합성 결과가 원본과 동일(no-op) → full 폴백' };
   }
 
+  const correctionNote = importCorrections.length
+    ? ` / 🔧 import 경로 교정(참조 기준): ${importCorrections.join(', ')}`
+    : '';
   return {
     status: 'applied',
     finalText: composed,
-    diagnostics: `[regionEdit] 적용: ${changes.join(' / ')}`,
+    diagnostics: `[regionEdit] 적용: ${changes.join(' / ')}${correctionNote}`,
   };
 }
