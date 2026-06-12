@@ -8,6 +8,13 @@ export class LlmService {
   private readonly _bundledStubsDir: string | null;
   private _stub: FallbackStubService;
 
+  /**
+   * per-call 튜닝(anti-repeat penalty)을 400으로 거부한 엔드포인트 집합(세션 캐시).
+   * 한 번 거부당한 백엔드(LiteLLM→ollama 등)에는 이후 튜닝을 아예 안 실어, 매 Q&A마다 400+재시도로
+   * 왕복이 두 배 되는 것을 막는다. 키는 config.endpoint.
+   */
+  private readonly _tuningUnsupported = new Set<string>();
+
   constructor(extensionUri?: vscode.Uri) {
     if (extensionUri) {
       const p = vscode.Uri.joinPath(extensionUri, '.stubs').fsPath;
@@ -95,11 +102,13 @@ export class LlmService {
     };
     Object.assign(headers, this._buildAuthHeaders(config));
 
-    // 현재 시도에 적용할 thinking 억제 옵션·토큰 (자동 폴백에서 조정됨)
+    // 현재 시도에 적용할 thinking 억제 옵션·토큰·튜닝 (자동 폴백에서 조정됨)
     let sendThinkingParams = config.sendThinkingParams;
     let maxTokens = config.maxTokens;
+    // 이 엔드포인트가 이전에 튜닝 파라미터를 거부했다면 처음부터 안 싣는다(왕복 절약).
+    let activeTuning = this._tuningUnsupported.has(config.endpoint) ? undefined : tuning;
     const buildBody = (): string =>
-      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens, tuning });
+      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens, tuning: activeTuning });
 
     console.log(`[Axiom AI] → 요청 URL: ${url} (provider=${config.provider})`);
     console.log(
@@ -172,6 +181,29 @@ export class LlmService {
         return;
       }
       console.log(`[Axiom AI] ← (재시도) 응답 상태: ${response.status} ${response.statusText}`);
+    }
+
+    // 자동 폴백 ①-b: per-call 튜닝(anti-repeat의 frequency/presence_penalty)을 백엔드가 거부(400)한 경우,
+    // 튜닝 파라미터를 빼고 1회 재시도한다. OpenAI 호환 엔드포인트가 실제로는 LiteLLM→ollama 프록시면
+    // ollama가 presence_penalty를 지원하지 않아 `UnsupportedParamsError` 400을 낸다. 반복 억제는
+    // "있으면 좋은" 보조 튜닝이므로, 안 되는 백엔드에선 조용히 떨궈 본 응답을 살린다(설명만 못 받는 dead-end 방지).
+    if (!isOllama && response.status === 400 && activeTuning) {
+      const detail = (await response.text().catch(() => '')).trim().slice(0, 200);
+      console.warn(
+        `[Axiom AI] 400 Bad Request — anti-repeat 튜닝 파라미터를 제거하고 1회 재시도합니다. ` +
+        `(백엔드가 presence/frequency_penalty를 지원하지 않는 듯합니다${detail ? `: ${detail}` : ''})`,
+      );
+      activeTuning = undefined;
+      this._tuningUnsupported.add(config.endpoint); // 이후 호출부터는 처음부터 안 싣는다.
+      response = await attemptFetch();
+      if (response === null) {
+        const reason = '네트워크 오류 (튜닝 파라미터 제거 재시도 중 연결 실패)';
+        console.warn(`[Axiom AI] ${reason}, 폴백 모드`);
+        onFallback?.(reason);
+        yield* this._stub.stream(FallbackStubService.extractUserText(messages));
+        return;
+      }
+      console.log(`[Axiom AI] ← (튜닝 제거 재시도) 응답 상태: ${response.status} ${response.statusText}`);
     }
 
     // 5xx → 폴백
