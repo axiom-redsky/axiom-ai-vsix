@@ -4,9 +4,18 @@ import type { HostToWebviewMessage, AxiomSettings } from '../../types/messages';
 
 type Tab = 'home' | 'settings';
 
+const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
+  axiomFolder: '',
+  regionEdit: true,
+  intentClassifier: true,
+  pageCreationLlmMode: false,
+  logSystemPrompt: false,
+};
+
 const DEFAULT_SETTINGS: AxiomSettings = {
-  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768 },
+  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768, provider: 'ollama' },
   rag: { userRagFolder: '', additionalFiles: [] },
+  project: { ...DEFAULT_PROJECT },
 };
 
 export function LauncherApp(): React.ReactElement {
@@ -77,6 +86,18 @@ export function LauncherApp(): React.ReactElement {
     [],
   );
 
+  const handleProjectChange = useCallback(
+    (field: keyof NonNullable<AxiomSettings['project']>, value: string | boolean) => {
+      setSettings((prev) => ({
+        ...prev,
+        project: { ...(prev.project ?? DEFAULT_PROJECT), [field]: value },
+      }));
+      setDirty(true);
+      setSaved(false);
+    },
+    [],
+  );
+
   const handleSave = useCallback(() => {
     vscode.postMessage({ type: 'updateSettings', settings });
     setDirty(false);
@@ -100,7 +121,7 @@ export function LauncherApp(): React.ReactElement {
 
   return (
     <div className="launcher">
-      {/* 탭 네비게이션 */}
+      {/* 탭 네비게이션 + 저장(설정 탭에서만, 항상 보이도록 상단 고정) */}
       <div className="launcher__tabs">
         <button
           className={`launcher__tab${tab === 'home' ? ' launcher__tab--active' : ''}`}
@@ -114,18 +135,36 @@ export function LauncherApp(): React.ReactElement {
         >
           설정
         </button>
+        {tab === 'settings' && (
+          <button
+            className={`launcher__save-btn${dirty ? ' launcher__save-btn--active' : ''}${saved ? ' launcher__save-btn--saved' : ''}`}
+            onClick={handleSave}
+            disabled={!dirty}
+            title="LLM 연결 + 프로젝트 설정을 함께 저장 (RAG 파일은 추가/삭제 시 즉시 반영)"
+          >
+            {saved ? (
+              <svg className="launcher__save-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M13.5 4.5L6.5 11.5L3 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg className="launcher__save-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2.5 2.5h8.3L13.5 5.2V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5V2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                <path d="M5 2.5v3.2h5V2.5M5 13.5v-3.8a.5.5 0 0 1 .5-.5h4.5a.5.5 0 0 1 .5.5v3.8" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              </svg>
+            )}
+            <span>{saved ? '저장됨' : '저장'}</span>
+          </button>
+        )}
       </div>
 
       {tab === 'home' && <HomeTab model={model} />}
       {tab === 'settings' && (
         <SettingsTab
           settings={settings}
-          dirty={dirty}
-          saved={saved}
           connTest={connTest}
           testing={testing}
           onLlmChange={handleLlmChange}
-          onSave={handleSave}
+          onProjectChange={handleProjectChange}
           onTestConnection={handleTestConnection}
           onPickRagFile={handlePickRagFile}
           onPickRagFolder={handlePickRagFolder}
@@ -222,12 +261,10 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
 
 interface SettingsTabProps {
   settings: AxiomSettings;
-  dirty: boolean;
-  saved: boolean;
   connTest: { ok: boolean; detail: string } | null;
   testing: boolean;
   onLlmChange: (field: keyof AxiomSettings['llm'], value: string | number) => void;
-  onSave: () => void;
+  onProjectChange: (field: keyof NonNullable<AxiomSettings['project']>, value: string | boolean) => void;
   onTestConnection: () => void;
   onPickRagFile: () => void;
   onPickRagFolder: () => void;
@@ -237,18 +274,17 @@ interface SettingsTabProps {
 
 function SettingsTab({
   settings,
-  dirty,
-  saved,
   connTest,
   testing,
   onLlmChange,
-  onSave,
+  onProjectChange,
   onTestConnection,
   onPickRagFile,
   onPickRagFolder,
   onRemoveRagFile,
   onClearRagFolder,
 }: SettingsTabProps): React.ReactElement {
+  const project = settings.project ?? DEFAULT_PROJECT;
   return (
     <div className="settings">
       {/* LLM 설정 */}
@@ -275,6 +311,18 @@ function SettingsTab({
             placeholder="예: qwen2.5-coder:14b"
             onChange={(e) => onLlmChange('model', e.target.value)}
           />
+        </label>
+
+        <label className="settings__label">
+          백엔드 종류 (provider)
+          <select
+            className="settings__input"
+            value={settings.llm.provider ?? 'ollama'}
+            onChange={(e) => onLlmChange('provider', e.target.value)}
+          >
+            <option value="ollama">ollama (네이티브 /api/chat)</option>
+            <option value="openai">openai 호환 (/v1/chat/completions)</option>
+          </select>
         </label>
 
         <label className="settings__label">
@@ -328,13 +376,6 @@ function SettingsTab({
         </label>
 
         <div className="settings__actions-row">
-          <button
-            className={`settings__save-btn${dirty ? ' settings__save-btn--active' : ''}`}
-            onClick={onSave}
-            disabled={!dirty}
-          >
-            {saved ? '저장 완료 ✓' : '저장'}
-          </button>
           <button
             className="settings__test-btn"
             onClick={onTestConnection}
@@ -411,6 +452,62 @@ function SettingsTab({
             </ul>
           )}
         </div>
+      </section>
+
+      {/* 프로젝트 설정 — <axiomFolder>/axiom.config.json (axiomFolder만 전역) */}
+      <section className="settings__section">
+        <h2 className="settings__section-title">프로젝트 설정</h2>
+        <p className="settings__hint">
+          아래 항목은 현재 프로젝트의 <code>&lt;axiomFolder&gt;/axiom.config.json</code>에 저장됩니다(폴더가 없으면 자동 생성).
+          <code>.axiom 폴더</code>만 전역 설정에 저장됩니다.
+        </p>
+
+        <label className="settings__label">
+          .axiom 폴더 경로
+          <input
+            className="settings__input"
+            type="text"
+            value={project.axiomFolder}
+            placeholder=".axiom"
+            onChange={(e) => onProjectChange('axiomFolder', e.target.value)}
+          />
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.regionEdit}
+            onChange={(e) => onProjectChange('regionEdit', e.target.checked)}
+          />
+          <span>영역(region) 편집 — experimental.regionEdit</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.intentClassifier}
+            onChange={(e) => onProjectChange('intentClassifier', e.target.checked)}
+          />
+          <span>의도 분류기 — experimental.intentClassifier</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.pageCreationLlmMode}
+            onChange={(e) => onProjectChange('pageCreationLlmMode', e.target.checked)}
+          />
+          <span>페이지 본문 LLM 생성 — experimental.pageCreationLlmMode</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.logSystemPrompt}
+            onChange={(e) => onProjectChange('logSystemPrompt', e.target.checked)}
+          />
+          <span>시스템 프롬프트 로깅 — debug.logSystemPrompt</span>
+        </label>
       </section>
     </div>
   );

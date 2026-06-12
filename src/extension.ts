@@ -12,6 +12,10 @@ import { initEmbeddingPipeline } from './ai/EmbeddingService';
 import * as path from 'path';
 
 export function activate(context: vscode.ExtensionContext): void {
+  // 통합 설정 계층 초기화(SecretStorage 핸들·apiKey 선로딩·통합 설정 파일 감시).
+  // 비동기지만 즉시 await하지 않아도 안전 — 선로딩 전엔 종전(settings.json) 동작으로 폴백한다.
+  void ExtensionConfig.init(context);
+
   const launcherProvider = new ChatPanelProvider(context.extensionUri);
   const chatProvider = new ChatViewProvider(context.extensionUri);
   const sddPanel = new SddPanelProvider();

@@ -21,10 +21,28 @@ export interface AxiomSettings {
     maxTokens: number;
     /** 토큰 메터 분모(전체 컨텍스트 한도). 서버 한도가 아니라 표시·히스토리 트리밍 기준. */
     contextWindow: number;
+    /** LLM 백엔드 종류. 연결 테스트의 자동 정렬과 동일 값. (옵셔널: 기존 메시지 하위호환) */
+    provider?: 'openai' | 'ollama';
   };
   rag: {
     userRagFolder: string;
     additionalFiles: string[];
+  };
+  /**
+   * 프로젝트 단위 설정(`<axiomFolder>/axiom.config.json`에 저장). 옵셔널 — 미존재 시 기존 동작.
+   * axiomFolder만 부트스트랩이라 전역 settings.json에 저장된다.
+   */
+  project?: {
+    /** .axiom 폴더 경로(SDD/통합설정 저장소). 전역 settings.json(axiom-ai.sdd.axiomFolder)에 저장. */
+    axiomFolder: string;
+    /** 실험: 영역(region/hybrid) 편집. */
+    regionEdit: boolean;
+    /** 실험: 의도 분류기. */
+    intentClassifier: boolean;
+    /** 실험: 페이지 본문 LLM 생성 모드. */
+    pageCreationLlmMode: boolean;
+    /** 디버그: 시스템 프롬프트 전문을 출력 채널에 기록. */
+    logSystemPrompt: boolean;
   };
 }
 

@@ -1,6 +1,38 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AI_DEFAULTS } from '../ai/config';
 import type { LlmConfig } from '../ai/types';
+
+/**
+ * 통합 프로젝트 설정 파일(`<axiomFolder>/axiom.config.json`)에서 **우선** 읽는 키 집합.
+ * 여기 없는 키(머신·시크릿·부트스트랩)는 종전과 100% 동일하게 VSCode 설정에서만 읽는다.
+ * - 파일이 없거나 해당 키가 없으면 자동으로 VSCode 설정 → AI_DEFAULTS 순서로 폴백한다(회귀 0).
+ * - 읽기·쓰기 라우팅의 단일 진실원. flat dotted key 형태로 저장한다(설정 키와 동일).
+ */
+const PROJECT_CONFIG_KEYS = new Set<string>([
+  'sdd.requireComplianceTags',
+  'server.offlineFallback',
+  'rag.userRagFolder', 'rag.additionalFiles', 'rag.externalCorpusEnabled', 'rag.validateExternalCorpus',
+  'stubs.userStubsFolder',
+  'debug.logSystemPrompt',
+  'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
+  'scenarioC.compactModes',
+  'promptDiet.qnaGating',
+  'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
+  'promptDiet.adaptiveBudget.targetRatio', 'promptDiet.adaptiveBudget.charsPerToken',
+  'multiPatch.enabled', 'multiPatch.maxPatches', 'multiPatch.minContextLines',
+  'multiPatch.groundedRetry', 'multiPatch.fuzzyLocateThreshold', 'multiPatch.rippleGuard',
+  'lineEdit.enabled', 'lineEdit.requireAnchor', 'lineEdit.anchorSearchRadius',
+  'llm.qnaAntiRepeat.enabled', 'llm.qnaAntiRepeat.repeatPenalty',
+  'llm.qnaAntiRepeat.frequencyPenalty', 'llm.qnaAntiRepeat.presencePenalty',
+]);
+
+/** 통합 설정 파일명. 위치는 `<axiomFolder>/` (기본 `.axiom/`). */
+const PROJECT_CONFIG_FILE = 'axiom.config.json';
+
+/** apiKey를 보관하는 SecretStorage 키. */
+const API_KEY_SECRET = 'axiom-ai.llm.apiKey';
 
 export interface RagConfig {
   embeddingModel: string;
@@ -51,11 +83,142 @@ export class ExtensionConfig {
     return vscode.workspace.getConfiguration('axiom-ai');
   }
 
+  // ─── 통합 설정 파일 + 시크릿 계층 ───────────────────────────────────────────
+  // 설계: 읽기 해상도 = (프로젝트 파일) → (VSCode 설정) → (AI_DEFAULTS).
+  //       파일·시크릿이 없으면 종전 동작과 바이트 동일(회귀 0).
+
+  private static _secrets: vscode.SecretStorage | undefined;
+  /** undefined = 아직 선로딩 전(설정 폴백), 그 외 = 시크릿에서 로드된 값('' 포함). */
+  private static _apiKeyCache: string | undefined;
+  private static _projectCfgCache: Record<string, unknown> | null = null;
+
+  /**
+   * 활성화 시 1회 호출. SecretStorage 핸들 보관 + apiKey 선로딩(+1회 마이그레이션) +
+   * 통합 설정 파일 변경 감시(캐시 무효화)를 등록한다. 실패해도 종전(설정) 동작으로 폴백한다.
+   */
+  static async init(context: vscode.ExtensionContext): Promise<void> {
+    ExtensionConfig._secrets = context.secrets;
+
+    // 통합 설정 파일 변경 → 캐시 무효화 (워크스페이스 내 axiom.config.json 일체)
+    try {
+      const watcher = vscode.workspace.createFileSystemWatcher(`**/${PROJECT_CONFIG_FILE}`);
+      const invalidate = () => ExtensionConfig.reloadProjectConfig();
+      watcher.onDidChange(invalidate);
+      watcher.onDidCreate(invalidate);
+      watcher.onDidDelete(invalidate);
+      context.subscriptions.push(watcher);
+    } catch { /* 감시 실패는 치명적이지 않음(다음 reload 때 갱신) */ }
+
+    // axiomFolder가 바뀌면 파일 경로가 달라지므로 캐시 무효화
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('axiom-ai.sdd.axiomFolder')) ExtensionConfig.reloadProjectConfig();
+      }),
+    );
+
+    // apiKey 선로딩 + settings.json 평문 키 1회 마이그레이션
+    try {
+      let secret = await context.secrets.get(API_KEY_SECRET);
+      if (!secret) {
+        const legacy = ExtensionConfig._cfg().get<string>('llm.apiKey', '');
+        if (legacy) {
+          await context.secrets.store(API_KEY_SECRET, legacy);
+          secret = legacy;
+          // 평문 키 제거(마이그레이션). 실패해도 폴백이 있으므로 무시.
+          try { await ExtensionConfig._cfg().update('llm.apiKey', '', vscode.ConfigurationTarget.Global); } catch { /* noop */ }
+        }
+      }
+      ExtensionConfig._apiKeyCache = secret ?? '';
+    } catch { /* 시크릿 접근 실패 → 캐시 미설정 유지(설정 폴백) */ }
+  }
+
+  /** 통합 설정 파일 캐시를 비운다. 다음 읽기에서 디스크를 다시 읽는다. */
+  static reloadProjectConfig(): void {
+    ExtensionConfig._projectCfgCache = null;
+  }
+
+  /** `<workspace>/<axiomFolder>/axiom.config.json` 절대 경로. 워크스페이스 없으면 null. */
+  private static _projectCfgPath(): string | null {
+    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!wsRoot) return null;
+    // 부트스트랩: axiomFolder 미설정 시 scaffold 컨벤션 `.axiom`을 가정(설정 기본값은 건드리지 않음).
+    const axiomFolder = ExtensionConfig._cfg().get<string>('sdd.axiomFolder', '') || '.axiom';
+    const dir = path.isAbsolute(axiomFolder) ? axiomFolder : path.join(wsRoot, axiomFolder);
+    return path.join(dir, PROJECT_CONFIG_FILE);
+  }
+
+  /** 통합 설정 파일을 파싱해 반환(캐시). 없거나 파싱 실패 시 빈 객체. */
+  private static _projectCfg(): Record<string, unknown> {
+    if (ExtensionConfig._projectCfgCache) return ExtensionConfig._projectCfgCache;
+    let result: Record<string, unknown> = {};
+    const p = ExtensionConfig._projectCfgPath();
+    if (p && fs.existsSync(p)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        if (parsed && typeof parsed === 'object') result = parsed as Record<string, unknown>;
+      } catch { /* 파싱 실패 → 빈 객체 */ }
+    }
+    ExtensionConfig._projectCfgCache = result;
+    return result;
+  }
+
+  /**
+   * 단일 키 해상도. 프로젝트-라우팅 키면 파일 값을 우선하고, 없으면 VSCode 설정 → fallback.
+   * 프로젝트 키가 아니면 종전과 동일하게 VSCode 설정에서만 읽는다.
+   */
+  private static _resolve<T>(key: string, fallback: T): T {
+    if (PROJECT_CONFIG_KEYS.has(key)) {
+      const pc = ExtensionConfig._projectCfg();
+      const v = pc[key];
+      if (v !== undefined && v !== null) return v as T;
+    }
+    return ExtensionConfig._cfg().get<T>(key, fallback);
+  }
+
+  /** apiKey 읽기. 시크릿 선로딩 전이면 종전(설정.json) 동작으로 폴백. */
+  static getApiKey(): string {
+    if (ExtensionConfig._apiKeyCache !== undefined) return ExtensionConfig._apiKeyCache;
+    return ExtensionConfig._cfg().get<string>('llm.apiKey', AI_DEFAULTS.apiKey);
+  }
+
+  /** apiKey 저장(시크릿). 평문이 settings.json에 남지 않도록 해당 값은 비운다. */
+  static async setApiKey(value: string): Promise<void> {
+    ExtensionConfig._apiKeyCache = value;
+    if (ExtensionConfig._secrets) {
+      try {
+        if (value) await ExtensionConfig._secrets.store(API_KEY_SECRET, value);
+        else await ExtensionConfig._secrets.delete(API_KEY_SECRET);
+      } catch { /* noop */ }
+    }
+    try { await ExtensionConfig._cfg().update('llm.apiKey', '', vscode.ConfigurationTarget.Global); } catch { /* noop */ }
+  }
+
+  /**
+   * 프로젝트-라우팅 키들을 통합 설정 파일에 병합 저장(파일/폴더 자동 생성).
+   * @returns 저장 성공 여부(워크스페이스 없으면 false).
+   */
+  static async setProjectConfigValues(values: Record<string, unknown>): Promise<boolean> {
+    const p = ExtensionConfig._projectCfgPath();
+    if (!p) return false;
+    let current: Record<string, unknown> = {};
+    try {
+      if (fs.existsSync(p)) {
+        const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        if (parsed && typeof parsed === 'object') current = parsed;
+      }
+    } catch { current = {}; }
+    const merged = { ...current, ...values };
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(merged, null, 2), 'utf-8');
+    ExtensionConfig._projectCfgCache = merged;
+    return true;
+  }
+
   static getLlmConfig(): LlmConfig {
     const cfg = ExtensionConfig._cfg();
     return {
       endpoint:    cfg.get<string>('llm.endpoint',    AI_DEFAULTS.endpoint),
-      apiKey:      cfg.get<string>('llm.apiKey',      AI_DEFAULTS.apiKey),
+      apiKey:      ExtensionConfig.getApiKey(),
       provider:    cfg.get<'openai' | 'ollama'>('llm.provider', AI_DEFAULTS.provider as 'openai' | 'ollama'),
       model:       cfg.get<string>('llm.model',       AI_DEFAULTS.model),
       temperature: cfg.get<number>('llm.temperature', AI_DEFAULTS.temperature),
@@ -93,15 +256,14 @@ export class ExtensionConfig {
    * 프롬프트 다이어트 설정. 품질 저하가 감지되면 사이트별로 qnaGating / adaptiveBudget을 끈다.
    */
   static getPromptDietConfig(): PromptDietConfig {
-    const cfg = ExtensionConfig._cfg();
     const ab = AI_DEFAULTS.promptDiet.adaptiveBudget;
     return {
-      qnaGating: cfg.get<boolean>('promptDiet.qnaGating', AI_DEFAULTS.promptDiet.qnaGating),
+      qnaGating: ExtensionConfig._resolve<boolean>('promptDiet.qnaGating', AI_DEFAULTS.promptDiet.qnaGating),
       adaptiveBudget: {
-        enabled:       cfg.get<boolean>('promptDiet.adaptiveBudget.enabled',       ab.enabled),
-        floorChars:    cfg.get<number>('promptDiet.adaptiveBudget.floorChars',     ab.floorChars),
-        targetRatio:   cfg.get<number>('promptDiet.adaptiveBudget.targetRatio',    ab.targetRatio),
-        charsPerToken: cfg.get<number>('promptDiet.adaptiveBudget.charsPerToken',  ab.charsPerToken),
+        enabled:       ExtensionConfig._resolve<boolean>('promptDiet.adaptiveBudget.enabled',       ab.enabled),
+        floorChars:    ExtensionConfig._resolve<number>('promptDiet.adaptiveBudget.floorChars',     ab.floorChars),
+        targetRatio:   ExtensionConfig._resolve<number>('promptDiet.adaptiveBudget.targetRatio',    ab.targetRatio),
+        charsPerToken: ExtensionConfig._resolve<number>('promptDiet.adaptiveBudget.charsPerToken',  ab.charsPerToken),
       },
     };
   }
@@ -113,14 +275,13 @@ export class ExtensionConfig {
    * - 클라우드급: 8 이상
    */
   static getMultiPatchConfig(): MultiPatchConfig {
-    const cfg = ExtensionConfig._cfg();
     return {
-      enabled:              cfg.get<boolean>('multiPatch.enabled',              AI_DEFAULTS.multiPatch.enabled),
-      maxPatches:           cfg.get<number>('multiPatch.maxPatches',            AI_DEFAULTS.multiPatch.maxPatches),
-      minContextLines:      cfg.get<number>('multiPatch.minContextLines',       AI_DEFAULTS.multiPatch.minContextLines),
-      groundedRetry:        cfg.get<boolean>('multiPatch.groundedRetry',        AI_DEFAULTS.multiPatch.groundedRetry),
-      fuzzyLocateThreshold: cfg.get<number>('multiPatch.fuzzyLocateThreshold',  AI_DEFAULTS.multiPatch.fuzzyLocateThreshold),
-      rippleGuard:          cfg.get<boolean>('multiPatch.rippleGuard',          AI_DEFAULTS.multiPatch.rippleGuard),
+      enabled:              ExtensionConfig._resolve<boolean>('multiPatch.enabled',              AI_DEFAULTS.multiPatch.enabled),
+      maxPatches:           ExtensionConfig._resolve<number>('multiPatch.maxPatches',            AI_DEFAULTS.multiPatch.maxPatches),
+      minContextLines:      ExtensionConfig._resolve<number>('multiPatch.minContextLines',       AI_DEFAULTS.multiPatch.minContextLines),
+      groundedRetry:        ExtensionConfig._resolve<boolean>('multiPatch.groundedRetry',        AI_DEFAULTS.multiPatch.groundedRetry),
+      fuzzyLocateThreshold: ExtensionConfig._resolve<number>('multiPatch.fuzzyLocateThreshold',  AI_DEFAULTS.multiPatch.fuzzyLocateThreshold),
+      rippleGuard:          ExtensionConfig._resolve<boolean>('multiPatch.rippleGuard',          AI_DEFAULTS.multiPatch.rippleGuard),
     };
   }
 
@@ -130,11 +291,10 @@ export class ExtensionConfig {
    * - 상위 모델: requireAnchor=false 로 순수 라인 앵커(출력 최소) 가능
    */
   static getLineEditConfig(): LineEditConfig {
-    const cfg = ExtensionConfig._cfg();
     return {
-      enabled:            cfg.get<boolean>('lineEdit.enabled',            AI_DEFAULTS.lineEdit.enabled),
-      requireAnchor:      cfg.get<boolean>('lineEdit.requireAnchor',      AI_DEFAULTS.lineEdit.requireAnchor),
-      anchorSearchRadius: cfg.get<number>('lineEdit.anchorSearchRadius',  AI_DEFAULTS.lineEdit.anchorSearchRadius),
+      enabled:            ExtensionConfig._resolve<boolean>('lineEdit.enabled',            AI_DEFAULTS.lineEdit.enabled),
+      requireAnchor:      ExtensionConfig._resolve<boolean>('lineEdit.requireAnchor',      AI_DEFAULTS.lineEdit.requireAnchor),
+      anchorSearchRadius: ExtensionConfig._resolve<number>('lineEdit.anchorSearchRadius',  AI_DEFAULTS.lineEdit.anchorSearchRadius),
     };
   }
 
@@ -143,7 +303,7 @@ export class ExtensionConfig {
    * on이면 블록을 먼저 내도록 지시하고 출력 모드를 핵심 2개로 좁혀 "설명만 내고 종료" 실패를 줄인다.
    */
   static isScenarioCCompactModes(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('scenarioC.compactModes', AI_DEFAULTS.scenarioC.compactModes);
+    return ExtensionConfig._resolve<boolean>('scenarioC.compactModes', AI_DEFAULTS.scenarioC.compactModes);
   }
 
   /**
@@ -151,19 +311,18 @@ export class ExtensionConfig {
    * 코드 편집·스펙·eval 경로에는 전달하지 않으므로 그 경로의 요청 바디는 종전과 바이트 동일하다.
    */
   static getQnaAntiRepeatConfig(): QnaAntiRepeatConfig {
-    const cfg = ExtensionConfig._cfg();
     const d = AI_DEFAULTS.qnaAntiRepeat;
     return {
-      enabled:          cfg.get<boolean>('llm.qnaAntiRepeat.enabled',          d.enabled),
-      repeatPenalty:    cfg.get<number>('llm.qnaAntiRepeat.repeatPenalty',     d.repeatPenalty),
-      frequencyPenalty: cfg.get<number>('llm.qnaAntiRepeat.frequencyPenalty',  d.frequencyPenalty),
-      presencePenalty:  cfg.get<number>('llm.qnaAntiRepeat.presencePenalty',   d.presencePenalty),
+      enabled:          ExtensionConfig._resolve<boolean>('llm.qnaAntiRepeat.enabled',          d.enabled),
+      repeatPenalty:    ExtensionConfig._resolve<number>('llm.qnaAntiRepeat.repeatPenalty',     d.repeatPenalty),
+      frequencyPenalty: ExtensionConfig._resolve<number>('llm.qnaAntiRepeat.frequencyPenalty',  d.frequencyPenalty),
+      presencePenalty:  ExtensionConfig._resolve<number>('llm.qnaAntiRepeat.presencePenalty',   d.presencePenalty),
     };
   }
 
   /** 시스템 프롬프트 전문을 'axiom-ai: Prompt' 출력 채널에 기록할지 여부(디버그). */
   static isLogSystemPromptEnabled(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('debug.logSystemPrompt', AI_DEFAULTS.debug.logSystemPrompt);
+    return ExtensionConfig._resolve<boolean>('debug.logSystemPrompt', AI_DEFAULTS.debug.logSystemPrompt);
   }
 
   /**
@@ -172,7 +331,7 @@ export class ExtensionConfig {
    * 또는 의존성 미해소 시 기존 full 입력 경로로 자동 폴백한다. 폐쇄망 점진 도입을 위해 기본 off.
    */
   static isRegionEditEnabled(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('experimental.regionEdit', false);
+    return ExtensionConfig._resolve<boolean>('experimental.regionEdit', true);
   }
 
   /**
@@ -182,7 +341,7 @@ export class ExtensionConfig {
    * 약한 모델 실동작은 실모델로만 검증되므로 폐쇄망 점진 도입을 위해 기본 off.
    */
   static isIntentClassifierEnabled(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('experimental.intentClassifier', false);
+    return ExtensionConfig._resolve<boolean>('experimental.intentClassifier', true);
   }
 
   /**
@@ -192,20 +351,19 @@ export class ExtensionConfig {
    * true: 실험적 LLM 생성(데이터 페치까지). 약한 모델에선 부정확할 수 있어 옵트인.
    */
   static isPageCreationLlmMode(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('experimental.pageCreationLlmMode', false);
+    return ExtensionConfig._resolve<boolean>('experimental.pageCreationLlmMode', false);
   }
 
   /** 사용자가 설정한 오프라인 stubs 보강 폴더 */
   static getUserStubsFolder(): string {
-    return ExtensionConfig._cfg().get<string>('stubs.userStubsFolder', '');
+    return ExtensionConfig._resolve<string>('stubs.userStubsFolder', '');
   }
 
   /** 사용자가 설정한 추가 RAG 소스 (폴더 + 개별 파일) */
   static getUserRagSources(): { folder: string; files: string[] } {
-    const cfg = ExtensionConfig._cfg();
     return {
-      folder: cfg.get<string>('rag.userRagFolder', ''),
-      files:  cfg.get<string[]>('rag.additionalFiles', []),
+      folder: ExtensionConfig._resolve<string>('rag.userRagFolder', ''),
+      files:  ExtensionConfig._resolve<string[]>('rag.additionalFiles', []),
     };
   }
 
@@ -218,7 +376,7 @@ export class ExtensionConfig {
 
   /** 금융 컴플라이언스 필드 강제 여부 */
   static getSddRequireComplianceTags(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('sdd.requireComplianceTags', false);
+    return ExtensionConfig._resolve<boolean>('sdd.requireComplianceTags', false);
   }
 
   // ─── 서버 설정 (폐쇄망 지원) ──────────────────────────────────────────────
@@ -230,7 +388,7 @@ export class ExtensionConfig {
 
   /** AI 서버 미응답 시 scaffold 기반 빈 스텁 반환 여부 */
   static isOfflineFallbackEnabled(): boolean {
-    return ExtensionConfig._cfg().get<boolean>('server.offlineFallback', true);
+    return ExtensionConfig._resolve<boolean>('server.offlineFallback', true);
   }
 
   /** 실제 LLM 요청에 사용할 설정. 확장 설정 UI의 LLM 서버 설정을 단일 source of truth로 사용한다. */

@@ -75,10 +75,18 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         temperature: llm.temperature,
         maxTokens:   llm.maxTokens,
         contextWindow: llm.contextWindow,
+        provider:    llm.provider,
       },
       rag: {
         userRagFolder:   rag.folder,
         additionalFiles: rag.files,
+      },
+      project: {
+        axiomFolder:         ExtensionConfig.getSddAxiomFolder(),
+        regionEdit:          ExtensionConfig.isRegionEditEnabled(),
+        intentClassifier:    ExtensionConfig.isIntentClassifierEnabled(),
+        pageCreationLlmMode: ExtensionConfig.isPageCreationLlmMode(),
+        logSystemPrompt:     ExtensionConfig.isLogSystemPromptEnabled(),
       },
     };
     this._post({ type: 'settingsLoaded', settings });
@@ -89,21 +97,40 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
     if (partial.llm) {
       const llm = partial.llm;
+      // 머신(전역) 단위 — LLM 연결·신원. 한 번 설정하면 모든 프로젝트 재사용.
       if (llm.endpoint   !== undefined) {
         await cfg.update('llm.endpoint',    llm.endpoint,    vscode.ConfigurationTarget.Global);
         await cfg.update('server.endpoint', '',              vscode.ConfigurationTarget.Global);
       }
       if (llm.model      !== undefined) await cfg.update('llm.model',       llm.model,       vscode.ConfigurationTarget.Global);
-      if (llm.apiKey     !== undefined) await cfg.update('llm.apiKey',      llm.apiKey,      vscode.ConfigurationTarget.Global);
+      if (llm.provider   !== undefined) await cfg.update('llm.provider',    llm.provider,    vscode.ConfigurationTarget.Global);
       if (llm.temperature !== undefined) await cfg.update('llm.temperature', llm.temperature, vscode.ConfigurationTarget.Global);
       if (llm.maxTokens  !== undefined) await cfg.update('llm.maxTokens',   llm.maxTokens,   vscode.ConfigurationTarget.Global);
       if (llm.contextWindow !== undefined) await cfg.update('llm.contextWindow', llm.contextWindow, vscode.ConfigurationTarget.Global);
+      // apiKey만 SecretStorage(키체인) — 평문·Settings Sync 유출 차단.
+      if (llm.apiKey     !== undefined) await ExtensionConfig.setApiKey(llm.apiKey);
     }
 
     if (partial.rag) {
       const rag = partial.rag;
       if (rag.userRagFolder   !== undefined) await cfg.update('rag.userRagFolder',  rag.userRagFolder,   vscode.ConfigurationTarget.Global);
       if (rag.additionalFiles !== undefined) await cfg.update('rag.additionalFiles', rag.additionalFiles, vscode.ConfigurationTarget.Global);
+    }
+
+    if (partial.project) {
+      const proj = partial.project;
+      // axiomFolder는 부트스트랩(파일 위치 자체를 정함) → 전역 settings.json.
+      if (proj.axiomFolder !== undefined) await cfg.update('sdd.axiomFolder', proj.axiomFolder, vscode.ConfigurationTarget.Global);
+      // 나머지 프로젝트 키 → <axiomFolder>/axiom.config.json (자동 생성). 빈 객체는 기록하지 않는다.
+      const fileValues: Record<string, unknown> = {};
+      if (proj.regionEdit          !== undefined) fileValues['experimental.regionEdit']          = proj.regionEdit;
+      if (proj.intentClassifier    !== undefined) fileValues['experimental.intentClassifier']    = proj.intentClassifier;
+      if (proj.pageCreationLlmMode !== undefined) fileValues['experimental.pageCreationLlmMode'] = proj.pageCreationLlmMode;
+      if (proj.logSystemPrompt     !== undefined) fileValues['debug.logSystemPrompt']            = proj.logSystemPrompt;
+      if (Object.keys(fileValues).length > 0) {
+        const ok = await ExtensionConfig.setProjectConfigValues(fileValues);
+        if (!ok) vscode.window.showWarningMessage('프로젝트 설정을 저장할 워크스페이스가 없습니다. 폴더를 연 뒤 다시 저장해주세요.');
+      }
     }
 
     // 저장 후 최신값을 웹뷰에 다시 전송
