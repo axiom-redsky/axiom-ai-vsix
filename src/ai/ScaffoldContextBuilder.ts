@@ -262,7 +262,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)${this._libraryVersions ? `\n\n## 설치된 라이브러리 버전\n${this._libraryVersions}` : ''}`;
   }
 
-  async buildSystemPrompt(ctx: EditorContext, userQuery: string): Promise<string> {
+  async buildSystemPrompt(ctx: EditorContext, userQuery: string, forceQnA = false): Promise<string> {
     const ragDir = this._getRagDir();
     const diet = ExtensionConfig.getPromptDietConfig();
 
@@ -426,7 +426,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     // 대화 게이팅(프롬프트 다이어트): 조회·설명형 질문이나 인사·잡담이면 파일이 열려 있어도 시나리오 C로
     // 가지 않고 출력 모드·생성 지시문을 통째로 생략한다. 의도 분류를 파일 열림 기반 시나리오 추론보다
     // 우선시킨다. 판정은 isQnAGated 단일 진실원을 사용해 후처리부(ChatViewProvider)와 항상 일치시킨다.
-    if (this.isQnAGated(userQuery)) {
+    if (this.isQnAGated(userQuery, forceQnA)) {
       const qnaRules = this._buildCoreRules({
         includeNavigation: this._hasNavigationIntent(userQuery),
         includeFileScope: false,
@@ -953,10 +953,16 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
    * 보수적: 생성/수정 신호가 조금이라도 있으면(_isExplicitEditOrCreate) 무조건 게이팅하지 않는다.
    * 그 외에 ① 조회·설명형 질문이거나 ② 인사·감사·맞장구 같은 비액션 잡담이면 게이팅한다.
    * 후자가 없으면 도메인 파일이 열려 있다는 이유만으로 "안녕" 같은 입력도 시나리오 C(수정)로 빠진다.
+   *
+   * @param forceQnA 모델 의도 분류기(IntentClassifier)가 'qna'/'smalltalk'로 확정한 경우 true.
+   *   정규식 신호가 자연어 꼬리를 못 따라가는 케이스("원인을 찾아줘"처럼 ?·신호어 없는 질문)를
+   *   **모델의 의미 분류가 정규식보다 우선**하도록 덮어쓴다. (정규식은 모델 부재·null 폴백용.)
+   *   단 diet.qnaGating 자체가 꺼져 있으면(사용자가 명시적으로 비활성) 종전대로 게이팅 안 함.
    */
-  isQnAGated(userQuery: string): boolean {
+  isQnAGated(userQuery: string, forceQnA = false): boolean {
     const diet = ExtensionConfig.getPromptDietConfig();
     if (!diet.qnaGating) return false;
+    if (forceQnA) return true;
     if (this._isExplicitEditOrCreate(userQuery)) return false;
     return this._isQnAQuery(userQuery) || this._isSmalltalk(userQuery);
   }

@@ -813,8 +813,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 후처리도 동일하게 파일 수정 흐름(타겟 확정·action 보강·patch 재시도)을 건너뛴다.
       // 그러지 않으면 설명만 한 응답을 강제로 수정 코드로 보강하려다 현재 파일을 추측한
       // <search>가 매칭 실패("patch 매칭 실패")로 이어진다.
+      // 모델 의도 분류기가 'qna'/'smalltalk'로 확정했으면 정규식 게이트를 덮어쓴다(모델 우선).
+      // "선택 부분에 오류가 발생하는데 원인을 찾아줘"처럼 ?·신호어가 없는 질문은 정규식 isQnAGated가
+      // 못 잡아 isFileCtx=true로 새어, 설명만 한 모델 응답을 수정 코드로 래핑해 "원본과 동일한 no-op diff"를
+      // 띄우던 근본 원인. forceQnA를 isFileCtx와 buildSystemPrompt 양쪽에 흘려 프롬프트·후처리를 일치시킨다.
+      const forceQnA = intent?.intent === 'qna' || intent?.intent === 'smalltalk';
       const isFileCtx =
-        !this._scaffoldBuilder.isQnAGated(text) &&
+        !this._scaffoldBuilder.isQnAGated(text, forceQnA) &&
         this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
       if (isFileCtx) {
         const resolved = await this._resolveTargetFile(text, editorCtx);
@@ -890,7 +895,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
       }
 
-      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text);
+      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text, forceQnA);
       const rawBreakdown = this._scaffoldBuilder.lastBreakdown();
       // SDD는 fileSection에 append되므로 fileChars에서 분리해 별도 표기
       const breakdown = {
@@ -1929,10 +1934,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     //  정확한 diff를 받으므로 인라인 중복 렌더는 제거하고, 변경 없음일 때만 사유를 안내한다.)
     const regionDiff = computeDiffHunks(source, outcome.finalText);
     if (regionDiff.length === 0) {
+      // no-op → 빈 diff 확인 카드를 만들지 않고 종료(처리 완료로 간주). 카드를 만들면 아래 _handleAxiomAction
+      // 의 convergence 가드가 다시 잡지만, 여기서 끝내는 편이 중복 안내 없이 깔끔하다.
       this._post({
         type: 'token',
         content: '\n\n> ℹ️ **영역 편집 결과가 현재 파일과 동일합니다** — 변경 없음(이미 적용된 상태일 수 있습니다).\n',
       });
+      return true;
     }
 
     // 최종 전체 파일을 full updateFile로 래핑해 기존 적용 파이프라인에 흘려보낸다.
@@ -2746,6 +2754,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           (originalContent !== undefined && action.generatedCode
             ? computeDiffHunks(originalContent, action.generatedCode)
             : []);
+
+        // no-op 가드(방어선): full/patch/lines/structural이 모두 수렴하는 지점. 최종 생성 코드가
+        // 원본과 동일(diff 0건)하면 "수정 대기" 확인 카드를 띄우지 않는다. 질문(조회·설명)을 수정
+        // 흐름으로 오인해 모델이 선택 코드를 그대로 베껴낸 경우, 원본과 똑같은 diff가 진짜 편집처럼
+        // 보이던 것을 차단한다. (1차 게이트가 막지 못한 잔여 케이스의 마지막 방어.)
+        if (originalContent !== undefined && diff.length === 0) {
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] ℹ️ no-op 편집 생략 (${action.filePath}) — 생성 코드가 원본과 동일, 확인 카드 안 띄움`,
+          );
+          this._post({
+            type: 'token',
+            content:
+              '\n\n> ℹ️ **변경 사항이 없습니다** — 제안된 코드가 현재 파일과 동일합니다. ' +
+              '(질문·설명 요청이었다면 위 답변을 참고하세요.)\n',
+          });
+          this._post({ type: 'fileCancelled' });
+          break;
+        }
+
         const actionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
         const approved = await this._requestFileConfirmation(
           actionId,
