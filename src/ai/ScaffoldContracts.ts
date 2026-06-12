@@ -111,6 +111,33 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `- ⚠ 기존 날짜 문자열 state(API 전송용 \`yyyy-MM-dd\` 등)는 **그대로 유지**하고 Calendar 선택 결과를 그 state에 반영하세요 ` +
       `— 서버 전송 포맷을 깨지 않도록 새 미러 state를 만들지 마세요.`,
   },
+  {
+    id: 'list-table-binding',
+    title: '목록 테이블에 list API 적용 — 타입+훅+테이블 재작성 (레시피)',
+    // "테이블/목록에 …api 적용" 의도이거나, 편집 영역에 테이블 마크업이 있고 요청이 데이터/적용을 언급하면 발동.
+    // 약한 모델이 useApi 훅만 선언하고 ① 응답 타입 선언과 ② 테이블 JSX 재작성을 빠뜨려(실측: region 편집
+    // 없음 → 미사용 선언 거부 / TXxxResponse 미선언 → 의존성 거부) dead-end 나던 것을, 3부품 골격으로 낮춘다.
+    applies: ({ region, query }) =>
+      (/(테이블|목록|리스트|그리드|table|list|grid|행\b|로우|rows?)/i.test(query) &&
+        /(api|적용|연동|바인딩|불러|가져|조회|채워|매핑|연결|붙여|보여)/i.test(query)) ||
+      (/<(table|tbody|thead|Table)\b/i.test(region) && /(api|목록|데이터|적용|불러|조회|연동)/i.test(query)),
+    card:
+      `- 테이블/목록에 list API를 적용할 때는 **아래 3부품을 모두** 출력하세요 — 훅만 넣고 멈추지 말고 ` +
+      `ⓐ응답 타입 ⓑuseApi 훅 ⓒ테이블 재작성을 **한 번에**. (하나라도 빠지면 적용이 거부됩니다.)\n` +
+      `  1) \`<hook>\`에 **응답 타입 + useApi + 파생 목록**을 함께 선언 — 요소 타입(\`TXxx\`)과 응답 타입(\`TXxxResponse\`)을 ` +
+      `**반드시 같은 \`<hook>\`에 선언**하세요. \`useApi<TXxxResponse>\`처럼 타입 인자만 쓰고 선언을 빠뜨리면 거부됩니다:\n` +
+      `\`type TXxx = { … };\`  ← 필드는 **참조 스펙의 response 스키마**에서(더미 배열 필드 추측 금지)\n` +
+      `\`type TXxxResponse = { data: TXxx[] };\`  ← 스펙의 실제 응답 래퍼 형태에 맞게\n` +
+      `\`const XXX_ENDPOINT = '/api/…';\`\n` +
+      `\`const { data: xxxResponse } = useApi<TXxxResponse>(XXX_ENDPOINT);\`\n` +
+      `\`const xxxItems = xxxResponse?.data ?? [];\`\n` +
+      `  2) import는 useApi만: \`<import module="@axiom/hooks" named="useApi" />\`\n` +
+      `  3) \`<region>\`의 테이블 본문을 하드코딩 배열 대신 **그 목록을 \`.map()\`** 으로 재작성하세요 ` +
+      `(영역 최상위 태그·컬럼 구조는 그대로, **데이터 출처만** API 목록으로 교체):\n` +
+      `\`{xxxItems.map((row) => (<tr key={row.id}>…<td>{row.필드명}</td>…</tr>))}\`\n` +
+      `- ⚠ 기존 컬럼(헤더·셀 구성)은 유지하고 \`.map\` 대상만 하드코딩 배열 → \`xxxItems\`로 바꾸세요. ` +
+      `로딩/에러 표시가 필요하면 \`isPending\`·\`error\`를 쓰되, 안 쓸 거면 구조분해에서 빼세요(미사용 선언은 거부됨).`,
+  },
 ];
 
 /** 주어진 컨텍스트에 발동하는 계약 카드들을 레지스트리 순서로 반환. */

@@ -379,6 +379,20 @@ console.log('\nScaffoldContracts — 계약 카드 트리거 주입:');
   check('type: JSX type="text" 속성엔 오발동 안 함', !ids({ deps: '', region: '<input type="text" />', query: '입력칸 추가' }).includes('type-naming'));
   check('type: "응답 타입" 쿼리 → 카드 발동', ids({ deps: '', region: '<div/>', query: 'API 응답 타입을 정의해줘' }).includes('type-naming'));
 
+  // 목록 테이블 바인딩 카드: "테이블에 api 적용" 의도 → 발동 + 3부품 골격 포함
+  {
+    const ctx = { deps: '', region: '<table><tbody>{rows.map(r=>(<tr/>))}</tbody></table>', query: "직원 목록 테이블에 '/api/employees' api를 적용해줘" };
+    check('list-table: "테이블에 api 적용" → 카드 발동', ids(ctx).includes('list-table-binding'));
+    check('list-table 카드: .map 재작성 골격 포함', buildContractSection(ctx).includes('.map()'));
+    check('list-table 카드: 응답 타입 선언 슬롯 포함', buildContractSection(ctx).includes('TXxxResponse'));
+  }
+  // region에 테이블 마크업 + 데이터 의도 → 발동(쿼리에 "테이블" 단어 없어도)
+  check('list-table: region 테이블 + 데이터 쿼리 → 발동',
+    ids({ deps: '', region: '<Table><tbody/></Table>', query: '여기에 데이터를 불러와줘' }).includes('list-table-binding'));
+  // 무관(테이블 없고 목록/적용 의도 아님) → 비발동
+  check('list-table: 무관 쿼리 → 비발동',
+    !ids({ deps: '', region: '<div/>', query: '글자색 변경' }).includes('list-table-binding'));
+
   // 아무 카드도 발동 안 하면 섹션 자체가 빈 문자열
   check('무관 컨텍스트 → 계약 섹션 없음', buildContractSection({ deps: '', region: '<div/>', query: '글자색 변경' }) === '');
 
