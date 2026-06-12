@@ -12,10 +12,40 @@ const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
   logSystemPrompt: false,
 };
 
+const DEFAULT_ADVANCED: NonNullable<AxiomSettings['advanced']> = {
+  promptDietQnaGating: true,
+  adaptiveBudgetEnabled: true,
+  adaptiveBudgetFloorChars: 1800,
+  adaptiveBudgetTargetRatio: 0.45,
+  adaptiveBudgetCharsPerToken: 3,
+  multiPatchEnabled: true,
+  multiPatchMaxPatches: 3,
+  multiPatchMinContextLines: 3,
+  multiPatchGroundedRetry: true,
+  multiPatchFuzzyLocateThreshold: 0.6,
+  multiPatchRippleGuard: true,
+  lineEditEnabled: true,
+  lineEditRequireAnchor: true,
+  lineEditAnchorSearchRadius: 3,
+  scenarioCCompactModes: true,
+  qnaAntiRepeatEnabled: true,
+  qnaAntiRepeatRepeatPenalty: 1.3,
+  qnaAntiRepeatFrequencyPenalty: 0.3,
+  qnaAntiRepeatPresencePenalty: 0.3,
+  injectNoThink: true,
+  sendThinkingParams: true,
+  offlineFallback: true,
+  requireComplianceTags: false,
+  userStubsFolder: '',
+  externalCorpusEnabled: true,
+  validateExternalCorpus: true,
+};
+
 const DEFAULT_SETTINGS: AxiomSettings = {
   llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768, provider: 'ollama' },
   rag: { userRagFolder: '', additionalFiles: [] },
   project: { ...DEFAULT_PROJECT },
+  advanced: { ...DEFAULT_ADVANCED },
 };
 
 export function LauncherApp(): React.ReactElement {
@@ -98,6 +128,18 @@ export function LauncherApp(): React.ReactElement {
     [],
   );
 
+  const handleAdvancedChange = useCallback(
+    (field: keyof NonNullable<AxiomSettings['advanced']>, value: string | number | boolean) => {
+      setSettings((prev) => ({
+        ...prev,
+        advanced: { ...(prev.advanced ?? DEFAULT_ADVANCED), [field]: value },
+      }));
+      setDirty(true);
+      setSaved(false);
+    },
+    [],
+  );
+
   const handleSave = useCallback(() => {
     vscode.postMessage({ type: 'updateSettings', settings });
     setDirty(false);
@@ -165,6 +207,7 @@ export function LauncherApp(): React.ReactElement {
           testing={testing}
           onLlmChange={handleLlmChange}
           onProjectChange={handleProjectChange}
+          onAdvancedChange={handleAdvancedChange}
           onTestConnection={handleTestConnection}
           onPickRagFile={handlePickRagFile}
           onPickRagFolder={handlePickRagFolder}
@@ -265,6 +308,7 @@ interface SettingsTabProps {
   testing: boolean;
   onLlmChange: (field: keyof AxiomSettings['llm'], value: string | number) => void;
   onProjectChange: (field: keyof NonNullable<AxiomSettings['project']>, value: string | boolean) => void;
+  onAdvancedChange: (field: keyof NonNullable<AxiomSettings['advanced']>, value: string | number | boolean) => void;
   onTestConnection: () => void;
   onPickRagFile: () => void;
   onPickRagFolder: () => void;
@@ -278,6 +322,7 @@ function SettingsTab({
   testing,
   onLlmChange,
   onProjectChange,
+  onAdvancedChange,
   onTestConnection,
   onPickRagFile,
   onPickRagFolder,
@@ -509,6 +554,140 @@ function SettingsTab({
           <span>시스템 프롬프트 로깅 — debug.logSystemPrompt</span>
         </label>
       </section>
+
+      {/* 고급 설정 — 접이식. 대부분 axiom.config.json, thinking만 전역. */}
+      <AdvancedSection advanced={settings.advanced ?? DEFAULT_ADVANCED} onChange={onAdvancedChange} />
     </div>
+  );
+}
+
+/* ───────────────────────── 고급 설정 ───────────────────────── */
+
+type AdvancedField = keyof NonNullable<AxiomSettings['advanced']>;
+
+function AdvancedSection({
+  advanced,
+  onChange,
+}: {
+  advanced: NonNullable<AxiomSettings['advanced']>;
+  onChange: (field: AdvancedField, value: string | number | boolean) => void;
+}): React.ReactElement {
+  const toggle = (field: AdvancedField, label: string) => (
+    <label className="settings__toggle">
+      <input
+        type="checkbox"
+        checked={Boolean(advanced[field])}
+        onChange={(e) => onChange(field, e.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
+  );
+
+  const num = (field: AdvancedField, label: string, step = 1) => (
+    <label className="settings__label settings__label--half">
+      {label}
+      <input
+        className="settings__input"
+        type="number"
+        step={step}
+        value={advanced[field] as number}
+        onChange={(e) => onChange(field, e.target.value === '' ? 0 : Number(e.target.value))}
+      />
+    </label>
+  );
+
+  const text = (field: AdvancedField, label: string, placeholder = '') => (
+    <label className="settings__label">
+      {label}
+      <input
+        className="settings__input"
+        type="text"
+        value={advanced[field] as string}
+        placeholder={placeholder}
+        onChange={(e) => onChange(field, e.target.value)}
+      />
+    </label>
+  );
+
+  return (
+    <details className="settings__advanced">
+      <summary className="settings__advanced-summary">고급 설정 (튜닝)</summary>
+      <p className="settings__hint">
+        대부분 현재 프로젝트의 axiom.config.json에 저장됩니다. thinking 항목만 전역(머신) 설정입니다.
+        값이 헷갈리면 건드리지 말고 기본값을 두세요.
+      </p>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">프롬프트 다이어트</h3>
+        {toggle('promptDietQnaGating', 'Q&A 게이팅 — promptDiet.qnaGating')}
+        {toggle('adaptiveBudgetEnabled', '적응형 RAG 예산 — adaptiveBudget.enabled')}
+        <div className="settings__row">
+          {num('adaptiveBudgetFloorChars', 'floorChars', 100)}
+          {num('adaptiveBudgetCharsPerToken', 'charsPerToken', 0.5)}
+        </div>
+        <div className="settings__row">
+          {num('adaptiveBudgetTargetRatio', 'targetRatio', 0.05)}
+          <span className="settings__label settings__label--half" />
+        </div>
+      </div>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">다중 patch</h3>
+        {toggle('multiPatchEnabled', '다중 patch 허용 — multiPatch.enabled')}
+        {toggle('multiPatchGroundedRetry', 'grounded 재시도 — groundedRetry')}
+        {toggle('multiPatchRippleGuard', 'ripple 가드 — rippleGuard')}
+        <div className="settings__row">
+          {num('multiPatchMaxPatches', 'maxPatches', 1)}
+          {num('multiPatchMinContextLines', 'minContextLines', 1)}
+        </div>
+        <div className="settings__row">
+          {num('multiPatchFuzzyLocateThreshold', 'fuzzyLocateThreshold', 0.05)}
+          <span className="settings__label settings__label--half" />
+        </div>
+      </div>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">라인 편집</h3>
+        {toggle('lineEditEnabled', 'lines 모드 안내 — lineEdit.enabled')}
+        {toggle('lineEditRequireAnchor', 'anchor 검증 — requireAnchor')}
+        <div className="settings__row">
+          {num('lineEditAnchorSearchRadius', 'anchorSearchRadius', 1)}
+          <span className="settings__label settings__label--half" />
+        </div>
+      </div>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">시나리오 C</h3>
+        {toggle('scenarioCCompactModes', '컴팩트 모드 — scenarioC.compactModes')}
+      </div>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">Q&amp;A 반복 억제</h3>
+        {toggle('qnaAntiRepeatEnabled', '반복 억제 — qnaAntiRepeat.enabled')}
+        <div className="settings__row">
+          {num('qnaAntiRepeatRepeatPenalty', 'repeatPenalty (ollama)', 0.05)}
+          {num('qnaAntiRepeatFrequencyPenalty', 'frequencyPenalty (openai)', 0.05)}
+        </div>
+        <div className="settings__row">
+          {num('qnaAntiRepeatPresencePenalty', 'presencePenalty (openai)', 0.05)}
+          <span className="settings__label settings__label--half" />
+        </div>
+      </div>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">thinking (전역 · 머신)</h3>
+        {toggle('injectNoThink', '/no_think 주입 — thinking.injectNoThink')}
+        {toggle('sendThinkingParams', 'thinking 파라미터 전송 — sendThinkingParams')}
+      </div>
+
+      <div className="settings__advanced-group">
+        <h3 className="settings__advanced-title">기타</h3>
+        {toggle('offlineFallback', '오프라인 폴백 — server.offlineFallback')}
+        {toggle('requireComplianceTags', '컴플라이언스 태그 강제 — sdd.requireComplianceTags')}
+        {toggle('externalCorpusEnabled', '외부 corpus 라우팅 — rag.externalCorpusEnabled')}
+        {toggle('validateExternalCorpus', '외부 corpus 검증 — rag.validateExternalCorpus')}
+        {text('userStubsFolder', '오프라인 stubs 폴더 — stubs.userStubsFolder', '(지정 없음)')}
+      </div>
+    </details>
   );
 }

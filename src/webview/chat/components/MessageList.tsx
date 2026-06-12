@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MessageItem } from './MessageItem';
+import { ThinkingIcon } from './ThinkingIcon';
 import type { Message } from '../hooks/useChat';
 
 interface Props {
@@ -72,12 +73,10 @@ export function MessageList({ messages, isStreaming, isWaiting, status, onConfir
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">
-          <span className="typing-indicator__dot" />
-          <span className="typing-indicator__dot" />
-          <span className="typing-indicator__dot" />
-          {isWaiting && status && (
-            <span className="typing-indicator__status">{status}</span>
-          )}
+          <ThinkingIcon size={32} />
+          <span className="typing-indicator__status">
+            {(isWaiting && status) ? status : '생각하는 중…'}
+          </span>
         </div>
       )}
       <div ref={bottomRef} />

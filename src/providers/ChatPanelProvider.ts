@@ -88,6 +88,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         pageCreationLlmMode: ExtensionConfig.isPageCreationLlmMode(),
         logSystemPrompt:     ExtensionConfig.isLogSystemPromptEnabled(),
       },
+      advanced: ExtensionConfig.getAdvancedSettings(),
     };
     this._post({ type: 'settingsLoaded', settings });
   }
@@ -130,6 +131,49 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       if (Object.keys(fileValues).length > 0) {
         const ok = await ExtensionConfig.setProjectConfigValues(fileValues);
         if (!ok) vscode.window.showWarningMessage('프로젝트 설정을 저장할 워크스페이스가 없습니다. 폴더를 연 뒤 다시 저장해주세요.');
+      }
+    }
+
+    if (partial.advanced) {
+      const a = partial.advanced;
+      // thinking은 머신(전역) 단위 — 모델/게이트웨이 호환 설정.
+      if (a.injectNoThink      !== undefined) await cfg.update('llm.thinking.injectNoThink',      a.injectNoThink,      vscode.ConfigurationTarget.Global);
+      if (a.sendThinkingParams !== undefined) await cfg.update('llm.thinking.sendThinkingParams', a.sendThinkingParams, vscode.ConfigurationTarget.Global);
+
+      // 나머지 고급 튜닝 → 프로젝트 파일(axiom.config.json). 평탄화 필드 ↔ dotted 설정 키 매핑.
+      const ADVANCED_KEY_MAP: [keyof typeof a, string][] = [
+        ['promptDietQnaGating',          'promptDiet.qnaGating'],
+        ['adaptiveBudgetEnabled',        'promptDiet.adaptiveBudget.enabled'],
+        ['adaptiveBudgetFloorChars',     'promptDiet.adaptiveBudget.floorChars'],
+        ['adaptiveBudgetTargetRatio',    'promptDiet.adaptiveBudget.targetRatio'],
+        ['adaptiveBudgetCharsPerToken',  'promptDiet.adaptiveBudget.charsPerToken'],
+        ['multiPatchEnabled',            'multiPatch.enabled'],
+        ['multiPatchMaxPatches',         'multiPatch.maxPatches'],
+        ['multiPatchMinContextLines',    'multiPatch.minContextLines'],
+        ['multiPatchGroundedRetry',      'multiPatch.groundedRetry'],
+        ['multiPatchFuzzyLocateThreshold', 'multiPatch.fuzzyLocateThreshold'],
+        ['multiPatchRippleGuard',        'multiPatch.rippleGuard'],
+        ['lineEditEnabled',              'lineEdit.enabled'],
+        ['lineEditRequireAnchor',        'lineEdit.requireAnchor'],
+        ['lineEditAnchorSearchRadius',   'lineEdit.anchorSearchRadius'],
+        ['scenarioCCompactModes',        'scenarioC.compactModes'],
+        ['qnaAntiRepeatEnabled',         'llm.qnaAntiRepeat.enabled'],
+        ['qnaAntiRepeatRepeatPenalty',   'llm.qnaAntiRepeat.repeatPenalty'],
+        ['qnaAntiRepeatFrequencyPenalty', 'llm.qnaAntiRepeat.frequencyPenalty'],
+        ['qnaAntiRepeatPresencePenalty', 'llm.qnaAntiRepeat.presencePenalty'],
+        ['offlineFallback',              'server.offlineFallback'],
+        ['requireComplianceTags',        'sdd.requireComplianceTags'],
+        ['userStubsFolder',              'stubs.userStubsFolder'],
+        ['externalCorpusEnabled',        'rag.externalCorpusEnabled'],
+        ['validateExternalCorpus',       'rag.validateExternalCorpus'],
+      ];
+      const advValues: Record<string, unknown> = {};
+      for (const [field, key] of ADVANCED_KEY_MAP) {
+        if (a[field] !== undefined) advValues[key] = a[field];
+      }
+      if (Object.keys(advValues).length > 0) {
+        const ok = await ExtensionConfig.setProjectConfigValues(advValues);
+        if (!ok) vscode.window.showWarningMessage('고급 설정을 저장할 워크스페이스가 없습니다. 폴더를 연 뒤 다시 저장해주세요.');
       }
     }
 

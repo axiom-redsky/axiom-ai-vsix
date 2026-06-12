@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AI_DEFAULTS } from '../ai/config';
 import type { LlmConfig } from '../ai/types';
+import type { AxiomSettings } from '../types/messages';
 
 /**
  * 통합 프로젝트 설정 파일(`<axiomFolder>/axiom.config.json`)에서 **우선** 읽는 키 집합.
@@ -394,5 +395,44 @@ export class ExtensionConfig {
   /** 실제 LLM 요청에 사용할 설정. 확장 설정 UI의 LLM 서버 설정을 단일 source of truth로 사용한다. */
   static getEffectiveLlmConfig(): LlmConfig {
     return ExtensionConfig.getLlmConfig();
+  }
+
+  // ─── 고급 설정(UI 노출용 평탄화) ───────────────────────────────────────────
+
+  /** 고급 튜닝 값을 평탄화해 반환(설정 패널 "고급 설정" 섹션 표시·편집용). 기존 getter 재사용. */
+  static getAdvancedSettings(): NonNullable<AxiomSettings['advanced']> {
+    const pd = ExtensionConfig.getPromptDietConfig();
+    const mp = ExtensionConfig.getMultiPatchConfig();
+    const le = ExtensionConfig.getLineEditConfig();
+    const qa = ExtensionConfig.getQnaAntiRepeatConfig();
+    const llm = ExtensionConfig.getLlmConfig();
+    return {
+      promptDietQnaGating:          pd.qnaGating,
+      adaptiveBudgetEnabled:        pd.adaptiveBudget.enabled,
+      adaptiveBudgetFloorChars:     pd.adaptiveBudget.floorChars,
+      adaptiveBudgetTargetRatio:    pd.adaptiveBudget.targetRatio,
+      adaptiveBudgetCharsPerToken:  pd.adaptiveBudget.charsPerToken,
+      multiPatchEnabled:            mp.enabled,
+      multiPatchMaxPatches:         mp.maxPatches,
+      multiPatchMinContextLines:    mp.minContextLines,
+      multiPatchGroundedRetry:      mp.groundedRetry,
+      multiPatchFuzzyLocateThreshold: mp.fuzzyLocateThreshold,
+      multiPatchRippleGuard:        mp.rippleGuard,
+      lineEditEnabled:              le.enabled,
+      lineEditRequireAnchor:        le.requireAnchor,
+      lineEditAnchorSearchRadius:   le.anchorSearchRadius,
+      scenarioCCompactModes:        ExtensionConfig.isScenarioCCompactModes(),
+      qnaAntiRepeatEnabled:         qa.enabled,
+      qnaAntiRepeatRepeatPenalty:   qa.repeatPenalty,
+      qnaAntiRepeatFrequencyPenalty: qa.frequencyPenalty,
+      qnaAntiRepeatPresencePenalty: qa.presencePenalty,
+      injectNoThink:                llm.injectNoThink,
+      sendThinkingParams:           llm.sendThinkingParams,
+      offlineFallback:              ExtensionConfig.isOfflineFallbackEnabled(),
+      requireComplianceTags:        ExtensionConfig.getSddRequireComplianceTags(),
+      userStubsFolder:              ExtensionConfig.getUserStubsFolder(),
+      externalCorpusEnabled:        ExtensionConfig._resolve<boolean>('rag.externalCorpusEnabled', true),
+      validateExternalCorpus:       ExtensionConfig._resolve<boolean>('rag.validateExternalCorpus', true),
+    };
   }
 }

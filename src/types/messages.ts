@@ -44,6 +44,45 @@ export interface AxiomSettings {
     /** 디버그: 시스템 프롬프트 전문을 출력 채널에 기록. */
     logSystemPrompt: boolean;
   };
+  /**
+   * 고급 튜닝 설정. 대부분 프로젝트 파일(axiom.config.json)에 저장되며,
+   * thinking(injectNoThink/sendThinkingParams)만 머신 단위(전역 settings.json)다. 옵셔널 — 하위호환.
+   */
+  advanced?: {
+    // 프롬프트 다이어트
+    promptDietQnaGating: boolean;
+    adaptiveBudgetEnabled: boolean;
+    adaptiveBudgetFloorChars: number;
+    adaptiveBudgetTargetRatio: number;
+    adaptiveBudgetCharsPerToken: number;
+    // 다중 patch
+    multiPatchEnabled: boolean;
+    multiPatchMaxPatches: number;
+    multiPatchMinContextLines: number;
+    multiPatchGroundedRetry: boolean;
+    multiPatchFuzzyLocateThreshold: number;
+    multiPatchRippleGuard: boolean;
+    // 라인 편집
+    lineEditEnabled: boolean;
+    lineEditRequireAnchor: boolean;
+    lineEditAnchorSearchRadius: number;
+    // 시나리오 C
+    scenarioCCompactModes: boolean;
+    // Q&A 반복 억제
+    qnaAntiRepeatEnabled: boolean;
+    qnaAntiRepeatRepeatPenalty: number;
+    qnaAntiRepeatFrequencyPenalty: number;
+    qnaAntiRepeatPresencePenalty: number;
+    // thinking (머신 단위 — 전역 settings.json)
+    injectNoThink: boolean;
+    sendThinkingParams: boolean;
+    // 기타
+    offlineFallback: boolean;
+    requireComplianceTags: boolean;
+    userStubsFolder: string;
+    externalCorpusEnabled: boolean;
+    validateExternalCorpus: boolean;
+  };
 }
 
 // 페이지 생성 대화 상태 머신 (ChatViewProvider 내부)
