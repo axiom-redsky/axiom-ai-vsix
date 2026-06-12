@@ -404,14 +404,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _resolveTargetFile(
     userQuery: string,
     editorCtx: EditorContext,
+    modelTargetComponent: string | null = null,
   ): Promise<{ proceed: boolean; editorCtx: EditorContext }> {
-    // 줄 선택이 있으면 사용자가 현재 파일을 명시적으로 가리킨 것 → 바로 진행
-    if (editorCtx.selection) return { proceed: true, editorCtx };
-
     const activePath = editorCtx.available ? editorCtx.filePath : undefined;
     const activeBase = activePath
       ? (activePath.split(/[/\\]/).pop() ?? '').replace(/\.[tj]sx?$/, '')
       : '';
+
+    // cross-file 재타겟: 요청이 **현재 파일이 아닌 다른 컴포넌트**를 고치라는 것이면(예: 선택 칩은
+    // EmployeeListPage에 박혀 있는데 "StatusBadge 컴포넌트를 수정해줘"), 그 컴포넌트의 실제 파일을
+    // import 경로로 디스크 해석해 편집 대상으로 전환한다. 대상 추출은 **모델(IntentClassifier.targetComponent)이
+    // 1순위**, 모델이 없을 때만 정규식 폴백(두더지잡기 회피). 해석은 결정론(파일시스템=진실). 선택 칩보다
+    // 우선한다(사용자가 명시적으로 다른 파일을 지목). 미해석/모호하면 null로 떨어져 아래 기존 흐름을 탄다.
+    const crossFile = await this._resolveCrossFileTarget(userQuery, editorCtx, activeBase, modelTargetComponent);
+    if (crossFile) return { proceed: true, editorCtx: crossFile };
+
+    // 줄 선택이 있으면 사용자가 현재 파일을 명시적으로 가리킨 것 → 바로 진행
+    if (editorCtx.selection) return { proceed: true, editorCtx };
 
     // 쿼리가 현재 파일명/컴포넌트명을 명시 → 확정
     if (activeBase && userQuery.toLowerCase().includes(activeBase.toLowerCase())) {
@@ -493,6 +502,129 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await vscode.window.showTextDocument(doc, { preview: false });
     // 활성 에디터가 바뀌었으니 컨텍스트 재수집 (새 파일엔 선택 영역 없음)
     return this._editorCollector.collect();
+  }
+
+  /**
+   * 요청이 **현재 파일이 아닌 다른 컴포넌트**를 고치라는 것이면 그 컴포넌트의 실제 파일을 편집 대상으로 전환한다.
+   *
+   * 추출=모델 1순위 / 폴백=정규식: 대상 컴포넌트명은 모델(IntentClassifier.targetComponent)이 정한 것을
+   * 먼저 쓰고, 모델이 안 주면(null·꺼짐) 쿼리에서 PascalCase를 정규식 추출하되 **현재 파일이 실제 import한
+   * 심볼만** 인정한다(환각 차단). 모델이 명시한 이름은 import 안 돼 있어도 이름 자체로 해석을 시도한다
+   * (모델이 본 걸 신뢰; 모호하면 _resolveModuleToUri가 null로 안전 회피).
+   *
+   * 해석=결정론(파일시스템=진실): 이름/모듈 스펙을 _resolveModuleToUri로 디스크 파일에 매핑. 외부 패키지나
+   * 미해석·현재 파일과 동일이면 null을 돌려 호출부가 기존 흐름을 타게 한다. 해석되면 그 파일을 열어
+   * EditorContext를 재수집해 반환한다(새 파일엔 선택 영역 없음 → 선택 가드 자동 해제).
+   */
+  private async _resolveCrossFileTarget(
+    userQuery: string,
+    editorCtx: EditorContext,
+    activeBase: string,
+    modelTargetComponent: string | null = null,
+  ): Promise<EditorContext | null> {
+    if (!editorCtx.available || !editorCtx.content) return null;
+
+    const provenance = buildImportProvenance([editorCtx.content]);
+    const baseLower = activeBase.toLowerCase();
+
+    // 대상 컴포넌트명 결정 — 모델이 1순위, 없으면 정규식 폴백.
+    let name: string | null = null;
+    const modelName =
+      modelTargetComponent && /^[A-Z][A-Za-z0-9]*$/.test(modelTargetComponent)
+        ? modelTargetComponent
+        : null;
+    if (modelName && modelName.toLowerCase() !== baseLower) {
+      // 모델이 명시 → import 그라운딩을 강제하지 않는다(모델이 본 걸 신뢰; 해석 단계가 안전망).
+      name = modelName;
+    } else if (!modelTargetComponent) {
+      // 폴백: 쿼리에서 PascalCase 추출 + import 그라운딩(정규식은 환각 위험이 커 import된 심볼만 인정).
+      const candidates = new Set<string>();
+      const re = /\b([A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*)\b/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(userQuery)) !== null) candidates.add(m[1]);
+      const imported = [...candidates].filter(
+        (c) => c.toLowerCase() !== baseLower && provenance.has(c),
+      );
+      if (imported.length === 1) name = imported[0];
+    }
+    if (!name) return null; // 단서 없음·모호 → 기존 흐름
+
+    // import 경로가 있으면 그 모듈 스펙(정확), 없으면 이름 자체로 glob 해석.
+    const moduleSpec = provenance.get(name)?.module ?? name;
+    const uri = await this._resolveModuleToUri(moduleSpec, editorCtx.absoluteFilePath);
+    if (!uri) {
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] cross-file: ${name}("${moduleSpec}") 워크스페이스 파일 해석 실패 → 현재 파일 유지`,
+      );
+      return null;
+    }
+
+    const rel = vscode.workspace.asRelativePath(uri);
+    // 해석 결과가 현재 파일과 같으면 전환 불필요(현재 파일 수정).
+    if (editorCtx.filePath && rel === editorCtx.filePath) return null;
+    this._post({
+      type: 'token',
+      content: `\n\n> 🎯 현재 파일이 import한 **${name}** 컴포넌트를 편집 대상으로 전환합니다: \`${rel}\`\n`,
+    });
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc, { preview: false });
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] cross-file 재타겟: ${activeBase} → ${rel} (import "${module}")`,
+    );
+    // 활성 에디터가 바뀌었으니 컨텍스트 재수집 (새 파일엔 선택 영역 없음 → 선택 가드 자동 해제)
+    return this._editorCollector.collect();
+  }
+
+  /**
+   * import 모듈 스펙(예: `@/shared/components/ui/StatusBadge`, `./StatusBadge`)을 워크스페이스 내
+   * 실제 파일 URI로 해석한다. 외부 패키지(lucide-react 등)는 워크스페이스에서 못 찾으면 null.
+   *
+   * 전략: ① 상대경로면 현재 파일 기준 resolve → 확장자/index 탐색. ② 그 외(별칭·bare)는 basename glob으로
+   * 후보를 찾고, 스펙 뒤쪽 경로 세그먼트를 가장 많이 포함하는 후보를 고른다(별칭 매핑을 tsconfig 파싱 없이
+   * 견고하게 우회 — 컴포넌트 파일명은 대개 워크스페이스에서 유일하다).
+   */
+  private async _resolveModuleToUri(spec: string, currentAbsPath?: string): Promise<vscode.Uri | null> {
+    const exts = ['.tsx', '.ts', '.jsx', '.js'];
+    const tryStat = async (base: string): Promise<vscode.Uri | null> => {
+      for (const e of exts) {
+        const u = vscode.Uri.file(base + e);
+        try { await vscode.workspace.fs.stat(u); return u; } catch { /* next */ }
+      }
+      for (const e of exts) {
+        const u = vscode.Uri.file(path.join(base, 'index' + e));
+        try { await vscode.workspace.fs.stat(u); return u; } catch { /* next */ }
+      }
+      return null;
+    };
+
+    // ① 상대 경로
+    if (spec.startsWith('.') && currentAbsPath) {
+      const resolved = await tryStat(path.resolve(path.dirname(currentAbsPath), spec));
+      if (resolved) return resolved;
+    }
+
+    // ② basename glob + 뒤쪽 세그먼트 스코어링
+    const base = spec.split('/').pop();
+    if (!base) return null;
+    let matches: vscode.Uri[] = [];
+    try {
+      matches = await vscode.workspace.findFiles(`**/${base}.{tsx,ts,jsx,js}`, '**/node_modules/**', 20);
+    } catch {
+      return null;
+    }
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
+
+    // 여러 후보 → 스펙 경로 세그먼트(별칭·`.`·`..` 제외)를 가장 많이 포함하는 후보 선택. 동점이면 모호 → null.
+    const segs = spec.split('/').filter((s) => s && s !== base && !s.startsWith('@') && s !== '.' && s !== '..');
+    const scored = matches
+      .map((u) => ({
+        u,
+        score: segs.filter((s) => u.path.toLowerCase().includes(s.toLowerCase())).length,
+      }))
+      .sort((a, b) => b.score - a.score);
+    if (scored.length >= 2 && scored[0].score === scored[1].score) return null;
+    return scored[0].u;
   }
 
   /** 뷰가 이미 열려 있으면 포커스, 아니면 VS Code가 자동으로 resolveWebviewView를 호출한다. */
@@ -822,7 +954,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         !this._scaffoldBuilder.isQnAGated(text, forceQnA) &&
         this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
       if (isFileCtx) {
-        const resolved = await this._resolveTargetFile(text, editorCtx);
+        const resolved = await this._resolveTargetFile(text, editorCtx, intent?.targetComponent ?? null);
         if (!resolved.proceed) {
           this._post({
             type: 'token',
@@ -2756,18 +2888,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             : []);
 
         // no-op 가드(방어선): full/patch/lines/structural이 모두 수렴하는 지점. 최종 생성 코드가
-        // 원본과 동일(diff 0건)하면 "수정 대기" 확인 카드를 띄우지 않는다. 질문(조회·설명)을 수정
-        // 흐름으로 오인해 모델이 선택 코드를 그대로 베껴낸 경우, 원본과 똑같은 diff가 진짜 편집처럼
-        // 보이던 것을 차단한다. (1차 게이트가 막지 못한 잔여 케이스의 마지막 방어.)
-        if (originalContent !== undefined && diff.length === 0) {
+        // 원본과 동일하면 "수정 대기" 확인 카드를 띄우지 않는다. 질문(조회·설명)을 수정 흐름으로
+        // 오인해 모델이 선택 코드를 그대로 베껴낸 경우, 원본과 똑같은 diff가 진짜 편집처럼 보이던 것을 차단.
+        //
+        // 두 가지를 모두 no-op으로 본다:
+        //  ① diff 0건(완전 동일).
+        //  ② 들여쓰기/공백만 다름 — 모델 patch의 <replace>가 원본과 내용은 같고 indent만 달라
+        //     computeDiffHunks가 del+add 쌍을 만든 경우(예: <td>·</td> 재들여쓰기). del/add 라인의
+        //     **trim 후 멀티셋이 동일**하면 실질 변경이 아니므로 카드를 안 띄운다(Prettier가 어차피 정규화).
+        const dels = diff.filter((d) => d.type === 'del').map((d) => d.content.trim());
+        const adds = diff.filter((d) => d.type === 'add').map((d) => d.content.trim());
+        const whitespaceOnly =
+          diff.length > 0 &&
+          dels.length === adds.length &&
+          [...dels].sort().join('\n') === [...adds].sort().join('\n');
+        if (originalContent !== undefined && (diff.length === 0 || whitespaceOnly)) {
           this._corpusOutputChannel.appendLine(
-            `[Axiom AI] ℹ️ no-op 편집 생략 (${action.filePath}) — 생성 코드가 원본과 동일, 확인 카드 안 띄움`,
+            `[Axiom AI] ℹ️ no-op 편집 생략 (${action.filePath}) — ${whitespaceOnly ? '공백/들여쓰기만 다름' : '생성 코드가 원본과 동일'}, 확인 카드 안 띄움`,
           );
           this._post({
             type: 'token',
-            content:
-              '\n\n> ℹ️ **변경 사항이 없습니다** — 제안된 코드가 현재 파일과 동일합니다. ' +
-              '(질문·설명 요청이었다면 위 답변을 참고하세요.)\n',
+            content: whitespaceOnly
+              ? '\n\n> ℹ️ **실질적인 변경이 없습니다** — 들여쓰기·공백만 다를 뿐 코드 내용은 현재 파일과 동일합니다.\n'
+              : '\n\n> ℹ️ **변경 사항이 없습니다** — 제안된 코드가 현재 파일과 동일합니다. ' +
+                '(질문·설명 요청이었다면 위 답변을 참고하세요.)\n',
           });
           this._post({ type: 'fileCancelled' });
           break;

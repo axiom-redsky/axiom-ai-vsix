@@ -33,6 +33,12 @@ export interface IntentResult {
   contentSource: string | null;
   /** 고칠 대상 파일. 현재 열린 파일이면 "current", 경로 명시면 그 경로, 모르면 null. */
   targetFile: string | null;
+  /**
+   * 현재 파일이 아니라 **현재 파일이 사용/import한 다른 컴포넌트**를 고치라는 요청이면 그 PascalCase 이름.
+   * 예: "StatusBadge 컴포넌트를 수정해줘" → "StatusBadge". 현재 파일 자체를 고치면 null.
+   * 실행부가 이 이름을 import 경로로 디스크 해석해 편집 대상을 전환한다(추출=모델, 해석=결정론).
+   */
+  targetComponent: string | null;
 }
 
 export interface IntentContext {
@@ -67,7 +73,8 @@ export function buildIntentPrompt(query: string, ctx: IntentContext): string {
     `**JSON 한 줄만** 출력하세요. 설명·코드펜스 금지.\n\n` +
     `## 출력 스키마\n` +
     `{"intent": "create_page|modify_file|qna|smalltalk|other", "pageName": string|null, ` +
-    `"domain": string|null, "contentSource": string|null, "targetFile": "current"|string|null}\n\n` +
+    `"domain": string|null, "contentSource": string|null, "targetFile": "current"|string|null, ` +
+    `"targetComponent": string|null}\n\n` +
     `## 필드 규칙\n` +
     `- intent: create_page=새 페이지/화면 생성, modify_file=기존(보통 현재) 파일 수정, ` +
     `qna=조회·설명 질문, smalltalk=인사·잡담, other=불명확.\n` +
@@ -75,18 +82,22 @@ export function buildIntentPrompt(query: string, ctx: IntentContext): string {
     `요청에 적힌 파일경로 안의 이름(.tsx 등)은 "출처"이지 "만들 이름"이 아니므로 pageName에 넣지 마세요.\n` +
     `- domain: 명시된 대상 도메인. 후보: [${domainList}]. 불명확하면 null.\n` +
     `- contentSource: "이 파일 내용으로 채워/넣어줘"처럼 **복사해 올 원본** 파일 경로. 없으면 null.\n` +
-    `- targetFile: 고칠 대상. "현재 화면/파일"이면 "current", 경로가 명시되면 그 경로, 모르면 null.\n\n` +
+    `- targetFile: 고칠 대상. "현재 화면/파일"이면 "current", 경로가 명시되면 그 경로, 모르면 null.\n` +
+    `- targetComponent: **현재 파일이 아니라 현재 파일이 쓰는 다른 컴포넌트**를 고치라는 요청이면 그 ` +
+    `PascalCase 이름(예: "StatusBadge 컴포넌트를 수정해줘" → "StatusBadge"). 현재 파일 자체 수정이면 null.\n\n` +
     `## 예시\n` +
     `요청: "상품 목록 화면 만들어줘"\n` +
-    `{"intent":"create_page","pageName":null,"domain":null,"contentSource":null,"targetFile":null}\n` +
+    `{"intent":"create_page","pageName":null,"domain":null,"contentSource":null,"targetFile":null,"targetComponent":null}\n` +
     `요청: "CatalogListPage 를 catalog 도메인에 만들어줘"\n` +
-    `{"intent":"create_page","pageName":"CatalogListPage","domain":"catalog","contentSource":null,"targetFile":null}\n` +
+    `{"intent":"create_page","pageName":"CatalogListPage","domain":"catalog","contentSource":null,"targetFile":null,"targetComponent":null}\n` +
     `요청: "현재 화면 jsx를 src/publishing/inventory/pages/StockPage.tsx 내용으로 넣어줘"\n` +
-    `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":"src/publishing/inventory/pages/StockPage.tsx","targetFile":"current"}\n` +
+    `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":"src/publishing/inventory/pages/StockPage.tsx","targetFile":"current","targetComponent":null}\n` +
+    `요청: "이 화면이 쓰는 StatusBadge 컴포넌트를 수정해줘"\n` +
+    `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":null,"targetFile":"current","targetComponent":"StatusBadge"}\n` +
     `요청: "이 useApi 훅이 무슨 일을 해?"\n` +
-    `{"intent":"qna","pageName":null,"domain":null,"contentSource":null,"targetFile":null}\n` +
+    `{"intent":"qna","pageName":null,"domain":null,"contentSource":null,"targetFile":null,"targetComponent":null}\n` +
     `요청: "고마워 잘 됐어"\n` +
-    `{"intent":"smalltalk","pageName":null,"domain":null,"contentSource":null,"targetFile":null}\n\n` +
+    `{"intent":"smalltalk","pageName":null,"domain":null,"contentSource":null,"targetFile":null,"targetComponent":null}\n\n` +
     `## 현재 상태\n` +
     `- 열린 파일: ${cur}\n` +
     `- 선택 영역: ${sel}\n\n` +
@@ -128,6 +139,7 @@ export function parseIntent(output: string): IntentResult | null {
     domain: str(o.domain),
     contentSource: str(o.contentSource),
     targetFile: str(o.targetFile),
+    targetComponent: str(o.targetComponent),
   };
 }
 
@@ -142,6 +154,7 @@ export function formatIntentForChat(r: IntentResult): string {
   };
   const parts: string[] = [`**${label[r.intent]}**`];
   if (r.pageName) parts.push(`이름: \`${r.pageName}\``);
+  if (r.targetComponent) parts.push(`수정 컴포넌트: \`${r.targetComponent}\``);
   if (r.domain) parts.push(`도메인: \`${r.domain}\``);
   if (r.targetFile) parts.push(`대상: ${r.targetFile === 'current' ? '현재 화면' : `\`${r.targetFile}\``}`);
   if (r.contentSource) parts.push(`내용 출처: \`${r.contentSource}\``);
