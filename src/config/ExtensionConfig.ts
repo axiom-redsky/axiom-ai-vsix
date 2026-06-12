@@ -39,6 +39,13 @@ export interface LineEditConfig {
   anchorSearchRadius: number;
 }
 
+export interface QnaAntiRepeatConfig {
+  enabled: boolean;
+  repeatPenalty: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+}
+
 export class ExtensionConfig {
   private static _cfg() {
     return vscode.workspace.getConfiguration('axiom-ai');
@@ -137,6 +144,21 @@ export class ExtensionConfig {
    */
   static isScenarioCCompactModes(): boolean {
     return ExtensionConfig._cfg().get<boolean>('scenarioC.compactModes', AI_DEFAULTS.scenarioC.compactModes);
+  }
+
+  /**
+   * Q&A(조회·설명형) 응답 반복 억제 튜닝. 호출자가 Q&A 경로에서만 LlmService.streamChat에 주입한다.
+   * 코드 편집·스펙·eval 경로에는 전달하지 않으므로 그 경로의 요청 바디는 종전과 바이트 동일하다.
+   */
+  static getQnaAntiRepeatConfig(): QnaAntiRepeatConfig {
+    const cfg = ExtensionConfig._cfg();
+    const d = AI_DEFAULTS.qnaAntiRepeat;
+    return {
+      enabled:          cfg.get<boolean>('llm.qnaAntiRepeat.enabled',          d.enabled),
+      repeatPenalty:    cfg.get<number>('llm.qnaAntiRepeat.repeatPenalty',     d.repeatPenalty),
+      frequencyPenalty: cfg.get<number>('llm.qnaAntiRepeat.frequencyPenalty',  d.frequencyPenalty),
+      presencePenalty:  cfg.get<number>('llm.qnaAntiRepeat.presencePenalty',   d.presencePenalty),
+    };
   }
 
   /** 시스템 프롬프트 전문을 'axiom-ai: Prompt' 출력 채널에 기록할지 여부(디버그). */

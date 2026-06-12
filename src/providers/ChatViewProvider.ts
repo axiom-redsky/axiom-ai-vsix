@@ -25,7 +25,7 @@ import {
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult } from '../ai/IntentClassifier';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import type { ChatMessage, LlmConfig } from '../ai/types';
+import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
 import { ContextCollector } from '../spec/ContextCollector';
 import { SpecGenerator } from '../spec/SpecGenerator';
@@ -960,6 +960,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const mainAbortRelay = () => mainTimeoutAbort.abort();
       mainParentSignal?.addEventListener('abort', mainAbortRelay, { once: true });
 
+      // 반복(degenerate repetition) 억제 튜닝은 "코드 편집 턴이 아닌 산문 응답"(Q&A·조회·설명·잡담)에서만 주입한다.
+      // isFileCtx===true(full/patch 코드 편집 폴백)이면 미주입 → 코드 생성 요청 바디는 종전과 바이트 동일(회귀 0).
+      // 코드는 반복 토큰(className·닫는 태그·import)이 정당하므로 페널티를 적용하면 안 된다.
+      const antiRepeat = ExtensionConfig.getQnaAntiRepeatConfig();
+      const qnaTuning: LlmTuning | undefined =
+        !isFileCtx && antiRepeat.enabled
+          ? config.provider === 'ollama'
+            ? { repeatPenalty: antiRepeat.repeatPenalty }
+            : { frequencyPenalty: antiRepeat.frequencyPenalty, presencePenalty: antiRepeat.presencePenalty }
+          : undefined;
+
       try {
         let firstToken = true;
         for await (const token of this._llm.streamChat(
@@ -980,6 +991,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               contextWindow: config.contextWindow,
             });
           },
+          qnaTuning,
         )) {
           if (firstToken) {
             clearElapsedTimer();

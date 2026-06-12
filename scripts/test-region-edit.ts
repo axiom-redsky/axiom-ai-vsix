@@ -5,7 +5,8 @@
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
-import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference } from '../src/ai/RegionEditService';
+import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection } from '../src/ai/ScaffoldContracts';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
@@ -870,6 +871,46 @@ console.log('\n기존 const 결정론 교체:');
     });
     check('훅 속 중복 import는 추가 안 됨(react 1줄 유지)', (text.match(/from 'react'/g) ?? []).length === 1, text);
   }
+}
+
+console.log('\nimport provenance — 경로 + default/named 형태 교정:');
+{
+  // 참조(내용 출처) 파일: PageHeader는 default, StatusBadge도 default, Button은 named.
+  const REF = [
+    "import PageHeader from '@/shared/components/ui/PageHeader';",
+    "import StatusBadge from '@/shared/components/ui/StatusBadge';",
+    "import { Button } from '@/shared/components/ui';",
+  ].join('\n');
+  const prov = buildImportProvenance([REF]);
+
+  // (a) 맵이 형태까지 캡처한다
+  check('provenance: PageHeader=def', prov.get('PageHeader')?.kind === 'def' && prov.get('PageHeader')?.module === '@/shared/components/ui/PageHeader');
+  check('provenance: Button=named', prov.get('Button')?.kind === 'named');
+
+  // (b) 모델이 default를 named로 뒤집어 환각 → def로 교정 (실측 버그 케이스)
+  const modelImports: ImportRequest[] = [
+    { module: '@/shared/components/ui/PageHeader', named: ['PageHeader'] },
+    { module: '@/shared/components/ui/StatusBadge', named: ['StatusBadge'] },
+    { module: '@/shared/components/ui', named: ['Button'] },
+  ];
+  const { imports, corrections } = reconcileImportsWithReference(modelImports, prov);
+  const ph = imports.find((i) => i.module === '@/shared/components/ui/PageHeader');
+  const sb = imports.find((i) => i.module === '@/shared/components/ui/StatusBadge');
+  const btn = imports.find((i) => i.module === '@/shared/components/ui');
+  check('PageHeader named→default 교정', ph?.def === 'PageHeader' && !ph?.named, JSON.stringify(ph));
+  check('StatusBadge named→default 교정', sb?.def === 'StatusBadge' && !sb?.named, JSON.stringify(sb));
+  check('Button(named 정답)은 그대로', btn?.named?.includes('Button') === true && !btn?.def, JSON.stringify(btn));
+  check('형태 교정이 corrections에 기록', corrections.some((c) => c.includes('default')), JSON.stringify(corrections));
+
+  // (c) 이미 올바른 형태면 교정 없음(no-op)
+  const correct: ImportRequest[] = [{ module: '@/shared/components/ui/PageHeader', def: 'PageHeader' }];
+  const r2 = reconcileImportsWithReference(correct, prov);
+  check('정확한 형태는 no-op', r2.corrections.length === 0);
+
+  // (d) 참조에 없는 심볼은 모델 형태 그대로 둔다
+  const unknown: ImportRequest[] = [{ module: 'x', named: ['Unknown'] }];
+  const r3 = reconcileImportsWithReference(unknown, prov);
+  check('참조에 없는 심볼은 손대지 않음', r3.corrections.length === 0);
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);

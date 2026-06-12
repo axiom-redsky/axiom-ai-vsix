@@ -121,6 +121,32 @@
           "minimum": 2048,
           "description": "모델의 컨텍스트 윈도우 크기(토큰). 사이트별 모델에 맞춰 조정하세요. 응답에 usage가 포함되면 실측치를 우선합니다."
         },
+        "axiom-ai.llm.qnaAntiRepeat.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "조회·설명형(Q&A)·잡담 등 산문 응답에서 반복(같은 문단 무한 반복) 억제 샘플링을 적용합니다. 코드 편집(region/patch/full)·스펙 생성 요청에는 적용하지 않습니다(코드의 정당한 반복 토큰을 망치지 않기 위함). 약한 모델이 답변을 무한 반복하면 켜 두세요. 답변이 부자연스럽게 끊기면 false로 끄세요."
+        },
+        "axiom-ai.llm.qnaAntiRepeat.repeatPenalty": {
+          "type": "number",
+          "default": 1.3,
+          "minimum": 1,
+          "maximum": 2,
+          "description": "[Ollama 전용] 산문 응답의 options.repeat_penalty. 1=억제 없음, 1.1=Ollama 기본, 클수록 반복을 강하게 억제합니다. Modelfile 값보다 우선 적용됩니다(Q&A 경로 한정)."
+        },
+        "axiom-ai.llm.qnaAntiRepeat.frequencyPenalty": {
+          "type": "number",
+          "default": 0.3,
+          "minimum": -2,
+          "maximum": 2,
+          "description": "[OpenAI 호환 전용] 산문 응답의 frequency_penalty(-2~2). 같은 토큰의 등장 빈도에 비례해 반복을 억제합니다(Q&A 경로 한정)."
+        },
+        "axiom-ai.llm.qnaAntiRepeat.presencePenalty": {
+          "type": "number",
+          "default": 0.3,
+          "minimum": -2,
+          "maximum": 2,
+          "description": "[OpenAI 호환 전용] 산문 응답의 presence_penalty(-2~2). 이미 등장한 토큰의 재등장을 억제합니다(Q&A 경로 한정)."
+        },
         "axiom-ai.llm.thinking.injectNoThink": {
           "type": "boolean",
           "default": true,

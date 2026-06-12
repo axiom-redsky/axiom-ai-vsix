@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import type { ChatMessage, LlmConfig, LlmUsage } from './types';
+import type { ChatMessage, LlmConfig, LlmTuning, LlmUsage } from './types';
 import { FallbackStubService } from './FallbackStubService';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 
@@ -79,6 +79,7 @@ export class LlmService {
     onFallback?: (reason: string) => void,
     onServerConnected?: () => void,
     onUsage?: (usage: LlmUsage) => void,
+    tuning?: LlmTuning,
   ): AsyncGenerator<string> {
     // Ollama 네이티브는 /api/chat(줄단위 JSON), OpenAI 호환은 /v1/chat/completions(SSE).
     const isOllama = config.provider === 'ollama';
@@ -98,7 +99,7 @@ export class LlmService {
     let sendThinkingParams = config.sendThinkingParams;
     let maxTokens = config.maxTokens;
     const buildBody = (): string =>
-      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens });
+      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens, tuning });
 
     console.log(`[Axiom AI] → 요청 URL: ${url} (provider=${config.provider})`);
     console.log(
@@ -408,22 +409,27 @@ export class LlmService {
   private _buildRequestBody(
     messages: ChatMessage[],
     config: LlmConfig,
-    opts: { sendThinkingParams: boolean; maxTokens: number },
+    opts: { sendThinkingParams: boolean; maxTokens: number; tuning?: LlmTuning },
   ): string {
     if (config.provider === 'ollama') {
       // Ollama 네이티브(/api/chat): thinking은 top-level think:false로만 확실히 꺼진다.
       // (/v1 호환 레이어의 enable_thinking·chat_template_kwargs·reasoning_effort는 모두 무시되어 추론이 계속됨)
       // think:false가 권위 있으므로 /no_think 텍스트 주입은 불필요·생략한다.
       // max_tokens·temperature는 OpenAI식 top-level이 아니라 options 하위로 전달한다.
+      const options: Record<string, unknown> = {
+        temperature: config.temperature,
+        num_predict: opts.maxTokens,
+      };
+      // per-call 튜닝(Q&A 경로에서만 주입). 미지정이면 Modelfile/서버 기본값을 그대로 둔다.
+      if (opts.tuning?.repeatPenalty != null) {
+        options.repeat_penalty = opts.tuning.repeatPenalty;
+      }
       return JSON.stringify({
         model: config.model,
         messages,
         stream: true,
         think: false,
-        options: {
-          temperature: config.temperature,
-          num_predict: opts.maxTokens,
-        },
+        options,
       });
     }
 
@@ -437,6 +443,13 @@ export class LlmService {
       // OpenAI/vLLM 호환: 스트림 마지막 chunk에 usage를 포함시킨다. 미지원 서버는 무시한다.
       stream_options: { include_usage: true },
     };
+    // per-call 튜닝(Q&A 경로에서만 주입). 표준 OpenAI 필드이나, 미지정이면 바디에 넣지 않아 종전과 동일하게 둔다.
+    if (opts.tuning?.frequencyPenalty != null) {
+      body.frequency_penalty = opts.tuning.frequencyPenalty;
+    }
+    if (opts.tuning?.presencePenalty != null) {
+      body.presence_penalty = opts.tuning.presencePenalty;
+    }
     if (opts.sendThinkingParams) {
       // qwen3 계열 thinking 모드 비활성화. 미지원 모델은 무시하지만, 엄격한 게이트웨이는 400을 낼 수 있어 옵션으로 둔다.
       body.enable_thinking = false;

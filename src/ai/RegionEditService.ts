@@ -98,17 +98,27 @@ export function parseDisambiguationPick(output: string, candidates: RegionCandid
 }
 
 /**
- * 참조(내용 출처) 파일들의 import 문에서 **심볼 → 모듈 경로** 맵을 만든다.
+ * 참조 파일이 어떤 심볼을 **어느 모듈에서, 어떤 바인딩 형태로** 가져오는지의 ground truth.
+ * `kind`: 'named'=`{ X }`, 'def'=`X`(default). 모델이 default↔named를 뒤집어 환각하는 것을 교정하는 데 쓴다.
+ */
+export interface ImportOrigin {
+  module: string;
+  kind: 'named' | 'def';
+}
+
+/**
+ * 참조(내용 출처) 파일들의 import 문에서 **심볼 → {모듈 경로, 바인딩 형태}** 맵을 만든다.
  *
  * region 편집이 참조 파일의 JSX를 가져올 때, 그 JSX가 쓰는 컴포넌트(PageHeader·StatusBadge 등)의
- * **정답 import 경로는 참조 파일 맨 위에 이미 적혀 있다.** 약한 모델은 이를 베끼지 않고 프롬프트 예시의
- * 모듈(@axiom/components/ui)로 경로를 뭉뚱그려 환각한다. 이 맵을 ground truth로 써서 모델이 추측한
- * 경로를 결정론적으로 교정한다(reconcileImportsWithReference).
+ * **정답 import는 참조 파일 맨 위에 이미 적혀 있다**(경로뿐 아니라 default/named 여부까지). 약한 모델은
+ * 이를 베끼지 않고 프롬프트 예시 모듈(@axiom/components/ui)로 경로를 뭉뚱그리거나, default를 `{ }`로
+ * 감싸 named로 환각한다. 이 맵을 ground truth로 써서 모델이 추측한 경로·형태를 결정론적으로 교정한다
+ * (reconcileImportsWithReference).
  *
  * 별칭(`X as Y`)은 JSX에서 실제로 쓰는 **로컬명(Y)** 을 키로 둔다. type-only import는 건너뛴다.
  */
-export function buildImportProvenance(refContents: string[]): Map<string, string> {
-  const map = new Map<string, string>();
+export function buildImportProvenance(refContents: string[]): Map<string, ImportOrigin> {
+  const map = new Map<string, ImportOrigin>();
   const importRe = /import\s+(type\s+)?([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g;
   for (const content of refContents) {
     let m: RegExpExecArray | null;
@@ -124,18 +134,18 @@ export function buildImportProvenance(refContents: string[]): Map<string, string
           const t = part.trim();
           if (!t || /^type\s/.test(t)) continue; // 개별 type 항목 제외
           const local = t.split(/\s+as\s+/i).pop()!.trim();
-          if (/^[A-Za-z_$][\w$]*$/.test(local)) map.set(local, mod);
+          if (/^[A-Za-z_$][\w$]*$/.test(local)) map.set(local, { module: mod, kind: 'named' });
         }
       }
 
-      // namespace: * as NS
+      // namespace: * as NS — ImportRequest로 재현 불가하므로 형태는 def로 근사(경로 교정만 의미 있음)
       const ns = clause.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
-      if (ns) map.set(ns[1], mod);
+      if (ns) map.set(ns[1], { module: mod, kind: 'def' });
 
       // default: 이름블록·네임스페이스를 떼고 남은 선두 식별자
       const rest = clause.replace(/\{[\s\S]*?\}/, '').replace(/\*\s+as\s+[A-Za-z_$][\w$]*/, '');
       const def = rest.split(',')[0]?.trim();
-      if (def && /^[A-Za-z_$][\w$]*$/.test(def)) map.set(def, mod);
+      if (def && /^[A-Za-z_$][\w$]*$/.test(def)) map.set(def, { module: mod, kind: 'def' });
     }
   }
   return map;
@@ -150,7 +160,7 @@ export function buildImportProvenance(refContents: string[]): Map<string, string
  */
 export function reconcileImportsWithReference(
   imports: ImportRequest[],
-  provenance: Map<string, string>,
+  provenance: Map<string, ImportOrigin>,
 ): { imports: ImportRequest[]; corrections: string[] } {
   if (provenance.size === 0 || imports.length === 0) return { imports, corrections: [] };
 
@@ -163,9 +173,16 @@ export function reconcileImportsWithReference(
   }
   for (const e of entries) {
     const truth = provenance.get(e.symbol);
-    if (truth && truth !== e.module) {
-      corrections.push(`${e.symbol}: ${e.module} → ${truth}`);
-      e.module = truth;
+    if (!truth) continue;
+    // 경로 교정: 모델이 추측한 모듈 ≠ 참조의 실제 모듈
+    if (truth.module !== e.module) {
+      corrections.push(`${e.symbol}: ${e.module} → ${truth.module}`);
+      e.module = truth.module;
+    }
+    // 형태 교정: default↔named 뒤집힘(참조는 `import X`인데 모델이 `import { X }`로, 또는 그 반대)
+    if (truth.kind !== e.kind) {
+      corrections.push(`${e.symbol}: ${e.kind === 'named' ? '{ }' : 'default'} → ${truth.kind === 'named' ? '{ }' : 'default'}`);
+      e.kind = truth.kind;
     }
   }
   if (corrections.length === 0) return { imports, corrections: [] };
@@ -336,7 +353,7 @@ export async function runHybridRegionEdit(
   callModel: (system: string, user: string) => Promise<string>,
   referencedSpec?: string,
   disambiguate?: RegionDisambiguator,
-  referenceImports?: Map<string, string>,
+  referenceImports?: Map<string, ImportOrigin>,
 ): Promise<RegionEditOutcome> {
   let loc = locateEditRegion(source, query);
 

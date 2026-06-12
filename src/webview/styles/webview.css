@@ -579,7 +579,9 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   /* 긴 diff는 패널 안에서 세로로도 스크롤되게 한다(이전엔 가로 스크롤만 있어 뒷부분을 볼 수 없었음). */
   max-height: 60vh;
   overflow: auto;
-  overscroll-behavior: contain;
+  /* diff를 끝까지 스크롤하면 chat 전체 스크롤로 이어지도록 native 스크롤 체이닝을 유지한다.
+     (contain이면 경계에서 부모로 전파가 막혀 마우스가 diff 위일 때 chat이 안 움직였음) */
+  overscroll-behavior-y: auto;
   border-top: 1px solid rgba(0, 120, 212, 0.2);
 }
 

@@ -28,6 +28,26 @@ export interface LlmConfig {
   sendThinkingParams: boolean;
 }
 
+/**
+ * 호출 시점(per-call) 샘플링 튜닝. 반복(degenerate repetition) 억제용.
+ * 전역(config)이 아니라 호출자가 경로별로 선택 주입한다 — Q&A(산문)에서만 켜고,
+ * 코드 편집(region/patch/full)·스펙·eval 프로브는 미전달(undefined)하여 요청 바디를 종전과 동일하게 유지한다.
+ * 코드는 본질적으로 반복 토큰(className, 닫는 태그, import 줄)이 많아 반복 페널티가 정당한 구문을 망칠 수 있어,
+ * 이 튜닝은 코드 생성 경로에 절대 적용하지 않는다.
+ *
+ * provider별로 적용 필드가 다르다(미지정 필드는 요청 바디에 넣지 않는다):
+ * - ollama: repeatPenalty → options.repeat_penalty (1=off, 1.1 기본, 클수록 반복 억제)
+ * - openai: frequencyPenalty / presencePenalty → body.frequency_penalty / presence_penalty (-2~2)
+ */
+export interface LlmTuning {
+  /** Ollama: options.repeat_penalty. 1=억제 없음. 산문 anti-loop엔 1.2~1.3 권장. */
+  repeatPenalty?: number;
+  /** OpenAI 호환: body.frequency_penalty (-2~2). 같은 토큰 빈도에 비례해 억제. */
+  frequencyPenalty?: number;
+  /** OpenAI 호환: body.presence_penalty (-2~2). 이미 등장한 토큰 재등장 억제. */
+  presencePenalty?: number;
+}
+
 /** OpenAI-compatible 응답의 usage 통계. 서빙 프레임워크마다 일부 필드만 줄 수 있음. */
 export interface LlmUsage {
   promptTokens?: number;

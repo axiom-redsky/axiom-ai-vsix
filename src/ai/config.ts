@@ -145,6 +145,24 @@ export const AI_DEFAULTS = {
     anchorSearchRadius: 3,
   },
   /**
+   * Q&A(조회·설명형) 응답의 반복(degenerate repetition) 억제 튜닝.
+   * 약한 sLLM이 자유 산문 답변에서 같은 문단을 num_predict 한도까지 무한 반복하는 실패를 줄인다.
+   * ⚠ 이 튜닝은 호출자가 Q&A 경로(isQnAGated)에서만 주입한다. 코드 편집(region/patch/full)·스펙·eval
+   *   경로에는 절대 적용하지 않는다 — 코드는 반복 토큰(className·닫는 태그·import)이 정당하므로 페널티가 독이 된다.
+   * - provider=ollama: repeatPenalty → options.repeat_penalty (Modelfile 1.05를 호출 시점에 override).
+   * - provider=openai: frequency/presencePenalty → body.frequency_penalty / presence_penalty.
+   * 품질 저하(답변이 부자연스럽게 끊김 등)가 감지되면 enabled=false로 끈다.
+   */
+  qnaAntiRepeat: {
+    enabled: true,
+    /** Ollama repeat_penalty. 1=off. 산문 anti-loop 균형값(코드엔 미적용이라 공격적이어도 안전). */
+    repeatPenalty: 1.3,
+    /** OpenAI frequency_penalty (-2~2). */
+    frequencyPenalty: 0.3,
+    /** OpenAI presence_penalty (-2~2). */
+    presencePenalty: 0.3,
+  },
+  /**
    * 시나리오 C(열린 파일 수정) 프롬프트 컴팩트 모드. 약한 sLLM 대상 기본값.
    * - 약한 모델은 "설명 먼저 → 블록 나중" + 4개 출력모드(structural/lines/patch/full) 선택부담에
    *   눌려, 자연어 계획만 쓰고 axiom-action 블록 없이 종료하는 실패가 잦다(시나리오 C 누락).
