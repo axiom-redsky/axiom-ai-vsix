@@ -6,7 +6,7 @@
  * useState 튜토리얼이 응답되던 문제. 의도를 modify_file로 결정론 분류하고, 그룹별 프레이밍 +
  * 로컬 RAG 본문으로 응답하는지 검증한다.
  */
-import { classifyOfflineIntent, extractFilePathRef } from '../src/ai/IntentSignals';
+import { classifyOfflineIntent, extractFilePathRef, stripFileRefs } from '../src/ai/IntentSignals';
 import { OfflineResponder } from '../src/ai/OfflineResponder';
 import type { IntentContext } from '../src/ai/IntentClassifier';
 
@@ -65,11 +65,24 @@ check('extractFilePathRef — 선행 슬래시 제거',
   extractFilePathRef('/src/a/B.tsx 적용') === 'src/a/B.tsx');
 check('extractFilePathRef — 경로 없음 → null', extractFilePathRef('그냥 텍스트') === null);
 
+// 경로 제거(키워드 라우팅 오염 차단)
+{
+  const cleaned = stripFileRefs('현재 화면의 jsx 부분을 /src/publishing/employee/pages/EmployeeListPage.tsx 파일의 jsx로 적용해줘');
+  check('stripFileRefs — 경로 토큰 제거', !/EmployeeListPage|\.tsx|pages/.test(cleaned), cleaned);
+  check('stripFileRefs — 의도 단어 보존', cleaned.includes('적용') && cleaned.includes('화면'), cleaned);
+}
+
 console.log('\nOfflineResponder.respond:');
 
 // RAG 본문이 그룹 템플릿에 주입되는지 (deps 주입으로 vscode/디스크 불필요)
+let lastRagQuery = '';
+let lastRagContent = '';
 const responder = new OfflineResponder({
-  retrieveDocs: async (q) => (q.includes('useApi') ? ['## useApi 훅\n로컬 지식 본문'] : []),
+  retrieveDocs: async (q, content) => {
+    lastRagQuery = q;
+    lastRagContent = content;
+    return q.includes('useApi') ? ['## useApi 훅\n로컬 지식 본문'] : [];
+  },
   selectStub: () => '스텁 폴백 본문',
   loadGroupTemplate: () => null, // 내장 기본 템플릿 사용
 });
@@ -82,6 +95,19 @@ await (async () => {
 
   const ragless = await responder.respond({ query: '무언가 설명해줘', currentFile: null, currentFileContent: '' });
   check('RAG 비었을 때 스텁 폴백', ragless.includes('스텁 폴백 본문'), ragless);
+
+  // 캡처 회귀: 경로가 박힌 modify 요청 — RAG 쿼리에서 경로 토큰이 제거되고 파일 내용이 전달되는지
+  const captured = await responder.respond({
+    query: '현재 화면의 jsx 부분을 /src/publishing/employee/pages/EmployeeListPage.tsx 파일의 jsx로 적용해줘',
+    currentFile: 'src/domains/employee/pages/EmployeeListPage.tsx',
+    currentFileContent: `import { useApi } from '@axiom/hooks';`,
+  });
+  check('캡처: RAG 쿼리에 경로 토큰 없음(page-generation 오염 차단)',
+    !/EmployeeListPage|\.tsx|pages/.test(lastRagQuery), lastRagQuery);
+  check('캡처: RAG에 현재 파일 내용 전달', lastRagContent.includes('useApi'), lastRagContent);
+  check('캡처: useApi 계약 카드(deps 발동)', captured.includes('refetch'), captured);
+  check('캡처: list-table 레시피 오발동 없음("list" 경로 토큰 제거)',
+    !captured.includes('list API 적용'), captured);
 
   const modify = await responder.respond({
     query: '현재 화면에 /api/employees 목록을 useApi로 적용해줘',

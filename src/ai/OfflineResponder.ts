@@ -17,13 +17,17 @@
 
 import type { IntentResult, IntentContext } from './IntentClassifier';
 import { formatIntentForChat } from './IntentClassifier';
-import { classifyOfflineIntent } from './IntentSignals';
+import { classifyOfflineIntent, stripFileRefs } from './IntentSignals';
 import { buildContractSection } from './ScaffoldContracts';
 
 /** OfflineResponder가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineResponderDeps {
-  /** 쿼리 관련 로컬 RAG(knowledge/*.md) 섹션 블록을 반환. 미초기화/오류 시 빈 배열. */
-  retrieveDocs: (query: string) => Promise<string[]>;
+  /**
+   * 쿼리 관련 로컬 RAG(knowledge/*.md) 섹션 블록을 반환. 미초기화/오류 시 빈 배열.
+   * fileContent를 함께 받아 현재 파일의 import 기반 라우팅(useApi·Table 등 실제 사용 문서)을
+   * 활성화한다. filePath는 일부러 넘기지 않는다 — `/pages/` 경로 자체가 router.md로 라우팅돼 노이즈.
+   */
+  retrieveDocs: (query: string, fileContent: string) => Promise<string[]>;
   /** 기존 .stubs/*.md 키워드 매칭 결과(RAG가 비었을 때 폴백). */
   selectStub: (query: string) => string;
   /** `.stubs/groups/{group}.md` 프레이밍 템플릿 본문(없으면 null → 내장 기본값). */
@@ -100,14 +104,14 @@ export class OfflineResponder {
   }
 
   private async _renderQna(req: IOfflineRequest, group: 'qna' | 'other' = 'qna'): Promise<string> {
-    const ragSections = await this._ragOrStub(req.query);
+    const ragSections = await this._ragOrStub(req);
     return this._render(group, { query: req.query, ragSections });
   }
 
   private async _renderWithRag(
     group: string, req: IOfflineRequest, intent: IntentResult,
   ): Promise<string> {
-    const ragSections = await this._ragOrStub(req.query);
+    const ragSections = await this._ragOrStub(req);
     return this._render(group, {
       query: req.query,
       intent: formatIntentForChat(intent),
@@ -116,11 +120,13 @@ export class OfflineResponder {
   }
 
   private async _renderModifyFile(req: IOfflineRequest, intent: IntentResult): Promise<string> {
-    const ragSections = await this._ragOrStub(req.query);
+    const ragSections = await this._ragOrStub(req);
+    // 계약 카드 트리거도 경로 토큰을 떼고 본다 — "EmployeeListPage"의 "list"가 list-table 레시피를
+    // 오발동시키던 회귀 차단. useApi 등은 deps(현재 파일 내용)에서 정상 발동한다.
     const contractCards = buildContractSection({
       deps: req.currentFileContent,
       region: '',
-      query: req.query,
+      query: stripFileRefs(req.query),
     });
     const targetLines: string[] = [];
     if (intent.targetFile) {
@@ -139,16 +145,20 @@ export class OfflineResponder {
     });
   }
 
-  /** RAG 섹션을 합쳐 반환. 비었으면 기존 .stubs 키워드 매칭으로 폴백. */
-  private async _ragOrStub(query: string): Promise<string> {
+  /**
+   * RAG 섹션을 합쳐 반환. 비었으면 기존 .stubs 키워드 매칭으로 폴백.
+   * 쿼리의 파일 경로 토큰은 떼고(검색 토픽 아님) 현재 파일 내용은 import 라우팅용으로 함께 넘긴다.
+   */
+  private async _ragOrStub(req: IOfflineRequest): Promise<string> {
+    const cleanQuery = stripFileRefs(req.query);
     let docs: string[] = [];
     try {
-      docs = await this._deps.retrieveDocs(query);
+      docs = await this._deps.retrieveDocs(cleanQuery, req.currentFileContent);
     } catch {
       docs = [];
     }
     if (docs.length > 0) return docs.join('\n\n---\n\n');
-    const stub = this._deps.selectStub(query).trim();
+    const stub = this._deps.selectStub(cleanQuery).trim();
     return stub || '_관련 로컬 지식을 찾지 못했습니다. 서버 복구 후 다시 시도해주세요._';
   }
 

@@ -104,7 +104,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._corpusOutputChannel = vscode.window.createOutputChannel('axiom-ai: Corpus');
     this._scaffoldBuilder = new ScaffoldContextBuilder(_extensionUri, this._corpusOutputChannel);
     this._offline = new OfflineResponder({
-      retrieveDocs: (q) => this._scaffoldBuilder.retrieveScaffoldDocs(q),
+      // filePath는 일부러 비운다 — `/pages/` 경로가 router.md로 라우팅돼 노이즈가 됨.
+      // 대신 현재 파일 내용으로 import 기반 라우팅(useApi·Table 등 실제 사용 문서)만 활성화.
+      retrieveDocs: (q, content) => this._scaffoldBuilder.retrieveScaffoldDocs(q, '', content),
       selectStub: (q) => this._llm.selectStub(q),
       loadGroupTemplate: (g) => this._llm.loadGroupTemplate(g),
     });

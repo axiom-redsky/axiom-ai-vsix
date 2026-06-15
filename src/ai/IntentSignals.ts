@@ -105,10 +105,25 @@ export function extractDomainFromQuery(query: string): string | null {
   return null;
 }
 
+/** 파일 경로 참조 토큰(확장자 포함) 매칭 — 추출·제거에 공용으로 쓴다. */
+const FILE_REF_RE = /[\w./\\-]+\.(?:tsx?|jsx?|md|json|ya?ml|css)\b/gi;
+
 /** 쿼리에 적힌 파일 경로 참조(예: src/.../EmployeeListPage.tsx)의 첫 항목을 추출한다. 없으면 null. */
 export function extractFilePathRef(query: string): string | null {
   const m = query.match(/[\w./\\-]+\.(?:tsx?|jsx?|md|json|ya?ml|css)\b/i);
   return m ? m[0].replace(/^\/+/, '') : null;
+}
+
+/**
+ * 쿼리에서 파일 경로 참조 토큰을 제거한다(RAG 키워드 라우팅·계약 카드 매칭 전처리).
+ *
+ * 경로는 "복사해 올 출처"이지 검색 토픽이 아니다. 그런데 RAG 키워드 라우팅은 `q.includes(kw)`라
+ * 경로 안의 일반 단어(EmployeeList**Page** → "page", Employee**List**Page → "list")가
+ * page-generation·router·list-table 같은 **엉뚱한 문서/계약**을 끌어온다(캡처 회귀).
+ * → 경로 토큰을 떼고 남은 의도 단어로만 라우팅한다.
+ */
+export function stripFileRefs(query: string): string {
+  return query.replace(FILE_REF_RE, ' ').replace(/\s{2,}/g, ' ').trim();
 }
 
 /**
