@@ -32,11 +32,6 @@ export class LlmService {
     this._stub.reload(this._bundledStubsDir, userDir);
   }
 
-  /** 오프라인 폴백 스텁(.stubs/*.md) 키워드 매칭 결과를 반환한다(OfflineResponder 폴백용). */
-  selectStub(userText: string): string {
-    return this._stub.selectStub(userText);
-  }
-
   /** 오프라인 그룹 프레이밍 템플릿(.stubs/groups/{name}.md)을 읽는다(없으면 null). */
   loadGroupTemplate(name: string): string | null {
     return this._stub.loadGroupTemplate(name);

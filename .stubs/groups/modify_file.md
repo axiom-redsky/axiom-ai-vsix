@@ -2,14 +2,10 @@
 
 지금은 코드를 자동으로 적용할 수 없어, **직접 수정에 필요한 정보**를 모았습니다.
 
-{{intent}}
-
 ## 대상
 {{targetInfo}}
 
-{{contractCards}}
-## 관련 scaffold 지식
-{{ragSections}}
+{{contractCards}}{{ragSections}}
 
 ## 수동 적용 체크리스트
 - [ ] 위 계약·지식을 참고해 대상 파일을 직접 수정

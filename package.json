@@ -173,6 +173,26 @@
           "default": "",
           "description": "오프라인 stubs를 보강하거나 덮어쓸 사용자 정의 폴더 경로 (절대경로). 이 폴더의 .md 파일이 번들 stubs보다 우선 적용됩니다."
         },
+        "axiom-ai.offlineIntent.embeddingClassifier": {
+          "type": "boolean",
+          "default": true,
+          "description": "오프라인 의도 분석에 로컬 임베딩 의미 분류기를 사용합니다. 끄면 정규식 분류로만 동작합니다."
+        },
+        "axiom-ai.offlineIntent.minConfidence": {
+          "type": "number",
+          "default": 0.42,
+          "description": "임베딩 의도 분류 채택 최소 신뢰도(top-1 유사도). 미만이면 정규식 신호로 보정하거나 되묻습니다."
+        },
+        "axiom-ai.offlineIntent.minMargin": {
+          "type": "number",
+          "default": 0.05,
+          "description": "임베딩 의도 분류 채택 최소 마진(top1-top2 유사도 차). 미만이면 확신하지 않은 것으로 봅니다."
+        },
+        "axiom-ai.offlineIntent.userExamplesFolder": {
+          "type": "string",
+          "default": "",
+          "description": "오프라인 의도 예시(intents/{create_page,modify_file,qna,smalltalk}.md)를 보강할 사용자 폴더 경로 (절대경로). 번들 예시에 더해 로드됩니다."
+        },
         "axiom-ai.rag.externalCorpusEnabled": {
           "type": "boolean",
           "default": true,
@@ -472,7 +492,9 @@
     "test:region-edit": "node scripts/test-region-edit.mjs",
     "test:react-rules": "node scripts/run-test-react-rules.mjs",
     "test:offline-intent": "node scripts/run-test-offline-intent.mjs",
+    "test:knowledge-routing": "node scripts/run-test-knowledge-routing.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
+    "eval:intent": "node scripts/run-eval-intent.mjs",
     "eval:input": "node scripts/run-eval-input-quality.mjs",
     "eval:bigfile": "node scripts/run-eval-bigfile.mjs",
     "probe:crosscut": "node scripts/run-probe-crosscut.mjs",

@@ -13,7 +13,7 @@
  */
 
 import { PageCreationDetector } from './PageCreationDetector';
-import type { IntentResult, IntentContext } from './IntentClassifier';
+import type { IntentResult, IntentContext, IntentKind } from './IntentClassifier';
 
 /**
  * 인사·감사·맞장구 등 비액션(non-actionable) 잡담인지 판단한다.
@@ -127,54 +127,50 @@ export function stripFileRefs(query: string): string {
 }
 
 /**
- * 모델 없이(결정론) 입력을 IntentResult 그룹으로 분류한다 — 오프라인 응답기 전용.
+ * 주어진 intent에 대해 슬롯(pageName·domain·contentSource·targetFile)을 결정론적으로 채운다.
+ * **분류와 분리** — 의도는 임베딩/정규식 어느 쪽이 정하든, 슬롯 추출은 정규식이 잘하는 영역이라
+ * 여기서 일관되게 처리한다(메모리 방향: 추출은 별도, 실행은 충돌 안전).
+ */
+export function fillSlots(query: string, ctx: IntentContext, intent: IntentKind): IntentResult {
+  const domain = extractDomainFromQuery(query);
+  const fileRef = extractFilePathRef(query);
+
+  switch (intent) {
+    case 'create_page': {
+      const pc = new PageCreationDetector().detect(query);
+      return { intent, pageName: pc.pageName, domain, contentSource: fileRef, targetFile: null, targetComponent: null };
+    }
+    case 'modify_file': {
+      // 현재 파일이 있으면 'current', 아니면 적힌 경로. 경로가 곧 대상이면 contentSource 중복 표기 안 함.
+      const targetFile = ctx.currentFile ? 'current' : fileRef;
+      const contentSource = fileRef && fileRef !== targetFile ? fileRef : null;
+      return { intent, pageName: null, domain, contentSource, targetFile, targetComponent: null };
+    }
+    case 'qna':
+      return { intent, pageName: null, domain, contentSource: fileRef, targetFile: null, targetComponent: null };
+    case 'smalltalk':
+      return { intent, pageName: null, domain: null, contentSource: null, targetFile: null, targetComponent: null };
+    default:
+      return { intent: 'other', pageName: null, domain, contentSource: fileRef, targetFile: null, targetComponent: null };
+  }
+}
+
+/**
+ * 모델 없이(결정론) 입력을 IntentResult 그룹으로 분류한다 — 임베딩 분류기의 폴백.
  *
  * 우선순위는 온라인 게이팅(isQnAGated)과 일치시킨다:
  *   페이지 생성 → 명시적 수정/생성 → 잡담 → 질문 → 불명확
  * (online: isExplicitEditOrCreate가 qna/smalltalk보다 우선)
  */
 export function classifyOfflineIntent(query: string, ctx: IntentContext): IntentResult {
-  const domain = extractDomainFromQuery(query);
-  const fileRef = extractFilePathRef(query);
-
-  // 1) 페이지 생성 (가장 구체적)
-  const pc = new PageCreationDetector().detect(query);
-  if (pc.isPageCreation) {
-    return {
-      intent: 'create_page',
-      pageName: pc.pageName,
-      domain,
-      contentSource: fileRef,
-      targetFile: null,
-      targetComponent: null,
-    };
+  if (new PageCreationDetector().detect(query).isPageCreation) return fillSlots(query, ctx, 'create_page');
+  // "처음부터/새로/신규/from scratch" + 생성 동사 → 명시적 신규 생성. 일반 편집 동사("만들"이
+  // editVerbs에 있어 modify로 새던 것)보다 우선. PageCreationDetector가 비연속 어구를 놓칠 때 보완.
+  if (/처음부터|신규|새로\s|from\s+scratch|scratch/i.test(query) && /만들|생성|짜|create|make|build/i.test(query)) {
+    return fillSlots(query, ctx, 'create_page');
   }
-
-  // 2) 명시적 수정/생성 (편집 동사) — 현재 파일이 있으면 'current', 아니면 적힌 경로
-  if (isExplicitEditOrCreate(query)) {
-    const targetFile = ctx.currentFile ? 'current' : fileRef;
-    // 경로가 곧 대상이면 contentSource로 중복 표기하지 않는다.
-    const contentSource = fileRef && fileRef !== targetFile ? fileRef : null;
-    return {
-      intent: 'modify_file',
-      pageName: null,
-      domain,
-      contentSource,
-      targetFile,
-      targetComponent: null,
-    };
-  }
-
-  // 3) 잡담
-  if (isSmalltalk(query)) {
-    return { intent: 'smalltalk', pageName: null, domain: null, contentSource: null, targetFile: null, targetComponent: null };
-  }
-
-  // 4) 질문(조회·설명)
-  if (isQnAQuery(query)) {
-    return { intent: 'qna', pageName: null, domain, contentSource: fileRef, targetFile: null, targetComponent: null };
-  }
-
-  // 5) 불명확
-  return { intent: 'other', pageName: null, domain, contentSource: fileRef, targetFile: null, targetComponent: null };
+  if (isExplicitEditOrCreate(query)) return fillSlots(query, ctx, 'modify_file');
+  if (isSmalltalk(query)) return fillSlots(query, ctx, 'smalltalk');
+  if (isQnAQuery(query)) return fillSlots(query, ctx, 'qna');
+  return fillSlots(query, ctx, 'other');
 }

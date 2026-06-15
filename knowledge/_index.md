@@ -139,3 +139,14 @@ project: react-app-scaffold
              컴포넌트트리, component-tree, props, state, 상태, render-logic, 렌더조건,
              events, 이벤트, form, 폼스펙, edge-cases, 예외처리, 수락기준, 스펙작성]
   files: [spec-guide/spec-structure.md]
+
+## 스캐폴드 공통 유틸 ($util)
+
+- keywords: [util, 유틸, 유틸리티, 헬퍼, helper, $util, 공통함수, 공통유틸,
+             금액, 통화, currency, 쉼표, comma, 콤마, 천단위, 천단위콤마, 3자리, 자릿수,
+             숫자, number, 숫자포맷, 반올림, round, clamp, 범위제한, tonumber, 숫자변환, percent, 퍼센트, 백분율,
+             날짜포맷, 날짜계산, adddays, addmonths, diffdays,
+             문자열, string, capitalize, truncate, 말줄임, padstart, 자리수, mask, 마스킹, isempty, 공백제거]
+  files: [utils/util.md]
+- keywords: [cn, classname, 클래스명, 클래스, 클래스병합, 스타일병합, tailwind, twmerge, clsx, 조건부클래스, classnames]
+  files: [utils/cn.md]

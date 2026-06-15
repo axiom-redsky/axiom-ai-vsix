@@ -86,7 +86,9 @@ export class ScaffoldContextBuilder {
    */
   async retrieveScaffoldDocs(userQuery: string, filePath = '', fileContent = ''): Promise<string[]> {
     try {
-      const ctx = await this._engine.buildContext(userQuery, filePath, fileContent);
+      // 오프라인 응답은 임베딩 폴백을 끈다 — 키워드/파일컨텍스트 정밀 라우팅만 사용해
+      // 저관련 임베딩 청크(엉뚱한 지식) 노이즈를 차단한다. 정밀 라우팅이 비면 빈 배열.
+      const ctx = await this._engine.buildContext(userQuery, filePath, fileContent, undefined, { skipEmbedding: true });
       return ctx.docs;
     } catch (err) {
       console.warn(`[Axiom AI] retrieveScaffoldDocs 실패: ${(err as Error).message}`);

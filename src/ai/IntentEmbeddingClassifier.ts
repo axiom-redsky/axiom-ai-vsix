@@ -1,0 +1,64 @@
+/**
+ * 임베딩 의미 분류기 — 쿼리와 의도별 라벨 예시의 코사인 유사도로 의도를 분류한다(LLM 불필요).
+ *
+ * nearest-example 방식: 의도별 **최고 유사도**를 그 의도의 점수로 본다(centroid보다 다양한 표현에 강함).
+ * confidence=top1 점수, margin=top1−top2. 호출부(OfflineIntentResolver)가 임계로 게이팅한다.
+ *
+ * 예시/모델이 없으면 null을 돌려 정규식 폴백으로 안전하게 떨어진다.
+ */
+
+import { embed as defaultEmbed } from './EmbeddingService';
+import { cosineSimilarity } from './VectorMath';
+import { IntentExampleStore, type EmbedFn } from './IntentExampleStore';
+import type { IntentKind } from './IntentClassifier';
+
+export interface IntentScore {
+  intent: IntentKind;
+  score: number;
+}
+
+export interface ClassifyResult {
+  intent: IntentKind;
+  /** top-1 유사도(0~1). */
+  confidence: number;
+  /** top1 − top2 유사도 차. 클수록 명확. */
+  margin: number;
+  ranked: IntentScore[];
+}
+
+export class IntentEmbeddingClassifier {
+  constructor(
+    private readonly _store: IntentExampleStore,
+    private readonly _embed: EmbedFn = defaultEmbed,
+  ) {}
+
+  /** 쿼리를 분류한다. 예시/모델 미가용·임베딩 실패 시 null(→ 정규식 폴백). */
+  async classify(query: string): Promise<ClassifyResult | null> {
+    if (!query || !query.trim()) return null;
+    const ready = await this._store.ensureReady();
+    if (!ready) return null;
+
+    let qv: number[];
+    try {
+      qv = await this._embed(query);
+    } catch {
+      return null;
+    }
+
+    const best = new Map<IntentKind, number>();
+    for (const ex of this._store.examples()) {
+      const s = cosineSimilarity(qv, ex.embedding);
+      const cur = best.get(ex.intent);
+      if (cur === undefined || s > cur) best.set(ex.intent, s);
+    }
+    if (best.size === 0) return null;
+
+    const ranked: IntentScore[] = [...best.entries()]
+      .map(([intent, score]) => ({ intent, score }))
+      .sort((a, b) => b.score - a.score);
+
+    const top = ranked[0];
+    const margin = ranked.length > 1 ? top.score - ranked[1].score : top.score;
+    return { intent: top.intent, confidence: top.score, margin, ranked };
+  }
+}

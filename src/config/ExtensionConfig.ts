@@ -368,6 +368,23 @@ export class ExtensionConfig {
     };
   }
 
+  /**
+   * 오프라인 의도 분석 설정.
+   * - embeddingClassifier: 로컬 임베딩 의미 분류기 사용 여부(off면 정규식 폴백, 회귀 0).
+   * - minConfidence/minMargin: 신뢰도 게이팅 임계(eval:intent로 튜닝). 미만이면 단정 대신 되묻기.
+   * - userExamplesFolder: 사용자 정의 의도 예시(intents/*.md) 폴더 — 번들 예시에 더해 로드.
+   */
+  static getOfflineIntentConfig(): {
+    enabled: boolean; minConfidence: number; minMargin: number; userExamplesFolder: string;
+  } {
+    return {
+      enabled:            ExtensionConfig._resolve<boolean>('offlineIntent.embeddingClassifier', true),
+      minConfidence:      ExtensionConfig._resolve<number>('offlineIntent.minConfidence', 0.42),
+      minMargin:          ExtensionConfig._resolve<number>('offlineIntent.minMargin', 0.05),
+      userExamplesFolder: ExtensionConfig._resolve<string>('offlineIntent.userExamplesFolder', ''),
+    };
+  }
+
   // ─── SDD 설정 ───────────────────────────────────────────────────────────────
 
   /** .axiom/ 폴더 경로 (SDD 스펙 저장소). 설정 없으면 빈 문자열 */

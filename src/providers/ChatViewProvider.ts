@@ -23,8 +23,12 @@ import {
   formatExactPathDirective,
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
-import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult } from '../ai/IntentClassifier';
+import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind } from '../ai/IntentClassifier';
 import { OfflineResponder } from '../ai/OfflineResponder';
+import { IntentExampleStore } from '../ai/IntentExampleStore';
+import { IntentEmbeddingClassifier } from '../ai/IntentEmbeddingClassifier';
+import { resolveOfflineIntent } from '../ai/OfflineIntentResolver';
+import { fillSlots } from '../ai/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
@@ -78,6 +82,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _editorCollector: EditorContextCollector;
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
   private readonly _offline: OfflineResponder;
+  private readonly _intentExamples: IntentExampleStore;
+  private readonly _intentClassifier: IntentEmbeddingClassifier;
+  /** 오프라인 의도 되묻기 대기 상태 — 사용자가 번호로 의도를 고르면 해소. */
+  private _offlineClarify: { query: string; editorCtx: EditorContext; candidates: IntentKind[] } | null = null;
   /** 헬스체크 단기 캐시 — 연속 턴마다 5초 프로브를 반복하지 않도록 10초간 결과를 재사용. */
   private _healthCache: { at: number; online: boolean } | null = null;
   private readonly _fileCreator = new FileCreatorService();
@@ -107,9 +115,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // filePath는 일부러 비운다 — `/pages/` 경로가 router.md로 라우팅돼 노이즈가 됨.
       // 대신 현재 파일 내용으로 import 기반 라우팅(useApi·Table 등 실제 사용 문서)만 활성화.
       retrieveDocs: (q, content) => this._scaffoldBuilder.retrieveScaffoldDocs(q, '', content),
-      selectStub: (q) => this._llm.selectStub(q),
       loadGroupTemplate: (g) => this._llm.loadGroupTemplate(g),
     });
+    const bundledIntents = vscode.Uri.joinPath(_extensionUri, 'intents').fsPath;
+    const userIntents = ExtensionConfig.getOfflineIntentConfig().userExamplesFolder || null;
+    this._intentExamples = new IntentExampleStore(
+      fs.existsSync(bundledIntents) ? bundledIntents : null,
+      userIntents,
+    );
+    this._intentClassifier = new IntentEmbeddingClassifier(this._intentExamples);
   }
 
   /**
@@ -126,20 +140,66 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return online;
   }
 
+  /** 의도 라벨(한국어) — 되묻기 선택지 표기용. */
+  private static readonly _INTENT_LABEL: Record<IntentKind, string> = {
+    create_page: '새 페이지/화면 생성',
+    modify_file: '현재/기존 파일 수정',
+    qna: '질문(조회·설명)',
+    smalltalk: '인사·잡담',
+    other: '기타',
+  };
+
   /**
-   * 오프라인 응답을 생성·스트리밍한다. 의도 그룹 분류 + 로컬 RAG(knowledge/*.md)로
-   * react-app-scaffold 상세 지식을 끌어와, 입력과 연관된 실질적 도움을 준다.
+   * 오프라인 응답을 생성·스트리밍한다. 의미 분류(임베딩)+신뢰도 게이팅으로 의도를 정하고,
+   * 애매하면 단정 대신 번호 선택지로 되묻는다. 확정 시 로컬 RAG(knowledge/*.md)로
+   * react-app-scaffold 상세 지식을 끌어와 입력과 연관된 실질적 도움을 준다.
    * LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·axiom-action 재시도)를 타지 않는다.
    */
   private async _respondOffline(text: string, editorCtx: EditorContext): Promise<void> {
+    this._postStatus('⚠️ 오프라인 모드 — 의도 분석 중…');
+
+    const cfg = ExtensionConfig.getOfflineIntentConfig();
+    const resolution = await resolveOfflineIntent(
+      text,
+      { currentFile: editorCtx.filePath ?? null, hasSelection: !!editorCtx.selection, domains: this._scanWorkspaceDomains() },
+      { classify: (q) => this._intentClassifier.classify(q) },
+      { enabled: cfg.enabled, minConfidence: cfg.minConfidence, minMargin: cfg.minMargin },
+    );
+
+    // 모호 → 단정하지 말고 되묻는다(되묻기 라운드트립).
+    if (resolution.uncertain && resolution.candidates.length > 1) {
+      this._offlineClarify = { query: text, editorCtx, candidates: resolution.candidates };
+      const lines = resolution.candidates
+        .map((c, i) => `${i + 1}. ${ChatViewProvider._INTENT_LABEL[c]}`)
+        .join('\n');
+      this._post({
+        type: 'token',
+        content:
+          `> ⚠️ **오프라인 모드** — 요청 의도가 명확하지 않습니다.\n\n` +
+          `아래 중 무엇인가요? **번호**로 답해주세요(또는 다시 더 구체적으로 입력):\n\n${lines}\n`,
+      });
+      this._post({ type: 'done' });
+      this._postStatus('⚠️ 오프라인 모드');
+      return;
+    }
+
+    await this._streamOfflineFor(text, editorCtx, resolution.result);
+  }
+
+  /** 확정된 의도로 오프라인 응답을 생성·스트리밍한다. 의도 라인은 한 번만(잡담 제외) 출력한다. */
+  private async _streamOfflineFor(
+    text: string, editorCtx: EditorContext, intent: IntentResult,
+  ): Promise<void> {
     this._postStatus('⚠️ 오프라인 모드 — 로컬 지식 검색 중…');
+    if (intent.intent !== 'smalltalk') {
+      this._post({ type: 'token', content: `\n> ${formatIntentForChat(intent)}\n` });
+    }
     let markdown: string;
     try {
-      markdown = await this._offline.respond({
-        query: text,
-        currentFile: editorCtx.filePath ?? null,
-        currentFileContent: editorCtx.content ?? '',
-      });
+      markdown = await this._offline.respond(
+        { query: text, currentFile: editorCtx.filePath ?? null, currentFileContent: editorCtx.content ?? '' },
+        intent,
+      );
     } catch (err) {
       console.warn(`[Axiom AI] 오프라인 응답 생성 실패: ${(err as Error).message}`);
       markdown =
@@ -149,6 +209,46 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._history.push({ role: 'assistant', content: markdown });
     this._post({ type: 'done' });
     this._postStatus('⚠️ 오프라인 모드');
+  }
+
+  /**
+   * 오프라인 의도 되묻기에 대한 사용자 응답(번호 또는 취소)을 처리한다.
+   * 유효한 번호면 해당 의도로 확정해 응답하고, 아니면 안내 후 상태 유지.
+   */
+  private async _handleOfflineClarifyInput(input: string): Promise<void> {
+    const state = this._offlineClarify;
+    if (!state) return;
+    const trimmed = input.trim();
+    if (trimmed === '/cancel') {
+      this._offlineClarify = null;
+      this._post({ type: 'token', content: '되묻기를 취소했습니다.' });
+      this._post({ type: 'done' });
+      this._postStatus('⚠️ 오프라인 모드');
+      return;
+    }
+    const n = parseInt(trimmed.match(/\d+/)?.[0] ?? '', 10);
+    if (!Number.isInteger(n) || n < 1 || n > state.candidates.length) {
+      // 번호가 아니면 새 요청으로 간주 — 되묻기 해제하고 일반 오프라인 흐름으로.
+      this._offlineClarify = null;
+      this._history.push({ role: 'user', content: input });
+      await this._respondOffline(input, this._editorCollector.collect());
+      return;
+    }
+    const chosen = state.candidates[n - 1];
+    this._offlineClarify = null;
+    const intent = fillSlots(
+      state.query,
+      { currentFile: state.editorCtx.filePath ?? null, hasSelection: !!state.editorCtx.selection, domains: this._scanWorkspaceDomains() },
+      chosen,
+    );
+    await this._streamOfflineFor(state.query, state.editorCtx, intent);
+  }
+
+  /** 사용자 정의 의도 예시 폴더 변경 시 hot-reload. */
+  private _reloadIntentExamples(): void {
+    const bundledIntents = vscode.Uri.joinPath(this._extensionUri, 'intents').fsPath;
+    const userIntents = ExtensionConfig.getOfflineIntentConfig().userExamplesFolder || null;
+    this._intentExamples.reload(fs.existsSync(bundledIntents) ? bundledIntents : null, userIntents);
   }
 
   /**
@@ -726,6 +826,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._registerUserStubsWatcher(context);
         this._llm.reloadStubs();
       }
+      if (e.affectsConfiguration('axiom-ai.offlineIntent')) {
+        this._reloadIntentExamples();
+      }
     });
     context.subscriptions.push(this._configChangeDisposable);
   }
@@ -852,6 +955,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     overrideSelection?: { filePath: string; startLine: number; endLine: number },
   ): Promise<void> {
     if (!this._view) return;
+
+    // 오프라인 의도 되묻기 대기: 번호 선택 처리
+    if (this._offlineClarify) {
+      await this._handleOfflineClarifyInput(text);
+      return;
+    }
 
     // 페이지 생성 대화 모드: 취소 또는 도메인 선택 처리
     if (this._pageCreationState) {

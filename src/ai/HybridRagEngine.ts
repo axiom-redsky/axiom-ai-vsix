@@ -102,7 +102,8 @@ export class HybridRagEngine {
     userQuery: string,
     filePath: string,
     fileContent: string,
-    budgetOverride?: number
+    budgetOverride?: number,
+    opts?: { skipEmbedding?: boolean }
   ): Promise<RagContext> {
     const methods: RagContext['methods'] = [];
     const queryTokens = tokenizeQuery(userQuery);
@@ -173,8 +174,10 @@ export class HybridRagEngine {
     let usedChars = selected.reduce((sum, s) => sum + s.length, 0);
 
     // 예산이 충분히 남아 있으면 Method 2 (임베딩) 폴백으로 보충
+    // skipEmbedding(오프라인 의도 응답 등)이면 임베딩 폴백을 건너뛴다 — 약한/구조적 쿼리에서
+    // 저관련 청크(tokens·lottie 등)가 끌려와 "엉뚱한 지식"으로 보이던 노이즈를 원천 차단한다.
     const remainingBudget = budget - usedChars;
-    if (remainingBudget >= 600) {
+    if (!opts?.skipEmbedding && remainingBudget >= 600) {
       const embeddingResult = await Promise.race([
         this._ragRetriever.retrieve(userQuery),
         new Promise<string>((resolve) => setTimeout(() => resolve(''), EMBEDDING_TIMEOUT_MS)),
