@@ -10,7 +10,12 @@ import type { ContextBreakdown } from '../types/messages';
 import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
 import { scanLibraryVersions } from './PackageVersionScanner';
-import { PageCreationDetector } from './PageCreationDetector';
+import {
+  isSmalltalk as signalIsSmalltalk,
+  isQnAQuery as signalIsQnAQuery,
+  isExplicitEditOrCreate as signalIsExplicitEditOrCreate,
+  extractDomainFromQuery as signalExtractDomainFromQuery,
+} from './IntentSignals';
 
 /** 코드 슬라이싱 적용 대상 언어 ID */
 const SLICEABLE_LANGUAGES = new Set(['typescript', 'typescriptreact', 'javascript', 'javascriptreact']);
@@ -74,6 +79,22 @@ export class ScaffoldContextBuilder {
   }
 
   /**
+   * 이미 초기화된 로컬 RAG 엔진으로 쿼리 관련 scaffold 문서 섹션을 검색한다(LLM 불필요).
+   * 오프라인 응답기(OfflineResponder)가 knowledge/*.md 의 useApi·유틸·라이브러리 등 상세 지식을
+   * 끌어오는 데 쓴다. filePath/fileContent가 비어도 동작한다(쿼리만으로 검색).
+   * 엔진 미초기화·오류 시 빈 배열을 돌려 호출부가 폴백하도록 한다.
+   */
+  async retrieveScaffoldDocs(userQuery: string, filePath = '', fileContent = ''): Promise<string[]> {
+    try {
+      const ctx = await this._engine.buildContext(userQuery, filePath, fileContent);
+      return ctx.docs;
+    } catch (err) {
+      console.warn(`[Axiom AI] retrieveScaffoldDocs 실패: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
    * 사용자 질문과 현재 파일 컨텍스트를 기반으로 시스템 프롬프트를 조립한다.
    *
    * - Method 1 (키워드 라우팅) + Method 3 (파일 컨텍스트) 병렬 실행
@@ -102,15 +123,7 @@ export class ScaffoldContextBuilder {
    * 하나라도 걸리면 Q&A 게이팅을 적용하지 않고 기존 시나리오 지시문을 그대로 주입한다.
    */
   private _isExplicitEditOrCreate(query: string): boolean {
-    if (new PageCreationDetector().detect(query).isPageCreation) return true;
-    const q = query.toLowerCase();
-    const editVerbs = [
-      '만들', '생성', '추가', '수정', '고쳐', '바꿔', '변경', '구현', '작성',
-      '리팩', '삭제', '제거', '연동', '연결', '적용', '넣어', '붙여', '교체', '업데이트',
-      '옮겨', '이동시', '바인딩', 'refactor', 'implement', 'create', 'make',
-      'fix', 'change', 'update', 'remove', 'delete', 'rename',
-    ];
-    return editVerbs.some((v) => q.includes(v));
+    return signalIsExplicitEditOrCreate(query);
   }
 
   /**
@@ -118,16 +131,7 @@ export class ScaffoldContextBuilder {
    * 게이팅은 _isExplicitEditOrCreate가 false일 때만 적용되므로 여기서는 신호만 본다.
    */
   private _isQnAQuery(query: string): boolean {
-    const q = query.toLowerCase();
-    const signals = [
-      '보여줘', '보여 줘', '보여줄', '보여주', '알려줘', '알려 줘', '알려주',
-      '설명', '뭐야', '뭔가', '무엇', '머야', '차이', '어떻게', '어떤', '왜',
-      '예시', 'example', '사용법', '쓰는 법', '쓰는법', '하는 법', '하는법', '방법',
-      '이란', '란?', '문서', '정의', '리스트', '목록 보여', '가능해', '가능한가',
-      '있어?', '있나',
-    ];
-    if (signals.some((s) => q.includes(s))) return true;
-    return q.trim().endsWith('?');
+    return signalIsQnAQuery(query);
   }
 
   /**
@@ -136,21 +140,7 @@ export class ScaffoldContextBuilder {
    * _isExplicitEditOrCreate가 우선 적용되므로(isQnAGated 참조) 여기서는 짧은 인사/맞장구 신호만 본다(보수적).
    */
   private _isSmalltalk(query: string): boolean {
-    const trimmed = query.trim();
-    if (!trimmed) return true; // 빈 입력
-    // 웃음·감탄·문장부호만으로 이뤄진 입력(ㅋㅋ, ㅎㅎ, ..., ~~)
-    if (/^[ㅋㅎㅠㅜ\s~!?.,]+$/.test(trimmed) && /[ㅋㅎㅠㅜ]/.test(trimmed)) return true;
-    const q = trimmed.toLowerCase();
-    // 긴 문장은 실제 요청일 가능성이 높으므로, 부호·공백 제거 후 짧은 입력만 잡담 후보로 본다.
-    const compact = q.replace(/[\s!.~?,'"`]/g, '');
-    if (compact.length > 20) return false;
-    const greetings = [
-      '안녕', '하이', 'hi', 'hello', 'hey', 'ㅎㅇ', '반가', '방가',
-      '고마', '감사', 'thank', 'thx', '수고', '굿', 'good job',
-      '잘가', 'bye', 'ㅂㅂ', '바이', '좋아', '좋네', 'nice', '오케', 'okay', '테스트', 'test',
-      '잘했', '멋지', '훌륭',
-    ];
-    return greetings.some((g) => q.includes(g));
+    return signalIsSmalltalk(query);
   }
 
   /**
@@ -865,42 +855,7 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
    * 3. kebab-case 페이지명 첫 세그먼트: "account-list-page" → "account"
    */
   private _extractDomainFromQuery(query: string): string | null {
-    // 참조 소스 파일 경로(예: "/src/publishing/employee/pages/EmployeeListPage.tsx")는
-    // "복사해 올 원본"이지 "만들 대상"이 아니다. 그 경로 안의 PascalCase 페이지명(EmployeeListPage)이나
-    // 폴더 세그먼트가 도메인 힌트로 오인되면, "현재 화면에 …의 jsx를 넣어줘" 같은 *수정* 요청이
-    // 시나리오 A(신규 페이지 생성)로 빠져 라우터만 엉뚱하게 손대고 현재 파일은 그대로 남는다.
-    // → 확장자가 붙은 파일 참조 토큰은 패턴 매칭 전에 제거한다(맨이름 "EmployeeListPage"는 보존).
-    query = query.replace(/[\w./\\-]+\.(?:tsx?|jsx?|md|json|ya?ml|css)\b/gi, ' ');
-
-    // 1순위: 명시적 도메인 언급 패턴
-    const explicitPatterns = [
-      /([a-zA-Z][a-zA-Z0-9-_]*)\s*업무/,
-      /([a-zA-Z][a-zA-Z0-9-_]*)\s*domain/i,
-      /([a-zA-Z][a-zA-Z0-9-_]*)\s*도메인/,
-    ];
-
-    for (const pattern of explicitPatterns) {
-      const match = query.match(pattern);
-      if (match?.[1]) {
-        return match[1].toLowerCase();
-      }
-    }
-
-    // 2순위: PascalCase 식별자(페이지명) 첫 번째 단어 → 도메인 추출
-    // 예: "AccountListPage" → "account", "OrderDetailPage" → "order"
-    const pascalMatch = query.match(/\b([A-Z][a-z]+)([A-Z][a-zA-Z0-9]*)*Page\b/);
-    if (pascalMatch?.[1]) {
-      return pascalMatch[1].toLowerCase();
-    }
-
-    // 3순위: kebab-case 페이지명 첫 세그먼트
-    // 예: "account-list-page" → "account"
-    const kebabMatch = query.match(/\b([a-z][a-z0-9]+)(?:-[a-z0-9]+)+-page\b/);
-    if (kebabMatch?.[1]) {
-      return kebabMatch[1];
-    }
-
-    return null;
+    return signalExtractDomainFromQuery(query);
   }
 
   /**

@@ -24,6 +24,7 @@ import {
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult } from '../ai/IntentClassifier';
+import { OfflineResponder } from '../ai/OfflineResponder';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
@@ -76,6 +77,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _llm: LlmService;
   private readonly _editorCollector: EditorContextCollector;
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
+  private readonly _offline: OfflineResponder;
+  /** 헬스체크 단기 캐시 — 연속 턴마다 5초 프로브를 반복하지 않도록 10초간 결과를 재사용. */
+  private _healthCache: { at: number; online: boolean } | null = null;
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
   /** 디버그: AI로 전송하는 시스템 프롬프트 전문을 기록하는 전용 채널 (lazy 생성) */
@@ -99,6 +103,50 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._editorCollector = new EditorContextCollector(ExtensionConfig.getMaxFileLines());
     this._corpusOutputChannel = vscode.window.createOutputChannel('axiom-ai: Corpus');
     this._scaffoldBuilder = new ScaffoldContextBuilder(_extensionUri, this._corpusOutputChannel);
+    this._offline = new OfflineResponder({
+      retrieveDocs: (q) => this._scaffoldBuilder.retrieveScaffoldDocs(q),
+      selectStub: (q) => this._llm.selectStub(q),
+      loadGroupTemplate: (g) => this._llm.loadGroupTemplate(g),
+    });
+  }
+
+  /**
+   * LLM 서버가 살아 있는지 단기 캐시(10초)와 함께 확인한다.
+   * 연속 채팅 턴마다 매번 5초 헬스 프로브를 돌리지 않도록 결과를 잠깐 재사용한다.
+   */
+  private async _isLlmOnline(config: LlmConfig): Promise<boolean> {
+    const now = Date.now();
+    if (this._healthCache && now - this._healthCache.at < 10_000) {
+      return this._healthCache.online;
+    }
+    const online = await this._llm.checkHealth(config);
+    this._healthCache = { at: now, online };
+    return online;
+  }
+
+  /**
+   * 오프라인 응답을 생성·스트리밍한다. 의도 그룹 분류 + 로컬 RAG(knowledge/*.md)로
+   * react-app-scaffold 상세 지식을 끌어와, 입력과 연관된 실질적 도움을 준다.
+   * LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·axiom-action 재시도)를 타지 않는다.
+   */
+  private async _respondOffline(text: string, editorCtx: EditorContext): Promise<void> {
+    this._postStatus('⚠️ 오프라인 모드 — 로컬 지식 검색 중…');
+    let markdown: string;
+    try {
+      markdown = await this._offline.respond({
+        query: text,
+        currentFile: editorCtx.filePath ?? null,
+        currentFileContent: editorCtx.content ?? '',
+      });
+    } catch (err) {
+      console.warn(`[Axiom AI] 오프라인 응답 생성 실패: ${(err as Error).message}`);
+      markdown =
+        '> ⚠️ 오프라인 모드 — AI 서버에 연결할 수 없습니다.\n\n서버 엔드포인트 설정을 확인하거나 잠시 후 다시 시도해주세요.';
+    }
+    this._post({ type: 'token', content: markdown });
+    this._history.push({ role: 'assistant', content: markdown });
+    this._post({ type: 'done' });
+    this._postStatus('⚠️ 오프라인 모드');
   }
 
   /**
@@ -938,6 +986,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     try {
       let editorCtx = this._editorCollector.collect(overrideSelection);
+
+      // 사전 헬스체크 — 서버가 죽었으면 LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·무의미한
+      // axiom-action 재시도 데드엔드)를 전부 건너뛰고, 의도 기반 오프라인 응답(로컬 RAG)을 낸다.
+      if (!(await this._isLlmOnline(config))) {
+        await this._respondOffline(text, editorCtx);
+        return;
+      }
 
       // 대상 파일 선확정 — 신규 생성이 아닌 수정 요청은 코드 생성 전에 "어떤 파일을 고칠지"를
       // 결정론적 휴리스틱으로 확정한다(잘못된 파일에 라인 splice 방지).

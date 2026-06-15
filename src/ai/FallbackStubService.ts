@@ -18,8 +18,12 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 export class FallbackStubService {
   private _entries: StubEntry[] = [];
   private _defaultResponse: string = HARD_DEFAULT;
+  private _bundledDir: string | null = null;
+  private _userDir: string | null = null;
 
   constructor(bundledDir: string | null, userDir: string | null = null) {
+    this._bundledDir = bundledDir;
+    this._userDir = userDir;
     if (bundledDir) this._loadDir(bundledDir, false);
     if (userDir) this._loadDir(userDir, true);
   }
@@ -28,6 +32,8 @@ export class FallbackStubService {
   reload(bundledDir: string | null, userDir: string | null): void {
     this._entries = [];
     this._defaultResponse = HARD_DEFAULT;
+    this._bundledDir = bundledDir;
+    this._userDir = userDir;
     if (bundledDir) this._loadDir(bundledDir, false);
     if (userDir) this._loadDir(userDir, true);
   }
@@ -89,6 +95,28 @@ export class FallbackStubService {
     const match = raw.match(FRONTMATTER_RE);
     // frontmatter 없으면 전체가 body
     return match ? match[2] : raw;
+  }
+
+  /**
+   * 오프라인 응답 그룹 프레이밍 템플릿(`groups/{name}.md`)을 읽는다(번들 → 사용자 폴더 우선).
+   * frontmatter가 있으면 본문만 반환한다. 없으면 null(호출부가 내장 기본 템플릿으로 폴백).
+   */
+  loadGroupTemplate(name: string): string | null {
+    const safe = name.replace(/[^a-z_]/gi, '');
+    if (!safe) return null;
+    // 사용자 폴더가 번들보다 우선(오버라이드)
+    for (const dir of [this._userDir, this._bundledDir]) {
+      if (!dir) continue;
+      const filePath = path.join(dir, 'groups', `${safe}.md`);
+      try {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const body = this._extractBody(raw);
+        if (body && body.trim()) return body.trim();
+      } catch {
+        // 다음 폴더로
+      }
+    }
+    return null;
   }
 
   selectStub(userText: string): string {

@@ -32,6 +32,16 @@ export class LlmService {
     this._stub.reload(this._bundledStubsDir, userDir);
   }
 
+  /** 오프라인 폴백 스텁(.stubs/*.md) 키워드 매칭 결과를 반환한다(OfflineResponder 폴백용). */
+  selectStub(userText: string): string {
+    return this._stub.selectStub(userText);
+  }
+
+  /** 오프라인 그룹 프레이밍 템플릿(.stubs/groups/{name}.md)을 읽는다(없으면 null). */
+  loadGroupTemplate(name: string): string | null {
+    return this._stub.loadGroupTemplate(name);
+  }
+
   /**
    * LLM 서버가 온라인 상태인지 확인한다.
    * /v1/models가 막힌 OpenAI-compatible proxy도 있어 실제 생성 라우트까지 확인한다.
