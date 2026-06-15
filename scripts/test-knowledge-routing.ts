@@ -24,10 +24,28 @@ const cases: { query: string; expect: string }[] = [
   { query: 'className 병합 cn 사용법', expect: 'utils/cn.md' },
   { query: 'dayjs 사용법 알려줘', expect: 'libraries/dayjs.md' },
   { query: 'useApi 사용법 알려줘', expect: 'patterns/use-api.md' },
+  // 개발자용 API 통신 = useApi (내부 callApi/api-call.md 아님)
+  { query: 'api 통신하는 함수 알려줘', expect: 'patterns/use-api.md' },
+  { query: '서버에서 데이터 불러오는 법', expect: 'patterns/use-api.md' },
 ];
 
 console.log('\nknowledge 키워드 라우팅:');
 for (const c of cases) {
+  const files = kr.matchedFiles(c.query);
+  check(`"${c.query}" → ${c.expect}`, files.includes(c.expect), `matched=${JSON.stringify(files)}`);
+}
+
+// 개발자용 일반 API 질문은 내부 클라이언트 문서(api-call.md)로 새지 않아야 한다.
+console.log('\n내부 문서 누수 방지:');
+for (const q of ['api 통신하는 함수 알려줘', '서버에서 데이터 불러오는 법', 'api 호출 어떻게 해']) {
+  const files = kr.matchedFiles(q);
+  check(`"${q}" → api-call.md 비매칭`, !files.includes('patterns/api-call.md'), `matched=${JSON.stringify(files)}`);
+}
+// 내부어는 여전히 내부 문서로 라우팅돼야 한다.
+for (const c of [
+  { query: 'callApi 내부 구현 보여줘', expect: 'patterns/api-call.md' },
+  { query: 'axios 인터셉터 설정', expect: 'patterns/api-call.md' },
+]) {
   const files = kr.matchedFiles(c.query);
   check(`"${c.query}" → ${c.expect}`, files.includes(c.expect), `matched=${JSON.stringify(files)}`);
 }
