@@ -9,6 +9,8 @@ import type { EditorContext } from './EditorContextCollector';
 import type { ContextBreakdown } from '../types/messages';
 import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
+import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
+import type { IntentResult } from './IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {
   isSmalltalk as signalIsSmalltalk,
@@ -92,6 +94,32 @@ export class ScaffoldContextBuilder {
       return ctx.docs;
     } catch (err) {
       console.warn(`[Axiom AI] retrieveScaffoldDocs 실패: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * **오프라인 전용** 지식 검색. `retrieveScaffoldDocs`(온라인 공유 `buildContext`)와 달리,
+   * 의미(로컬 임베딩)+키워드로 **문서를 통째로** 찾아 종류별로 렌더한다 — 어휘 점수 보정 상수·
+   * 예산 chopping 없이. 온라인 경로(`buildSystemPrompt`)는 이 메서드를 호출하지 않는다.
+   * 엔진 미초기화·오류 시 빈 배열을 돌려 호출부가 폴백하도록 한다.
+   */
+  async retrieveOfflineKnowledge(query: string, intent: IntentResult, fileContent = ''): Promise<string[]> {
+    try {
+      const ragDir = this._getRagDir();
+      if (!ragDir) return [];
+      const retriever = new OfflineKnowledgeRetriever({
+        keywordSources: (q) => this._engine.offlineKeywordSources(q),
+        semanticSources: (q) => this._engine.offlineSemanticSources(q),
+        fileContextSources: (content) => this._engine.offlineFileContextSources(content),
+        loadDoc: (source) => {
+          const abs = path.isAbsolute(source) ? source : path.join(ragDir, source);
+          return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
+        },
+      });
+      return await retriever.retrieve(query, intent, fileContent);
+    } catch (err) {
+      console.warn(`[Axiom AI] retrieveOfflineKnowledge 실패: ${(err as Error).message}`);
       return [];
     }
   }

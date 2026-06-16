@@ -20,11 +20,11 @@ import { buildContractSection } from './ScaffoldContracts';
 /** OfflineResponder가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineResponderDeps {
   /**
-   * 쿼리 관련 로컬 RAG(knowledge/*.md) 섹션 블록을 반환. 미초기화/오류/무관 시 빈 배열.
-   * fileContent를 함께 받아 현재 파일의 import 기반 라우팅(useApi·Table 등 실제 사용 문서)을 살린다.
-   * filePath는 일부러 넘기지 않는다 — `/pages/` 경로 자체가 router.md로 라우팅돼 노이즈.
+   * 쿼리·확정 intent에 맞는 로컬 지식(knowledge/*.md) 블록을 반환. 미초기화/오류/무관 시 빈 배열.
+   * 의미(로컬 임베딩)+키워드로 **문서를 통째로** 찾아 종류별 렌더한다(어휘 점수·예산 chopping 없음).
+   * fileContent로 현재 파일의 import 기반 라우팅(useApi·Table 등 실제 사용 문서)을 보강한다.
    */
-  retrieveDocs: (query: string, fileContent: string) => Promise<string[]>;
+  retrieveDocs: (query: string, intent: IntentResult, fileContent: string) => Promise<string[]>;
   /** `.stubs/groups/{group}.md` 프레이밍 템플릿 본문(없으면 null → 내장 기본값). */
   loadGroupTemplate: (group: string) => string | null;
 }
@@ -84,24 +84,22 @@ export class OfflineResponder {
       case 'smalltalk':
         return this._render('smalltalk', { query: req.query });
       case 'create_page':
-        return this._render('create_page', { query: req.query, ragSections: await this._ragSection(req, TEMPLATE_HEADING) });
+        return this._render('create_page', { query: req.query, ragSections: await this._ragSection(req, intent, TEMPLATE_HEADING) });
       case 'modify_file':
-        return this._renderModifyFile(req);
+        return this._renderModifyFile(req, intent);
       case 'qna':
-        return this._render('qna', { query: req.query, ragSections: await this._ragSection(req, KNOWLEDGE_HEADING) });
+        return this._render('qna', { query: req.query, ragSections: await this._ragSection(req, intent, KNOWLEDGE_HEADING) });
       default:
-        return this._render('other', { query: req.query, ragSections: await this._ragSection(req, KNOWLEDGE_HEADING) });
+        return this._render('other', { query: req.query, ragSections: await this._ragSection(req, intent, KNOWLEDGE_HEADING) });
     }
   }
 
-  private async _renderModifyFile(req: IOfflineRequest): Promise<string> {
-    const ragSections = await this._ragSection(req, KNOWLEDGE_HEADING);
+  private async _renderModifyFile(req: IOfflineRequest, intent: IntentResult): Promise<string> {
+    const ragSections = await this._ragSection(req, intent, KNOWLEDGE_HEADING);
     // 계약 카드 트리거도 경로 토큰을 떼고 본다 — "EmployeeListPage"의 "list"가 list-table 레시피를
     // 오발동시키던 회귀 차단. useApi 등은 deps(현재 파일 내용)에서 정상 발동한다.
     const contractCards = buildContractSection({ deps: req.currentFileContent, region: '', query: stripFileRefs(req.query) });
 
-    const ctx: IntentContext = { currentFile: req.currentFile, hasSelection: false, domains: [] };
-    const intent = classifyOfflineIntent(req.query, ctx);
     const targetLines: string[] = [];
     targetLines.push(`- 수정 대상: ${req.currentFile ? '현재 화면' : '미특정'}`);
     if (intent.contentSource) targetLines.push(`- 내용 출처: \`${intent.contentSource}\``);
@@ -116,14 +114,14 @@ export class OfflineResponder {
   }
 
   /**
-   * 로컬 RAG 섹션(헤딩 포함)을 만든다. 정밀 라우팅(키워드·파일컨텍스트)으로 얻은 문서만 쓰고,
+   * 로컬 지식 섹션(헤딩 포함)을 만든다. 의미(로컬 임베딩)+키워드로 문서를 통째로 끌어오고,
    * 비면 빈 문자열을 돌려 "관련 지식" 섹션 자체를 생략한다(엉뚱한 저관련 문서 노출 방지).
    */
-  private async _ragSection(req: IOfflineRequest, heading: string): Promise<string> {
+  private async _ragSection(req: IOfflineRequest, intent: IntentResult, heading: string): Promise<string> {
     const cleanQuery = stripFileRefs(req.query);
     let docs: string[] = [];
     try {
-      docs = await this._deps.retrieveDocs(cleanQuery, req.currentFileContent);
+      docs = await this._deps.retrieveDocs(cleanQuery, intent, req.currentFileContent);
     } catch {
       docs = [];
     }

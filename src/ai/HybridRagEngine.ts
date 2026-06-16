@@ -84,6 +84,30 @@ export class HybridRagEngine {
     });
   }
 
+  /**
+   * **오프라인 전용**: 쿼리와 키워드 매칭되는 source 문서 경로를 반환한다(정밀 라우팅).
+   * `buildContext`(온라인 공유)를 거치지 않는다.
+   */
+  offlineKeywordSources(query: string): string[] {
+    return this._keywordRetriever.matchedFiles(query);
+  }
+
+  /**
+   * **오프라인 전용**: 현재 파일 내용 기반으로 라우팅되는 source 문서 경로를 반환한다.
+   * filePath는 일부러 비운다 — `/pages/` 경로가 router.md로 라우팅돼 노이즈가 되기 때문(기존 동작과 동일).
+   */
+  offlineFileContextSources(fileContent: string): string[] {
+    return this._fileContextRetriever.matchedFiles('', fileContent);
+  }
+
+  /**
+   * **오프라인 전용**: 로컬 임베딩 유사도 순 source 문서 경로를 반환한다(의미 검색).
+   * 인덱스 미준비 시 빈 배열 → 호출부가 키워드/파일컨텍스트로 graceful 폴백.
+   */
+  async offlineSemanticSources(query: string): Promise<string[]> {
+    return this._ragRetriever.retrieveSources(query);
+  }
+
   /** 임베딩 인덱스를 초기화하고 다음 initialize() 시 재빌드하도록 한다. */
   invalidate(): void {
     this._ragRetriever.reset();

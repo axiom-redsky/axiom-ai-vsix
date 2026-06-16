@@ -61,6 +61,33 @@ export class RagRetriever {
       .join('\n\n---\n\n');
   }
 
+  /**
+   * **오프라인 전용**: 쿼리와 의미적으로 유사한 청크들의 source 문서를 유사도 순 유니크 목록으로
+   * 반환한다. 온라인 `retrieve()`(청크 텍스트 반환)와 달리 *어느 문서가 관련 있나*만 돌려준다 →
+   * 호출부가 그 문서를 통째로 로드한다(청크 단위 노이즈 회피).
+   *
+   * @param topN     반환할 최대 문서 수.
+   * @param minScore 코사인 유사도 하한 — 이 미만의 최고 청크만 가진 문서는 제외(저관련 노이즈 차단).
+   */
+  async retrieveSources(query: string, topN = 6, minScore = 0.2): Promise<string[]> {
+    if (!this._ready || this._chunks.length === 0) return [];
+
+    const queryVec = await embed(query);
+    const bestBySource = new Map<string, number>();
+    for (const c of this._chunks) {
+      if (c.embedding === null) continue;
+      const score = cosineSimilarity(queryVec, c.embedding);
+      const cur = bestBySource.get(c.source);
+      if (cur === undefined || score > cur) bestBySource.set(c.source, score);
+    }
+
+    return [...bestBySource.entries()]
+      .filter(([, score]) => score >= minScore)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topN)
+      .map(([source]) => source);
+  }
+
   /** 캐시를 초기화해 다음 buildIndex 호출 시 재빌드하도록 한다. */
   reset(): void {
     this._chunks = [];

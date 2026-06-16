@@ -98,9 +98,11 @@ console.log('\nOfflineResponder.respond:');
 // RAG 본문이 그룹 템플릿에 주입되는지 (deps 주입으로 vscode/디스크 불필요)
 let lastRagQuery = '';
 let lastRagContent = '';
+let lastRagIntent = '';
 const responder = new OfflineResponder({
-  retrieveDocs: async (q, content) => {
+  retrieveDocs: async (q, intent, content) => {
     lastRagQuery = q;
+    lastRagIntent = intent.intent;
     lastRagContent = content;
     return q.includes('useApi') ? ['## useApi 훅\n로컬 지식 본문'] : [];
   },
@@ -113,6 +115,7 @@ await (async () => {
   check('qna 응답에 지식 헤딩 포함', qna.includes('관련 scaffold 지식'), qna);
   check('qna 응답에 오프라인 배지 포함', qna.includes('오프라인 모드'), qna);
   check('qna 응답에 useState 튜토리얼 없음(회귀)', !/useState\s*</.test(qna));
+  check('retrieveDocs에 확정 intent 전달(qna 스레딩)', lastRagIntent === 'qna', lastRagIntent);
 
   // RAG가 비면 지식 섹션 자체를 생략(엉뚱한 저관련 문서 노출 방지)
   const ragless = await responder.respond({ query: '무언가 설명해줘', currentFile: null, currentFileContent: '' });

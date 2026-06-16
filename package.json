@@ -492,6 +492,7 @@
     "test:region-edit": "node scripts/test-region-edit.mjs",
     "test:react-rules": "node scripts/run-test-react-rules.mjs",
     "test:offline-intent": "node scripts/run-test-offline-intent.mjs",
+    "test:offline-answer": "node scripts/run-test-offline-answer.mjs",
     "test:knowledge-routing": "node scripts/run-test-knowledge-routing.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",
