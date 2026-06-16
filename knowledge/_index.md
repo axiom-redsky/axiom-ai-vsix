@@ -69,7 +69,7 @@ project: react-app-scaffold
 
 ## 디자인 시스템
 
-- keywords: [design-system, 디자인시스템, 컴포넌트목록, component-list, variants, shadcn, axiom/components/ui, 전체컴포넌트, tbd, 추가예정, 확정컴포넌트]
+- keywords: [design-system, 디자인시스템, 컴포넌트목록, 컴포넌트 목록, 컴포넌트리스트, component-list, variants, shadcn, axiom/components/ui, 전체컴포넌트, 사용가능한컴포넌트, 제공하는컴포넌트, ui컴포넌트, 컴포넌트종류, 어떤컴포넌트, 컴포넌트뭐있어, tbd, 추가예정, 확정컴포넌트]
   files: [design-system/components.md]
 
 - keywords: [layout, 레이아웃, card, container, stack, grid, flexbox, scrollarea, 카드, 페이지구조, 목록화면, 상세화면, 폼화면, si프로젝트, 프로젝트별, 반응형, responsive, darkmode, 다크모드, rootlayout]
@@ -150,3 +150,12 @@ project: react-app-scaffold
   files: [utils/util.md]
 - keywords: [cn, classname, 클래스명, 클래스, 클래스병합, 스타일병합, tailwind, twmerge, clsx, 조건부클래스, classnames]
   files: [utils/cn.md]
+
+## 스캐폴드 공통 자산 카탈로그 (목록·한눈에)
+
+- keywords: [카탈로그, catalog, 한눈에, overview, 전체목록, 제공하는기능, 제공기능, 공통자산, 공통기능, 뭐있어, 뭐가있어, 뭐가 있어, 뭐 있어, 어떤게있어, 어떤게 있어, 어떤기능, scaffold, 스캐폴드, scaffold기능, 스캐폴드기능, 기본제공]
+  files: [catalog/overview.md]
+- keywords: [훅, 훅목록, 훅 목록, hook, hooks, 커스텀훅, custom-hook, 공통훅, 제공하는훅, 사용가능한훅, 어떤훅, usetheme, usesidebar, 훅종류, 훅리스트, 훅뭐있어]
+  files: [catalog/hooks.md]
+- keywords: [공통함수, 공통함수목록, 함수목록, 헬퍼목록, 유틸목록, 유틸 목록]
+  files: [catalog/overview.md, utils/util.md]

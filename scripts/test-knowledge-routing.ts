@@ -27,6 +27,13 @@ const cases: { query: string; expect: string }[] = [
   // 개발자용 API 통신 = useApi (내부 callApi/api-call.md 아님)
   { query: 'api 통신하는 함수 알려줘', expect: 'patterns/use-api.md' },
   { query: '서버에서 데이터 불러오는 법', expect: 'patterns/use-api.md' },
+  // 스캐폴드 공통 자산 카탈로그(목록) — 캡처 사례 "유틸 목록을 보여줘" 외 훅·컴포넌트·공통함수
+  { query: '유틸 목록을 보여줘', expect: 'utils/util.md' },
+  { query: '훅 목록을 보여줘', expect: 'catalog/hooks.md' },
+  { query: '사용 가능한 훅 알려줘', expect: 'catalog/hooks.md' },
+  { query: '컴포넌트 목록을 보여줘', expect: 'design-system/components.md' },
+  { query: '공통함수 목록 보여줘', expect: 'catalog/overview.md' },
+  { query: 'scaffold에 뭐가 있어?', expect: 'catalog/overview.md' },
 ];
 
 console.log('\nknowledge 키워드 라우팅:');

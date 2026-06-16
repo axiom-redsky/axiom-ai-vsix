@@ -161,8 +161,11 @@ export class LlmService {
     if (response === null) {
       const reason = '네트워크 오류 (재시도 후에도 연결 실패)';
       console.warn(`[Axiom AI] ${reason}, 폴백 모드`);
+      // sLLM에 연결되지 않은(오프라인·네트워크 실패·5xx) 모든 경우, 레거시 키워드 스텁
+      // (.stubs/example.md "코드 예제" 등)은 절대 흘리지 않는다. onFallback 신호만 보내고 빈 출력으로
+      // 끝내면, 호출부(ChatViewProvider)가 wasFallback을 보고 의도 기반 로컬 RAG 응답으로 재라우팅한다.
+      // → "연결 안 됨 = axiom 로컬 지식/예제로 응답"을 모든 streamChat 경로에서 일관 보장.
       onFallback?.(reason);
-      yield* this._stub.stream(FallbackStubService.extractUserText(messages));
       return;
     }
 
@@ -181,8 +184,8 @@ export class LlmService {
       if (response === null) {
         const reason = '네트워크 오류 (thinking 파라미터 제거 재시도 중 연결 실패)';
         console.warn(`[Axiom AI] ${reason}, 폴백 모드`);
+        // 레거시 키워드 스텁을 흘리지 않는다 — 신호만 보내고 빈 출력(호출부가 로컬 RAG로 재라우팅).
         onFallback?.(reason);
-        yield* this._stub.stream(FallbackStubService.extractUserText(messages));
         return;
       }
       console.log(`[Axiom AI] ← (재시도) 응답 상태: ${response.status} ${response.statusText}`);
@@ -204,8 +207,8 @@ export class LlmService {
       if (response === null) {
         const reason = '네트워크 오류 (튜닝 파라미터 제거 재시도 중 연결 실패)';
         console.warn(`[Axiom AI] ${reason}, 폴백 모드`);
+        // 레거시 키워드 스텁을 흘리지 않는다 — 신호만 보내고 빈 출력(호출부가 로컬 RAG로 재라우팅).
         onFallback?.(reason);
-        yield* this._stub.stream(FallbackStubService.extractUserText(messages));
         return;
       }
       console.log(`[Axiom AI] ← (튜닝 제거 재시도) 응답 상태: ${response.status} ${response.statusText}`);
@@ -215,8 +218,11 @@ export class LlmService {
     if (response.status >= 500) {
       const reason = `서버 오류 ${response.status} ${response.statusText} (재시도 후에도 실패)`;
       console.warn(`[Axiom AI] ${reason}, 폴백 모드 활성화`);
+      // sLLM에 연결되지 않은(오프라인·네트워크 실패·5xx) 모든 경우, 레거시 키워드 스텁
+      // (.stubs/example.md "코드 예제" 등)은 절대 흘리지 않는다. onFallback 신호만 보내고 빈 출력으로
+      // 끝내면, 호출부(ChatViewProvider)가 wasFallback을 보고 의도 기반 로컬 RAG 응답으로 재라우팅한다.
+      // → "연결 안 됨 = axiom 로컬 지식/예제로 응답"을 모든 streamChat 경로에서 일관 보장.
       onFallback?.(reason);
-      yield* this._stub.stream(FallbackStubService.extractUserText(messages));
       return;
     }
 

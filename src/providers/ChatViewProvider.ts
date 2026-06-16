@@ -1310,6 +1310,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         clearElapsedTimer();
       }
 
+      // 서버 장애(헬스체크는 통과했으나 실제 호출이 네트워크/5xx로 실패)면 레거시 키워드 스텁
+      // (예: .stubs/example.md "코드 예제")을 흘리지 않고 차단했다 → 사전 헬스체크가 잡은 진짜
+      // 오프라인과 동일하게 의도 기반 로컬 RAG 응답(유틸·훅·컴포넌트 카탈로그 등)으로 답한다.
+      if (wasFallback && !fullResponse.trim()) {
+        await this._respondOffline(text, editorCtx);
+        return;
+      }
+
       const hasActionBlock = /<axiom-action>[\s\S]*?<\/axiom-action>/.test(fullResponse);
 
       if (!hasActionBlock && isFileCtx) {
