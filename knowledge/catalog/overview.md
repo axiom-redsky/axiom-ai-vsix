@@ -28,6 +28,7 @@ related: [utils/util.md, utils/cn.md, patterns/router.md, catalog/hooks.md, desi
 |------|--------|------|------|
 | `$util.*` | (전역) | 숫자·날짜·문자열 (위 표) | [util.md](../utils/util.md) |
 | `$router` | (전역) | `push` · `replace` · `back` 화면 이동 | [router.md](../patterns/router.md) |
+| `$ui` | (전역) | `alert` · `confirm` 다이얼로그(window.alert/confirm 대체) | [ui.md](../utils/ui.md) |
 | `cn` | `@/shared/utils/cn` | className 병합(clsx + tailwind-merge) | [cn.md](../utils/cn.md) |
 
 ## 3. 공통 훅

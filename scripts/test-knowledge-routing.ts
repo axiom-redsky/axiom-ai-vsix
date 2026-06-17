@@ -34,12 +34,24 @@ const cases: { query: string; expect: string }[] = [
   { query: '컴포넌트 목록을 보여줘', expect: 'design-system/components.md' },
   { query: '공통함수 목록 보여줘', expect: 'catalog/overview.md' },
   { query: 'scaffold에 뭐가 있어?', expect: 'catalog/overview.md' },
+  // 전역 $ui.alert / $ui.confirm 다이얼로그
+  { query: 'alert 사용 예제 보여줘', expect: 'utils/ui.md' },
+  { query: 'confirm 확인창 띄우는 법', expect: 'utils/ui.md' },
+  { query: '$ui.alert 사용법', expect: 'utils/ui.md' },
+  { query: 'window.confirm 대신 뭐 써?', expect: 'utils/ui.md' },
 ];
 
 console.log('\nknowledge 키워드 라우팅:');
 for (const c of cases) {
   const files = kr.matchedFiles(c.query);
   check(`"${c.query}" → ${c.expect}`, files.includes(c.expect), `matched=${JSON.stringify(files)}`);
+}
+
+// "alert 예제" 같은 일반 예제 질문이 useApi 예제로 새지 않아야 한다(greedy 키워드 회귀 방지).
+console.log('\n예제 키워드 누수 방지:');
+for (const q of ['alert 사용 예제 보여줘', 'router 예제 보여줘']) {
+  const files = kr.matchedFiles(q);
+  check(`"${q}" → use-api-example.md 비매칭`, !files.includes('patterns/use-api-example.md'), `matched=${JSON.stringify(files)}`);
 }
 
 // 개발자용 일반 API 질문은 내부 클라이언트 문서(api-call.md)로 새지 않아야 한다.

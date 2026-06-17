@@ -7,6 +7,8 @@ project: react-app-scaffold
 
 ## 패턴
 
+- keywords: [$ui, ui, window.$ui, alert, 얼럿, 알림, 알림창, 알림팝업, 경고창, confirm, 컨펌, 확인창, 확인팝업, 확인취소, 예아니오, 다이얼로그, dialog, 모달, modal, 팝업, popup, window.alert, window.confirm, 브라우저알림, 네이티브알림, autodismiss, 자동닫힘, $ui.alert, $ui.confirm]
+  files: [utils/ui.md]
 - keywords: [axios, api-client, 클라이언트, baseurl, interceptor, 인터셉터, callapi, apierror, apiresponse, initapiconfig, getapiconfig, api설정, api-config, 인증헤더, 클라이언트내부, api내부구현]
   files: [patterns/api-call.md]
 - keywords: [api-client, axios, baseaxiosclient, callapi, 소스, source, interceptor, 인터셉터, baseurl, token, 토큰]
@@ -21,7 +23,7 @@ project: react-app-scaffold
   files: [patterns/page-generation.md, patterns/router.md]
 - keywords: [provider, 프로바이더, appproviders, queryprovider, context, 컨텍스트, 상태, state, tanstack, devtools, sidebar, 레이아웃]
   files: [patterns/state-management.md]
-- keywords: [useapi, 예제, example, get, post, invalidatequeries, refetch, reset, 사용예, 실사용, 코드예제]
+- keywords: [useapi, use-api, invalidatequeries, refetch, reset, useapi사용예, useapi예제, usapi코드예제]
   files: [patterns/use-api-example.md]
 - keywords: [useapi, use-api, 소스, source, 구현, implementation, overload, iuseapiqueryoptions, iuseapimutationoptions, normalizebody, formdata]
   files: [patterns/use-api-source.md]
