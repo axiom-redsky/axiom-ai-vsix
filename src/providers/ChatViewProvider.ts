@@ -1047,6 +1047,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    // 중단 버튼(stopMessage)이 abort할 메인 컨트롤러를 의도 분석 **전에** 만들어 둔다.
+    // 의도 분석(_classifyIntent)도 LLM 스트리밍이므로, 여기서 컨트롤러가 살아 있어야
+    // "의도 분석 중…" 단계에서 누른 중단이 실제 스트림까지 전파된다. (예전엔 이 셋업이
+    // 의도 분석 뒤에 있어, 그 구간엔 stopMessage가 닿을 컨트롤러가 없어 먹통이었다.)
+    this._abortController?.abort();
+    this._abortController = new AbortController();
+
     // 의도 분류기(실험): 정규식 분기 전에 모델에게 "이게 무슨 요청이야?"를 먼저 묻고, 결과를
     // 채팅에 한 줄로 표시한다. 신뢰 가능한 분류면 그대로 라우팅하고, 분류 실패(null)·'other'면
     // 아래 기존 PageCreationDetector 정규식으로 폴백한다(회귀 0).
@@ -1077,9 +1084,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       await this._startPageCreation(pageIntent.pageName, text);
       return;
     }
-
-    this._abortController?.abort();
-    this._abortController = new AbortController();
 
     this._history.push({ role: 'user', content: text });
 
@@ -4643,7 +4647,14 @@ export default routes;`;
       domains: this._scanWorkspaceDomains(),
     });
 
+    // 로컬 ctrl은 조기 종료(닫는 중괄호 수신) 용도지만, 사용자가 "의도 분석 중…" 단계에서
+    // 중단을 누르면 메인 컨트롤러가 abort된다. 메인 signal을 로컬 ctrl로 relay해, 중단이 이
+    // 의도 분류 스트림까지 닿게 한다. (relay 패턴은 메인 스트림/재시도 경로와 동일.)
     const ctrl = new AbortController();
+    const mainSignal = this._abortController?.signal;
+    const relay = () => ctrl.abort();
+    if (mainSignal?.aborted) ctrl.abort();
+    else mainSignal?.addEventListener('abort', relay, { once: true });
     try {
       let fellBack = false;
       let out = '';
@@ -4668,6 +4679,8 @@ export default routes;`;
       return result;
     } catch {
       return null;
+    } finally {
+      mainSignal?.removeEventListener('abort', relay);
     }
   }
 
