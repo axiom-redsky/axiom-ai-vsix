@@ -226,8 +226,15 @@ export class LlmService {
       return;
     }
 
+    // 서버가 응답은 했으나(4xx) 쓸 수 있는 답을 줄 수 없는 경우 — 모델 없음(404),
+    // 인증 거부(401/403), 잘못된 요청(400) 등. 사용자 관점에선 "AI 답을 못 받음 = 오프라인"이므로
+    // 빨간 오류로 끝내지 않고, 진단 메시지를 reason에 실어 오프라인 폴백으로 재라우팅한다.
+    // (호출부가 wasFallback을 보고 _respondOffline으로 로컬 RAG 응답을 낸다 — 5xx 경로와 동일.)
     if (!response.ok) {
-      throw new Error(await this._formatHttpError(response, config));
+      const reason = await this._formatHttpError(response, config);
+      console.warn(`[Axiom AI] ${reason} — 오프라인 폴백 모드`);
+      onFallback?.(reason);
+      return;
     }
     if (!response.body) {
       throw new Error('응답 스트림을 받을 수 없습니다');

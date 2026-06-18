@@ -155,8 +155,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * react-app-scaffold 상세 지식을 끌어와 입력과 연관된 실질적 도움을 준다.
    * LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·axiom-action 재시도)를 타지 않는다.
    */
-  private async _respondOffline(text: string, editorCtx: EditorContext): Promise<void> {
+  private async _respondOffline(text: string, editorCtx: EditorContext, notice?: string | null): Promise<void> {
     this._postStatus('⚠️ 오프라인 모드 — 의도 분석 중…');
+    // 서버가 요청을 거부해 폴백된 경우(모델명 오타 등), 사용자가 설정을 고칠 수 있도록 사유를 노출한다.
+    if (notice?.trim()) {
+      this._post({
+        type: 'token',
+        content: `> ⚠️ 서버가 요청을 처리하지 못해 오프라인 응답으로 전환합니다 — ${notice.trim()}\n> 설정의 모델명·엔드포인트를 확인해주세요.\n\n`,
+      });
+    }
 
     const cfg = ExtensionConfig.getOfflineIntentConfig();
     const resolution = await resolveOfflineIntent(
@@ -1230,6 +1237,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
       let fullResponse = '';
       let wasFallback = false;
+      let fallbackReason: string | null = null;
 
       this._postStatus(`${config.model} 연결 중…`);
 
@@ -1282,6 +1290,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           mainTimeoutAbort.signal,
           (reason) => {
             wasFallback = true;
+            fallbackReason = reason;
             console.warn(`[Axiom AI] 오프라인 폴백 활성화: ${reason}`);
           },
           () => startElapsedTimer('AI 생성 중…'),
@@ -1314,7 +1323,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // (예: .stubs/example.md "코드 예제")을 흘리지 않고 차단했다 → 사전 헬스체크가 잡은 진짜
       // 오프라인과 동일하게 의도 기반 로컬 RAG 응답(유틸·훅·컴포넌트 카탈로그 등)으로 답한다.
       if (wasFallback && !fullResponse.trim()) {
-        await this._respondOffline(text, editorCtx);
+        await this._respondOffline(text, editorCtx, fallbackReason);
         return;
       }
 
