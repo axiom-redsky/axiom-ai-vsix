@@ -25,6 +25,7 @@ import {
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind } from '../ai/IntentClassifier';
 import { OfflineResponder } from '../ai/OfflineResponder';
+import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/OfflineTransplant';
 import { IntentExampleStore } from '../ai/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../ai/OfflineIntentResolver';
@@ -1112,7 +1113,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 사전 헬스체크 — 서버가 죽었으면 LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·무의미한
       // axiom-action 재시도 데드엔드)를 전부 건너뛰고, 의도 기반 오프라인 응답(로컬 RAG)을 낸다.
       if (!(await this._isLlmOnline(config))) {
-        await this._respondOffline(text, editorCtx);
+        // 이식 우선 오프라인 응답(헬스체크 실패 경로).
+        await this._respondOfflineOrTransplant(text, editorCtx);
         return;
       }
 
@@ -1327,7 +1329,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // (예: .stubs/example.md "코드 예제")을 흘리지 않고 차단했다 → 사전 헬스체크가 잡은 진짜
       // 오프라인과 동일하게 의도 기반 로컬 RAG 응답(유틸·훅·컴포넌트 카탈로그 등)으로 답한다.
       if (wasFallback && !fullResponse.trim()) {
-        await this._respondOffline(text, editorCtx, fallbackReason);
+        // 이식 우선 오프라인 응답(모델 호출 실패 폴백 경로 — 헬스체크는 통과했으나 404/5xx 등으로 빈 응답).
+        await this._respondOfflineOrTransplant(text, editorCtx, fallbackReason);
         return;
       }
 
@@ -2120,6 +2123,115 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'error', message: (err as Error).message });
       this._postStatus('오류 발생');
     }
+  }
+
+  // ─── 오프라인 JSX 이식 ────────────────────────────────────────────────────────
+
+  /**
+   * [오프라인 전용] "다른 파일의 JSX를 그대로 끼워줘" 류 요청을 **모델 없이** 결정론적으로 처리한다.
+   *
+   * 온라인이면 영역편집(runHybridRegionEdit)이 모델로 의존성까지 봉합하지만, 서버가 죽은 오프라인에선
+   * 그 봉합을 생략하고(완벽주의 게이트 OFF) 출처 .tsx의 메인 JSX를 현재 파일 메인 JSX 자리에 그대로
+   * splice한 뒤, **빠진 컴포넌트/값**을 강조 경고로 고지하고 기존 적용 카드(컨펌·diff·쓰기)에 흘려보낸다.
+   * dead-end(체크리스트만 주던 것) 대신 실제 적용을 가능케 한다.
+   *
+   * 발동 게이트(모두 충족 시): 현재 .tsx + 이식 의도 단어(동사+대상) + **출처 .tsx 참조 정확히 1개**.
+   * 하나라도 어긋나면 false → 호출부가 일반 오프라인 응답으로 폴백.
+   *
+   * @returns true = 이식 적용 카드로 처리됨 / false = 일반 오프라인 응답 필요
+   */
+  /**
+   * 오프라인 응답 진입점 — **이식 우선**. 다른 파일 JSX를 그대로 끼우는 요청이면 모델 없이 적용 카드를
+   * 띄우고(true), 아니면 기존 의도 기반 오프라인 응답(로컬 RAG)으로 폴백한다. 사전 헬스체크 실패와
+   * 모델 호출 실패(404 등) 양쪽 오프라인 경로가 이 단일 진입점을 공유해 분기가 갈라지지 않게 한다.
+   */
+  private async _respondOfflineOrTransplant(text: string, editorCtx: EditorContext, notice?: string | null): Promise<void> {
+    if (await this._tryOfflineTransplant(text, editorCtx, notice)) {
+      this._post({ type: 'done' });
+      this._postStatus('⚠️ 오프라인 모드');
+      return;
+    }
+    await this._respondOffline(text, editorCtx, notice);
+  }
+
+  private async _tryOfflineTransplant(text: string, editorCtx: EditorContext, notice?: string | null): Promise<boolean> {
+    const log = (m: string): void => this._corpusOutputChannel.appendLine(`[Axiom AI] 오프라인 이식: ${m}`);
+    const filePath = editorCtx.filePath;
+    if (!filePath || !/\.tsx?$/.test(filePath)) {
+      log(`스킵 — 현재 파일이 .tsx 아님(${filePath ?? '열린 파일 없음'}). .tsx 페이지를 연 상태에서 요청하세요.`);
+      return false;
+    }
+    if (!isVerbatimTransplantRequest(text)) {
+      log(`스킵 — 이식 의도 단어(동사+대상) 불충족: "${text.slice(0, 60)}"`);
+      return false;
+    }
+
+    // 현재 파일 — 디스크 ground truth(슬라이싱된 editorCtx.content 대신 디스크를 읽는다).
+    let currentContent: string;
+    try {
+      currentContent = fs.readFileSync(this._resolveWorkspacePath(filePath), 'utf-8');
+    } catch {
+      log(`스킵 — 현재 파일 읽기 실패(${filePath})`);
+      return false;
+    }
+    if (!currentContent.trim()) return false;
+
+    // 출처 파일 — 메시지에 명시된 참조 .tsx 가 정확히 하나일 때만(0개/여러개면 모호 → 일반 오프라인으로).
+    const refResult = await this._loadReferencedFiles(text, filePath);
+    const tsxRefs = refResult.loaded
+      .map((rel, i) => ({ rel, content: refResult.contents[i] }))
+      .filter((x) => /\.tsx?$/.test(x.rel));
+    if (tsxRefs.length !== 1) {
+      log(`스킵 — 출처 .tsx 참조가 정확히 1개가 아님(${tsxRefs.length}개): [${refResult.loaded.join(', ')}]`);
+      return false;
+    }
+    const source = tsxRefs[0];
+
+    const plan = planJsxTransplant(currentContent, source.content);
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 오프라인 이식 시도(${source.rel} → ${filePath}): ${plan.ok ? `OK ${plan.replacedStart}~${plan.replacedEnd}줄 / 빠진 컴포넌트=[${plan.missingComponents.join(', ')}] 값=[${plan.missingValues.join(', ')}]` : `폴백(${plan.reason})`}`,
+    );
+    if (!plan.ok || !plan.finalText) return false;
+
+    const diff = computeDiffHunks(currentContent, plan.finalText);
+    if (diff.length === 0) return false;
+
+    // 안내 + (있으면) 강조 경고 → 적용 카드 순으로 출력.
+    const noticeLine = notice?.trim()
+      ? `> ⚠️ 서버가 요청을 처리하지 못해 모델 없이 처리합니다 — ${notice.trim()}\n> 설정의 모델명·엔드포인트를 확인해주세요.\n\n`
+      : `> ⚠️ **오프라인 모드** — AI 서버에 연결할 수 없어 모델 없이 처리합니다.\n\n`;
+    this._post({
+      type: 'token',
+      content:
+        noticeLine +
+        `> 🧩 **JSX 이식** — 참조 파일 \`${source.rel}\`의 JSX를 현재 파일 ` +
+        `${plan.replacedStart}~${plan.replacedEnd}줄에 **그대로 끼워 넣었습니다**. 아래에서 확인 후 적용하세요.\n`,
+    });
+    const warning = this._formatTransplantWarning(plan.missingComponents, plan.missingValues);
+    if (warning) this._post({ type: 'token', content: warning });
+
+    const wrapped = this._wrapCodeBlockAsAxiomAction('```tsx\n' + plan.finalText + '\n```', filePath);
+    if (!wrapped) return false;
+    this._history.push({ role: 'assistant', content: '(오프라인 JSX 이식 적용)' });
+    await this._handleAxiomAction(wrapped, false, false, undefined, diff);
+    return true;
+  }
+
+  /**
+   * 이식 후 현재 파일에 없는 의존성(컴포넌트 import·값 선언)을 **강조 블록**으로 포맷한다.
+   * 빠진 게 없으면 빈 문자열(경고 생략). 사용자가 "절반만 적용됨"을 놓치지 않게 본문과 구분되는 인용 블록.
+   */
+  private _formatTransplantWarning(missingComponents: string[], missingValues: string[]): string {
+    const items: string[] = [];
+    for (const c of missingComponents) items.push(`> - \`${c}\` _(컴포넌트 — import 필요)_`);
+    for (const v of missingValues) items.push(`> - \`${v}\` _(훅/state/함수)_`);
+    if (items.length === 0) return '';
+    return (
+      `\n> ## ⚠️ 절반만 적용됐어요\n>\n` +
+      `> JSX는 붙였지만 아래가 **빠졌습니다 — 직접 채워야 동작합니다.**\n>\n` +
+      `${items.join('\n')}\n>\n` +
+      `> 또는 서버 복구 후 같은 요청으로 자동 완성하세요.\n`
+    );
   }
 
   // ─── 영역 편집(실험) ──────────────────────────────────────────────────────────
