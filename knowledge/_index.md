@@ -98,6 +98,9 @@ project: react-app-scaffold
 
 ## 화면 템플릿
 
+- keywords: [페이지 만드는, 페이지만드는, 페이지 만드는법, 페이지 만들기, 페이지만들기, 페이지 만들어, 페이지 생성법, 페이지생성법, 페이지 생성하는, 페이지 작성법, 페이지 추가하는, 페이지 어떻게 만들, 페이지를 어떻게, 화면 만드는, 화면만드는, 화면 만드는법, 화면 만드는 법, 화면 어떻게 만들, 화면 만들기, 화면만들기, 새 페이지 만들, 새페이지, 신규 페이지 만들, 신규페이지, 업무페이지, 업무 페이지, 비즈니스페이지, 비즈니스 페이지, biz-page, create-biz-pages, create-page]
+  files: [page-templates/create-page-guide.md, patterns/domain-structure.md, patterns/router.md]
+
 - keywords: [page-template, 페이지템플릿, 목록화면, 목록 화면, list-page, listpage, 리스트화면, 리스트 화면, 검색화면, 검색 영역, 필터영역, 신규등록]
   files: [page-templates/list-page.md]
 

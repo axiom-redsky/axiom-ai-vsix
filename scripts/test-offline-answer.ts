@@ -163,6 +163,34 @@ await (async () => {
   });
   const hit = await hitDeps.retrieve('useApi 사용법', qnaIntent);
   check('정밀 검색 적중 → 힌트 없음', hit.length > 0 && hit[0] !== FALLBACK_HINT, hit[0]?.slice(0, 40) ?? 'empty');
+
+  // ③ 파일컨텍스트 노이즈 차단(회귀): 도메인 파일을 열어둔 채 개념 질문("페이지 만드는 법")을 하면
+  //    열린 파일의 import(Button·Input·Select)가 FILE_BOOST로 키워드 정밀 매칭을 밀어내던 버그.
+  //    qna 의도에서는 파일컨텍스트를 쓰지 않아 키워드 문서(create-page-guide)가 그대로 떠야 한다.
+  const fileNoiseDeps = {
+    keywordSources: () => ['page-templates/create-page-guide.md', 'patterns/domain-structure.md'],
+    semanticScores: async () => [
+      { source: 'components/Button.md', score: 0.9 },
+      { source: 'components/Input.md', score: 0.8 },
+      { source: 'components/Select.md', score: 0.8 },
+    ],
+    fileContextSources: () => ['components/Button.md', 'components/Input.md', 'components/Select.md'],
+    loadDoc,
+  };
+  const qnaFile = new OfflineKnowledgeRetriever(fileNoiseDeps);
+  const qnaDocs = await qnaFile.retrieve('페이지 만드는 법 알려줘', qnaIntent, 'import { Button, Input, Select } from "@axiom/components/ui";');
+  check('③ qna + 파일열림 → 키워드 문서가 뜸(create-page-guide)',
+    qnaDocs.some((b) => b.includes('[page-templates/create-page-guide.md]')), qnaDocs.map((b) => b.split('\n')[0]).join(' | '));
+  check('③ qna + 파일열림 → 파일 import(Button/Input/Select)는 top에 안 섞임',
+    !qnaDocs[0].includes('[components/Button.md]'), qnaDocs[0]?.slice(0, 60) ?? 'empty');
+
+  // ③' modify_file 의도에서는 파일컨텍스트가 정상 동작해야 한다(과교정 방지).
+  const modifyIntent: IntentResult = {
+    intent: 'modify_file', pageName: null, domain: null, contentSource: null, targetFile: null, targetComponent: null,
+  };
+  const modDocs = await qnaFile.retrieve('이 파일에 버튼 추가해줘', modifyIntent, 'import { Button } from "@axiom/components/ui";');
+  check('③\' modify_file → 파일컨텍스트(Button) 노출 유지',
+    modDocs.some((b) => b.includes('[components/Button.md]')), modDocs.map((b) => b.split('\n')[0]).join(' | '));
 })();
 
 console.log(`\n결과: ${passed} 통과 / ${failed} 실패`);

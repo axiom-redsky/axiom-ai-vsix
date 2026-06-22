@@ -84,7 +84,13 @@ export class OfflineKnowledgeRetriever {
   async retrieve(query: string, intent: IntentResult, fileContent = ''): Promise<string[]> {
     // 후보 수집 — 키워드(정밀) + 파일컨텍스트 + 임베딩(의미, 점수 포함).
     const keyword = this._deps.keywordSources(query);
-    const fileCtx = fileContent ? this._deps.fileContextSources(fileContent) : [];
+    // 파일 컨텍스트(열린 파일의 import 컴포넌트)는 **그 파일을 수정하는 의도**에서만 유효하다.
+    // 개념 질문(qna·create_page 등)에서는 열린 파일의 import(Button·Input 등)가 FILE_BOOST로
+    // 키워드 정밀 매칭(create-page-guide 등 실제 답)을 밀어내는 노이즈가 된다 — 그래서 제외한다.
+    const fileCtx =
+      fileContent && intent.intent === 'modify_file'
+        ? this._deps.fileContextSources(fileContent)
+        : [];
     let semantic: Array<{ source: string; score: number }> = [];
     try {
       semantic = await this._deps.semanticScores(query);

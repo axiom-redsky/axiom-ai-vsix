@@ -51,6 +51,11 @@ const cases: { query: string; expect: string }[] = [
   // ④ useApi 소스/구현 질문에만 core 소스 문서 매칭
   { query: 'useApi 소스 보여줘', expect: 'patterns/use-api-source.md' },
   { query: 'useApi 내부 구현 보여줘', expect: 'patterns/use-api-source.md' },
+  // 업무 페이지 만들기 가이드 — 자연어 표현
+  { query: '페이지 만드는 법 알려줘', expect: 'page-templates/create-page-guide.md' },
+  { query: '페이지 만들기 어떻게 해', expect: 'page-templates/create-page-guide.md' },
+  { query: '화면 만드는 법', expect: 'page-templates/create-page-guide.md' },
+  { query: '새 페이지 만들고 싶어', expect: 'page-templates/create-page-guide.md' },
 ];
 
 console.log('\nknowledge 키워드 라우팅:');
