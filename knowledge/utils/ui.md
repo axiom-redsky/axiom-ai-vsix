@@ -1,7 +1,7 @@
 ---
 title: 전역 UI $ui (alert / confirm 다이얼로그)
 version: "1.0"
-tags: [ui, $ui, window.$ui, 전역ui, 글로벌ui,
+tags: [$ui, window.$ui, 전역ui, 글로벌ui, ui 객체, ui객체, ui 유틸, ui유틸, ui util, uiutil,
        alert, 얼럿, 알림, 알림창, 알림팝업, 경고창, 메시지박스,
        confirm, 컨펌, 확인, 확인창, 확인팝업, 확인취소, 예아니오, yesno,
        다이얼로그, dialog, 모달, modal, 팝업, popup,

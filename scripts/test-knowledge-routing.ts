@@ -39,6 +39,11 @@ const cases: { query: string; expect: string }[] = [
   { query: 'confirm 확인창 띄우는 법', expect: 'utils/ui.md' },
   { query: '$ui.alert 사용법', expect: 'utils/ui.md' },
   { query: 'window.confirm 대신 뭐 써?', expect: 'utils/ui.md' },
+  { query: 'ui 객체 사용법 알려줘', expect: 'utils/ui.md' },
+  { query: 'ui 유틸 어떻게 써', expect: 'utils/ui.md' },
+  // "ui 컴포넌트 사용법"은 $ui 객체가 아니라 컴포넌트 라이브러리(Button/Calendar 등)로 가야 한다.
+  { query: 'ui 컴포넌트 사용법 알려줘', expect: 'design-system/components.md' },
+  { query: '컴포넌트 사용법 알려줘', expect: 'design-system/components.md' },
   // 신규 공백 지식 문서(에러처리·커스텀훅·성능·테스트)
   { query: '에러 처리 어떻게 해', expect: 'patterns/error-handling.md' },
   { query: 'ErrorBoundary 폴백 UI 보여줘', expect: 'patterns/error-handling.md' },
@@ -69,6 +74,13 @@ console.log('\n예제 키워드 누수 방지:');
 for (const q of ['alert 사용 예제 보여줘', 'router 예제 보여줘']) {
   const files = kr.matchedFiles(q);
   check(`"${q}" → use-api-example.md 비매칭`, !files.includes('patterns/use-api-example.md'), `matched=${JSON.stringify(files)}`);
+}
+
+// "ui 컴포넌트" 질문은 $ui 다이얼로그 문서(utils/ui.md)로 새지 않아야 한다(greedy 'ui' 회귀 방지).
+console.log('\n$ui 다이얼로그 누수 방지:');
+for (const q of ['ui 컴포넌트 사용법 알려줘', 'ui 컴포넌트 뭐 있어']) {
+  const files = kr.matchedFiles(q);
+  check(`"${q}" → utils/ui.md 비매칭`, !files.includes('utils/ui.md'), `matched=${JSON.stringify(files)}`);
 }
 
 // 개발자용 일반 API 질문은 내부 클라이언트 문서(api-call.md)로 새지 않아야 한다.

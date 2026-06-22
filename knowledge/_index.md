@@ -7,7 +7,7 @@ project: react-app-scaffold
 
 ## 패턴
 
-- keywords: [$ui, ui, window.$ui, alert, 얼럿, 알림, 알림창, 알림팝업, 경고창, confirm, 컨펌, 확인창, 확인팝업, 확인취소, 예아니오, 다이얼로그, dialog, 모달, modal, 팝업, popup, window.alert, window.confirm, 브라우저알림, 네이티브알림, autodismiss, 자동닫힘, $ui.alert, $ui.confirm]
+- keywords: [$ui, window.$ui, ui 객체, ui객체, ui 유틸, ui유틸, ui util, uiutil, alert, 얼럿, 알림, 알림창, 알림팝업, 경고창, confirm, 컨펌, 확인창, 확인팝업, 확인취소, 예아니오, 다이얼로그, dialog, 모달, modal, 팝업, popup, window.alert, window.confirm, 브라우저알림, 네이티브알림, autodismiss, 자동닫힘, $ui.alert, $ui.confirm]
   files: [utils/ui.md]
 - keywords: [axios, api-client, 클라이언트, baseurl, interceptor, 인터셉터, callapi, apierror, apiresponse, initapiconfig, getapiconfig, api설정, api-config, 인증헤더, 클라이언트내부, api내부구현]
   files: [patterns/api-call.md]
@@ -79,7 +79,7 @@ project: react-app-scaffold
 
 ## 디자인 시스템
 
-- keywords: [design-system, 디자인시스템, 컴포넌트목록, 컴포넌트 목록, 컴포넌트리스트, component-list, variants, shadcn, axiom/components/ui, 전체컴포넌트, 사용가능한컴포넌트, 제공하는컴포넌트, ui컴포넌트, 컴포넌트종류, 어떤컴포넌트, 컴포넌트뭐있어, tbd, 추가예정, 확정컴포넌트]
+- keywords: [design-system, 디자인시스템, 컴포넌트목록, 컴포넌트 목록, 컴포넌트리스트, component-list, variants, shadcn, axiom/components/ui, 전체컴포넌트, 사용가능한컴포넌트, 제공하는컴포넌트, ui컴포넌트, ui 컴포넌트, 컴포넌트, 컴포넌트 사용법, 컴포넌트 사용, 컴포넌트 사용예, 컴포넌트종류, 어떤컴포넌트, 컴포넌트뭐있어, tbd, 추가예정, 확정컴포넌트]
   files: [design-system/components.md]
 
 - keywords: [layout, 레이아웃, card, container, stack, grid, flexbox, scrollarea, 카드, 페이지구조, 목록화면, 상세화면, 폼화면, si프로젝트, 프로젝트별, 반응형, responsive, darkmode, 다크모드, rootlayout]
