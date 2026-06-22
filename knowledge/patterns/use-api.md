@@ -161,6 +161,16 @@ function useApi<TData, TVariables>(
 
 `mutate()` 호출 시점에 **수동 실행**. `type: 'mutation'` 또는 POST/PUT/PATCH/DELETE method로 자동 전환.
 
+> ✅ **`mutate()`로 데이터를 변경·생성·수정·삭제하는 용도로 쓸 때는 `type: 'mutation'` 옵션을 명시하라.**
+> method로도 자동 전환되지만, `type: 'mutation'`을 함께 적으면 의도(조회가 아닌 변경)가 코드에 드러나고, `method: 'POST'`이지만 조회 목적인 경우(`type: 'query'`)와 명확히 구분된다.
+>
+> ```tsx
+> const { mutate, isPending } = useApi<User, CreateUserDto>('/api/users', {
+>   method: 'POST',
+>   type: 'mutation', // ← 데이터 변경 용도임을 명시
+> });
+> ```
+
 ### POST 생성
 
 ```tsx
