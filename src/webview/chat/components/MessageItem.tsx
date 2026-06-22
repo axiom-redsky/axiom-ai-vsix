@@ -32,7 +32,62 @@ function CodeBlock({
   return <code className={className}>{children}</code>;
 }
 
-const MARKDOWN_COMPONENTS = { code: CodeBlock } as const;
+/** React 노드 트리에서 순수 텍스트만 재귀 추출(마크다운 패턴 판별용). */
+function extractText(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (React.isValidElement(node)) {
+    return extractText((node.props as { children?: React.ReactNode }).children);
+  }
+  return '';
+}
+
+/**
+ * 인용구(blockquote) 커스텀 렌더 — 오프라인 응답의 배지·힌트를 카드/콜아웃으로 강조한다.
+ *  - "오프라인 모드" 포함 → 오프라인 배지 카드
+ *  - 폴백 안내(🔎) → 약한 힌트 콜아웃
+ *  - 그 외(의도 라인 등) → 기본 blockquote
+ */
+function Blockquote({ children }: React.ComponentPropsWithoutRef<'blockquote'>) {
+  const text = extractText(children);
+  if (text.includes('오프라인 모드')) {
+    return <blockquote className="message__offline-banner">{children}</blockquote>;
+  }
+  if (text.includes('🔎') || text.includes('카탈로그를 대신 안내')) {
+    return <blockquote className="message__offline-hint">{children}</blockquote>;
+  }
+  return <blockquote>{children}</blockquote>;
+}
+
+/** "patterns/use-api.md" → "patterns › use-api" (출처 칩 라벨). */
+function prettifySource(src: string): string {
+  return src.replace(/\.md$/i, '').split('/').join(' › ');
+}
+
+/**
+ * h2 커스텀 렌더 — 오프라인 지식 블록의 출처 헤더(`## [patterns/use-api.md]`)를 출처 칩으로,
+ * 그 외 h2는 기본 헤딩으로 렌더한다.
+ */
+function Heading2({ children }: React.ComponentPropsWithoutRef<'h2'>) {
+  const text = extractText(children).trim();
+  const m = text.match(/^\[(.+)\]$/);
+  if (m) {
+    return (
+      <h2 className="knowledge-source">
+        <span className="knowledge-source__icon" aria-hidden>📄</span>
+        <span className="knowledge-source__label">{prettifySource(m[1])}</span>
+      </h2>
+    );
+  }
+  return <h2>{children}</h2>;
+}
+
+const MARKDOWN_COMPONENTS = {
+  code: CodeBlock,
+  blockquote: Blockquote,
+  h2: Heading2,
+} as const;
 
 interface Props {
   message: Message;
@@ -263,7 +318,7 @@ export function MessageItem({ message, onConfirm, onPatchRecovery }: Props): Rea
         .trim();
 
   return (
-    <div className={`message ${isUser ? 'message--user' : 'message--assistant'}${message.isError ? ' message--error' : ''}`}>
+    <div data-message-id={message.id} className={`message ${isUser ? 'message--user' : 'message--assistant'}${message.isError ? ' message--error' : ''}`}>
       {!isUser && (
         <div className="message__avatar message__avatar--ai">
           <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

@@ -16,6 +16,7 @@
 import type { IntentResult, IntentContext } from './IntentClassifier';
 import { classifyOfflineIntent, stripFileRefs } from './IntentSignals';
 import { buildContractSection } from './ScaffoldContracts';
+import { FALLBACK_HINT } from './OfflineKnowledgeRetriever';
 
 /** OfflineResponder가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineResponderDeps {
@@ -126,7 +127,16 @@ export class OfflineResponder {
       docs = [];
     }
     if (!docs || docs.length === 0) return '';
-    return `${heading}\n\n${docs.join('\n\n---\n\n')}`;
+    // 폴백 힌트는 결과 첫 블록으로 온다(카탈로그 폴백 시). 지식 섹션 헤딩 **위에** 분리 렌더해
+    // 구분선(---)이 힌트와 문서 사이에 끼지 않게 한다.
+    let hint = '';
+    let body = docs;
+    if (docs[0] === FALLBACK_HINT) {
+      hint = docs[0];
+      body = docs.slice(1);
+    }
+    const section = body.length ? `${heading}\n\n${body.join('\n\n---\n\n')}` : '';
+    return [hint, section].filter(Boolean).join('\n\n');
   }
 
   /** 템플릿(파일 우선, 없으면 내장)에 placeholder를 치환한다. */

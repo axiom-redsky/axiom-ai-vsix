@@ -70,6 +70,18 @@ export class RagRetriever {
    * @param minScore 코사인 유사도 하한 — 이 미만의 최고 청크만 가진 문서는 제외(저관련 노이즈 차단).
    */
   async retrieveSources(query: string, topN = 6, minScore = 0.2): Promise<string[]> {
+    return (await this.retrieveSourceScores(query, topN, minScore)).map((s) => s.source);
+  }
+
+  /**
+   * **오프라인 전용**: retrieveSources와 동일하되 source별 **코사인 유사도 점수**까지 반환한다.
+   * 점수 기반 하이브리드 랭킹(OfflineKnowledgeRetriever)이 의미 근접도를 가산점으로 합산하는 데 쓴다.
+   */
+  async retrieveSourceScores(
+    query: string,
+    topN = 6,
+    minScore = 0.2,
+  ): Promise<Array<{ source: string; score: number }>> {
     if (!this._ready || this._chunks.length === 0) return [];
 
     const queryVec = await embed(query);
@@ -85,7 +97,7 @@ export class RagRetriever {
       .filter(([, score]) => score >= minScore)
       .sort((a, b) => b[1] - a[1])
       .slice(0, topN)
-      .map(([source]) => source);
+      .map(([source, score]) => ({ source, score }));
   }
 
   /** 캐시를 초기화해 다음 buildIndex 호출 시 재빌드하도록 한다. */

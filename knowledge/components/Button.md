@@ -1,10 +1,14 @@
 ---
 title: Button 컴포넌트
-tags: [button, 버튼, btn, variant, click, tailwind, shadcn]
+category: component
+tags: [button, 버튼, btn, variant, click, 클릭, onclick, 이벤트, event, 핸들러, handler, props, 프롭스,
+       disabled, 비활성, 로딩, ispending, tailwind, shadcn, 사용법, 사용 예]
 scope: component
 ---
 
 # Button 컴포넌트
+
+`@axiom/components/ui`의 Button을 **import → JSX 배치 → props → 이벤트 연결 → 스타일** 순으로 정리한다.
 
 ## 임포트
 
@@ -50,6 +54,43 @@ import { Button } from '@axiom/components/ui';
   {isPending ? '저장 중...' : '저장'}
 </Button>
 ```
+
+## 이벤트 연결 (onClick) · props
+
+핸들러를 `onClick`에 연결하고, 상태에 따라 `disabled`를 바인딩한다. Button은 표준 HTML
+`<button>` 속성(`onClick`·`type`·`disabled` 등)을 그대로 받는다.
+
+```tsx
+import { Button } from '@axiom/components/ui';
+import { useApi } from '@axiom/hooks';
+
+export default function SavePanel(): React.ReactNode {
+  // 1. 상태/페치
+  const { mutate: save, isPending } = useApi<void, TSaveBody>('/api/items', { method: 'POST' });
+
+  // 2. 핸들러
+  const handleSave = () => {
+    save({ name: '신규' });
+  };
+
+  // 3. JSX 바인딩 — onClick 연결 + 상태로 disabled/문구 제어
+  return (
+    <div className="flex gap-2">
+      <Button onClick={handleSave} disabled={isPending}>
+        {isPending ? '저장 중…' : '저장'}
+      </Button>
+      <Button variant="outline" onClick={() => history.back()}>
+        취소
+      </Button>
+    </div>
+  );
+}
+```
+
+자주 쓰는 props: `variant`(위 표) · `size`(`sm`/`lg`/`icon`) · `disabled` · `onClick` · `type`(`button`/`submit`) · `className`(스타일 확장).
+
+> 삭제처럼 확인이 필요한 액션은 `onClick`에서 전역 `$ui.confirm`과 결합한다:
+> `const ok = await $ui.confirm('삭제할까요?'); if (ok) remove();`
 
 ## 아이콘과 조합
 

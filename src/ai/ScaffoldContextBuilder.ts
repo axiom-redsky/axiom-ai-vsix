@@ -110,12 +110,17 @@ export class ScaffoldContextBuilder {
       if (!ragDir) return [];
       const retriever = new OfflineKnowledgeRetriever({
         keywordSources: (q) => this._engine.offlineKeywordSources(q),
-        semanticSources: (q) => this._engine.offlineSemanticSources(q),
+        semanticScores: (q) => this._engine.offlineSemanticScores(q),
         fileContextSources: (content) => this._engine.offlineFileContextSources(content),
         loadDoc: (source) => {
           const abs = path.isAbsolute(source) ? source : path.join(ragDir, source);
           return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
         },
+        // 빈손 방지 폴백 — 정밀/의미 검색이 모두 비면 전체 카탈로그(존재하는 파일만)를 안내한다.
+        fallbackSources: () =>
+          ['catalog/overview.md', 'catalog/hooks.md'].filter((rel) =>
+            fs.existsSync(path.join(ragDir, rel)),
+          ),
       });
       return await retriever.retrieve(query, intent, fileContent);
     } catch (err) {

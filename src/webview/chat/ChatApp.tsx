@@ -7,7 +7,7 @@ import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, usage } = useChat();
+  const { messages, status, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, usage, isOffline } = useChat();
   const [prefillText, setPrefillText] = useState('');
 
   const totalChars = useMemo(
@@ -60,7 +60,7 @@ export function ChatApp(): React.ReactElement {
         </div>
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} />
+      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} isOffline={isOffline} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} />
       <ClearWarningBanner
         messages={messages}
         isStreaming={isStreaming}
@@ -68,6 +68,7 @@ export function ChatApp(): React.ReactElement {
         systemPromptChars={systemPromptChars}
         contextWindow={contextWindow}
         usage={usage}
+        isOffline={isOffline}
       />
       <SpecQuickBar onPrefill={handlePrefill} onSend={sendMessage} isStreaming={isStreaming} />
       <InputBar
@@ -83,6 +84,7 @@ export function ChatApp(): React.ReactElement {
         contextWindow={contextWindow}
         usage={usage}
         breakdown={breakdown}
+        offline={isOffline}
       />
     </div>
   );

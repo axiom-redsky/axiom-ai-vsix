@@ -170,7 +170,7 @@ export type HostToWebviewMessage =
   | { type: 'projectConfigSaved' }
   | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string }
   | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string }
-  | { type: 'contextInfo'; systemPromptChars: number; breakdown?: ContextBreakdown; contextWindow: number }
+  | { type: 'contextInfo'; systemPromptChars: number; breakdown?: ContextBreakdown; contextWindow: number; offline?: boolean }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

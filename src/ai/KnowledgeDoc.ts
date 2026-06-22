@@ -68,17 +68,22 @@ function firstHeading(body: string): string | null {
  *   1. frontmatter `kind:` 명시(저자 오버라이드)
  *   2. 경로 프리픽스(catalog/overview)
  *   3. frontmatter `category:`
- *   4. 본문 신호("## 전체 소스" 또는 큰 코드블록) → example
+ *   4. 본문 신호("## 전체 소스" 마커) → example
  *   5. 기본 reference
+ *
+ * ⚠️ "코드블록이 크면 example" 휴리스틱은 쓰지 않는다 — 패턴·규칙·가이드 문서(naming,
+ * spec-structure, error-handling 등)는 예제 코드를 많이 담고도 "코드가 곧 답"인 문서가 아니다.
+ * 그 휴리스틱이 이들을 example로 올려 show-code 바이어스에서 정작 핵심 pattern 문서를 밀어냈다.
  */
 export function deriveKind(args: {
   source: string;
   fmKind?: string;
   fmCategory?: string;
   body: string;
-  codeBlocks: string[];
+  /** 더 이상 분류에 쓰지 않음(시그니처 호환 유지용). */
+  codeBlocks?: string[];
 }): KnowledgeKind {
-  const { source, fmKind, fmCategory, body, codeBlocks } = args;
+  const { source, fmKind, fmCategory, body } = args;
 
   if (fmKind && VALID_KINDS.has(fmKind)) return fmKind as KnowledgeKind;
 
@@ -89,12 +94,12 @@ export function deriveKind(args: {
     case 'source': return 'source';
     case 'component': return 'component';
     case 'pattern': return 'pattern';
+    case 'example': return 'example';
     case 'screen': return 'example';
   }
 
-  if (/^##\s*전체\s*소스/m.test(body) || codeBlocks.some((c) => c.length > 400)) {
-    return 'example';
-  }
+  // 본문 신호: "## 전체 소스" 마커가 있는 문서만 example로 본다(코드 길이는 보지 않는다).
+  if (/^##\s*전체\s*소스/m.test(body)) return 'example';
   return 'reference';
 }
 

@@ -157,6 +157,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·axiom-action 재시도)를 타지 않는다.
    */
   private async _respondOffline(text: string, editorCtx: EditorContext, notice?: string | null): Promise<void> {
+    this._postOfflineTurn();
     this._postStatus('⚠️ 오프라인 모드 — 의도 분석 중…');
     // 서버가 요청을 거부해 폴백된 경우(모델명 오타 등), 사용자가 설정을 고칠 수 있도록 사유를 노출한다.
     if (notice?.trim()) {
@@ -2146,6 +2147,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * 모델 호출 실패(404 등) 양쪽 오프라인 경로가 이 단일 진입점을 공유해 분기가 갈라지지 않게 한다.
    */
   private async _respondOfflineOrTransplant(text: string, editorCtx: EditorContext, notice?: string | null): Promise<void> {
+    this._postOfflineTurn();
     if (await this._tryOfflineTransplant(text, editorCtx, notice)) {
       this._post({ type: 'done' });
       this._postStatus('⚠️ 오프라인 모드');
@@ -4384,6 +4386,7 @@ import 변경 또는 2곳 이상 수정이면:
     domain: string,
     offlineFallback = false,
   ): Promise<void> {
+    if (offlineFallback) this._postOfflineTurn();
     this._postStatus(offlineFallback ? '오프라인 모드 — 템플릿 생성 중…' : '템플릿 생성 중…');
 
     const wsRoot = this._getWorkspaceRoot();
@@ -4860,6 +4863,21 @@ export default routes;`;
 
   private _postStatus(text: string): void {
     this._post({ type: 'status', text });
+  }
+
+  /**
+   * 오프라인 턴 진입을 webview에 알린다. 토큰 메터는 라이브 측정(실측)이 아닌
+   * "오프라인 · 토큰 미사용" 상태로 전환된다(누적 추정치로 막대가 차오르는 오해 방지).
+   * 온라인 턴은 contextInfo(offline 미지정)가 발화되며 메터를 다시 라이브로 되돌린다.
+   * 연결이 깜빡여도 매 턴 이 신호로 메터가 정확히 따라간다(세션 단위 플래그가 아니라 턴 단위).
+   */
+  private _postOfflineTurn(): void {
+    this._post({
+      type: 'contextInfo',
+      systemPromptChars: 0,
+      contextWindow: ExtensionConfig.getEffectiveLlmConfig().contextWindow,
+      offline: true,
+    });
   }
 
   private _post(msg: HostToWebviewMessage): void {

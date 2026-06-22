@@ -8,6 +8,8 @@ interface Props {
   systemPromptChars?: number;
   contextWindow: number;
   usage?: ContextUsage | null;
+  /** 오프라인 턴 여부 — LLM 토큰을 쓰지 않으므로 "대화가 길다/품질 저하" 경고를 띄우지 않는다. */
+  isOffline?: boolean;
 }
 
 type BannerLevel = 'soft' | 'strong' | null;
@@ -27,7 +29,7 @@ function getBannerLevel(
   return null;
 }
 
-export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromptChars = 0, contextWindow, usage }: Props): React.ReactElement | null {
+export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromptChars = 0, contextWindow, usage, isOffline }: Props): React.ReactElement | null {
   const [dismissedLevel, setDismissedLevel] = useState<BannerLevel>(null);
 
   const totalChars = useMemo(
@@ -41,6 +43,9 @@ export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromp
     if (messages.length === 0) setDismissedLevel(null);
   }, [messages.length]);
 
+  // 오프라인 턴은 LLM 컨텍스트를 소비하지 않으므로 토큰 기반 경고가 무의미하다.
+  // (긴 로컬 지식 답변이 문자 수 추정치를 부풀려 경고를 오발동시키던 문제도 함께 차단)
+  if (isOffline) return null;
   if (!level || level === dismissedLevel) return null;
 
   const isSoft = level === 'soft';

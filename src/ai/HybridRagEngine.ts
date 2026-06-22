@@ -108,6 +108,14 @@ export class HybridRagEngine {
     return this._ragRetriever.retrieveSources(query);
   }
 
+  /**
+   * **오프라인 전용**: 의미 유사도 source를 **점수와 함께** 반환한다(점수 기반 하이브리드 랭킹용).
+   * 인덱스 미준비 시 빈 배열.
+   */
+  async offlineSemanticScores(query: string): Promise<Array<{ source: string; score: number }>> {
+    return this._ragRetriever.retrieveSourceScores(query);
+  }
+
   /** 임베딩 인덱스를 초기화하고 다음 initialize() 시 재빌드하도록 한다. */
   invalidate(): void {
     this._ragRetriever.reset();

@@ -3,31 +3,39 @@
  *
  * 온라인 경로(`buildContext`)는 절대 호출하지 않는다(공유 스코어러·예산 기계 미사용).
  *
- * 설계(2단계):
- *  - **Stage 1 검색**: 키워드(정밀) + 임베딩(의미, 로컬) + 파일컨텍스트(선택) source 문서 합집합.
+ * 설계(점수 기반 하이브리드 랭킹):
+ *  - **후보 수집**: 키워드(정밀) + 파일컨텍스트(선택) + 임베딩(의미, 로컬) source 문서 합집합.
  *    청크를 고르지 않고 **문서를 통째로** 로드한다 → "맞는 문서, 틀린 청크" 실패 모드 소멸.
- *  - **Stage 2 렌더**: 확정 intent + 문서 `kind`로 결정론 렌더. show-code 의도면
- *    example/source 문서를 앞으로 끌어와 코드가 빠지지 않게 한다. frontmatter는 떼고 본문 통째.
+ *  - **점수 합산**: 각 후보에 `키워드 가산점 + 파일컨텍스트 가산점 + 의미 유사도(코사인) + show-code 보너스`를
+ *    더해 정렬한다. 단어 하나(범용 키워드)가 _index 등장 순서로 1등을 강제하던 **지뢰 패턴을 제거**한다 —
+ *    "목록" 같은 범용어로 매칭됐어도 **의미 점수가 낮으면 위로 못 올라온다.**
+ *  - 키워드 가산점(1.0)이 의미 점수(0~1)보다 크므로 **정밀 매칭이 의미검색 노이즈를 이긴다**(provenance 유지).
+ *    의미 점수는 키워드 동점자 사이의 **타이브레이커**로 작동한다(예: "유틸 목록"에서 util.md > Table.md).
+ *  - 약한 로컬 임베딩을 보완: 의미만으로 정렬하지 않고 키워드 정밀도를 베이스로 둔다.
  *
- * 어휘 점수 보정 상수(도입부+1·reserveTopPerSource·restFloor·maxSources·charBudget)를 쓰지 않는다.
- * 문서 수 상한(MAX_DOCS)만 둔다 — 오프라인 출력은 사람이 읽는 화면이라 예산 제약이 없다.
- *
+ * 문서 수 상한(MAX_DOCS)만 둔다 — 오프라인 출력은 사람이 읽는 화면이라 토큰 예산 제약이 없다.
  * vscode/fs 비의존 — source 검색·문서 로드를 모두 주입(IOfflineKnowledgeDeps)으로 받는다.
  */
 
 import type { IntentResult } from './IntentClassifier';
-import { parseKnowledgeDoc, type KnowledgeDoc, type KnowledgeKind } from './KnowledgeDoc';
+import { parseKnowledgeDoc, type KnowledgeDoc } from './KnowledgeDoc';
 
 /** OfflineKnowledgeRetriever가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineKnowledgeDeps {
   /** 키워드 정밀 라우팅 결과 source 경로(정확 용어 매칭 보장). */
   keywordSources: (query: string) => string[];
-  /** 로컬 임베딩 유사도 순 source 경로(의미 검색). 인덱스 미준비 시 빈 배열. */
-  semanticSources: (query: string) => Promise<string[]>;
+  /** 로컬 임베딩 의미 유사도 — source별 코사인 점수(0~1). 인덱스 미준비 시 빈 배열. */
+  semanticScores: (query: string) => Promise<Array<{ source: string; score: number }>>;
   /** 현재 파일 내용 기반 라우팅 source 경로(import 등). fileContent 없으면 호출부가 빈 배열. */
   fileContextSources: (fileContent: string) => string[];
   /** source 경로의 원시 마크다운을 로드(없으면 null). */
   loadDoc: (source: string) => string | null;
+  /**
+   * 키워드·파일컨텍스트·임베딩이 **모두 비었을 때만** 호출되는 카탈로그 폴백 source.
+   * scaffold 질문에 빈손 답변을 막는 안전망(예: catalog/overview.md). 미주입 시 종전 동작(빈 배열).
+   * smalltalk 의도에는 호출하지 않는다(인사에 카탈로그는 부적절).
+   */
+  fallbackSources?: (intent: IntentResult) => string[];
 }
 
 /** 한 응답에 노출할 최대 문서 수. 오프라인은 예산이 없어 recall 우선(2~3개). */
@@ -41,6 +49,23 @@ const PER_DOC_CHAR_CAP = 8000;
 
 /** "예제·코드·샘플 보여달라"는 show-code 의도 신호 토큰(오프라인 전용 판정). */
 const SHOW_CODE_TOKENS = ['예제', 'example', '샘플', 'sample', '코드', 'code', '보여', '사용법', '사용 예'];
+
+/**
+ * 점수 가중치 — 온라인 buildContext의 라우팅 보너스(키워드 +5 / 파일 +8) 철학을 오프라인에 옮긴 값.
+ *  - 키워드/파일 가산점은 의미 점수(코사인 0~1)보다 크게 둬 **정밀 매칭이 의미검색 노이즈를 이긴다.**
+ *  - 의미 점수는 키워드 동점자 사이의 **타이브레이커**로만 작동(약한 로컬 임베딩을 베이스로 안 씀).
+ *  - show-code 보너스는 의미 점수보다 작게 — 정밀 pattern 문서를 의미검색 example 위로 유지.
+ */
+const KEYWORD_BOOST = 1.0;
+const FILE_BOOST = 1.2;
+const SHOWCODE_BONUS = 0.25;
+
+/**
+ * 폴백(카탈로그)으로 채웠을 때 결과 배열의 **첫 블록**으로 들어가는 안내 — 결과가 "정확 매칭"이
+ * 아님을 알린다. 호출부(OfflineResponder)가 이 상수로 식별해 지식 섹션 헤딩 위에 분리 렌더한다.
+ */
+export const FALLBACK_HINT =
+  '> 🔎 요청과 정확히 맞는 문서를 찾지 못해, 관련 가능성이 있는 scaffold 카탈로그를 대신 안내합니다.';
 
 /** 쿼리에 show-code 의도가 있는지(코드가 곧 답인 요청). */
 export function hasShowCodeIntent(query: string): boolean {
@@ -57,20 +82,33 @@ export class OfflineKnowledgeRetriever {
    * 매칭 문서가 없으면 빈 배열(호출부가 섹션 자체를 생략).
    */
   async retrieve(query: string, intent: IntentResult, fileContent = ''): Promise<string[]> {
-    // Stage 1: 후보 source 수집 — 키워드(정밀) → 파일컨텍스트 → 임베딩(의미) 순서로 합집합.
+    // 후보 수집 — 키워드(정밀) + 파일컨텍스트 + 임베딩(의미, 점수 포함).
     const keyword = this._deps.keywordSources(query);
     const fileCtx = fileContent ? this._deps.fileContextSources(fileContent) : [];
-    let semantic: string[] = [];
+    let semantic: Array<{ source: string; score: number }> = [];
     try {
-      semantic = await this._deps.semanticSources(query);
+      semantic = await this._deps.semanticScores(query);
     } catch {
       semantic = [];
     }
 
-    const orderedSources = dedupe([...keyword, ...fileCtx, ...semantic]);
+    const keywordSet = new Set<string>(keyword);
+    const fileSet = new Set<string>(fileCtx);
+    const semScore = new Map<string, number>(semantic.map((s) => [s.source, s.score]));
+
+    // 합집합(첫 등장 순서 보존 — 점수 동점 시 타이브레이커로 사용).
+    let orderedSources = dedupe([...keyword, ...fileCtx, ...semantic.map((s) => s.source)]);
+
+    // 빈손 방지 폴백 — 정밀/의미 검색이 모두 비면 카탈로그로 보충한다(smalltalk 제외).
+    let usedFallback = false;
+    if (orderedSources.length === 0) {
+      if (intent.intent === 'smalltalk' || !this._deps.fallbackSources) return [];
+      orderedSources = dedupe(this._deps.fallbackSources(intent));
+      usedFallback = orderedSources.length > 0;
+    }
     if (orderedSources.length === 0) return [];
 
-    // 문서 로드 + 파싱(통째)
+    // 문서 로드 + 파싱(통째). 원래 합집합 순서를 인덱스로 보존(동점 타이브레이커).
     const docs: KnowledgeDoc[] = [];
     for (const src of orderedSources) {
       const raw = this._deps.loadDoc(src);
@@ -78,24 +116,36 @@ export class OfflineKnowledgeRetriever {
     }
     if (docs.length === 0) return [];
 
-    // Stage 1.5: intent×kind 바이어스(점수기 아닌 2버킷 안정 재정렬)
-    const ranked = this._biasByIntent(docs, query);
-
-    // Stage 2: 상위 MAX_DOCS개를 종류별 결정론 렌더
-    return ranked.slice(0, MAX_DOCS).map((d) => this._render(d));
+    // 점수 합산 후 정렬 → 상위 MAX_DOCS개 렌더.
+    const ranked = this._rankByScore(docs, query, { keywordSet, fileSet, semScore });
+    const blocks = ranked.slice(0, MAX_DOCS).map((d) => this._render(d));
+    return usedFallback ? [FALLBACK_HINT, ...blocks] : blocks;
   }
 
   /**
-   * show-code 의도면 코드가 답인 문서(example/source)를 **안정 정렬로 앞으로** 끌어온다.
-   * 그 외 의도는 Stage 1 검색 순서(정밀→의미)를 그대로 존중한다. 순위는 미리 알 수 없으므로
-   * 점수 합산 대신 검색 순서 + 의도 버킷이라는 설명 가능한 규칙만 쓴다.
+   * 후보 문서를 `키워드 가산점 + 파일컨텍스트 가산점 + 의미 유사도 + show-code 보너스` 합으로 정렬한다.
+   * 단어 하나가 _index 등장 순서로 1등을 강제하던 지뢰 패턴을 제거한다 — 범용 키워드로 매칭됐어도
+   * 의미 점수가 낮으면 위로 못 올라온다. 키워드 가산점(1.0)이 의미 점수(0~1)보다 커서 정밀 매칭이
+   * 의미검색 노이즈를 이기고, 의미 점수는 키워드 동점자의 타이브레이커로 작동한다.
+   * 동점이면 원래 합집합 순서(정밀→의미)를 유지한다(안정 정렬).
    */
-  private _biasByIntent(docs: KnowledgeDoc[], query: string): KnowledgeDoc[] {
-    if (!hasShowCodeIntent(query)) return docs;
-    const codeFirst = (k: KnowledgeKind): boolean => k === 'example' || k === 'source';
-    const head = docs.filter((d) => codeFirst(d.kind));
-    const tail = docs.filter((d) => !codeFirst(d.kind));
-    return [...head, ...tail];
+  private _rankByScore(
+    docs: KnowledgeDoc[],
+    query: string,
+    sig: { keywordSet: Set<string>; fileSet: Set<string>; semScore: Map<string, number> },
+  ): KnowledgeDoc[] {
+    const showCode = hasShowCodeIntent(query);
+    const scoreOf = (d: KnowledgeDoc): number => {
+      let s = sig.semScore.get(d.source) ?? 0;
+      if (sig.keywordSet.has(d.source)) s += KEYWORD_BOOST;
+      if (sig.fileSet.has(d.source)) s += FILE_BOOST;
+      if (showCode && (d.kind === 'example' || d.kind === 'source')) s += SHOWCODE_BONUS;
+      return s;
+    };
+    return docs
+      .map((d, i) => ({ d, i, score: scoreOf(d) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .map((x) => x.d);
   }
 
   /**

@@ -8,13 +8,15 @@ interface Props {
   isStreaming: boolean;
   isWaiting: boolean;
   status?: string;
+  /** 오프라인 턴 여부 — 긴 로컬 지식 답변을 위에서부터 읽도록 스크롤 동작을 바꾼다. */
+  isOffline?: boolean;
   onConfirm?: (actionId: string, approved: boolean) => void;
   onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
 }
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, status, onConfirm, onPatchRecovery }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, isOffline, onConfirm, onPatchRecovery }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -37,7 +39,26 @@ export function MessageList({ messages, isStreaming, isWaiting, status, onConfir
 
   useEffect(() => {
     const last = messages[messages.length - 1];
-    if (last?.role === 'user') {
+    if (!last) return;
+
+    // 오프라인 턴: 로컬 지식 답변은 우선순위 높은 내용이 맨 위에 온다. 답변 바닥을 쫓지 말고
+    // 이번 질문(마지막 user 메시지)을 뷰포트 맨 위에 정렬해, 위→아래로 차근차근 읽게 한다.
+    // (답변이 도착해 아래 콘텐츠가 생긴 뒤 정렬돼야 질문이 실제로 맨 위에 오므로, 답변 토큰
+    //  갱신마다 재정렬한다. 이미 상단이면 scrollIntoView는 사실상 no-op.)
+    if (isOffline) {
+      isNearBottomRef.current = false;
+      setShowScrollBtn(false);
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          const node = listRef.current?.querySelector(`[data-message-id="${messages[i].id}"]`);
+          node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
+      }
+      return;
+    }
+
+    if (last.role === 'user') {
       isNearBottomRef.current = true;
       setShowScrollBtn(false);
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -48,7 +69,7 @@ export function MessageList({ messages, isStreaming, isWaiting, status, onConfir
     } else if (isStreaming) {
       setShowScrollBtn(true);
     }
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, isOffline]);
 
   // 스트리밍 종료 시 버튼 숨김
   useEffect(() => {

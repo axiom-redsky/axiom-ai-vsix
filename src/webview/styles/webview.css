@@ -720,6 +720,51 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   opacity: 0.8;
 }
 
+/* ── 오프라인 모드 강조 (Track C) ───────────────────────────────────────── */
+
+/* 오프라인 배지 — 응답 최상단 경고 카드 */
+.message__content blockquote.message__offline-banner {
+  border-left: 3px solid var(--vscode-editorWarning-foreground, #cca700);
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 12%, transparent);
+  border-radius: 6px;
+  margin: 4px 0 10px;
+  padding: 8px 12px;
+  opacity: 1;
+}
+
+.message__content blockquote.message__offline-banner p { margin: 0; }
+
+/* 폴백(카탈로그) 안내 — 약한 정보성 콜아웃 */
+.message__content blockquote.message__offline-hint {
+  border-left: 3px solid var(--vscode-editorInfo-foreground, #3794ff);
+  background: color-mix(in srgb, var(--vscode-editorInfo-foreground, #3794ff) 9%, transparent);
+  border-radius: 6px;
+  margin: 4px 0 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  opacity: 1;
+}
+
+.message__content blockquote.message__offline-hint p { margin: 0; }
+
+/* 지식 문서 출처 칩 — 각 scaffold 지식 블록의 헤더 */
+.message__content h2.knowledge-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 14px 0 6px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-badge-foreground, inherit);
+  background: var(--vscode-badge-background, rgba(0,0,0,0.18));
+  border-radius: 10px;
+  opacity: 0.9;
+}
+
+.message__content h2.knowledge-source .knowledge-source__icon { font-size: 11px; }
+
 .message__content a {
   color: var(--vscode-textLink-foreground);
   text-decoration: none;
@@ -1030,6 +1075,21 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 
 .input-bar__context-fill[data-level="danger"] {
   background: var(--vscode-terminal-ansiRed, #e05555);
+}
+
+/* 오프라인 턴 — 토큰 미사용. 막대를 흐린 회색 비활성 상태로(예산/경고 색 아님). */
+.input-bar__context-fill[data-level="offline"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(128, 128, 128, 0.35),
+    rgba(128, 128, 128, 0.35) 4px,
+    rgba(128, 128, 128, 0.15) 4px,
+    rgba(128, 128, 128, 0.15) 8px
+  );
+}
+
+.input-bar__context-meter--offline .input-bar__context-label {
+  opacity: 0.7;
 }
 
 .input-bar__context-label {

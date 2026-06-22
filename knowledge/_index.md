@@ -25,16 +25,24 @@ project: react-app-scaffold
   files: [patterns/state-management.md]
 - keywords: [useapi, use-api, invalidatequeries, refetch, reset, useapi사용예, useapi예제, usapi코드예제]
   files: [patterns/use-api-example.md]
-- keywords: [useapi, use-api, 소스, source, 구현, implementation, overload, iuseapiqueryoptions, iuseapimutationoptions, normalizebody, formdata]
+- keywords: [useapi소스, use-api소스, useapi 소스, use-api 소스, useapi구현, useapi 구현, useapi내부, useapi 내부, usapi소스코드, overload, 오버로드, iuseapiqueryoptions, iuseapimutationoptions, normalizebody, formdata]
   files: [patterns/use-api-source.md]
 - keywords: [useapi, use-api, @axiom/hooks, api, api호출, api통신, api함수, 통신, http, fetch, 요청, 호출, 데이터, 데이터조회, 데이터요청, 가져오기, 불러오기, 서버통신, query, mutation, get, post, put, delete, patch, 조회, 생성, 수정, 삭제, cache, 캐시, invalidate, enabled, 조건부, tanstack, usequery, usemutation, 훅]
   files: [patterns/use-api.md, patterns/use-api-example.md]
 - keywords: [architecture, 아키텍처, 구조, 폴더, 레이어, folder, structure, directory, 디렉터리, layer, alias, 앨리어스, @axiom, @/, import, 임포트, stack, 스택, react, typescript, vite, tanstack]
   files: [scaffold/project-structure.md]
+- keywords: [error, 에러, 오류, 에러처리, 오류처리, error-handling, 예외, exception, trycatch, try-catch, iserror, error.message, apierror, errorboundary, 에러바운더리, fallback, 폴백, 폴백ui, 빈상태, empty, 재시도, retry, 실패, fail, 401, 토큰부착]
+  files: [patterns/error-handling.md, patterns/use-api.md]
+- keywords: [custom-hook, 커스텀훅, 커스텀 훅, 훅작성, 훅만들기, 훅 만들기, use접두사, usedebounce, 디바운스, uselocalstorage, 로컬스토리지, usetoggle, 재사용로직, 로직분리, 로직추출, rules-of-hooks, 훅규칙, 조건부훅, 훅합성]
+  files: [patterns/custom-hooks.md, react/component.md]
+- keywords: [performance, 성능, 최적화, optimize, 느림, 렌더링최적화, 리렌더, 리렌더링, re-render, memo, react.memo, usememo, usecallback, 메모이제이션, memoization, 코드스플리팅, 코드 스플리팅, code-splitting, loadable, 지연로딩, 번들, bundle, 청크, chunk, staletime, 캐싱, 불필요한요청, 중복요청, 리스트키]
+  files: [patterns/performance.md]
+- keywords: [test, 테스트, testing, 검증, storybook, 스토리북, story, 스토리, stories, csf, 컴포넌트테스트, 컴포넌트 테스트, 유닛테스트, 단위테스트, unit-test, 훅테스트, mock, 모킹, mocking, msw, react-testing-library, rtl, api모킹, 시각검증, 상태검증]
+  files: [patterns/testing.md]
 
 ## React 코드 패턴
 
-- keywords: [component, 컴포넌트, button, 버튼, input, 입력, table, 테이블, dialog, 모달, select, 드롭다운, form, 폼, card, badge, tabs, tailwind, 스타일, shadcn, @axiom/components, layout, 레이아웃, pascalcase, 선언순서, 선언위치, hook순서, usestate, useref, useapi, useeffect, handler, 핸들러, 컴포넌트구조, 코드구조]
+- keywords: [컴포넌트패턴, 컴포넌트 패턴, 컴포넌트구조, 컴포넌트 구조, 코드구조, component구조, card, badge, tabs, tailwind, 스타일, shadcn, @axiom/components, 임포트컨벤션, import컨벤션, layout, 레이아웃, pascalcase, 선언순서, 선언 순서, 선언위치, 선언 위치, hook순서, 훅순서, 훅 순서, 훅선언순서, 훅 선언 순서, handler, 핸들러]
   files: [react/component.md]
 
 ## 기존 항목 (수동 관리)
@@ -42,7 +50,7 @@ project: react-app-scaffold
 - keywords: [button, 버튼, btn, click, 클릭, cta, variant, destructive, outline, ghost]
   files: [components/Button.md]
 
-- keywords: [table, 테이블, 목록, list, grid, 데이터표, 행, 열, row, column, 데이터그리드]
+- keywords: [table, 테이블, 데이터테이블, 표, grid, 데이터표, 데이터그리드, 행, 열, row, column, tablecell, tablerow, tableheader]
   files: [components/Table.md]
 
 - keywords: [dialog, modal, 모달, popup, 팝업, 다이얼로그, sheet, 사이드패널]
@@ -90,7 +98,7 @@ project: react-app-scaffold
 
 ## 화면 템플릿
 
-- keywords: [page-template, 페이지템플릿, 목록화면, list-page, listpage, 목록, list, 테이블, table, 검색, search, 필터, filter, 신규등록]
+- keywords: [page-template, 페이지템플릿, 목록화면, 목록 화면, list-page, listpage, 리스트화면, 리스트 화면, 검색화면, 검색 영역, 필터영역, 신규등록]
   files: [page-templates/list-page.md]
 
 - keywords: [page-template, 페이지템플릿, 상세화면, detail-page, detailpage, 상세, detail, 뒤로가기, 조회, 읽기전용, readonly]
@@ -159,5 +167,5 @@ project: react-app-scaffold
   files: [catalog/overview.md]
 - keywords: [훅, 훅목록, 훅 목록, hook, hooks, 커스텀훅, custom-hook, 공통훅, 제공하는훅, 사용가능한훅, 어떤훅, usetheme, usesidebar, 훅종류, 훅리스트, 훅뭐있어]
   files: [catalog/hooks.md]
-- keywords: [공통함수, 공통함수목록, 함수목록, 헬퍼목록, 유틸목록, 유틸 목록]
+- keywords: [공통함수, 공통함수목록, 함수목록, 함수 목록, 헬퍼목록, 유틸목록, 유틸 목록, 유틸함수, 유틸함수목록, 유틸함수 목록, 유틸 함수, 사용가능한유틸, 사용할수있는유틸]
   files: [catalog/overview.md, utils/util.md]

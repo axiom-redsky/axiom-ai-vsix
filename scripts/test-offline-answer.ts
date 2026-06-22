@@ -5,13 +5,13 @@
  * 결정론적으로 검증한다. 핵심 회귀: "useApi 예제 보여줘"에 frontmatter만 나오고 코드가
  * 0줄이던 버그가 재발하지 않는지(코드 통째 노출 + frontmatter 제거 + example 우선).
  *
- * 임베딩(semanticSources)은 빈 배열로 둬 인덱스 미준비 graceful 폴백 경로까지 함께 본다.
+ * 임베딩(semanticScores)은 빈 배열로 둬 인덱스 미준비 graceful 폴백 경로까지 함께 본다.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseKnowledgeDoc, splitFrontmatter, deriveKind } from '../src/ai/KnowledgeDoc';
-import { OfflineKnowledgeRetriever, hasShowCodeIntent } from '../src/ai/OfflineKnowledgeRetriever';
+import { OfflineKnowledgeRetriever, hasShowCodeIntent, FALLBACK_HINT } from '../src/ai/OfflineKnowledgeRetriever';
 import type { IntentResult } from '../src/ai/IntentClassifier';
 
 let passed = 0;
@@ -58,6 +58,16 @@ console.log('KnowledgeDoc 파싱:');
     deriveKind({ source: 'x.md', fmKind: 'catalog', fmCategory: 'pattern', body: '', codeBlocks: [] }) === 'catalog');
   check('kind: catalog 경로 유도',
     deriveKind({ source: 'catalog/overview.md', body: '', codeBlocks: [] }) === 'catalog');
+
+  // ② 코드블록이 커도 category/마커 없으면 example 아님(reference) — 무관 문서 오분류 방지
+  const bigCode = '```ts\n' + 'const x = 1;\n'.repeat(60) + '```';
+  check('큰 코드블록만으로는 example 아님(→reference)',
+    deriveKind({ source: 'conventions/naming.md', body: `# 규칙\n${bigCode}`, codeBlocks: [bigCode] }) === 'reference',
+    deriveKind({ source: 'conventions/naming.md', body: `# 규칙\n${bigCode}`, codeBlocks: [bigCode] }));
+  check('category: pattern → pattern 유지',
+    deriveKind({ source: 'patterns/error-handling.md', fmCategory: 'pattern', body: bigCode, codeBlocks: [bigCode] }) === 'pattern');
+  check('"## 전체 소스" 마커 → example',
+    deriveKind({ source: 'x.md', body: '## 전체 소스\n```ts\nx\n```', codeBlocks: [] }) === 'example');
 }
 
 console.log('\nhasShowCodeIntent:');
@@ -72,7 +82,7 @@ await (async () => {
   // 시나리오: 키워드가 pattern 문서를 먼저 줘도, show-code 의도면 example 문서가 앞으로.
   const retriever = new OfflineKnowledgeRetriever({
     keywordSources: () => ['patterns/use-api.md', 'patterns/use-api-example.md'],
-    semanticSources: async () => [], // 인덱스 미준비 graceful 경로
+    semanticScores: async () => [], // 인덱스 미준비 graceful 경로
     fileContextSources: () => [],
     loadDoc,
   });
@@ -90,12 +100,69 @@ await (async () => {
   const plain = await retriever.retrieve('useApi 훅이 무슨 일을 해', qnaIntent);
   check('비-show-code → 검색 순서 존중(pattern 먼저)', plain[0].includes('[patterns/use-api.md]'), plain[0]?.slice(0, 60) ?? 'empty');
 
-  // 후보 0개 → 빈 배열(섹션 생략)
+  // ① 정밀(키워드) pattern 문서가 의미검색 example/source 노이즈에 밀리지 않는다.
+  // show-code('사용법')라도 키워드로 매칭된 use-api.md(pattern)가 의미검색 use-api-example/source보다 앞.
+  const provRetriever = new OfflineKnowledgeRetriever({
+    keywordSources: () => ['patterns/use-api.md'],                 // 정밀(키워드 가산점)
+    semanticScores: async () => [                                  // 의미(가산점 없음, 점수만)
+      { source: 'patterns/use-api-example.md', score: 0.5 },
+      { source: 'patterns/use-api-source.md', score: 0.5 },
+    ],
+    fileContextSources: () => [],
+    loadDoc,
+  });
+  const prov = await provRetriever.retrieve('useApi 사용법 알려줘', qnaIntent);
+  check('① 정밀 pattern이 의미검색 코드문서보다 앞', prov[0].includes('[patterns/use-api.md]'), prov[0]?.slice(0, 60) ?? 'empty');
+
+  // ② 점수 타이브레이크: 둘 다 키워드 매칭(동점 가산점)이면 의미 점수가 높은 문서가 앞.
+  // "목록" 범용 키워드로 Table·util이 같이 잡혀도, 질문 의미에 가까운 util이 위로 와야 한다.
+  const tieRetriever = new OfflineKnowledgeRetriever({
+    keywordSources: () => ['components/Table.md', 'utils/util.md'], // 둘 다 키워드 매칭(동점)
+    semanticScores: async () => [                                   // util이 의미적으로 더 가까움
+      { source: 'utils/util.md', score: 0.6 },
+      { source: 'components/Table.md', score: 0.15 },
+    ],
+    fileContextSources: () => [],
+    loadDoc,
+  });
+  const tie = await tieRetriever.retrieve('유틸함수 목록 보여줘', qnaIntent);
+  check('② 키워드 동점 → 의미 점수 높은 문서가 앞(util>Table)', tie[0].includes('[utils/util.md]'), tie[0]?.slice(0, 60) ?? 'empty');
+
+  // 후보 0개 + 폴백 미주입 → 빈 배열(섹션 생략, 종전 동작)
   const empty = new OfflineKnowledgeRetriever({
-    keywordSources: () => [], semanticSources: async () => [], fileContextSources: () => [], loadDoc,
+    keywordSources: () => [], semanticScores: async () => [], fileContextSources: () => [], loadDoc,
   });
   const none = await empty.retrieve('아무 관련 없는 질문', qnaIntent);
-  check('후보 0개 → 빈 배열', none.length === 0, `${none.length}`);
+  check('후보 0개 + 폴백 미주입 → 빈 배열', none.length === 0, `${none.length}`);
+
+  // 후보 0개 + 폴백 주입 → 카탈로그로 보충(빈손 방지) + 힌트 첫 블록
+  const fallbackDeps = {
+    keywordSources: () => [] as string[],
+    semanticScores: async () => [] as Array<{ source: string; score: number }>,
+    fileContextSources: () => [] as string[],
+    loadDoc,
+    fallbackSources: () => ['catalog/overview.md'],
+  };
+  const fb = new OfflineKnowledgeRetriever(fallbackDeps);
+  const fbBlocks = await fb.retrieve('도무지 매칭 안 되는 질문', qnaIntent);
+  check('빈 검색 + 폴백 → 비지 않음(빈손 방지)', fbBlocks.length > 0, `${fbBlocks.length}`);
+  check('폴백 시 힌트가 첫 블록', fbBlocks[0] === FALLBACK_HINT, fbBlocks[0]?.slice(0, 40) ?? 'empty');
+  check('폴백 시 카탈로그 문서 노출', fbBlocks.some((b) => b.includes('[catalog/overview.md]')), '');
+
+  // smalltalk 의도는 폴백하지 않는다(인사에 카탈로그 부적절)
+  const smalltalkIntent: IntentResult = {
+    intent: 'smalltalk', pageName: null, domain: null, contentSource: null, targetFile: null, targetComponent: null,
+  };
+  const fbSmall = await fb.retrieve('안녕', smalltalkIntent);
+  check('smalltalk → 폴백 안 함(빈 배열)', fbSmall.length === 0, `${fbSmall.length}`);
+
+  // 정밀 검색이 맞으면 폴백 미발동(힌트 없음)
+  const hitDeps = new OfflineKnowledgeRetriever({
+    ...fallbackDeps,
+    keywordSources: () => ['patterns/use-api.md'],
+  });
+  const hit = await hitDeps.retrieve('useApi 사용법', qnaIntent);
+  check('정밀 검색 적중 → 힌트 없음', hit.length > 0 && hit[0] !== FALLBACK_HINT, hit[0]?.slice(0, 40) ?? 'empty');
 })();
 
 console.log(`\n결과: ${passed} 통과 / ${failed} 실패`);

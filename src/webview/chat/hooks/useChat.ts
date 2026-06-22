@@ -46,6 +46,9 @@ export function useChat() {
   const [breakdown, setBreakdown] = useState<ContextBreakdown | null>(null);
   const [contextWindow, setContextWindow] = useState<number>(32_768);
   const [usage, setUsage] = useState<ContextUsage | null>(null);
+  // 직전 턴이 오프라인(로컬 RAG)이었는지 — 토큰 메터를 라이브 측정 대신 "오프라인(토큰 미사용)"으로
+  // 전환하는 데 쓴다. 세션 단위가 아니라 매 턴 host 신호로 갱신돼 온↔오프 깜빡임을 그대로 따라간다.
+  const [isOffline, setIsOffline] = useState(false);
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -196,6 +199,14 @@ export function useChat() {
           ]);
           break;
         case 'contextInfo':
+          if (msg.offline) {
+            // 오프라인 턴 — 서버가 컨텍스트를 소비하지 않으므로 누적 추정치로 막대를 차오르게 하지
+            // 않는다. 직전 온라인 값은 그대로 두고(온라인 복귀 시 다음 contextInfo가 덮어씀) 표시만
+            // InputBar가 "오프라인 · 토큰 미사용"으로 대체한다.
+            setIsOffline(true);
+            break;
+          }
+          setIsOffline(false);
           setSystemPromptChars(msg.systemPromptChars);
           if (msg.breakdown) setBreakdown(msg.breakdown);
           if (msg.contextWindow) setContextWindow(msg.contextWindow);
@@ -203,6 +214,7 @@ export function useChat() {
           setUsage(null);
           break;
         case 'usage':
+          setIsOffline(false);
           setUsage({
             promptTokens: msg.promptTokens,
             completionTokens: msg.completionTokens,
@@ -285,6 +297,6 @@ export function useChat() {
     messages, status, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
     selectionContext, dismissSelection,
-    systemPromptChars, breakdown, contextWindow, usage,
+    systemPromptChars, breakdown, contextWindow, usage, isOffline,
   };
 }
