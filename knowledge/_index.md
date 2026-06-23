@@ -27,7 +27,7 @@ project: react-app-scaffold
   files: [patterns/use-api-example.md]
 - keywords: [useapi소스, use-api소스, useapi 소스, use-api 소스, useapi구현, useapi 구현, useapi내부, useapi 내부, usapi소스코드, overload, 오버로드, iuseapiqueryoptions, iuseapimutationoptions, normalizebody, formdata]
   files: [patterns/use-api-source.md]
-- keywords: [useapi, use-api, @axiom/hooks, api, api호출, api통신, api함수, 통신, http, fetch, 요청, 호출, 데이터, 데이터조회, 데이터요청, 가져오기, 불러오기, 서버통신, query, mutation, get, post, put, delete, patch, 조회, 생성, 수정, 삭제, cache, 캐시, invalidate, enabled, 조건부, tanstack, usequery, usemutation, 훅]
+- keywords: [useapi, use-api, @axiom/hooks, api, api호출, api통신, api함수, 통신, http, fetch, 요청, 호출, 데이터, 데이터조회, 데이터요청, 데이터생성, 데이터수정, 데이터삭제, 가져오기, 불러오기, 서버통신, query, mutation, get, post, put, delete, patch, cache, 캐시, invalidate, enabled, 조건부, tanstack, usequery, usemutation, 훅]
   files: [patterns/use-api.md, patterns/use-api-example.md]
 - keywords: [architecture, 아키텍처, 구조, 폴더, 레이어, folder, structure, directory, 디렉터리, layer, alias, 앨리어스, @axiom, @/, import, 임포트, stack, 스택, react, typescript, vite, tanstack]
   files: [scaffold/project-structure.md]
@@ -98,7 +98,7 @@ project: react-app-scaffold
 
 ## 화면 템플릿
 
-- keywords: [페이지 만드는, 페이지만드는, 페이지 만드는법, 페이지 만들기, 페이지만들기, 페이지 만들어, 페이지 생성법, 페이지생성법, 페이지 생성하는, 페이지 작성법, 페이지 추가하는, 페이지 어떻게 만들, 페이지를 어떻게, 화면 만드는, 화면만드는, 화면 만드는법, 화면 만드는 법, 화면 어떻게 만들, 화면 만들기, 화면만들기, 새 페이지 만들, 새페이지, 신규 페이지 만들, 신규페이지, 업무페이지, 업무 페이지, 비즈니스페이지, 비즈니스 페이지, biz-page, create-biz-pages, create-page]
+- keywords: [페이지 만드는, 페이지만드는, 페이지 만드는법, 페이지 만들기, 페이지만들기, 페이지 만들어, 페이지 생성법, 페이지생성법, 페이지 생성하는, 페이지 생성 방법, 페이지생성방법, 페이지 생성 가이드, 페이지생성가이드, 페이지 생성, 페이지 만드는 방법, 페이지 작성법, 페이지 추가하는, 페이지 추가 방법, 페이지 어떻게 만들, 페이지를 어떻게, 화면 만드는, 화면만드는, 화면 만드는법, 화면 만드는 법, 화면 만드는 방법, 화면 어떻게 만들, 화면 만들기, 화면만들기, 화면 생성 방법, 화면 생성 가이드, 화면 생성, 새 페이지 만들, 새페이지, 신규 페이지 만들, 신규페이지, 업무페이지, 업무 페이지, 비즈니스페이지, 비즈니스 페이지, biz-page, create-biz-pages, create-page]
   files: [page-templates/create-page-guide.md, patterns/domain-structure.md, patterns/router.md]
 
 - keywords: [page-template, 페이지템플릿, 목록화면, 목록 화면, list-page, listpage, 리스트화면, 리스트 화면, 검색화면, 검색 영역, 필터영역, 신규등록]

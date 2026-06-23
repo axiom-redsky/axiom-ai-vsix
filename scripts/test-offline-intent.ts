@@ -77,6 +77,22 @@ check('"라우터는 어떻게 써?" → qna', classifyOfflineIntent('라우터�
     r.intent === 'create_page' && r.pageName === 'CatalogListPage', `got ${r.intent}/${r.pageName}`);
 }
 
+// how-to 질문은 "생성/만들" 동사가 들어 있어도 create_page/modify_file이 아니라 qna로 라우팅한다.
+// (회귀: "페이지 생성 방법 알려줘"가 CREATION_KEYWORDS '페이지 생성' 또는 editVerbs '생성'에 걸려
+//  영문명 되묻기/현재파일 수정으로 새던 버그. 도메인 파일을 연 상태에서도 qna 유지.)
+// 설명 동사 없이 "방법/법/절차"만 짧게 붙은 입력도 how-to로 본다(생성 명령이 없으므로).
+for (const q of [
+  '페이지 생성 방법 알려줘', '페이지 생성 가이드 보여줘', '페이지 어떻게 만들어?',
+  '화면 생성 방법', '페이지 생성 방법', '페이지 만드는 방법', '화면 만드는 법', '페이지 생성 절차',
+]) {
+  check(`"${q}" → qna(생성 아님)`,
+    classifyOfflineIntent(q, withFile('src/domains/main/pages/MainPage.tsx')).intent === 'qna',
+    `got ${classifyOfflineIntent(q, withFile('src/domains/main/pages/MainPage.tsx')).intent}`);
+}
+// 단, "방법"이 페이지 주제인 실제 생성 요청은 그대로 create_page 유지.
+check('"회원가입 방법 페이지 만들어줘" → create_page',
+  classifyOfflineIntent('회원가입 방법 페이지 만들어줘', noFile).intent === 'create_page');
+
 // 수정 동사가 잡담/질문보다 우선
 check('"버튼 색 바꿔줘"(현재파일) → modify_file',
   classifyOfflineIntent('버튼 색 바꿔줘', withFile('src/domains/main/pages/MainPage.tsx')).intent === 'modify_file');

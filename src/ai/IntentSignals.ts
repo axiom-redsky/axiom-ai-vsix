@@ -42,6 +42,10 @@ export function isSmalltalk(query: string): boolean {
  * 게이팅은 isExplicitEditOrCreate가 false일 때만 적용되므로 여기서는 신호만 본다.
  */
 export function isQnAQuery(query: string): boolean {
+  // how-to 질문(방법·가이드·절차·사용법·만드는 법…)은 본질적으로 Q&A다. 개별 신호어를 쫓지 않고
+  // 단일 진실원(PageCreationDetector.isHowToQuery)에 위임해 생성 veto와 Q&A 판정을 항상 일치시킨다.
+  // (회귀: "화면 만드는 법"·"페이지 생성 절차"가 신호어 부재로 'other'로 새던 문제.)
+  if (PageCreationDetector.isHowToQuery(query)) return true;
   const q = query.toLowerCase();
   const signals = [
     '보여줘', '보여 줘', '보여줄', '보여주', '알려줘', '알려 줘', '알려주',
@@ -60,6 +64,9 @@ export function isQnAQuery(query: string): boolean {
  */
 export function isExplicitEditOrCreate(query: string): boolean {
   if (new PageCreationDetector().detect(query).isPageCreation) return true;
+  // "페이지 생성 방법 알려줘"는 editVerbs의 '생성'에 걸려 modify_file로 새던 정보성 질문.
+  // 주 서술어가 설명(보여/알려)인 how-to 질문은 명시적 편집/생성이 아니므로 Q&A로 흘려보낸다.
+  if (PageCreationDetector.isHowToQuery(query)) return false;
   const q = query.toLowerCase();
   const editVerbs = [
     '만들', '생성', '추가', '수정', '고쳐', '바꿔', '변경', '구현', '작성',
