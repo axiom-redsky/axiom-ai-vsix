@@ -29,6 +29,7 @@ import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/OfflineTra
 import { IntentExampleStore } from '../ai/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../ai/OfflineIntentResolver';
+import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from '../ai/JsonTypeGenerator';
 import { fillSlots } from '../ai/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
@@ -167,6 +168,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       });
     }
 
+    // JSON → 타입 생성 요청은 의도 분류 전에 결정론 술어로 가로챈다(LLM 불필요한 순수 변환).
+    // 의도 분류를 거치면 "modify_file" 등 틀린 의도 라인이 먼저 노출되므로 여기서 단락한다.
+    const jsonTypeReq = detectJsonTypeRequest({
+      query: text,
+      selectionText: editorCtx.selection?.text ?? editorCtx.selectedText ?? null,
+      fileContent: editorCtx.content ?? null,
+      filePath: editorCtx.filePath ?? null,
+    });
+    if (jsonTypeReq) {
+      await this._streamJsonType(jsonTypeReq);
+      return;
+    }
+
     const cfg = ExtensionConfig.getOfflineIntentConfig();
     const resolution = await resolveOfflineIntent(
       text,
@@ -213,6 +227,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       console.warn(`[Axiom AI] 오프라인 응답 생성 실패: ${(err as Error).message}`);
       markdown =
         '> ⚠️ 오프라인 모드 — AI 서버에 연결할 수 없습니다.\n\n서버 엔드포인트 설정을 확인하거나 잠시 후 다시 시도해주세요.';
+    }
+    this._post({ type: 'token', content: markdown });
+    this._history.push({ role: 'assistant', content: markdown });
+    this._post({ type: 'done' });
+    this._postStatus('⚠️ 오프라인 모드');
+  }
+
+  /**
+   * JSON → 타입 생성(오프라인 결정론)을 채팅에 스트리밍한다. scaffold 타입 규칙(T/I 접두사 등)을
+   * 적용한 TypeScript 코드블록을 보여준다. LLM·디스크 편집 경로를 타지 않는다.
+   */
+  private async _streamJsonType(req: IJsonTypeRequest): Promise<void> {
+    this._postStatus('⚠️ 오프라인 모드 — JSON으로 타입 생성 중…');
+    const sourceLabel = req.source === 'chat' ? '채팅 입력' : req.source === 'selection' ? '선택 영역' : '현재 파일';
+    this._post({ type: 'token', content: `\n> 🧭 의도 분석: **JSON → 타입 생성** · 소스: ${sourceLabel}\n` });
+    let markdown: string;
+    try {
+      markdown = renderJsonTypeCard(req);
+    } catch (err) {
+      console.warn(`[Axiom AI] JSON 타입 생성 실패: ${(err as Error).message}`);
+      markdown =
+        '> ⚠️ 오프라인 모드 — JSON 파싱 또는 타입 생성에 실패했습니다.\n\nJSON 형식이 올바른지 확인해주세요.';
     }
     this._post({ type: 'token', content: markdown });
     this._history.push({ role: 'assistant', content: markdown });
