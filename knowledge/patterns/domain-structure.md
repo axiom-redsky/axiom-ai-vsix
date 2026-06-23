@@ -13,11 +13,17 @@ related: [scaffold/project-structure.md, patterns/router.md]
 
 ```
 src/domains/{도메인명}/
+├── api/                       ← 상황에 따라 api 관련 모듈을 세팅
+├── components/                ← 도메인 업무 내부에서 사용하는 컴포넌트
+├── common/                    ← 도메인 업무 내부에서 사용하는 공통 요소
+├── hooks/                     ← 도메인 업무 내부에서 사용하는 커스텀 훅
 ├── pages/
 │   └── {도메인명}Page.tsx       ← 실제 페이지 컴포넌트
 │   └── {도메인명}DetailPage.tsx ← 상세 페이지 (선택)
-└── router/
-    └── index.tsx                ← TAppRoute[] 배열 export default
+├── router/
+│   └── index.tsx                ← TAppRoute[] 배열 export default
+└── types/
+    └── index.ts                 ← 도메인 업무에서 사용하는 타입
 ```
 
 ## 파일 네이밍 규칙
@@ -31,9 +37,9 @@ src/domains/{도메인명}/
 
 ## 신규 도메인 생성 순서
 
-1. `src/domains/{name}/pages/{Name}Page.tsx` 페이지 컴포넌트 생성
-2. `src/domains/{name}/router/index.tsx` 라우터 파일 생성
-3. `src/shared/router/index.tsx`에 도메인 라우터 등록
+1. `src/domains/{domain-name}/pages/{PageName}Page.tsx` 페이지 컴포넌트 생성
+2. `src/domains/{domain-name}/router/index.tsx` 페이지 라우터 파일 생성
+3. `src/shared/router/index.tsx`에 도메인 업무 라우터 등록
 
 ## 페이지 컴포넌트 기본 구조
 
@@ -95,6 +101,7 @@ export default function UserListPage(): React.ReactNode {
 ## 도메인 라우터 파일
 
 ```tsx
+// 예시
 // src/domains/user/router/index.tsx
 import type { TAppRoute } from '@/types/router';
 import loadable from '@loadable/component';
@@ -121,6 +128,7 @@ export default routes;
 ## 루트 라우터에 등록
 
 ```tsx
+// 예시
 // src/shared/router/index.tsx에 추가
 import UserRouter from '@/domains/user/router';
 
@@ -138,7 +146,7 @@ const routes: TAppRoute[] = [
 
 ## 레이어 규칙 준수
 
-- `domains/user`에서 `domains/order` 직접 import 금지
-- 공통 유틸·컴포넌트는 `shared/`에 위치
+- `domains/user`에서 `domains/order` 직접 import 금지. 업무 도메인 격리
+- 공통 공유 유틸·컴포넌트는 `shared/`에 위치
 - API 훅은 `useApi` 하나로 통일 (`useQuery`/`useMutation` 직접 사용 금지)
 - 임포트는 항상 앨리어스 사용 (`@axiom/hooks`, `@axiom/components/ui`, `@/`)
