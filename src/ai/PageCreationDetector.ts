@@ -70,7 +70,32 @@ export class PageCreationDetector {
     return raw ? this._toPascalCase(raw) : null;
   }
 
+  /**
+   * "페이지 만드는 **방법/가이드**를 알려줘/보여줘" 같은 **정보성(Q&A) 질문**인지 판단한다.
+   *
+   * CREATION_KEYWORDS는 `'페이지 생성'`처럼 동사가 없는 명사구 조각을 포함하므로,
+   * "페이지 생성 가이드 보여줘"·"페이지 생성 방법 알려줘"가 실제 생성 요청으로 오인되어
+   * 영문명 되묻기 루프에 갇힌다. 생성 명령의 주 서술어는 `만들어/생성해`이고 정보 요청의 주
+   * 서술어는 `보여줘/알려줘/설명해`라는 점을 이용해, **how-to 명사(가이드·방법 등)와 설명 동사가
+   * 함께** 나오면 생성이 아니라 가이드 요청으로 본다(RAG가 create-page-guide.md를 응답).
+   *
+   * 보수적 설계: how-to 명사 단독이 아니라 설명 동사를 동반할 때만 veto한다
+   * (예: "회원가입 방법 페이지 만들어줘"는 "방법"이 페이지 주제이므로 생성으로 유지).
+   */
+  private _isHowToQuery(input: string): boolean {
+    const lower = input.toLowerCase();
+    const hasHowToNoun = /가이드|방법|절차|사용법|순서|쓰는\s*법|하는\s*법|guide|how\s*to/i.test(lower);
+    const hasExplainVerb = /보여|알려|설명|가르쳐|궁금|뭐(야|에요|예요)|무엇/.test(lower);
+    if (hasHowToNoun && hasExplainVerb) return true;
+    // "페이지 어떻게 만들어?"처럼 의문사 '어떻게'가 생성 동사를 수식하는 how-to 질문.
+    if (/어떻게/.test(lower) && /만들|생성|추가|짜/.test(lower)) return true;
+    return false;
+  }
+
   private _isPageCreationRequest(input: string): boolean {
+    // 정보성 질문("페이지 생성 방법 알려줘")은 생성 명령이 아니라 가이드 요청 → Q&A로 흘려보낸다.
+    if (this._isHowToQuery(input)) return false;
+
     const lower = input.toLowerCase();
     if (PageCreationDetector.CREATION_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()))) {
       return true;
