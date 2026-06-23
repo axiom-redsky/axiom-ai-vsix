@@ -39,7 +39,7 @@ src/domains/account/
 
 - **pages/** : 실제 화면 컴포넌트(`.tsx`)
 - **router/** : 이 도메인의 라우트 정의 (`router/index.tsx` 1개)
-- 나머지(`api`, `components`, `store`, `types`)는 필요할 때만 생성
+- 나머지(`api`, `components`, `common`, `hooks`, `store`, `types`)는 필요할 때만 생성
 
 ---
 
@@ -110,7 +110,7 @@ export default routes;
 
 ---
 
-## 4단계 — 전역 라우터에 도메인 등록 (업무 라우트 등록)
+## 4단계 — 전역 라우터에 도메인 등록 (업무 라우트 등록, 최초 업무 생성시 한번만)
 
 `src/shared/router/index.tsx` 에 도메인 라우터를 import 하고 `children` 으로 연결한다.
 
