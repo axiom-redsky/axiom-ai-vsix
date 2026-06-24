@@ -1441,6 +1441,15 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   gap: 6px;
 }
 
+.settings__rag-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+}
+
 .settings__rag-folder-row {
   display: flex;
   align-items: center;

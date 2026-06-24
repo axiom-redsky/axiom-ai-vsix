@@ -160,6 +160,8 @@ export function LauncherApp(): React.ReactElement {
   const handleRemoveRagFile = (fp: string) =>
     vscode.postMessage({ type: 'removeRagFile', filePath: fp });
   const handleClearRagFolder = () => vscode.postMessage({ type: 'clearRagFolder' });
+  const handleOpenRagGuide = () => vscode.postMessage({ type: 'openRagGuide' });
+  const handleCreateRagTemplate = () => vscode.postMessage({ type: 'createRagTemplate' });
 
   return (
     <div className="launcher">
@@ -213,6 +215,8 @@ export function LauncherApp(): React.ReactElement {
           onPickRagFolder={handlePickRagFolder}
           onRemoveRagFile={handleRemoveRagFile}
           onClearRagFolder={handleClearRagFolder}
+          onOpenRagGuide={handleOpenRagGuide}
+          onCreateRagTemplate={handleCreateRagTemplate}
         />
       )}
     </div>
@@ -314,6 +318,8 @@ interface SettingsTabProps {
   onPickRagFolder: () => void;
   onRemoveRagFile: (fp: string) => void;
   onClearRagFolder: () => void;
+  onOpenRagGuide: () => void;
+  onCreateRagTemplate: () => void;
 }
 
 function SettingsTab({
@@ -328,6 +334,8 @@ function SettingsTab({
   onPickRagFolder,
   onRemoveRagFile,
   onClearRagFolder,
+  onOpenRagGuide,
+  onCreateRagTemplate,
 }: SettingsTabProps): React.ReactElement {
   const project = settings.project ?? DEFAULT_PROJECT;
   return (
@@ -369,6 +377,10 @@ function SettingsTab({
             <option value="openai">openai 호환 (/v1/chat/completions)</option>
           </select>
         </label>
+        <p className="settings__hint">
+          대부분의 서버는 <strong>openai 호환</strong>입니다(vLLM·LM Studio·LocalAI·LiteLLM 등). 네이티브 Ollama만 <strong>ollama</strong>를 고르세요.
+          서버 구성을 모르면 아래 <strong>연결 테스트</strong>를 누르면 자동 감지해 맞춰주고, 사용 가능한 모델 목록도 알려줍니다.
+        </p>
 
         <label className="settings__label">
           API 키 (로컬 서버는 비워 두세요)
@@ -440,6 +452,22 @@ function SettingsTab({
       {/* RAG 파일 관리 */}
       <section className="settings__section">
         <h2 className="settings__section-title">RAG 지식 파일 관리</h2>
+
+        {/* 작성 가이드 / 템플릿 — 처음 등록하는 사용자를 위한 안내 */}
+        <div className="settings__rag-guide">
+          <p className="settings__hint">
+            우리 프로젝트만의 지식을 .md 파일로 적어 등록하면 AI가 그 내용을 근거로 답합니다.
+            처음이라면 먼저 작성 가이드를 보거나 템플릿으로 시작하세요.
+          </p>
+          <div className="settings__rag-folder-actions">
+            <button className="settings__rag-btn" onClick={onOpenRagGuide} title="RAG 작성 규칙·예시 문서를 미리보기로 엽니다">
+              📖 작성 가이드 보기
+            </button>
+            <button className="settings__rag-btn" onClick={onCreateRagTemplate} title="시작용 _index.md + 예시 .md 를 폴더에 생성합니다">
+              ✨ 템플릿 생성
+            </button>
+          </div>
+        </div>
 
         {/* 폴더 지정 */}
         <div className="settings__rag-folder">

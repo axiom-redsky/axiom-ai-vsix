@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import { LlmService } from '../ai/LlmService';
 import type { WebviewToHostMessage, HostToWebviewMessage, AxiomSettings } from '../types/messages';
@@ -52,6 +54,12 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           break;
         case 'clearRagFolder':
           await this._handleClearRagFolder();
+          break;
+        case 'openRagGuide':
+          await this._handleOpenRagGuide();
+          break;
+        case 'createRagTemplate':
+          await this._handleCreateRagTemplate();
           break;
         case 'testConnection':
           await this._handleTestConnection(msg.llm);
@@ -233,6 +241,107 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     await cfg.update('rag.userRagFolder', '', vscode.ConfigurationTarget.Global);
     this._post({ type: 'ragFolderSet', folderPath: '' });
   }
+
+  /** RAG 작성 가이드(번들 마크다운)를 VSCode 내장 마크다운 미리보기로 연다. */
+  private async _handleOpenRagGuide(): Promise<void> {
+    const guideUri = vscode.Uri.joinPath(this._extensionUri, 'media', 'guide', 'rag-authoring-guide.md');
+    try {
+      // 렌더링된 미리보기로 열어 "눈으로 보는 문서" 경험을 준다. 미리보기 실패 시 일반 에디터로 폴백.
+      await vscode.commands.executeCommand('markdown.showPreview', guideUri);
+    } catch {
+      await vscode.window.showTextDocument(guideUri);
+    }
+  }
+
+  /**
+   * RAG 폴더에 시작용 템플릿(_index.md + example-knowledge.md)을 생성한다.
+   * - userRagFolder가 이미 지정돼 있으면 그 폴더에, 없으면 폴더 선택을 받아 지정까지 한다.
+   * - 기존 파일은 덮어쓰지 않는다(이미 있으면 건너뛴다).
+   */
+  private async _handleCreateRagTemplate(): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration('axiom-ai');
+    let folder = cfg.get<string>('rag.userRagFolder', '').trim();
+
+    if (!folder) {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        canSelectFolders: true,
+        canSelectFiles: false,
+        title: 'RAG 템플릿을 생성할 폴더 선택',
+        openLabel: '이 폴더에 생성',
+      });
+      if (!picked || picked.length === 0) return;
+      folder = picked[0].fsPath;
+    }
+
+    try {
+      fs.mkdirSync(folder, { recursive: true });
+
+      const created: string[] = [];
+      const skipped: string[] = [];
+      const writeIfAbsent = (name: string, content: string): void => {
+        const target = path.join(folder, name);
+        if (fs.existsSync(target)) {
+          skipped.push(name);
+        } else {
+          fs.writeFileSync(target, content, 'utf-8');
+          created.push(name);
+        }
+      };
+
+      writeIfAbsent('_index.md', ChatPanelProvider._RAG_INDEX_TEMPLATE);
+      writeIfAbsent('example-knowledge.md', ChatPanelProvider._RAG_EXAMPLE_TEMPLATE);
+
+      // 폴더가 아직 등록 안 됐으면 이 폴더를 RAG 폴더로 지정한다.
+      if (cfg.get<string>('rag.userRagFolder', '').trim() !== folder) {
+        await cfg.update('rag.userRagFolder', folder, vscode.ConfigurationTarget.Global);
+        this._post({ type: 'ragFolderSet', folderPath: folder });
+      }
+
+      // 생성한 예시 파일을 열어 바로 편집할 수 있게 한다.
+      const examplePath = path.join(folder, 'example-knowledge.md');
+      if (fs.existsSync(examplePath)) {
+        await vscode.window.showTextDocument(vscode.Uri.file(examplePath));
+      }
+
+      const parts: string[] = [];
+      if (created.length) parts.push(`생성: ${created.join(', ')}`);
+      if (skipped.length) parts.push(`이미 있어 건너뜀: ${skipped.join(', ')}`);
+      vscode.window.showInformationMessage(`RAG 템플릿 — ${parts.join(' · ')}`);
+    } catch (err) {
+      vscode.window.showErrorMessage(`RAG 템플릿 생성 실패: ${(err as Error).message}`);
+    }
+  }
+
+  private static readonly _RAG_INDEX_TEMPLATE = `# 지식 인덱스
+#
+# (선택) 키워드 라우팅을 한곳에서 관리하고 싶을 때만 사용합니다.
+# 이 파일이 있으면 각 문서의 frontmatter tags 대신 아래 keywords가 라우팅 기준이 됩니다.
+# 필요 없으면 이 파일을 지워도 됩니다(각 .md의 tags로 자동 동작).
+
+- keywords: [예시키워드, example, 샘플]
+  files: [example-knowledge.md]
+`;
+
+  private static readonly _RAG_EXAMPLE_TEMPLATE = `---
+title: 예시 지식 문서
+category: example
+tags: [예시키워드, example, 샘플, 작성예시]
+---
+
+# 예시 지식 문서
+
+이 파일을 복사해 우리 프로젝트만의 지식을 채워 넣으세요.
+(작성 규칙은 설정 화면의 "작성 가이드 보기" 버튼에서 확인할 수 있습니다.)
+
+## 작성 요령
+- 맨 위 frontmatter의 title / category / tags 를 모두 채웁니다.
+- tags 에는 사용자가 질문할 때 쓸 단어를 한글·영어·동의어로 충분히 넣습니다.
+- 본문은 ## 제목으로 주제별로 나눕니다(검색이 섹션 단위로 이뤄집니다).
+
+## 예시 규칙
+- 여기에 "해야 할 것 / 하지 말 것"을 명확히 적으면 AI가 더 잘 지킵니다.
+`;
 
   private async _handleTestConnection(llm: AxiomSettings['llm']): Promise<void> {
     const modelsUrl = new URL('/v1/models', llm.endpoint).toString();

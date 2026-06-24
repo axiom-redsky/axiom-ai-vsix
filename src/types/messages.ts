@@ -125,6 +125,8 @@ export type WebviewToHostMessage =
   | { type: 'pickRagFolder' }
   | { type: 'removeRagFile'; filePath: string }
   | { type: 'clearRagFolder' }
+  | { type: 'openRagGuide' }
+  | { type: 'createRagTemplate' }
   | { type: 'loadProjectConfig' }
   | { type: 'saveProjectConfig'; config: ProjectConfig }
   | { type: 'testConnection'; llm: AxiomSettings['llm'] }
