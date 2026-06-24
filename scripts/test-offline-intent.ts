@@ -223,6 +223,24 @@ await (async () => {
   check('저신뢰+불일치 → uncertain=true', ask.uncertain);
   check('되묻기 후보 2개 이상', ask.candidates.length >= 2, JSON.stringify(ask.candidates));
 
+  // 확신 smalltalk인데 정규식은 실행형(qna) → 단정 말고 되묻기(약한 임베딩이 짧은 기술 질문을
+  // 잡담으로 오인한 정황: "api 호출 방법" 회귀). 후보에 정규식 의도(qna)+smalltalk 포함.
+  const smalltalkVsQna = await resolveOfflineIntent('api 호출 방법', { ...ctx, currentFile: null }, {
+    classify: async () => ({ intent: 'smalltalk', confidence: 0.69, margin: 0.06, ranked: [{ intent: 'smalltalk', score: 0.69 }, { intent: 'qna', score: 0.63 }] }),
+  }, cfg);
+  check('확신 smalltalk + 정규식 qna → uncertain=true', smalltalkVsQna.uncertain, JSON.stringify(smalltalkVsQna));
+  check('되묻기 종류=smalltalk-vs-actionable', smalltalkVsQna.clarifyKind === 'smalltalk-vs-actionable', smalltalkVsQna.clarifyKind ?? 'undef');
+  check('되묻기 후보=[qna, smalltalk]',
+    smalltalkVsQna.candidates[0] === 'qna' && smalltalkVsQna.candidates.includes('smalltalk'),
+    JSON.stringify(smalltalkVsQna.candidates));
+
+  // 진짜 인사("안녕")는 정규식도 smalltalk → 되묻지 않고 종전대로 잡담 응답(오발동 가드).
+  const realGreeting = await resolveOfflineIntent('안녕', { ...ctx, currentFile: null }, {
+    classify: async () => ({ intent: 'smalltalk', confidence: 0.8, margin: 0.3, ranked: [{ intent: 'smalltalk', score: 0.8 }, { intent: 'qna', score: 0.5 }] }),
+  }, cfg);
+  check('확신 smalltalk + 정규식 smalltalk → 되묻지 않음',
+    !realGreeting.uncertain && realGreeting.result.intent === 'smalltalk', JSON.stringify(realGreeting));
+
   // 분류기 null(임베딩 불가) → 정규식 폴백
   const fb = await resolveOfflineIntent('useApi 사용법 알려줘', ctx, { classify: async () => null }, cfg);
   check('분류기 null → source=regex 폴백', fb.source === 'regex' && !fb.uncertain);

@@ -195,12 +195,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const lines = resolution.candidates
         .map((c, i) => `${i + 1}. ${ChatViewProvider._INTENT_LABEL[c]}`)
         .join('\n');
-      this._post({
-        type: 'token',
-        content:
-          `> ⚠️ **오프라인 모드** — 요청 의도가 명확하지 않습니다.\n\n` +
-          `아래 중 무엇인가요? **번호**로 답해주세요(또는 다시 더 구체적으로 입력):\n\n${lines}\n`,
-      });
+      // 잡담↔실행형 모순(약한 임베딩이 짧은 기술 질문을 잡담으로 오인한 정황)은 전용 안내로,
+      // 그 외 일반 모호는 기존 문구로 되묻는다.
+      const prompt =
+        resolution.clarifyKind === 'smalltalk-vs-actionable'
+          ? `> ⚠️ **오프라인 모드** — 방금 입력이 가벼운 인사·잡담인지, scaffold 사용법을 묻는 **질문**인지 ` +
+            `분명하지 않습니다.\n\n` +
+            `아래에서 **번호**로 골라주세요(질문이라면 조금 더 구체적으로 다시 입력해도 됩니다):\n\n${lines}\n`
+          : `> ⚠️ **오프라인 모드** — 요청 의도가 명확하지 않습니다.\n\n` +
+            `아래 중 무엇인가요? **번호**로 답해주세요(또는 다시 더 구체적으로 입력):\n\n${lines}\n`;
+      this._post({ type: 'token', content: prompt });
       this._post({ type: 'done' });
       this._postStatus('⚠️ 오프라인 모드');
       return;
