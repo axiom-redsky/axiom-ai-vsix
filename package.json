@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "axiom",
   "private": true,
+  "repository": { "type": "git", "url": "https://github.com/axiom-redsky/axiom-ai-vsix.git" },
   "engines": {
     "vscode": "^1.85.0"
   },
