@@ -56,6 +56,16 @@ const FILE_BOOST = 1.2;
 const SHOWCODE_BONUS = 0.25;
 
 /**
+ * 범용 React 레퍼런스(react.dev 요약) source인지 — scaffold 지식과 precedence를 가르는 경로 태그.
+ * 이 태그로 **하드 티어**를 만든다: 충돌(둘 다 후보) 시 react-reference는 점수가 아무리 높아도
+ * scaffold 문서 **위로 올 수 없다**(아래 retrieve의 티어 정렬 참고). 점수 가산점만으로는 의미 점수가
+ * 크게 높을 때 역전될 수 있어 "항상 scaffold 우선"을 못 지킨다 → 결정론적 티어로 보장한다.
+ */
+function isGenericReference(source: string): boolean {
+  return source.startsWith('react-reference/');
+}
+
+/**
  * 폴백(카탈로그)으로 채웠을 때 결과 배열의 **첫 블록**으로 들어가는 안내 — 결과가 "정확 매칭"이
  * 아님을 알린다. 호출부(OfflineResponder)가 이 상수로 식별해 지식 섹션 헤딩 위에 분리 렌더한다.
  */
@@ -117,9 +127,24 @@ export class OfflineKnowledgeRetriever {
     }
     if (docs.length === 0) return [];
 
-    // 점수 합산 후 정렬 → 상위 MAX_DOCS개 렌더.
+    // 점수 합산 후 정렬.
     const ranked = this._rankByScore(docs, query, { keywordSet, fileSet, semScore });
-    const blocks = ranked.slice(0, MAX_DOCS).map((d) => this._render(d, query));
+
+    // ── scaffold 우선 하드 티어(항상) ──
+    // 충돌(scaffold·react-reference가 함께 후보) 시 react-reference는 점수와 무관하게 scaffold 아래에
+    // 둔다. 점수 가산점만으론 react-reference의 의미 점수가 크게 높을 때 역전될 수 있어 "항상 scaffold
+    // 우선"을 못 지킨다 → 결정론적 티어로 보장한다. 각 티어 내부는 _rankByScore 순서(점수)를 유지한다.
+    const scaffoldTier = ranked.filter((d) => !isGenericReference(d.source));
+    const referenceTier = ranked.filter((d) => isGenericReference(d.source));
+    let top = [...scaffoldTier, ...referenceTier].slice(0, MAX_DOCS);
+
+    // React는 보완(supplementary): scaffold가 슬롯을 다 채워 react-reference가 통째로 잘렸지만 후보가
+    // 있으면, 최상위 react-reference 1개를 덧붙여 "보완"으로 노출한다(scaffold 우선은 그대로 유지).
+    if (referenceTier.length > 0 && !top.some((d) => isGenericReference(d.source))) {
+      top = [...top, referenceTier[0]];
+    }
+
+    const blocks = top.map((d) => this._render(d, query));
     return usedFallback ? [FALLBACK_HINT, ...blocks] : blocks;
   }
 

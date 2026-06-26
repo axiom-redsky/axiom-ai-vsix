@@ -228,7 +228,81 @@ await (async () => {
   const modDocs = await qnaFile.retrieve('이 파일에 버튼 추가해줘', modifyIntent, 'import { Button } from "@axiom/components/ui";');
   check('③\' modify_file → 파일컨텍스트(Button) 노출 유지',
     modDocs.some((b) => b.includes('[components/Button.md]')), modDocs.map((b) => b.split('\n')[0]).join(' | '));
+
+  // ④ 범용 React 레퍼런스(react-reference/*.md)가 오프라인에서 검색·노출된다(순수 React 질문).
+  //    scaffold 키워드와 겹치지 않는 순수 개념 질문은 react-reference가 그대로 1등이어야 한다.
+  const reactRefDeps = {
+    keywordSources: () => ['react-reference/useEffect.md'],
+    semanticScores: async () => [] as Array<{ source: string; score: number }>,
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const reactRef = new OfflineKnowledgeRetriever(reactRefDeps);
+  const refDocs = await reactRef.retrieve('useEffect 의존성 배열이 뭐야', qnaIntent);
+  check('④ 순수 React 질문 → react-reference 문서 노출(useEffect)',
+    refDocs.some((b) => b.includes('[react-reference/useEffect.md]')), refDocs.map((b) => b.split('\n')[0]).join(' | '));
+  check('④ react-reference 본문 렌더(의존성 배열 설명 포함)',
+    refDocs.join('\n').includes('의존성'), refDocs[0]?.slice(0, 60) ?? 'empty');
+
+  // ⑤ precedence: scaffold 지식과 React 레퍼런스가 **동시에** 키워드 매칭되면(겹치는 주제),
+  //    scaffold 정밀 가산점(1.0) > react-reference 감소 가산점(0.6) → scaffold가 위, React는 보완.
+  //    (예: "useEffect로 데이터 가져오기" → useApi(scaffold)가 먼저, useEffect(React)는 아래.)
+  const precedenceDeps = {
+    keywordSources: () => ['patterns/use-api.md', 'react-reference/useEffect.md'],
+    semanticScores: async () => [] as Array<{ source: string; score: number }>,
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const precedence = new OfflineKnowledgeRetriever(precedenceDeps);
+  const precDocs = await precedence.retrieve('useEffect로 데이터 가져오는 법', qnaIntent);
+  check('⑤ 겹치는 주제 → scaffold(use-api)가 React 레퍼런스보다 앞(scaffold 우선)',
+    precDocs[0].includes('[patterns/use-api.md]'), precDocs[0]?.slice(0, 60) ?? 'empty');
+  check('⑤ React 레퍼런스는 보완으로 함께 노출(suppress 아님)',
+    precDocs.some((b) => b.includes('[react-reference/useEffect.md]')), precDocs.map((b) => b.split('\n')[0]).join(' | '));
+
+  // ⑤′ "항상 scaffold 우선" 하드 보장: react-reference가 의미 점수를 **훨씬 높게**(0.95) 받아도
+  //     scaffold(키워드만, 의미 0)가 위여야 한다. (점수 가산점 방식이라면 0.6+0.95=1.55 > 1.0+0=1.0
+  //     으로 역전됐을 케이스 — 결정론적 티어가 이를 막는지 검증.)
+  const hardDeps = {
+    keywordSources: () => ['patterns/use-api.md', 'react-reference/useEffect.md'],
+    semanticScores: async () => [
+      { source: 'react-reference/useEffect.md', score: 0.95 }, // React가 의미적으로 압도
+      { source: 'patterns/use-api.md', score: 0.0 },
+    ],
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const hard = new OfflineKnowledgeRetriever(hardDeps);
+  const hardDocs = await hard.retrieve('데이터 페치 훅', qnaIntent);
+  check('⑤′ 의미점수 역전에도 scaffold가 항상 1등(하드 티어)',
+    hardDocs[0].includes('[patterns/use-api.md]'), hardDocs[0]?.slice(0, 60) ?? 'empty');
+  check('⑤′ react-reference는 여전히 보완으로 노출',
+    hardDocs.some((b) => b.includes('[react-reference/useEffect.md]')), hardDocs.map((b) => b.split('\n')[0]).join(' | '));
+
+  // ⑤″ React 보완 보장: scaffold 키워드 문서가 MAX_DOCS를 다 채워도 react-reference 후보가 있으면
+  //     최상위 1개는 덧붙여 노출된다(통째로 잘리지 않음). scaffold 우선 순서는 그대로.
+  const crowdDeps = {
+    keywordSources: () => [
+      'patterns/use-api.md', 'patterns/use-api-example.md', 'catalog/hooks.md', // scaffold 3개(=MAX_DOCS)
+      'react-reference/rules-of-hooks.md',
+    ],
+    semanticScores: async () => [] as Array<{ source: string; score: number }>,
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const crowd = new OfflineKnowledgeRetriever(crowdDeps);
+  const crowdDocs = await crowd.retrieve('훅을 조건문 안에서 호출해도 돼', qnaIntent);
+  check('⑤″ scaffold가 슬롯 다 채워도 react-reference 1개는 보완 노출',
+    crowdDocs.some((b) => b.includes('[react-reference/rules-of-hooks.md]')), crowdDocs.map((b) => b.split('\n')[0]).join(' | '));
+  check('⑤″ scaffold 3개가 react-reference보다 앞(우선 유지)',
+    !isGenericRef(crowdDocs[0]) && !isGenericRef(crowdDocs[1]) && !isGenericRef(crowdDocs[2]),
+    crowdDocs.map((b) => b.split('\n')[0]).join(' | '));
 })();
+
+/** 렌더된 블록이 react-reference 출처 헤더로 시작하는지(테스트 헬퍼). */
+function isGenericRef(block: string): boolean {
+  return /^## \[react-reference\//.test(block);
+}
 
 console.log(`\n결과: ${passed} 통과 / ${failed} 실패`);
 if (failed > 0) process.exit(1);
