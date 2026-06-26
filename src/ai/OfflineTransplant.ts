@@ -296,8 +296,12 @@ export function planJsxTransplant(currentContent: string, sourceContent: string)
 
 /** "그대로 가져와 끼운다" 의도의 동사. */
 const TRANSPLANT_VERB = /그대로|복사|가져와|가져다|끼워|끼우|채워|적용|반영|옮겨|넣어/;
-/** 이식 "대상"을 가리키는 명사(JSX/마크업/화면 영역). */
-const TRANSPLANT_TARGET = /jsx|마크업|return|화면|영역|부분/i;
+/**
+ * 이식 "대상"을 가리키는 명사(JSX/마크업/화면 영역).
+ * `내용(을|를)`은 목적격 조사일 때만 대상으로 인정한다 — "페이지 **내용을** 적용"(대상)은 잡고,
+ * 출처를 가리키는 "파일 **내용으로**"(…으로)는 매칭하지 않아 오발을 막는다.
+ */
+const TRANSPLANT_TARGET = /jsx|마크업|return|화면|영역|부분|내용(을|를)/i;
 
 /**
  * 입력이 "다른 파일의 JSX를 그대로 이식" 요청인지 판단한다(보너스 신호).

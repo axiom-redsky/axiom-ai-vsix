@@ -105,6 +105,12 @@ console.log('\nisVerbatimTransplantRequest — 동사+대상 게이트:');
   check('"두 파일 차이 설명해줘" → false', !isVerbatimTransplantRequest('두 파일 차이 설명해줘'), '');
   check('동사만(대상 없음) → false', !isVerbatimTransplantRequest('이거 적용해줘'), '');
   check('대상만(동사 없음) → false', !isVerbatimTransplantRequest('jsx 구조가 궁금해'), '');
+  // 회귀: "페이지 내용을 … 파일 내용으로 적용" — 대상격 "내용을"은 잡고, 출처 "내용으로"는 무시.
+  check('"페이지 내용을 …파일 내용으로 적용해줘" → true(내용을=대상)',
+    isVerbatimTransplantRequest('현재 페이지 내용을 /src/publishing/employee/pages/EmployeeListPage.tsx 파일 내용으로 적용해줘'), '');
+  // 동사(적용)는 있지만 대상은 출처격 "내용으로"뿐 → target 불충족이라 false(출처를 대상으로 오인 안 함).
+  check('동사+출처격 "내용으로"만(대상 명사 없음) → false',
+    !isVerbatimTransplantRequest('이 파일 내용으로 적용해줘'), '');
 }
 
 console.log(`\n결과: ${passed} 통과 / ${failed} 실패`);

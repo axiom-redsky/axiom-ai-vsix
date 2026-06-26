@@ -10,7 +10,14 @@
 import { embed as defaultEmbed } from './EmbeddingService';
 import { cosineSimilarity } from './VectorMath';
 import { IntentExampleStore, type EmbedFn } from './IntentExampleStore';
+import { IntentLinearHead } from './IntentLinearHead';
 import type { IntentKind } from './IntentClassifier';
+
+/**
+ * 헤드 softmax 완화 온도 — 리졸버 중재의 확신 임계(0.42/0.05)가 의미를 갖도록 과신을 완화한다.
+ * 너무 낮으면(뾰족) 틀린 픽도 확신해 오커밋, 너무 높으면(평평) 맞는 픽도 되묻기로 샌다. eval:intent로 튜닝.
+ */
+const HEAD_TEMPERATURE = 0.5;
 
 export interface IntentScore {
   intent: IntentKind;
@@ -27,6 +34,9 @@ export interface ClassifyResult {
 }
 
 export class IntentEmbeddingClassifier {
+  private readonly _head = new IntentLinearHead();
+  private _headTried = false;
+
   constructor(
     private readonly _store: IntentExampleStore,
     private readonly _embed: EmbedFn = defaultEmbed,
@@ -43,6 +53,24 @@ export class IntentEmbeddingClassifier {
       qv = await this._embed(query);
     } catch {
       return null;
+    }
+
+    // 헤드를 1회 학습(결정론). 코퍼스 임베딩이 준비된 이 시점에 학습한다.
+    if (!this._headTried) {
+      this._headTried = true;
+      try {
+        this._head.train(this._store.examples());
+      } catch {
+        /* 학습 실패 → 아래 1-NN 폴백 */
+      }
+    }
+
+    // 기본: 학습된 선형 헤드(softmax). 미학습이면 1-NN 코사인으로 폴백.
+    const headRanked = this._head.trained ? this._head.predict(qv, HEAD_TEMPERATURE) : null;
+    if (headRanked && headRanked.length > 0) {
+      const top = headRanked[0];
+      const margin = headRanked.length > 1 ? top.score - headRanked[1].score : top.score;
+      return { intent: top.intent, confidence: top.score, margin, ranked: headRanked };
     }
 
     const best = new Map<IntentKind, number>();

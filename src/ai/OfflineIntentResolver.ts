@@ -74,24 +74,11 @@ export async function resolveOfflineIntent(
     return { result: regex, uncertain: false, candidates: [], source: 'regex' };
   }
 
-  // 2. 임베딩 확신 → 의미 우선.
-  const embConfident = cls.confidence >= cfg.minConfidence && cls.margin >= cfg.minMargin;
-  if (embConfident) {
-    // 단, 임베딩이 **확신을 갖고 smalltalk**이라 했는데 정규식은 **실행형 의도**(질문/수정/생성)로
-    // 보면, 약한 다국어 임베딩이 짧은 기술 구절을 잡담으로 오인했을 공산이 크다(예: "api 호출 방법"이
-    // 짧은 잡담 발화와 표면적으로 비슷해 smalltalk 1등). 잡담으로 단정하면 사용자의 진짜 질문이
-    // 조용히 버려지므로(지식 검색을 건너뜀), 단정 대신 되묻는다. 진짜 인사("안녕")는 정규식도
-    // smalltalk이라 이 가지에 걸리지 않는다(되묻기 없이 종전대로 잡담 응답).
-    if (cls.intent === 'smalltalk' && isActionableIntent(regex.intent)) {
-      return {
-        result: regex,
-        uncertain: true,
-        candidates: [regex.intent, 'smalltalk'],
-        source: 'embedding',
-        confidence: cls.confidence, margin: cls.margin,
-        clarifyKind: 'smalltalk-vs-actionable',
-      };
-    }
+  // 헤드(임베딩) 확신 여부 — 점수·마진 둘 다 임계 이상.
+  const headConfident = cls.confidence >= cfg.minConfidence && cls.margin >= cfg.minMargin;
+
+  // ── 합의 → 채택(가장 신뢰: 의미 분류기와 결정론 신호가 같은 답) ──
+  if (cls.intent === regex.intent) {
     return {
       result: fillSlots(query, ctx, cls.intent),
       uncertain: false, candidates: [], source: 'embedding',
@@ -99,16 +86,47 @@ export async function resolveOfflineIntent(
     };
   }
 
-  // 3. 임베딩 약함 + 정규식 신호 있음(비-other) → 정규식 고정밀 신호 채택.
-  if (regex.intent !== 'other') {
+  // ── 불일치 중재(arbitration) — 정규식 strength로 "누구를 믿을지" 판단 ──
+
+  // (0) smalltalk 안전장치: 헤드가 **확신을 갖고 smalltalk**인데 정규식은 실행형(질문/수정/생성)이면,
+  //     약한 다국어 임베딩이 짧은 기술 구절을 잡담으로 오인한 정황. 단정 말고 되묻는다.
+  if (headConfident && cls.intent === 'smalltalk' && isActionableIntent(regex.intent)) {
+    return {
+      result: regex, uncertain: true,
+      candidates: [regex.intent, 'smalltalk'],
+      source: 'embedding',
+      confidence: cls.confidence, margin: cls.margin,
+      clarifyKind: 'smalltalk-vs-actionable',
+    };
+  }
+
+  // (1) create→modify 보정(결정론 가드 유지): 헤드는 create지만 자기 2순위가 modify이고, 현재 파일이
+  //     열려 있고(수정 맥락 성립), 정규식도 modify로 본다 → create↔modify 흔들림. modify를 신뢰한다.
+  if (
+    cls.intent === 'create_page' &&
+    regex.intent === 'modify_file' &&
+    !!ctx.currentFile &&
+    cls.ranked[1]?.intent === 'modify_file'
+  ) {
     return {
       result: regex, uncertain: false, candidates: [], source: 'regex',
       confidence: cls.confidence, margin: cls.margin,
     };
   }
 
-  // 4. 정규식 침묵(other)이지만 임베딩이 리드(점수≥minConfidence) → 임베딩 채택(recall 보완).
-  if (cls.confidence >= cfg.minConfidence) {
+  // (2) 정규식이 **고정밀(strong)** 신호 → 정규식 우선. 명시적 키워드로 강하게 잡았을 때만 헤드를 덮는다.
+  //     (예전 step-3는 strength 무시하고 정규식이 뭐라도 말하면 덮어, 롱테일에서 정규식의 **약한 추측**이
+  //      헤드의 맞는 의미 판정을 가로채던 게 핵심 회귀였다 → strong일 때로 좁힌다.)
+  if (regex.strength === 'strong') {
+    return {
+      result: regex, uncertain: false, candidates: [], source: 'regex',
+      confidence: cls.confidence, margin: cls.margin,
+    };
+  }
+
+  // (3) 정규식이 약함(weak/none) → 헤드가 확신이면 헤드 채택. 정규식의 약한 추측보다 의미 분류기를
+  //     믿는다(롱테일 강건성의 핵심 — 새로운 말투는 정규식이 못 잡고 헤드가 이해한다).
+  if (headConfident) {
     return {
       result: fillSlots(query, ctx, cls.intent),
       uncertain: false, candidates: [], source: 'embedding',
@@ -116,7 +134,7 @@ export async function resolveOfflineIntent(
     };
   }
 
-  // 5. 둘 다 약함 → 되묻기. 후보 = 임베딩 top-2(+정규식 의도, 중복 제거).
+  // (4) 둘 다 약함(헤드 비확신 + 정규식 weak/none) → 단정 말고 되묻기. 후보 = 헤드 top-2(+정규식).
   const candidates = [
     cls.ranked[0]?.intent,
     cls.ranked[1]?.intent,

@@ -31,3 +31,5 @@
 - 입력값을 서버 파라미터로 연결해줘
 - this screen's markup should be updated to use the shared layout
 - 현재 파일의 import 경로를 정리해줘
+- 이 페이지를 참고 컴포넌트랑 동일하게 맞춰줘
+- 버튼 톤이 너무 칙칙한데 좀 밝게 손봐줘

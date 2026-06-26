@@ -163,21 +163,55 @@ export function fillSlots(query: string, ctx: IntentContext, intent: IntentKind)
 }
 
 /**
+ * 정규식 분류가 얼마나 **고정밀(명시적)**으로 잡았는지. 리졸버 중재(arbitration)가 "정규식을 임베딩보다
+ * 믿을지"를 판단하는 데 쓴다. 'strong'=명시적 고정밀 패턴, 'weak'=모호/소프트 신호, 'none'=신호 없음.
+ *  - 의도 결정 자체는 strength와 무관(아래 캐스케이드 그대로). strength는 부가 신호일 뿐이다.
+ */
+export type TIntentStrength = 'strong' | 'weak' | 'none';
+
+/**
+ * 고정밀(모호하지 않은) 편집 동사 — 기존 대상을 고치는 의도가 명확하다. 잡히면 modify 신호가 강하다.
+ * 반대로 '적용·넣어·붙여·연동·연결·추가·업데이트·옮겨'는 create/qna 맥락에도 흔해 단독으론 약한 신호다.
+ */
+const STRONG_EDIT_VERBS = /수정|고쳐|고치|바꿔|바꾸|변경|삭제|제거|리팩|교체|rename|refactor/i;
+
+/**
+ * 고정밀 how-to(질문) 마커 — "방법/방식/절차/…는 법"은 사용법을 묻는 강한 Q&A 신호다.
+ * isHowToQuery가 못 잡는 변형("보내는 법" 등)을 보완해, 확신한 헤드가 질문을 수정으로 오인할 때 정규식이 구제하게 한다.
+ */
+const STRONG_QNA_MARKERS = /방법|방식|절차|는\s*법(?![가-힣])/;
+
+/**
  * 모델 없이(결정론) 입력을 IntentResult 그룹으로 분류한다 — 임베딩 분류기의 폴백.
  *
  * 우선순위는 온라인 게이팅(isQnAGated)과 일치시킨다:
  *   페이지 생성 → 명시적 수정/생성 → 잡담 → 질문 → 불명확
  * (online: isExplicitEditOrCreate가 qna/smalltalk보다 우선)
+ *
+ * 반환에 `strength`(정규식 신뢰도)를 함께 싣는다. **의도 결정 분기는 종전과 동일**하며 strength만
+ * 부가로 계산·부착한다(회귀 0). 기존 호출부는 `.intent` 등만 읽으므로 영향이 없다.
  */
-export function classifyOfflineIntent(query: string, ctx: IntentContext): IntentResult {
-  if (new PageCreationDetector().detect(query).isPageCreation) return fillSlots(query, ctx, 'create_page');
-  // "처음부터/새로/신규/from scratch" + 생성 동사 → 명시적 신규 생성. 일반 편집 동사("만들"이
-  // editVerbs에 있어 modify로 새던 것)보다 우선. PageCreationDetector가 비연속 어구를 놓칠 때 보완.
+export function classifyOfflineIntent(query: string, ctx: IntentContext): IntentResult & { strength: TIntentStrength } {
+  const tag = (r: IntentResult, strength: TIntentStrength): IntentResult & { strength: TIntentStrength } =>
+    ({ ...r, strength });
+
+  // 1. 페이지 생성(고정밀 패턴) → strong
+  if (new PageCreationDetector().detect(query).isPageCreation) return tag(fillSlots(query, ctx, 'create_page'), 'strong');
+  // 2. "처음부터/새로/신규/from scratch" + 생성 동사 → 명시적 신규 생성(고정밀) → strong.
   if (/처음부터|신규|새로\s|from\s+scratch|scratch/i.test(query) && /만들|생성|짜|create|make|build/i.test(query)) {
-    return fillSlots(query, ctx, 'create_page');
+    return tag(fillSlots(query, ctx, 'create_page'), 'strong');
   }
-  if (isExplicitEditOrCreate(query)) return fillSlots(query, ctx, 'modify_file');
-  if (isSmalltalk(query)) return fillSlots(query, ctx, 'smalltalk');
-  if (isQnAQuery(query)) return fillSlots(query, ctx, 'qna');
-  return fillSlots(query, ctx, 'other');
+  // 3. 명시적 편집/생성. 고정밀 편집 동사(수정·바꿔·삭제…)면 strong, 모호 동사(적용·넣어…)면 weak.
+  if (isExplicitEditOrCreate(query)) {
+    return tag(fillSlots(query, ctx, 'modify_file'), STRONG_EDIT_VERBS.test(query) ? 'strong' : 'weak');
+  }
+  // 4. 잡담(인사·맞장구 키워드) → strong(비교적 명확).
+  if (isSmalltalk(query)) return tag(fillSlots(query, ctx, 'smalltalk'), 'strong');
+  // 5. 질문. how-to(방법·절차 등 고정밀 Q&A)면 strong, 소프트 신호(끝의 '?' 등)면 weak.
+  if (isQnAQuery(query)) {
+    const strong = PageCreationDetector.isHowToQuery(query) || STRONG_QNA_MARKERS.test(query);
+    return tag(fillSlots(query, ctx, 'qna'), strong ? 'strong' : 'weak');
+  }
+  // 6. 신호 없음 → none.
+  return tag(fillSlots(query, ctx, 'other'), 'none');
 }
