@@ -172,7 +172,7 @@ project: react-app-scaffold
 
 ## React 레퍼런스 (순수 React, react.dev — 보완 지식)
 
-- keywords: [usestate, use-state, usestate 사용법, usestate 사용법알려줘, setstate, 함수형업데이트, 게으른초기화, lazy-init, 상태변수, 상태훅]
+- keywords: [usestate, use-state, usestate 사용법, usestate 사용법알려줘, setstate, 함수형업데이트, 게으른초기화, lazy-init, 상태변수, 상태훅, 상태값, 상태 값, 상태값에, 상태에 넣, 상태에 저장, state에 넣, state에 저장, state로 저장, 상태로 저장, 컴포넌트 상태]
   files: [react-reference/useState.md]
 - keywords: [useeffect, use-effect, 이펙트, 의존성배열, 의존성 배열, dependency array, cleanup, 정리함수, 정리 함수, 부수효과, side-effect, 구독해제, stale-closure, 이펙트정리]
   files: [react-reference/useEffect.md]

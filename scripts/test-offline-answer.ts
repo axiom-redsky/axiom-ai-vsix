@@ -244,59 +244,54 @@ await (async () => {
   check('④ react-reference 본문 렌더(의존성 배열 설명 포함)',
     refDocs.join('\n').includes('의존성'), refDocs[0]?.slice(0, 60) ?? 'empty');
 
-  // ⑤ precedence: scaffold 지식과 React 레퍼런스가 **동시에** 키워드 매칭되면(겹치는 주제),
-  //    scaffold 정밀 가산점(1.0) > react-reference 감소 가산점(0.6) → scaffold가 위, React는 보완.
-  //    (예: "useEffect로 데이터 가져오기" → useApi(scaffold)가 먼저, useEffect(React)는 아래.)
-  const precedenceDeps = {
+  // ⑤ soft precedence — 진짜 충돌(둘 다 키워드 매칭, 의미 동점): scaffold 보너스(+0.3)가 동점을 깨
+  //    scaffold가 앞선다. (예: "useEffect로 데이터 가져오기" → useApi가 먼저, useEffect는 보완.)
+  const conflictTieDeps = {
     keywordSources: () => ['patterns/use-api.md', 'react-reference/useEffect.md'],
     semanticScores: async () => [] as Array<{ source: string; score: number }>,
     fileContextSources: () => [] as string[],
     loadDoc,
   };
-  const precedence = new OfflineKnowledgeRetriever(precedenceDeps);
-  const precDocs = await precedence.retrieve('useEffect로 데이터 가져오는 법', qnaIntent);
-  check('⑤ 겹치는 주제 → scaffold(use-api)가 React 레퍼런스보다 앞(scaffold 우선)',
-    precDocs[0].includes('[patterns/use-api.md]'), precDocs[0]?.slice(0, 60) ?? 'empty');
-  check('⑤ React 레퍼런스는 보완으로 함께 노출(suppress 아님)',
-    precDocs.some((b) => b.includes('[react-reference/useEffect.md]')), precDocs.map((b) => b.split('\n')[0]).join(' | '));
+  const conflictTie = new OfflineKnowledgeRetriever(conflictTieDeps);
+  const tieDocs = await conflictTie.retrieve('useEffect로 데이터 가져오는 법', qnaIntent);
+  check('⑤ 충돌+의미동점 → scaffold(use-api)가 앞(보너스가 동점 깸)',
+    tieDocs[0].includes('[patterns/use-api.md]'), tieDocs[0]?.slice(0, 60) ?? 'empty');
+  check('⑤ React 레퍼런스는 보완으로 함께 노출',
+    tieDocs.some((b) => b.includes('[react-reference/useEffect.md]')), tieDocs.map((b) => b.split('\n')[0]).join(' | '));
 
-  // ⑤′ "항상 scaffold 우선" 하드 보장: react-reference가 의미 점수를 **훨씬 높게**(0.95) 받아도
-  //     scaffold(키워드만, 의미 0)가 위여야 한다. (점수 가산점 방식이라면 0.6+0.95=1.55 > 1.0+0=1.0
-  //     으로 역전됐을 케이스 — 결정론적 티어가 이를 막는지 검증.)
-  const hardDeps = {
+  // ⑤′ 핵심 회귀(하드 티어 매장 버그): **무관한 scaffold 노이즈**(키워드 없이 의미만 0.25로 걸린 Table)는
+  //     정밀하게 맞은 React 문서(키워드+의미 0.6)를 못 이긴다. 하드 티어였다면 Table이 1등으로 매장했다.
+  //     soft에선 useEffect=1.0+0.6=1.6 > Table=0.25+0.3=0.55 → React가 1등.
+  const noiseDeps = {
+    keywordSources: () => ['react-reference/useEffect.md'], // React만 키워드 정밀 매칭
+    semanticScores: async () => [
+      { source: 'react-reference/useEffect.md', score: 0.6 },
+      { source: 'components/Table.md', score: 0.25 }, // scaffold지만 무관한 의미 노이즈
+    ],
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const noise = new OfflineKnowledgeRetriever(noiseDeps);
+  const noiseDocs = await noise.retrieve('useEffect 의존성 배열이 뭐야', qnaIntent);
+  check('⑤′ 무관한 scaffold 노이즈는 강한 React 정밀 매칭을 못 매장(React 1등)',
+    isGenericRef(noiseDocs[0]) && noiseDocs[0].includes('[react-reference/useEffect.md]'),
+    noiseDocs.map((b) => b.split('\n')[0]).join(' | '));
+
+  // ⑤″ scaffold가 **진짜 강할 때**(키워드+높은 의미)는 보너스까지 더해 React보다 확실히 앞선다.
+  //     use-api=1.0+0.6+0.3=1.9 > useEffect=1.0+0.55=1.55 → scaffold 1등(진짜 충돌에서 scaffold 우선).
+  const strongScaffoldDeps = {
     keywordSources: () => ['patterns/use-api.md', 'react-reference/useEffect.md'],
     semanticScores: async () => [
-      { source: 'react-reference/useEffect.md', score: 0.95 }, // React가 의미적으로 압도
-      { source: 'patterns/use-api.md', score: 0.0 },
+      { source: 'patterns/use-api.md', score: 0.6 },
+      { source: 'react-reference/useEffect.md', score: 0.55 },
     ],
     fileContextSources: () => [] as string[],
     loadDoc,
   };
-  const hard = new OfflineKnowledgeRetriever(hardDeps);
-  const hardDocs = await hard.retrieve('데이터 페치 훅', qnaIntent);
-  check('⑤′ 의미점수 역전에도 scaffold가 항상 1등(하드 티어)',
-    hardDocs[0].includes('[patterns/use-api.md]'), hardDocs[0]?.slice(0, 60) ?? 'empty');
-  check('⑤′ react-reference는 여전히 보완으로 노출',
-    hardDocs.some((b) => b.includes('[react-reference/useEffect.md]')), hardDocs.map((b) => b.split('\n')[0]).join(' | '));
-
-  // ⑤″ React 보완 보장: scaffold 키워드 문서가 MAX_DOCS를 다 채워도 react-reference 후보가 있으면
-  //     최상위 1개는 덧붙여 노출된다(통째로 잘리지 않음). scaffold 우선 순서는 그대로.
-  const crowdDeps = {
-    keywordSources: () => [
-      'patterns/use-api.md', 'patterns/use-api-example.md', 'catalog/hooks.md', // scaffold 3개(=MAX_DOCS)
-      'react-reference/rules-of-hooks.md',
-    ],
-    semanticScores: async () => [] as Array<{ source: string; score: number }>,
-    fileContextSources: () => [] as string[],
-    loadDoc,
-  };
-  const crowd = new OfflineKnowledgeRetriever(crowdDeps);
-  const crowdDocs = await crowd.retrieve('훅을 조건문 안에서 호출해도 돼', qnaIntent);
-  check('⑤″ scaffold가 슬롯 다 채워도 react-reference 1개는 보완 노출',
-    crowdDocs.some((b) => b.includes('[react-reference/rules-of-hooks.md]')), crowdDocs.map((b) => b.split('\n')[0]).join(' | '));
-  check('⑤″ scaffold 3개가 react-reference보다 앞(우선 유지)',
-    !isGenericRef(crowdDocs[0]) && !isGenericRef(crowdDocs[1]) && !isGenericRef(crowdDocs[2]),
-    crowdDocs.map((b) => b.split('\n')[0]).join(' | '));
+  const strongScaffold = new OfflineKnowledgeRetriever(strongScaffoldDeps);
+  const strongDocs = await strongScaffold.retrieve('서버 데이터 조회 훅', qnaIntent);
+  check('⑤″ scaffold 강매칭 → React보다 앞(진짜 충돌 scaffold 우선)',
+    strongDocs[0].includes('[patterns/use-api.md]'), strongDocs[0]?.slice(0, 60) ?? 'empty');
 })();
 
 /** 렌더된 블록이 react-reference 출처 헤더로 시작하는지(테스트 헬퍼). */

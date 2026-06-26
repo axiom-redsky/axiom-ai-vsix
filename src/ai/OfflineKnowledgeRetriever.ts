@@ -56,11 +56,32 @@ const FILE_BOOST = 1.2;
 const SHOWCODE_BONUS = 0.25;
 
 /**
- * 범용 React 레퍼런스(react.dev 요약) source인지 — scaffold 지식과 precedence를 가르는 경로 태그.
- * 이 태그로 **하드 티어**를 만든다: 충돌(둘 다 후보) 시 react-reference는 점수가 아무리 높아도
- * scaffold 문서 **위로 올 수 없다**(아래 retrieve의 티어 정렬 참고). 점수 가산점만으로는 의미 점수가
- * 크게 높을 때 역전될 수 있어 "항상 scaffold 우선"을 못 지킨다 → 결정론적 티어로 보장한다.
+ * 의미(로컬 임베딩) 점수 가중치 — **노이즈 보정**.
+ *
+ * 실측: 약한 다국어 임베더가 `conventions/naming.md`·`spec-structure.md`·`tokens.md` 같은 일부 문서에
+ * **질문과 무관하게** 0.7~0.83의 높은 코사인을 일관되게 준다(만능 고득점). 반대로 정작 정답인
+ * react-reference 문서엔 0에 가까운 점수를 줄 때가 많다. 이 노이즈가 raw(0~1)로 키워드 정밀매칭(1.0)과
+ * 맞먹어 정답을 밀어냈다. → 의미 점수를 절반으로 낮춰 **키워드 라우팅(신뢰 신호)을 명확히 우위**에 둔다.
+ * 의미는 키워드 동점자 사이의 타이브레이커 역할만 남긴다(원래 설계 의도 복원).
  */
+const SEMANTIC_WEIGHT = 0.5;
+
+/**
+ * scaffold 문서가 범용 React 레퍼런스보다 **우선되도록** 점수에 더하는 보너스(soft precedence).
+ *
+ * 설계 배경(실측): 처음엔 "scaffold를 항상 react-reference 위로" 하드 티어를 썼으나, 임베딩 실측에서
+ * '배열' 같은 광범위 키워드로 우연히 걸린 **무관한 scaffold 노이즈**(Table·naming 등)가, 정밀하게 맞은
+ * React 문서를 꼴찌로 밀어버렸다("useEffect 의존성"에 Table이 1등). 의도(데이터→useApi 같은 **진짜 충돌**)는
+ * scaffold 우선이 맞지만, 노이즈가 정답을 매장하는 건 기능 목적을 깨뜨린다.
+ *
+ * → 하드 티어를 버리고 **점수 기반 + scaffold 보너스**로 전환한다. 단 보너스는 scaffold 문서가
+ *   **진짜로 토픽 매칭(키워드 또는 파일컨텍스트)** 됐을 때만 준다 — 의미점수만 걸린 노이즈 scaffold엔
+ *   주지 않는다(노이즈가 보너스까지 받아 정답을 밀어내던 실측 문제 차단). 진짜 충돌(scaffold도 키워드
+ *   매칭)에선 이 보너스가 down-weight된 의미점수 차를 넘어 scaffold를 앞세운다(실측 튜닝값).
+ */
+const SCAFFOLD_BONUS = 0.4;
+
+/** 범용 React 레퍼런스(react.dev 요약) source인지 — scaffold 보너스 대상 판별용 경로 태그. */
 function isGenericReference(source: string): boolean {
   return source.startsWith('react-reference/');
 }
@@ -127,21 +148,19 @@ export class OfflineKnowledgeRetriever {
     }
     if (docs.length === 0) return [];
 
-    // 점수 합산 후 정렬.
+    // 점수 합산 후 정렬 → 상위 MAX_DOCS개 렌더. scaffold 우선은 점수의 SCAFFOLD_BONUS로 soft하게
+    // 반영된다(하드 티어 X) — 진짜 충돌에선 scaffold가 동점을 깨고 이기되, 무관한 scaffold 노이즈는
+    // 강한 React 정밀 매칭을 매장하지 못한다.
     const ranked = this._rankByScore(docs, query, { keywordSet, fileSet, semScore });
+    let top = ranked.slice(0, MAX_DOCS);
 
-    // ── scaffold 우선 하드 티어(항상) ──
-    // 충돌(scaffold·react-reference가 함께 후보) 시 react-reference는 점수와 무관하게 scaffold 아래에
-    // 둔다. 점수 가산점만으론 react-reference의 의미 점수가 크게 높을 때 역전될 수 있어 "항상 scaffold
-    // 우선"을 못 지킨다 → 결정론적 티어로 보장한다. 각 티어 내부는 _rankByScore 순서(점수)를 유지한다.
-    const scaffoldTier = ranked.filter((d) => !isGenericReference(d.source));
-    const referenceTier = ranked.filter((d) => isGenericReference(d.source));
-    let top = [...scaffoldTier, ...referenceTier].slice(0, MAX_DOCS);
-
-    // React는 보완(supplementary): scaffold가 슬롯을 다 채워 react-reference가 통째로 잘렸지만 후보가
-    // 있으면, 최상위 react-reference 1개를 덧붙여 "보완"으로 노출한다(scaffold 우선은 그대로 유지).
-    if (referenceTier.length > 0 && !top.some((d) => isGenericReference(d.source))) {
-      top = [...top, referenceTier[0]];
+    // React 가시성 보장(reserve): react-reference가 **키워드로 진짜 매칭**됐는데도 상위에서 밀려나면
+    // (예: "훅 조건문 호출" → 흔한 '훅' 키워드의 scaffold 문서 3개가 보너스까지 받아 top3를 채움),
+    // **최하위 슬롯 1개만** 그 중 최고 점수 react-reference로 교체한다. scaffold 1~2위 순서는 유지하고,
+    // 의미점수만 걸린 react-reference(노이즈)에는 적용하지 않는다(키워드 매칭 = 진짜 토픽 신호일 때만).
+    if (!usedFallback && !top.some((d) => isGenericReference(d.source))) {
+      const bestRef = ranked.find((d) => isGenericReference(d.source) && keywordSet.has(d.source));
+      if (bestRef) top = top.length < MAX_DOCS ? [...top, bestRef] : [...top.slice(0, MAX_DOCS - 1), bestRef];
     }
 
     const blocks = top.map((d) => this._render(d, query));
@@ -162,10 +181,15 @@ export class OfflineKnowledgeRetriever {
   ): KnowledgeDoc[] {
     const showCode = hasShowCodeIntent(query);
     const scoreOf = (d: KnowledgeDoc): number => {
-      let s = sig.semScore.get(d.source) ?? 0;
+      // 의미점수는 노이즈라 down-weight(키워드 라우팅을 명확히 우위로). 키워드 동점자 타이브레이커.
+      let s = (sig.semScore.get(d.source) ?? 0) * SEMANTIC_WEIGHT;
+      const routed = sig.keywordSet.has(d.source) || sig.fileSet.has(d.source);
       if (sig.keywordSet.has(d.source)) s += KEYWORD_BOOST;
       if (sig.fileSet.has(d.source)) s += FILE_BOOST;
       if (showCode && (d.kind === 'example' || d.kind === 'source')) s += SHOWCODE_BONUS;
+      // soft precedence: scaffold가 **진짜 토픽 매칭(키워드/파일)** 일 때만 보너스 → 진짜 충돌에선
+      // scaffold가 앞서되, 의미점수만 걸린 노이즈 scaffold는 강한 React 정밀 매칭을 매장하지 못한다.
+      if (routed && !isGenericReference(d.source)) s += SCAFFOLD_BONUS;
       return s;
     };
     return docs
