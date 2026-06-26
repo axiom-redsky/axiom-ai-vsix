@@ -265,6 +265,79 @@ export function selectByBudget(
 }
 
 /**
+ * 오프라인 섹션 좁히기(focus) 파라미터 — **오프라인 지식 렌더 전용**.
+ *
+ * 설계 의도(사용자 통찰): "전체를 원하는 질문"과 "전체 중 특정 부분을 원하는 질문"을 별도
+ * 의도 분류기로 판별하면 폐쇄망(정규식) 두더지잡기가 된다. 대신 **섹션 점수 분포 자체**를 신호로
+ * 쓴다 — 한 섹션이 두드러지면(뾰족) 그 부분만, 고르게 퍼지면(평평) 전체를 보여준다.
+ * 그리고 좁히더라도 **잘라낸 섹션 라벨을 footer로 노출**해, 의도 판정이 빗나가도 답을 숨기지 않는다.
+ */
+/** focus 후보가 되려면 문서에 H2 섹션이 최소 이만큼 있어야 한다(작은 단일 주제 문서는 통째 유지). */
+const FOCUS_MIN_SECTIONS = 3;
+/** focus 인정 최소 점수 — 최소 하나의 쿼리 토큰이 **헤더에 적중**(+3)해야 "특정 부분" 의도로 본다. */
+const FOCUS_MIN_SCORE = 3;
+/** 최고점 대비 이 비율 이상인 섹션만 focus에 포함(동률 다중 섹션 질문 대응, 예: "숫자랑 날짜"). */
+const FOCUS_RATIO = 0.6;
+
+/** "## 날짜 유틸 — $util.date" → "날짜 유틸" (footer 라벨용). */
+function sectionLabel(header: string): string {
+  const text = header.replace(/^#{1,6}\s*/, '').trim();
+  return text.split(/\s+[—–-]\s+/)[0].trim() || text;
+}
+
+/**
+ * 지식 문서 본문을 쿼리 의도에 맞는 **특정 섹션으로 좁힌다**(narrowing) — 오프라인 렌더 전용.
+ *
+ * H2(`##`) 단위로만 쪼개 ### 하위 섹션은 부모 H2에 흡수한다(중첩 문서 안전). 그 뒤:
+ *  - 한 섹션이 헤더 키워드로 두드러지면 → 도입부(인트로) + 그 섹션(들)만 렌더하고 나머지는 라벨만 footer로.
+ *  - 어느 섹션도 두드러지지 않으면(평평한 분포) → null 반환 → 호출부가 **문서 전체**를 렌더한다.
+ *
+ * @returns 좁혔으면 `{ body, droppedLabels }`, 좁힐 근거가 없으면 `null`(전체 렌더 신호).
+ */
+export function focusKnowledgeBody(
+  source: string,
+  body: string,
+  query: string,
+): { body: string; droppedLabels: string[] } | null {
+  // H2 단위 분할(### 는 부모 H2 안에 남김). 첫 H2 이전(도입부)은 header="" 인트로 섹션.
+  const parts = body
+    .split(/(?=^##\s)/m)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const sections: MdSection[] = parts.map((p) => {
+    const hm = p.match(/^(##\s+.+)$/m);
+    return { source, header: hm ? hm[1].trim() : '', body: p, length: p.length, score: 0, rawScore: 0 };
+  });
+
+  const bodySections = sections.filter((s) => s.header);
+  if (bodySections.length < FOCUS_MIN_SECTIONS) return null; // 좁힐 만큼 섹션이 많지 않음
+
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) return null;
+  scoreSections(sections, tokens);
+
+  const maxScore = Math.max(...bodySections.map((s) => s.score));
+  if (maxScore < FOCUS_MIN_SCORE) return null; // 헤더 키워드 적중 없음 → 평평 → 전체
+
+  const threshold = Math.max(FOCUS_MIN_SCORE, maxScore * FOCUS_RATIO);
+  const focused = bodySections.filter((s) => s.score >= threshold);
+  // 사실상 전부 선택되면 좁히는 이득이 없다 → 전체 렌더.
+  if (focused.length === 0 || focused.length >= bodySections.length) return null;
+
+  const focusedSet = new Set(focused);
+  const droppedLabels = bodySections.filter((s) => !focusedSet.has(s)).map((s) => sectionLabel(s.header));
+
+  // 도입부(전역 사용법·import 규칙 등 핵심 프레이밍)는 항상 보존하고, focus 섹션을 원문 순서로 잇는다.
+  const out: string[] = [];
+  const intro = sections.find((s) => !s.header);
+  if (intro) out.push(intro.body);
+  for (const s of bodySections) {
+    if (focusedSet.has(s)) out.push(s.body);
+  }
+  return { body: out.join('\n\n'), droppedLabels };
+}
+
+/**
  * 선택된 섹션 목록을 출처별로 그룹화해 시스템 프롬프트에 삽입할 문자열 목록으로 만든다.
  * 동일 파일의 여러 섹션은 한 블록으로 합치고 헤더로 묶는다.
  */

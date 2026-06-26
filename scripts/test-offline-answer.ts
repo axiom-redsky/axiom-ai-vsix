@@ -137,6 +137,34 @@ await (async () => {
   check('②′ util.md 6개 네임스페이스 전부 렌더(잘림 없음)', hasAllNs && !utilBlock.includes('문서가 길어'),
     hasAllNs ? 'all-ns' : 'missing-ns');
 
+  // ②″ 섹션 좁히기(focus): "특정 부분" 의도면 util.md를 해당 네임스페이스로 좁혀 렌더한다.
+  // "숫자 콤마 찍는 유틸" → 숫자 섹션만 + 잘라낸 섹션 footer. (전체 6개 덤프 방지)
+  const focusRetriever = new OfflineKnowledgeRetriever({
+    keywordSources: () => ['utils/util.md'],
+    semanticScores: async () => [],
+    fileContextSources: () => [],
+    loadDoc,
+  });
+  const focused = await focusRetriever.retrieve('숫자 콤마 찍는 유틸리티 알려줘', qnaIntent);
+  const focusBlock = focused.find((b) => b.includes('[utils/util.md]')) ?? '';
+  check('②″ 특정질문 → 숫자 섹션 포함', focusBlock.includes('## 숫자 유틸'), focusBlock.slice(0, 80));
+  check('②″ 특정질문 → 무관 섹션(배열·금융) 헤더 제외',
+    !focusBlock.includes('## 배열 유틸') && !focusBlock.includes('## 금융 유틸'),
+    focusBlock.slice(0, 120));
+  check('②″ 특정질문 → 잘라낸 섹션 footer 노출', /다른 섹션:/.test(focusBlock) && /전체가 필요하면/.test(focusBlock),
+    focusBlock.slice(-160));
+  check('②″ 도입부($util 전역 사용법) 보존', focusBlock.includes('전역 유틸 $util') || focusBlock.includes('import 불필요'),
+    focusBlock.slice(0, 120));
+
+  // ②‴ 광범위 질문은 좁히지 않는다(분포 평평) → 6개 네임스페이스 전체 유지. (focus 과교정 가드)
+  const broad = await focusRetriever.retrieve('유틸리티 사용법 알려줘', qnaIntent);
+  const broadBlock = broad.find((b) => b.includes('[utils/util.md]')) ?? '';
+  const broadHasAll = ['## 숫자 유틸', '## 날짜 유틸', '## 문자열 유틸', '## 금융 유틸', '## 객체 유틸', '## 배열 유틸'].every(
+    (h) => broadBlock.includes(h),
+  );
+  check('②‴ 광범위 질문 → 전체 6개 섹션 유지(좁히지 않음)', broadHasAll && !/다른 섹션:/.test(broadBlock),
+    broadHasAll ? 'all' : 'narrowed');
+
   // 후보 0개 + 폴백 미주입 → 빈 배열(섹션 생략, 종전 동작)
   const empty = new OfflineKnowledgeRetriever({
     keywordSources: () => [], semanticScores: async () => [], fileContextSources: () => [], loadDoc,

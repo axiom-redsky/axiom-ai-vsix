@@ -19,6 +19,7 @@
 
 import type { IntentResult } from './IntentClassifier';
 import { parseKnowledgeDoc, type KnowledgeDoc } from './KnowledgeDoc';
+import { focusKnowledgeBody } from './SectionExtractor';
 
 /** OfflineKnowledgeRetriever가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineKnowledgeDeps {
@@ -118,7 +119,7 @@ export class OfflineKnowledgeRetriever {
 
     // 점수 합산 후 정렬 → 상위 MAX_DOCS개 렌더.
     const ranked = this._rankByScore(docs, query, { keywordSet, fileSet, semScore });
-    const blocks = ranked.slice(0, MAX_DOCS).map((d) => this._render(d));
+    const blocks = ranked.slice(0, MAX_DOCS).map((d) => this._render(d, query));
     return usedFallback ? [FALLBACK_HINT, ...blocks] : blocks;
   }
 
@@ -149,13 +150,27 @@ export class OfflineKnowledgeRetriever {
   }
 
   /**
-   * 문서를 종류와 무관하게 **frontmatter를 뗀 본문 통째**로 렌더한다(출처 헤더 포함).
-   * 오프라인 출력은 사람이 읽는 화면이라 토큰 예산이 없으므로 **길이에 상관없이 자르지 않는다**
-   * — 종합 레퍼런스(예: utils/util.md의 $util 6개 네임스페이스)도 전부 그대로 노출한다.
-   * (온라인은 청크 RAG→LLM 합성이라 이 경로를 타지 않는다.)
+   * 문서를 렌더한다(출처 헤더 포함). 기본은 **frontmatter를 뗀 본문 통째**다 — 오프라인 출력은
+   * 사람이 읽는 화면이라 토큰 예산이 없어 길이로 자르지 않는다.
+   *
+   * 단, **종합 레퍼런스 문서에서 쿼리가 특정 섹션을 겨냥**하면(예: "숫자 콤마 찍는 유틸") 그 섹션으로
+   * 좁혀 렌더하고, 잘라낸 섹션은 라벨만 footer로 안내한다(focusKnowledgeBody). 좁힐 근거가 없으면
+   * (예: "유틸리티 사용법 알려줘"처럼 분포가 평평하면) null을 받아 종전처럼 전체를 렌더한다.
+   *
+   * example/source 문서는 코드 전문 자체가 답이므로 좁히지 않는다(show-code 철학 유지).
    */
-  private _render(doc: KnowledgeDoc): string {
-    return `## [${doc.source}]\n\n${doc.body}`;
+  private _render(doc: KnowledgeDoc, query: string): string {
+    const header = `## [${doc.source}]`;
+    if (doc.kind === 'example' || doc.kind === 'source') {
+      return `${header}\n\n${doc.body}`;
+    }
+    const focused = focusKnowledgeBody(doc.source, doc.body, query);
+    if (!focused) return `${header}\n\n${doc.body}`;
+    const note = focused.droppedLabels.length
+      ? `\n\n> 📎 이 문서의 다른 섹션: ${focused.droppedLabels.join(' · ')}. ` +
+        `전체가 필요하면 "전체"·"전부"처럼 넓게 물어보세요.`
+      : '';
+    return `${header}\n\n${focused.body}${note}`;
   }
 }
 
