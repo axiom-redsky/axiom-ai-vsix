@@ -21,6 +21,12 @@ const cases: { query: string; expect: string }[] = [
   { query: '천 단위 콤마 어떻게 찍어?', expect: 'utils/util.md' },
   { query: '숫자 반올림 유틸 있어?', expect: 'utils/util.md' },
   { query: '문자열 마스킹 함수 알려줘', expect: 'utils/util.md' },
+  // 신규 네임스페이스: finance · object · array
+  { query: '원리금균등 상환 스케줄 계산 유틸 있어?', expect: 'utils/util.md' },
+  { query: '복리 만기 수령액 계산하는 함수 알려줘', expect: 'utils/util.md' },
+  { query: '객체 깊은 복사 deepClone 유틸', expect: 'utils/util.md' },
+  { query: '배열 groupBy 키별 그룹핑 함수', expect: 'utils/util.md' },
+  { query: '평면 목록을 트리로 변환하는 유틸', expect: 'utils/util.md' },
   { query: 'className 병합 cn 사용법', expect: 'utils/cn.md' },
   { query: 'dayjs 사용법 알려줘', expect: 'libraries/dayjs.md' },
   { query: 'useApi 사용법 알려줘', expect: 'patterns/use-api.md' },

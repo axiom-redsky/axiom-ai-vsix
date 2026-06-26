@@ -1452,6 +1452,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._history.push({ role: 'assistant', content: cleanedResponse });
 
       await this._handleAxiomAction(finalResponse);
+
+      // 온라인 지식 답변(코드 액션 아님)은 topK 청크만 보므로 일부만 다룰 수 있다 →
+      // 프롬프트에 실제로 주입된 출처 문서를 "전체 보기" 푸터로 노출한다(결정론, 모델 비의존).
+      // 오프라인 폴백(wasFallback)은 문서 전문을 이미 그대로 덤프하므로 푸터를 생략한다.
+      if (!hasActionBlock && !isFileCtx && !wasFallback && fullResponse.trim()) {
+        const footer = this._buildScaffoldSourcesFooter(
+          this._scaffoldBuilder.lastScaffoldSources(),
+        );
+        if (footer) this._post({ type: 'token', content: footer });
+      }
+
       this._post({ type: 'done' });
       this._postStatus(wasFallback ? '⚠️ 오프라인 모드' : config.model);
     } catch (err) {
@@ -1467,6 +1478,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: 'error', message });
       this._postStatus('오류 발생');
     }
+  }
+
+  /**
+   * 온라인 지식 답변 하단에 붙는 "전체 보기" 푸터를 만든다. 답변은 질문과 가장 가까운
+   * topK 청크만 보고 합성되므로(예: util 질문에 number만 답하고 finance/object/array 누락 가능),
+   * 실제 주입된 출처 문서를 안내해 사용자가 전문을 확인하도록 한다. 결정론(모델 비의존).
+   * 출처가 없으면 빈 문자열(푸터 생략).
+   */
+  private _buildScaffoldSourcesFooter(sources: string[]): string {
+    if (!sources || sources.length === 0) return '';
+
+    // 종합 레퍼런스 문서 → 인터랙티브 데모/전문 위치 추가 안내(있을 때만).
+    const DEMO_POINTERS: Record<string, string> = {
+      'utils/util.md': '🧩 `$util` 인터랙티브 예제: `src/domains/example/pages/utils/`',
+    };
+
+    const lines = [
+      '\n\n---',
+      '> 📚 이 답변은 질문과 가장 관련된 부분만 담고 있어 일부 내용이 빠졌을 수 있습니다. 전체는 아래 scaffold 문서를 참고하세요:',
+    ];
+    for (const src of sources) {
+      lines.push(`> - \`${src}\``);
+    }
+    const demoTips = sources.map((s) => DEMO_POINTERS[s]).filter(Boolean);
+    for (const tip of demoTips) {
+      lines.push(`> ${tip}`);
+    }
+    lines.push('>');
+    lines.push('> 💡 같은 질문을 **오프라인 모드**에서 하면 관련 문서 전문이 그대로 표시됩니다.');
+    return lines.join('\n') + '\n';
   }
 
   // ─── /spec 서브 커맨드 ───────────────────────────────────────────────────────

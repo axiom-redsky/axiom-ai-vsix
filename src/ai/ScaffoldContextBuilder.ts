@@ -43,6 +43,8 @@ export class ScaffoldContextBuilder {
   private _lastBreakdown: ContextBreakdown = {
     rulesChars: 0, fileChars: 0, ragChars: 0, sddChars: 0, domainChars: 0,
   };
+  /** buildSystemPrompt 가장 최근 호출이 프롬프트에 실제로 주입한 scaffold 문서 출처 목록(중복 제거). */
+  private _lastScaffoldSources: string[] = [];
   private readonly _libraryVersions: string;
 
   constructor(
@@ -55,6 +57,14 @@ export class ScaffoldContextBuilder {
   /** 가장 최근 buildSystemPrompt 호출의 컨텍스트 구성 요소별 글자 수를 반환한다. */
   lastBreakdown(): ContextBreakdown {
     return this._lastBreakdown;
+  }
+
+  /**
+   * 가장 최근 buildSystemPrompt 호출이 프롬프트에 주입한 scaffold 문서 출처 목록(중복 제거).
+   * 온라인 답변은 topK 청크만 보므로, 답변 하단에 "전체는 이 문서 참고" 푸터로 노출하는 데 쓴다.
+   */
+  lastScaffoldSources(): string[] {
+    return this._lastScaffoldSources;
   }
 
   /**
@@ -296,6 +306,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     const budgetOverride = this._computeRagBudget(diet, ctx);
 
     let scaffoldSection = '';
+    this._lastScaffoldSources = [];
 
     if (ragDir) {
       const ragCtx = await this._engine.buildContext(
@@ -309,6 +320,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
         scaffoldSection =
           `## Scaffold 문서 (관련 항목)\n` +
           ragCtx.docs.join('\n\n---\n\n');
+        this._lastScaffoldSources = extractDocSources(ragCtx.docs);
       }
     } else {
       scaffoldSection =
@@ -1096,4 +1108,22 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     this._ragDir = fs.existsSync(bundled) ? bundled : null;
     return this._ragDir;
   }
+}
+
+/**
+ * `## [source]` 헤더로 시작하는 doc 블록 목록에서 출처 경로만 순서 보존·중복 제거로 뽑는다.
+ * (formatSectionsAsDocs / RagRetriever.retrieve 가 만든 블록 형식과 동일.)
+ */
+function extractDocSources(docs: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const doc of docs) {
+    const m = doc.match(/^##\s+\[([^\]]+)\]/);
+    if (!m) continue;
+    const src = m[1].trim();
+    if (seen.has(src)) continue;
+    seen.add(src);
+    out.push(src);
+  }
+  return out;
 }

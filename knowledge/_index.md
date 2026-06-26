@@ -157,9 +157,15 @@ project: react-app-scaffold
 
 - keywords: [util, 유틸, 유틸리티, 헬퍼, helper, $util, 공통함수, 공통유틸,
              금액, 통화, currency, 쉼표, comma, 콤마, 천단위, 천단위콤마, 3자리, 자릿수,
-             숫자, number, 숫자포맷, 반올림, round, clamp, 범위제한, tonumber, 숫자변환, percent, 퍼센트, 백분율,
-             날짜포맷, 날짜계산, adddays, addmonths, diffdays,
-             문자열, string, capitalize, truncate, 말줄임, padstart, 자리수, mask, 마스킹, isempty, 공백제거]
+             숫자, number, 숫자포맷, 반올림, round, floor, ceil, 버림, 올림, clamp, 범위제한, tonumber, 숫자변환, percent, 퍼센트, 백분율,
+             vat, 부가세, 한글금액, tokorean, 축약, abbreviate, 만억조, 증감율, rate, 등락, 부동소수점,
+             날짜포맷, 날짜계산, adddays, addmonths, addyears, diffdays, 영업일, businessday, 공휴일, holiday,
+             startof, endof, 분기, quarter, 주차, 만나이, age, 윤년, 요일, dayofweek, fromnow, 상대시간,
+             문자열, string, capitalize, truncate, 말줄임, padstart, 자리수, mask, 마스킹, isempty, 공백제거,
+             이메일검증, isemail, 휴대폰, 주민번호, 사업자번호, 카드번호, 초성, chosung, 조사, josa, escapehtml, base64,
+             finance, 금융, 이자, 단리, 복리, simpleinterest, compoundinterest, 만기, maturityamount, 원리금균등, 상환, monthlypayment, amortization, 환율, exchange, 공급가액, supplyprice, 금액분할, splitamount,
+             object, 객체, 객체유틸, deepclone, deepequal, pick, omit, merge, cleanempty, 깊은복사, 깊은비교, 깊은병합, 경로조회,
+             array, 배열, 배열유틸, groupby, sortby, sum, sumby, uniq, uniqby, chunk, totree, flattentree, 그룹핑, 트리, 트리변환, 중복제거, 배열분할, 합계, 정렬]
   files: [utils/util.md]
 - keywords: [cn, classname, 클래스명, 클래스, 클래스병합, 스타일병합, tailwind, twmerge, clsx, 조건부클래스, classnames]
   files: [utils/cn.md]

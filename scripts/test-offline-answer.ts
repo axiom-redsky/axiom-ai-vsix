@@ -128,6 +128,15 @@ await (async () => {
   const tie = await tieRetriever.retrieve('유틸함수 목록 보여줘', qnaIntent);
   check('② 키워드 동점 → 의미 점수 높은 문서가 앞(util>Table)', tie[0].includes('[utils/util.md]'), tie[0]?.slice(0, 60) ?? 'empty');
 
+  // ②' util.md(종합 레퍼런스)는 6개 네임스페이스 전체가 잘리지 않고 렌더돼야 한다.
+  // (PER_DOC_CHAR_CAP 회귀 가드 — 캡이 작으면 string 뒤(finance·object·array)가 사라진다.)
+  const utilBlock = tie.find((b) => b.includes('[utils/util.md]')) ?? '';
+  const hasAllNs = ['$util.number', '$util.date', '$util.string', '$util.finance', '$util.object', '$util.array'].every(
+    (ns) => utilBlock.includes(ns),
+  );
+  check('②′ util.md 6개 네임스페이스 전부 렌더(잘림 없음)', hasAllNs && !utilBlock.includes('문서가 길어'),
+    hasAllNs ? 'all-ns' : 'missing-ns');
+
   // 후보 0개 + 폴백 미주입 → 빈 배열(섹션 생략, 종전 동작)
   const empty = new OfflineKnowledgeRetriever({
     keywordSources: () => [], semanticScores: async () => [], fileContextSources: () => [], loadDoc,

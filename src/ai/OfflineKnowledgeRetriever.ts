@@ -41,12 +41,6 @@ export interface IOfflineKnowledgeDeps {
 /** 한 응답에 노출할 최대 문서 수. 오프라인은 예산이 없어 recall 우선(2~3개). */
 const MAX_DOCS = 3;
 
-/**
- * 단일 문서 본문 안전 상한(자). 저자 문서는 보통 이하지만, 비정상적으로 큰 문서가
- * 화면을 독점하지 않도록 코드블록 경계에서 자르는 안전 밸브.
- */
-const PER_DOC_CHAR_CAP = 8000;
-
 /** "예제·코드·샘플 보여달라"는 show-code 의도 신호 토큰(오프라인 전용 판정). */
 const SHOW_CODE_TOKENS = ['예제', 'example', '샘플', 'sample', '코드', 'code', '보여', '사용법', '사용 예'];
 
@@ -156,15 +150,12 @@ export class OfflineKnowledgeRetriever {
 
   /**
    * 문서를 종류와 무관하게 **frontmatter를 뗀 본문 통째**로 렌더한다(출처 헤더 포함).
-   * 종류는 Stage 1.5 정렬 우선순위에만 쓰고, 렌더는 "답을 자르지 않는다"는 원칙을 따른다.
-   * 안전 상한을 넘는 비정상 문서만 코드블록 경계에서 자른다.
+   * 오프라인 출력은 사람이 읽는 화면이라 토큰 예산이 없으므로 **길이에 상관없이 자르지 않는다**
+   * — 종합 레퍼런스(예: utils/util.md의 $util 6개 네임스페이스)도 전부 그대로 노출한다.
+   * (온라인은 청크 RAG→LLM 합성이라 이 경로를 타지 않는다.)
    */
   private _render(doc: KnowledgeDoc): string {
-    let body = doc.body;
-    if (body.length > PER_DOC_CHAR_CAP) {
-      body = truncateAtCodeBoundary(body, PER_DOC_CHAR_CAP);
-    }
-    return `## [${doc.source}]\n\n${body}`;
+    return `## [${doc.source}]\n\n${doc.body}`;
   }
 }
 
@@ -178,21 +169,4 @@ function dedupe(items: string[]): string[] {
     out.push(it);
   }
   return out;
-}
-
-/**
- * 본문을 상한 근처에서 자르되, 코드블록 한가운데서 끊기지 않게 마지막 완결 펜스 또는
- * 직전 줄바꿈 경계까지만 남긴다. 잘렸음을 알리는 표시를 덧붙인다.
- */
-function truncateAtCodeBoundary(body: string, cap: number): string {
-  const head = body.slice(0, cap);
-  // 펜스 개수가 홀수면 코드블록 안에서 잘린 것 → 마지막 펜스 앞까지 되돌린다.
-  const fenceCount = (head.match(/```/g) ?? []).length;
-  let cut = head;
-  if (fenceCount % 2 === 1) {
-    cut = head.slice(0, head.lastIndexOf('```'));
-  }
-  const nl = cut.lastIndexOf('\n');
-  if (nl > cap * 0.5) cut = cut.slice(0, nl);
-  return `${cut.trim()}\n\n> …(문서가 길어 일부만 표시)`;
 }
