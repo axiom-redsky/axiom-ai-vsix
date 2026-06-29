@@ -292,6 +292,86 @@ await (async () => {
   const strongDocs = await strongScaffold.retrieve('서버 데이터 조회 훅', qnaIntent);
   check('⑤″ scaffold 강매칭 → React보다 앞(진짜 충돌 scaffold 우선)',
     strongDocs[0].includes('[patterns/use-api.md]'), strongDocs[0]?.slice(0, 60) ?? 'empty');
+
+  // ⑥ 유틸 의도 우선(UTIL_INTENT_BONUS): "오늘날짜 유틸리티"는 dayjs(키워드 "날짜")와
+  //    util.md(키워드 "유틸리티")가 동시 매칭돼 동점이지만, 사용자가 "유틸"을 명시했으니 $util이 선두.
+  //    (종전엔 _index 등장 순서로 dayjs가 우연히 1등이던 회귀를 박는다.)
+  const utilVsLibDeps = {
+    keywordSources: () => ['libraries/dayjs.md', 'utils/util.md'], // dayjs가 합집합에서 먼저(동점 시 우연히 1등)
+    semanticScores: async () => [] as Array<{ source: string; score: number }>,
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const utilVsLib = new OfflineKnowledgeRetriever(utilVsLibDeps);
+  const utilFirst = await utilVsLib.retrieve('오늘날짜 유틸리티', qnaIntent);
+  check('⑥ 유틸 의도 명시 → $util이 dayjs보다 앞', utilFirst[0].includes('[utils/util.md]'),
+    utilFirst.map((b) => b.split('\n')[0]).join(' | '));
+  check('⑥ dayjs는 보완으로 함께 노출', utilFirst.some((b) => b.includes('[libraries/dayjs.md]')),
+    utilFirst.map((b) => b.split('\n')[0]).join(' | '));
+
+  // ⑥′ 유틸 마커가 없으면 보너스 미발동 → 종전 동작(합집합 순서). "오늘 날짜 포맷"엔 dayjs가 먼저.
+  const noUtilMarker = await utilVsLib.retrieve('오늘 날짜 포맷', qnaIntent);
+  check('⑥′ 유틸 마커 없으면 보너스 미발동(dayjs 선두 유지)', noUtilMarker[0].includes('[libraries/dayjs.md]'),
+    noUtilMarker.map((b) => b.split('\n')[0]).join(' | '));
+
+  // ⑦ 복합어 분해 좁히기(expandCompoundTokens): "오늘날짜 유틸리티"는 공백으로만 쪼개면 "오늘날짜"가
+  //    헤더 "## 날짜 유틸"에 매칭 못 해 전체가 노출됐다. "오늘날짜"→"날짜" 분해로 date 섹션만 좁힌다.
+  const dateFocusDeps = {
+    keywordSources: () => ['utils/util.md'],
+    semanticScores: async () => [] as Array<{ source: string; score: number }>,
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const dateFocus = new OfflineKnowledgeRetriever(dateFocusDeps);
+  const dateBlocks = await dateFocus.retrieve('오늘날짜 유틸리티', qnaIntent);
+  const dateBlock = dateBlocks.find((b) => b.includes('[utils/util.md]')) ?? '';
+  check('⑦ 복합어 "오늘날짜" → 날짜 섹션으로 좁힘', dateBlock.includes('## 날짜 유틸'), dateBlock.slice(0, 100));
+  check('⑦ 무관 섹션(배열·금융) 헤더 제외',
+    !dateBlock.includes('## 배열 유틸') && !dateBlock.includes('## 금융 유틸'), dateBlock.slice(0, 140));
+  check('⑦ 잘라낸 섹션 footer 노출', /다른 섹션:/.test(dateBlock), dateBlock.slice(-160));
+
+  // ⑧ 함수 스포트라이트(buildFunctionSpotlight): 세부 함수 겨냥 시 해당 함수 예시를 맨 위에 핀.
+  //    문서 주도(주석 기반) — util.md 함수 주석의 개념어로 매칭. 광범위/무신호 쿼리는 핀 생략(오탐 0).
+  const spotIdx = dateBlock.indexOf('🎯');
+  const dateSecIdx = dateBlock.indexOf('## 날짜 유틸');
+  check('⑧ "오늘날짜" → 핀 블록 존재', spotIdx >= 0, dateBlock.slice(0, 60));
+  check('⑧ 핀이 날짜 섹션보다 위에 위치', spotIdx >= 0 && dateSecIdx >= 0 && spotIdx < dateSecIdx, `pin=${spotIdx} sec=${dateSecIdx}`);
+  check('⑧ 핀에 오늘 관련 함수(now·isToday)', /\$util\.date\.now\(/.test(dateBlock) && /\$util\.date\.isToday\(/.test(dateBlock),
+    dateBlock.slice(spotIdx, spotIdx + 200));
+  // 핀은 변별 함수만 — 무관 함수(영업일·분기)는 핀 안에 없어야(섹션 본문엔 있을 수 있음).
+  const pinOnly = spotIdx >= 0 ? dateBlock.slice(spotIdx, dateSecIdx) : '';
+  check('⑧ 핀에 무관 함수(영업일·분기) 미포함', !/isBusinessDay|getQuarter/.test(pinOnly), pinOnly.slice(0, 160));
+
+  // ⑧′ 광범위 질문은 핀 생략(focus도 안 좁힘 → 전체 6개 섹션, 핀 없음).
+  const broadSpot = await dateFocus.retrieve('유틸리티 사용법 알려줘', qnaIntent);
+  const broadSpotBlock = broadSpot.find((b) => b.includes('[utils/util.md]')) ?? '';
+  check('⑧′ 광범위 질문 → 핀 생략', !broadSpotBlock.includes('🎯'), broadSpotBlock.slice(0, 80));
+
+  // ⑧″ 다른 네임스페이스도 동일(콤마→number). 핀 존재 + comma 포함.
+  const commaSpot = await dateFocus.retrieve('콤마 찍는 유틸리티', qnaIntent);
+  const commaBlock = commaSpot.find((b) => b.includes('[utils/util.md]')) ?? '';
+  check('⑧″ "콤마" → 핀에 number.comma', commaBlock.includes('🎯') && /\$util\.number\.comma\(/.test(commaBlock),
+    commaBlock.slice(commaBlock.indexOf('🎯'), commaBlock.indexOf('🎯') + 160));
+
+  // ⑧‴ 전 네임스페이스 커버리지(문서 주석 보강 회귀 가드) — 각 개념어가 올바른 함수를 핀.
+  const coverage: Array<[string, RegExp]> = [
+    ['요일 구하기', /\$util\.date\.dayOfWeek\(/],
+    ['만나이 계산', /\$util\.date\.age\(/],
+    ['부가세', /\$util\.number\.vat\(/],
+    ['마스킹', /\$util\.string\.maskName\(/],
+    ['base64 인코딩', /\$util\.string\.base64Encode\(/], // 함수명 숫자 회귀 가드
+    ['깊은복사', /\$util\.object\.deepClone\(/],
+    ['깊은비교', /\$util\.object\.deepEqual\(/],          // 공백 무시 매칭 회귀 가드
+    ['대출 상환', /\$util\.finance\.monthlyPayment\(/],
+    ['그룹핑', /\$util\.array\.groupBy\(/],
+    ['중복제거', /\$util\.array\.uniq\(/],
+  ];
+  for (const [q, re] of coverage) {
+    const blocks = await dateFocus.retrieve(q, qnaIntent);
+    const block = blocks.find((b) => b.includes('[utils/util.md]')) ?? '';
+    const pin = block.includes('🎯') ? block.slice(block.indexOf('🎯'), block.indexOf('# 전역 유틸')) : '';
+    check(`⑧‴ "${q}" → 핀에 정답 함수`, re.test(pin), pin.slice(0, 160) || '(핀 없음)');
+  }
 })();
 
 /** 렌더된 블록이 react-reference 출처 헤더로 시작하는지(테스트 헬퍼). */

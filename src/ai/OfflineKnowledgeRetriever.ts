@@ -20,6 +20,7 @@
 import type { IntentResult } from './IntentClassifier';
 import { parseKnowledgeDoc, type KnowledgeDoc } from './KnowledgeDoc';
 import { focusKnowledgeBody } from './SectionExtractor';
+import { buildFunctionSpotlight } from './FunctionSpotlight';
 
 /** OfflineKnowledgeRetriever가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineKnowledgeDeps {
@@ -54,6 +55,19 @@ const SHOW_CODE_TOKENS = ['예제', 'example', '샘플', 'sample', '코드', 'co
 const KEYWORD_BOOST = 1.0;
 const FILE_BOOST = 1.2;
 const SHOWCODE_BONUS = 0.25;
+
+/** 쿼리에 명시적 "유틸/util" 의도가 있음을 알리는 신호 토큰(오프라인 전용 판정). */
+const UTIL_INTENT_TOKENS = ['유틸리티', '유틸', 'util', '헬퍼', 'helper', '공통함수', '공통유틸', '$util'];
+
+/**
+ * scaffold 전역 `$util` 문서(utils/util.md)를 **라이브러리 문서(dayjs·date-fns 등) 위로** 끌어올리는 보너스.
+ *
+ * 배경(실측): "오늘날짜 유틸리티"는 dayjs.md(키워드 "날짜")와 util.md(키워드 "유틸리티")가 **동시 매칭**돼
+ * KEYWORD_BOOST+SCAFFOLD_BONUS=1.4로 동점이 되고, _index 등장 순서(dayjs가 위)로 dayjs가 우연히 1등이 됐다.
+ * 사용자가 "유틸/util"을 명시했다면 scaffold 컨벤션($util)을 선두로 두는 것이 옳다 — SCAFFOLD_BONUS(0.4)보다
+ * 큰 값으로 동점을 확실히 깬다. dayjs/date-fns는 2~3순위로 남아 함께 노출된다(유틸 마커 없으면 동작 불변).
+ */
+const UTIL_INTENT_BONUS = 0.6;
 
 /**
  * 의미(로컬 임베딩) 점수 가중치 — **노이즈 보정**.
@@ -97,6 +111,18 @@ export const FALLBACK_HINT =
 export function hasShowCodeIntent(query: string): boolean {
   const q = query.toLowerCase();
   return SHOW_CODE_TOKENS.some((t) => q.includes(t));
+}
+
+/** 쿼리에 명시적 "유틸/util" 의도가 있는지(scaffold $util을 라이브러리 위로 올릴지 판정). */
+export function hasUtilIntent(query: string): boolean {
+  const q = query.toLowerCase();
+  return UTIL_INTENT_TOKENS.some((t) => q.includes(t));
+}
+
+/** scaffold 전역 $util 가이드 문서(utils/util.md)인지 — 경로 구분자 정규화 후 판별. */
+function isScaffoldUtilDoc(source: string): boolean {
+  const s = source.replace(/\\/g, '/').toLowerCase();
+  return s === 'utils/util.md' || s.endsWith('/utils/util.md');
 }
 
 export class OfflineKnowledgeRetriever {
@@ -180,6 +206,7 @@ export class OfflineKnowledgeRetriever {
     sig: { keywordSet: Set<string>; fileSet: Set<string>; semScore: Map<string, number> },
   ): KnowledgeDoc[] {
     const showCode = hasShowCodeIntent(query);
+    const utilIntent = hasUtilIntent(query);
     const scoreOf = (d: KnowledgeDoc): number => {
       // 의미점수는 노이즈라 down-weight(키워드 라우팅을 명확히 우위로). 키워드 동점자 타이브레이커.
       let s = (sig.semScore.get(d.source) ?? 0) * SEMANTIC_WEIGHT;
@@ -187,6 +214,8 @@ export class OfflineKnowledgeRetriever {
       if (sig.keywordSet.has(d.source)) s += KEYWORD_BOOST;
       if (sig.fileSet.has(d.source)) s += FILE_BOOST;
       if (showCode && (d.kind === 'example' || d.kind === 'source')) s += SHOWCODE_BONUS;
+      // 유틸 의도 명시 시 scaffold $util을 라이브러리(dayjs 등) 동점 위로 끌어올린다(컨벤션 우선).
+      if (utilIntent && isScaffoldUtilDoc(d.source)) s += UTIL_INTENT_BONUS;
       // soft precedence: scaffold가 **진짜 토픽 매칭(키워드/파일)** 일 때만 보너스 → 진짜 충돌에선
       // scaffold가 앞서되, 의미점수만 걸린 노이즈 scaffold는 강한 React 정밀 매칭을 매장하지 못한다.
       if (routed && !isGenericReference(d.source)) s += SCAFFOLD_BONUS;
@@ -207,19 +236,26 @@ export class OfflineKnowledgeRetriever {
    * (예: "유틸리티 사용법 알려줘"처럼 분포가 평평하면) null을 받아 종전처럼 전체를 렌더한다.
    *
    * example/source 문서는 코드 전문 자체가 답이므로 좁히지 않는다(show-code 철학 유지).
+   *
+   * 또한 쿼리가 **세부 함수**를 겨냥하면($util 문서 한정), 해당 함수 예시 몇 개를 **맨 위에 핀**으로
+   * 띄운다(buildFunctionSpotlight). 섹션 좁히기 위에 얹는 **추가** 레이어 — 핀 신호가 없으면 종전과 동일.
    */
   private _render(doc: KnowledgeDoc, query: string): string {
     const header = `## [${doc.source}]`;
     if (doc.kind === 'example' || doc.kind === 'source') {
       return `${header}\n\n${doc.body}`;
     }
+    // 세부 함수 핀(문서 전체 본문 기준 추출) — 섹션 좁히기와 독립적으로 맨 위에 얹는다.
+    const spotlight = buildFunctionSpotlight(doc.source, doc.body, query);
+    const pin = spotlight ? `${spotlight}\n\n` : '';
+
     const focused = focusKnowledgeBody(doc.source, doc.body, query);
-    if (!focused) return `${header}\n\n${doc.body}`;
+    if (!focused) return `${header}\n\n${pin}${doc.body}`;
     const note = focused.droppedLabels.length
       ? `\n\n> 📎 이 문서의 다른 섹션: ${focused.droppedLabels.join(' · ')}. ` +
         `전체가 필요하면 "전체"·"전부"처럼 넓게 물어보세요.`
       : '';
-    return `${header}\n\n${focused.body}${note}`;
+    return `${header}\n\n${pin}${focused.body}${note}`;
   }
 }
 

@@ -44,21 +44,24 @@ $util.array.groupBy(rows, 'type'); // 키별 그룹핑
 금액 표기·반올림/버림/올림·부동소수점 안전 연산·부가세·한글 금액·축약 등.
 
 ```ts
-$util.number.comma(1234567);          // "1,234,567"
-$util.number.round(3.14159, 2);       // 3.14
-$util.number.floor(12345.678);        // 12345 (절사)
-$util.number.ceil(12345.001);         // 12346 (절상)
-$util.number.clamp(15, 0, 10);        // 10
-$util.number.toNumber('$ 1,234.50 원'); // 1234.5 (실패 시 fallback)
-$util.number.percent(0.1234);         // "12.3%"
-$util.number.add(0.1, 0.2);           // 0.3  (부동소수점 오차 보정)
-$util.number.vat(10000);              // 1000 (부가세 10%)
-$util.number.currency(1234567);       // "1,234,567원"
-$util.number.toKorean(12345678);      // "천이백삼십사만오천육백칠십팔"
-$util.number.formatFixed(1234.5, 2);  // "1,234.50"
-$util.number.abbreviate(12345678);    // "1,234.5만"
-$util.number.sign(1200);              // "+1,200" (등락 표시)
-$util.number.rate(120, 100);          // 20 (증감율 %)
+$util.number.comma(1234567);          // 천단위 콤마(쉼표) 표기 "1,234,567"
+$util.number.round(3.14159, 2);       // 반올림 3.14
+$util.number.floor(12345.678);        // 버림/절사 12345
+$util.number.ceil(12345.001);         // 올림/절상 12346
+$util.number.clamp(15, 0, 10);        // 범위 제한 10
+$util.number.toNumber('$ 1,234.50 원'); // 문자열을 숫자로 변환 1234.5 (실패 시 fallback)
+$util.number.percent(0.1234);         // 퍼센트(백분율) 표기 "12.3%"
+$util.number.add(0.1, 0.2);           // 부동소수점 안전 덧셈 0.3
+$util.number.subtract(0.3, 0.1);      // 부동소수점 안전 뺄셈 0.2
+$util.number.multiply(0.1, 3);        // 부동소수점 안전 곱셈 0.3
+$util.number.divide(0.3, 3);          // 부동소수점 안전 나눗셈 0.1
+$util.number.vat(10000);              // 부가세(기본 10%) 1000
+$util.number.currency(1234567);       // 통화 표기(콤마+단위) "1,234,567원"
+$util.number.toKorean(12345678);      // 한글금액 표기 "천이백삼십사만오천육백칠십팔"
+$util.number.formatFixed(1234.5, 2);  // 콤마+소수 고정 "1,234.50"
+$util.number.abbreviate(12345678);    // 만/억/조 축약 "1,234.5만"
+$util.number.sign(1200);              // 등락(증감) 부호 콤마 "+1,200"
+$util.number.rate(120, 100);          // 증감율(등락율 %) 20
 ```
 
 시그니처:
@@ -91,44 +94,57 @@ interface INumberUtil {
 
 ```ts
 // 변환 / 파싱
-$util.date.format(new Date(), 'YYYY-MM-DD'); // "2026-06-01" (기본 YYYY-MM-DD)
-$util.date.now();                            // "2026-06-01 14:30:00"
-$util.date.parse('2026-06-01', 'YYYY-MM-DD'); // Date | null (엄격 파싱)
-$util.date.isValid('2026-13-01');            // false
+$util.date.now();                            // 오늘 현재 날짜·시각 "2026-06-01 14:30:00" (기본 'YYYY-MM-DD HH:mm:ss')
+$util.date.format(new Date(), 'YYYY-MM-DD'); // 오늘(또는 임의 날짜)을 형식 문자열로 포맷 "2026-06-01"
+$util.date.formatKorean('2026-06-26');       // 한글 날짜 표기 "2026년 6월 26일"
+$util.date.parse('2026-06-01', 'YYYY-MM-DD'); // 문자열을 날짜로 파싱 Date | null (엄격 파싱)
+$util.date.isValid('2026-13-01');            // 유효한 날짜인지 검증 false
 
 // 기본 연산
-$util.date.addDays(new Date(), 7);
-$util.date.addMonths(new Date(), -1);
-$util.date.addYears(new Date(), 1);
+$util.date.addDays(new Date(), 7);           // 며칠 뒤/앞 날짜 (어제·내일·N일 후)
+$util.date.addMonths(new Date(), -1);        // 몇 달 뒤/앞 날짜
+$util.date.addYears(new Date(), 1);          // 몇 년 뒤/앞 날짜
 $util.date.add(new Date(), 2, 'week');       // 단위 가감(year~second)
-$util.date.diffDays('2026-12-31', new Date());
-$util.date.diffMonths('2026-06-26', '2026-01-01');
+$util.date.diffDays('2026-12-31', new Date()); // 두 날짜 사이 일수 차이
+$util.date.diffMonths('2026-06-26', '2026-01-01'); // 두 날짜 사이 개월 차이
+$util.date.diffYears('2030-01-01', '2026-01-01'); // 두 날짜 사이 연수 차이
 
 // 시작/끝 경계 (배치 집계 범위)
-$util.date.startOf(new Date(), 'month');     // 그 달 1일 00:00:00
-$util.date.endOf(new Date(), 'day');         // 23:59:59.999
-$util.date.firstDayOfMonth(new Date());
-$util.date.lastDayOfMonth(new Date());
-$util.date.daysInMonth('2026-02-01');        // 28
+$util.date.startOf(new Date(), 'month');     // 기간 시작 경계 — 그 달 1일 00:00:00
+$util.date.endOf(new Date(), 'day');         // 기간 끝 경계 — 23:59:59.999
+$util.date.firstDayOfMonth(new Date());      // 그 달 첫날
+$util.date.lastDayOfMonth(new Date());       // 그 달 마지막날
+$util.date.daysInMonth('2026-02-01');        // 그 달 며칠인지 28
 
 // 비교 / 판별
-$util.date.isBefore(a, b);
-$util.date.isBetween('2026-06-26', '2026-06-01', '2026-06-30');
-$util.date.isToday(d); $util.date.isPast(d); $util.date.isFuture(d);
+$util.date.isBefore(a, b);                   // a가 b 이전인지 비교
+$util.date.isAfter(a, b);                    // a가 b 이후인지 비교
+$util.date.isSame(a, b, 'day');              // 같은 날짜(단위)인지 비교
+$util.date.isBetween('2026-06-26', '2026-06-01', '2026-06-30'); // 날짜가 기간 사이인지
+$util.date.isToday(d);                        // 오늘 날짜인지 판별
+$util.date.isPast(d);                         // 과거(지난) 날짜인지
+$util.date.isFuture(d);                       // 미래(앞으로의) 날짜인지
+$util.date.min(a, b);                         // 더 이른(과거) 날짜
+$util.date.max(a, b);                         // 더 늦은(미래) 날짜
 
 // 영업일 (주말·공휴일 제외) — T+2 결제일/어음 만기
-$util.date.isBusinessDay('2026-06-26');
-$util.date.addBusinessDays(new Date(), 2);
-$util.date.diffBusinessDays(a, b);
-$util.date.nextBusinessDay(d); $util.date.prevBusinessDay(d);
+$util.date.isWeekend('2026-06-27');          // 주말(토·일)인지
+$util.date.isHoliday('2026-01-01');          // 공휴일인지
+$util.date.isBusinessDay('2026-06-26');      // 영업일(평일·비공휴일)인지
+$util.date.addBusinessDays(new Date(), 2);   // 며칠 뒤 영업일
+$util.date.diffBusinessDays(a, b);           // 두 날짜 사이 영업일 수
+$util.date.nextBusinessDay(d);               // 다음 영업일
+$util.date.prevBusinessDay(d);               // 이전 영업일
 
 // 표시 / 기타
-$util.date.formatKorean('2026-06-26'); // "2026년 6월 26일"
-$util.date.dayOfWeek('2026-06-26');    // "금"
-$util.date.fromNow('2026-06-20');      // "6일 전"
-$util.date.getQuarter(d);  $util.date.weekOfYear(d);
-$util.date.age('1990-05-05');          // 만 나이
-$util.date.range('2026-06-01', '2026-06-05'); // Date[]
+$util.date.dayOfWeek('2026-06-26');    // 요일 "금"
+$util.date.fromNow('2026-06-20');      // 상대시간 표시 "6일 전"
+$util.date.getQuarter(d);              // 분기(1~4)
+$util.date.weekOfYear(d);              // 그 해 몇째 주차
+$util.date.age('1990-05-05');          // 만나이(만 나이) 계산
+$util.date.isLeapYear('2024-01-01');   // 윤년인지 판별
+$util.date.toBusinessDate('2026-06-26'); // 8자리 날짜 문자열 "20260626"
+$util.date.range('2026-06-01', '2026-06-05'); // 두 날짜 사이 날짜 배열 Date[]
 ```
 
 > 공휴일 캘린더는 `setHolidays()`로 서버 영업일 데이터를 주입할 수 있다(부수효과 함수라 `index.ts`에서 `setHolidays/getHolidays`로 별도 export).
@@ -194,45 +210,73 @@ interface IDateUtil {
 
 ```ts
 // 기본
-$util.string.isEmpty('   ');             // true
-$util.string.capitalize('hello');        // "Hello"
-$util.string.truncate('안녕하세요 반갑습니다', 5); // "안녕하세요..."
-$util.string.padStart(7, 5);             // "00007"
-$util.string.trimAll('  a   b  ');       // "a b"
-$util.string.mask('홍길동', 1, 2);        // "홍*동"
-$util.string.replaceAll('a-b-c', '-', '/'); // "a/b/c"
+$util.string.isEmpty('   ');             // 공백 포함 빈 값인지 true
+$util.string.capitalize('hello');        // 첫 글자 대문자 "Hello"
+$util.string.truncate('안녕하세요 반갑습니다', 5); // 말줄임(...) "안녕하세요..."
+$util.string.padStart(7, 5);             // 자리수 채움 "00007"
+$util.string.trimAll('  a   b  ');       // 공백 정리 "a b"
+$util.string.mask('홍길동', 1, 2);        // 마스킹(가림) "홍*동"
+$util.string.replaceAll('a-b-c', '-', '/'); // 전체 치환 "a/b/c"
 
 // 검증
-$util.string.isEmail('user@example.com'); // true
-$util.string.isMobile('010-1234-5678');   // true
-$util.string.isRRN('960101-1234561');     // 형식+체크섬
+$util.string.isEmail('user@example.com'); // 이메일 형식 검증 true
+$util.string.isMobile('010-1234-5678');   // 휴대폰 번호 검증 true
+$util.string.isRRN('960101-1234561');     // 주민번호 형식+체크섬
 $util.string.isBizNo('123-45-67891');     // 사업자번호 체크섬
-$util.string.isCardNo('4111-1111-1111-1111'); // Luhn
+$util.string.isCardNo('4111-1111-1111-1111'); // 카드번호 검증 Luhn
 
 // 개인정보 마스킹
-$util.string.maskName('홍길동');          // "홍*동"
-$util.string.maskMobile('010-1234-5678'); // "010-****-5678"
-$util.string.maskRRN('960101-1234561');   // "960101-1******"
-$util.string.maskEmail('abcdef@example.com'); // "ab****@example.com"
+$util.string.maskName('홍길동');          // 이름 마스킹 "홍*동"
+$util.string.maskMobile('010-1234-5678'); // 휴대폰 마스킹 "010-****-5678"
+$util.string.maskRRN('960101-1234561');   // 주민번호 마스킹 "960101-1******"
+$util.string.maskEmail('abcdef@example.com'); // 이메일 마스킹 "ab****@example.com"
+
+// 기본(추가)
+$util.string.padEnd(7, 5);               // 뒤쪽 자리수 채움 "70000"
+$util.string.removeWhitespace('a b c');  // 모든 공백 제거 "abc"
+$util.string.reverse('abc');             // 문자열 뒤집기(역순) "cba"
+
+// 검증(추가)
+$util.string.isHangul('홍길동');          // 한글만인지 검증 true
+$util.string.isEnglish('hello');          // 영문만인지 검증 true
+$util.string.isNumeric('12345');          // 숫자만인지 검증 true
+$util.string.isAlphaNumeric('abc123');    // 영문+숫자만인지 검증 true
+$util.string.isCorpNo('1234567890123');   // 법인등록번호 검증
+
+// 마스킹(추가)
+$util.string.maskCardNo('4111111111111111'); // 카드번호 마스킹 "4111-****-****-1111"
+$util.string.maskAccountNo('110123456789');  // 계좌번호 마스킹
 
 // 포맷(구분자 삽입)
-$util.string.formatMobile('01012345678');  // "010-1234-5678"
-$util.string.formatBizNo('1234567890');     // "123-45-67890"
-$util.string.formatCardNo('1234567812345678'); // "1234-5678-1234-5678"
+$util.string.formatMobile('01012345678');  // 휴대폰 하이픈 포맷 "010-1234-5678"
+$util.string.formatBizNo('1234567890');     // 사업자번호 포맷 "123-45-67890"
+$util.string.formatRRN('9601011234561');    // 주민번호 포맷 "960101-1234561"
+$util.string.formatCardNo('1234567812345678'); // 카드번호 포맷 "1234-5678-1234-5678"
+$util.string.formatBusinessDate('20260625'); // 8자리→하이픈 날짜 "2026-06-25"
 
-// 변환(Case) / 추출
-$util.string.camelCase('user_name');  // "userName"
-$util.string.snakeCase('userName');   // "user_name"
-$util.string.onlyNumber('총 1,234원'); // "1234"
-$util.string.onlyHangul('abc홍길동123'); // "홍길동"
-$util.string.getByteLength('가나다ABC'); // 9 (한글 2byte)
+// 변환(Case)
+$util.string.camelCase('user_name');  // 카멜케이스 "userName"
+$util.string.snakeCase('userName');   // 스네이크케이스 "user_name"
+$util.string.kebabCase('userName');   // 케밥케이스 "user-name"
+$util.string.pascalCase('user_name'); // 파스칼케이스 "UserName"
+
+// 추출
+$util.string.onlyNumber('총 1,234원'); // 숫자만 추출 "1234"
+$util.string.onlyHangul('abc홍길동123'); // 한글만 추출 "홍길동"
+$util.string.onlyEnglish('abc홍길동123'); // 영문만 추출 "abc"
+$util.string.getByteLength('가나다ABC'); // 바이트 길이 9 (한글 2byte)
 $util.string.cutByByte('가나다라마바사', 8); // 바이트 기준 절단
 
-// 한글 / 보안
-$util.string.getChosung('홍길동');     // "ㅎㄱㄷ"
-$util.string.josa('사과', '을/를');    // "사과를"
-$util.string.escapeHtml('<b>Tom & Jerry</b>'); // XSS 방지
-$util.string.base64Encode('안녕하세요');
+// 한글
+$util.string.getChosung('홍길동');     // 초성 추출 "ㅎㄱㄷ"
+$util.string.josa('사과', '을/를');    // 조사 자동 선택 "사과를"
+
+// 보안 / 인코딩
+$util.string.escapeHtml('<b>Tom & Jerry</b>'); // HTML 이스케이프(XSS 방지)
+$util.string.unescapeHtml('&lt;b&gt;');        // HTML 언이스케이프 복원
+$util.string.stripTags('<b>Hi</b>');           // 태그 제거 "Hi"
+$util.string.base64Encode('안녕하세요');        // base64 인코딩
+$util.string.base64Decode('7JWI64WV');          // base64 디코딩
 ```
 
 시그니처(요약):
@@ -282,14 +326,14 @@ interface IStringUtil {
 이자(단리/복리)·예적금 만기·원리금균등 대출 상환·환율·금액 분할·공급가액 역산 등 실무 금융 계산. 모든 금액은 원 단위 반올림.
 
 ```ts
-$util.finance.simpleInterest(1000000, 0.05, 2);     // 단리 이자액(원금×연이율×년수)
-$util.finance.compoundInterest(1000000, 0.05, 2, 12); // 복리 이자액(원금 제외)
-$util.finance.maturityAmount(1000000, 0.05, 2, 12);  // 예·적금 만기 수령액(원리금 합)
-$util.finance.monthlyPayment(12000000, 0.06, 12);    // 원리금균등 월 상환액
-$util.finance.amortization(1200000, 0.06, 3);        // 회차별 원금·이자·잔액 스케줄
-$util.finance.exchange(100, 1350);                   // 환산액(환율 적용)
-$util.finance.splitAmount(10000, 3);                 // [3334, 3333, 3333] (1원 오차 보정)
-$util.finance.supplyPrice(11000);                    // 10000 (부가세 포함→공급가액 역산)
+$util.finance.simpleInterest(1000000, 0.05, 2);     // 단리 이자 계산(원금×연이율×년수)
+$util.finance.compoundInterest(1000000, 0.05, 2, 12); // 복리 이자 계산(원금 제외)
+$util.finance.maturityAmount(1000000, 0.05, 2, 12);  // 예금·적금 만기 수령액(원리금 합)
+$util.finance.monthlyPayment(12000000, 0.06, 12);    // 대출 원리금균등 월 상환액
+$util.finance.amortization(1200000, 0.06, 3);        // 대출 상환 스케줄(회차별 원금·이자·잔액)
+$util.finance.exchange(100, 1350);                   // 환율 적용 환산액(환전)
+$util.finance.splitAmount(10000, 3);                 // 금액 균등 분할 [3334, 3333, 3333] (1원 오차 보정)
+$util.finance.supplyPrice(11000);                    // 공급가액 역산(부가세 포함→공급가) 10000
 ```
 
 시그니처:
@@ -318,15 +362,15 @@ interface IFinanceUtil {
 깊은 복사/비교, 키 선택/제외, 점 표기 경로 조회·설정, 빈 값 정리, 깊은 병합 등. 변형 함수는 **원본 불변**(새 객체 반환).
 
 ```ts
-$util.object.isEmpty({});                 // true (null/undefined/빈문자열/빈배열/빈객체)
-$util.object.deepClone({ a: 1, b: { c: 2 } });
-$util.object.deepEqual({ x: 1 }, { x: 1 }); // true
-$util.object.pick({ a: 1, b: 2, c: 3 }, ['a', 'c']); // { a: 1, c: 3 }
-$util.object.omit({ a: 1, b: 2, c: 3 }, ['b']);      // { a: 1, c: 3 }
-$util.object.get({ user: { name: 'Tom' } }, 'user.name'); // "Tom"
-$util.object.set({ a: 1 }, 'b.c', 2);     // { a: 1, b: { c: 2 } } (원본 불변)
-$util.object.cleanEmpty({ a: 1, b: null, c: '' }); // { a: 1 } — API 페이로드 정리
-$util.object.merge({ a: 1, b: { x: 1 } }, { b: { y: 2 }, c: 3 }); // 깊은 병합
+$util.object.isEmpty({});                 // 빈 객체·빈 값인지 true (null/undefined/빈문자열/빈배열/빈객체)
+$util.object.deepClone({ a: 1, b: { c: 2 } }); // 깊은 복사(중첩까지 복제)
+$util.object.deepEqual({ x: 1 }, { x: 1 }); // 깊은 비교(값 동등) true
+$util.object.pick({ a: 1, b: 2, c: 3 }, ['a', 'c']); // 키 선택(추출) { a: 1, c: 3 }
+$util.object.omit({ a: 1, b: 2, c: 3 }, ['b']);      // 키 제외(제거) { a: 1, c: 3 }
+$util.object.get({ user: { name: 'Tom' } }, 'user.name'); // 점 표기 경로 조회 "Tom"
+$util.object.set({ a: 1 }, 'b.c', 2);     // 점 표기 경로 설정 { a: 1, b: { c: 2 } } (원본 불변)
+$util.object.cleanEmpty({ a: 1, b: null, c: '' }); // 빈 값 정리(API 페이로드) { a: 1 }
+$util.object.merge({ a: 1, b: { x: 1 } }, { b: { y: 2 }, c: 3 }); // 깊은 병합(merge)
 ```
 
 시그니처:
@@ -349,16 +393,16 @@ interface IObjectUtil {
 그룹핑·정렬·합계·중복 제거·분할, 그리고 평면 목록↔트리 변환(메뉴·조직도·계층코드). 정렬 등은 **원본 불변**.
 
 ```ts
-$util.array.groupBy(rows, 'type');        // { A: [...], B: [...] } — 그리드/리포트 집계
-$util.array.sortBy(rows, 'n', 'asc');     // 키 기준 정렬(원본 불변)
-$util.array.sum([1, 2, 3, 4]);            // 10
-$util.array.sumBy([{ amt: 100 }, { amt: 200 }], 'amt'); // 300 — 금액 컬럼 합계
-$util.array.uniq([1, 1, 2, 3, 3]);        // [1, 2, 3]
-$util.array.uniqBy([{ id: 1 }, { id: 1 }, { id: 2 }], 'id'); // [{id:1},{id:2}]
-$util.array.chunk([1, 2, 3, 4, 5], 2);    // [[1,2],[3,4],[5]] — 페이지/배치 분할
+$util.array.groupBy(rows, 'type');        // 키별 그룹핑(그리드/리포트 집계) { A: [...], B: [...] }
+$util.array.sortBy(rows, 'n', 'asc');     // 키 기준 정렬(오름/내림, 원본 불변)
+$util.array.sum([1, 2, 3, 4]);            // 합계 10
+$util.array.sumBy([{ amt: 100 }, { amt: 200 }], 'amt'); // 키별 합계(금액 컬럼) 300
+$util.array.uniq([1, 1, 2, 3, 3]);        // 중복 제거 [1, 2, 3]
+$util.array.uniqBy([{ id: 1 }, { id: 1 }, { id: 2 }], 'id'); // 키별 중복 제거 [{id:1},{id:2}]
+$util.array.chunk([1, 2, 3, 4, 5], 2);    // 배열 분할(페이지/배치) [[1,2],[3,4],[5]]
 
 // 평면 ↔ 트리 (기본 키: id / parentId / children)
-$util.array.toTree(flatRows);             // 메뉴·조직도·계층코드 → 트리
+$util.array.toTree(flatRows);             // 평면 목록 → 트리(메뉴·조직도·계층코드)
 $util.array.flattenTree(tree);            // 트리 → 평면 목록(children 제거)
 ```
 

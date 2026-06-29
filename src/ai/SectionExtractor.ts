@@ -279,6 +279,31 @@ const FOCUS_MIN_SCORE = 3;
 /** 최고점 대비 이 비율 이상인 섹션만 focus에 포함(동률 다중 섹션 질문 대응, 예: "숫자랑 날짜"). */
 const FOCUS_RATIO = 0.6;
 
+/**
+ * 섹션 좁히기에서 붙은 한국어 복합어를 분해할 **앵커 명사** — `$util` H2 헤더의 네임스페이스 노출어와 1:1.
+ * (다른 지식 문서에서도 같은 명사가 헤더로 흔히 쓰여 일반적으로 안전하다.)
+ */
+const SECTION_ANCHOR_NOUNS = ['날짜', '숫자', '문자열', '금융', '객체', '배열'];
+
+/**
+ * **focusKnowledgeBody 전용**(오프라인) — 붙은 복합어를 섹션 앵커 명사로 분해해 토큰에 **추가**한다.
+ *
+ * 배경: 공유 `tokenizeQuery`는 공백으로만 쪼개 "오늘날짜 유틸리티"를 `["오늘날짜","유틸리티"]`로 만든다.
+ * 그런데 섹션 점수는 `header.includes(token)` 방식이라 "오늘날짜"가 헤더 "## 날짜 유틸"에 매칭되지 못해
+ * 전 섹션 0점 → 좁히기 포기 → 문서 전체가 노출됐다. 여기서 "오늘날짜"→"날짜"를 **추가**하면 date 섹션이
+ * 적중(+3)해 그 섹션만 좁혀 노출된다. 매칭을 **추가만** 하고 제거하지 않아 안전하며, 공유 tokenizeQuery는
+ * 그대로 둬 온라인 경로(RegionEdit·buildContext 등)에 영향이 없다.
+ */
+function expandCompoundTokens(tokens: string[]): string[] {
+  const out = new Set(tokens);
+  for (const t of tokens) {
+    for (const anchor of SECTION_ANCHOR_NOUNS) {
+      if (t !== anchor && t.length > anchor.length && t.includes(anchor)) out.add(anchor);
+    }
+  }
+  return [...out];
+}
+
 /** "## 날짜 유틸 — $util.date" → "날짜 유틸" (footer 라벨용). */
 function sectionLabel(header: string): string {
   const text = header.replace(/^#{1,6}\s*/, '').trim();
@@ -312,7 +337,9 @@ export function focusKnowledgeBody(
   const bodySections = sections.filter((s) => s.header);
   if (bodySections.length < FOCUS_MIN_SECTIONS) return null; // 좁힐 만큼 섹션이 많지 않음
 
-  const tokens = tokenizeQuery(query);
+  // 오프라인 좁히기 전용: 붙은 복합어("오늘날짜")를 섹션 앵커("날짜")로 분해해 매칭을 보강한다.
+  // (공유 tokenizeQuery는 불변 — 온라인 경로 영향 없음.)
+  const tokens = expandCompoundTokens(tokenizeQuery(query));
   if (tokens.length === 0) return null;
   scoreSections(sections, tokens);
 
