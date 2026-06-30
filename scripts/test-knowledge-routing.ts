@@ -143,6 +143,10 @@ for (const c of [
 console.log('\nSmartTable 라우팅:');
 for (const c of [
   { query: 'SmartTable 사용법 알려줘', expect: 'components/SmartTable.md' },
+  // 실제 캡처된 표현(공백·대소문자 변형) — 회귀 가드
+  { query: 'smart table 사용법 알려줘', expect: 'components/SmartTable.md' },
+  { query: 'smartTable 사용법 알려줘', expect: 'components/SmartTable.md' },
+  { query: '데이터 테이블 사용법 알려줘', expect: 'components/SmartTable.md' },
   { query: '스마트테이블 컬럼 정의 방법', expect: 'components/SmartTable.md' },
   { query: 'defineColumns 로 컬럼 만드는 법', expect: 'components/SmartTable.md' },
   { query: '테이블 합계행 만들기', expect: 'components/SmartTable.md' },

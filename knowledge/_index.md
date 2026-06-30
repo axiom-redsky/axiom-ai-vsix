@@ -53,7 +53,7 @@ project: react-app-scaffold
 - keywords: [table, 테이블, 데이터테이블, 표, grid, 데이터표, 데이터그리드, 행, 열, row, column, tablecell, tablerow, tableheader]
   files: [components/Table.md]
 
-- keywords: [smarttable, smart-table, 스마트테이블, 스마트 테이블, 스마트그리드, 스마트 그리드, 데이터테이블, 데이터 테이블, 데이터그리드, 데이터 그리드, 선언형테이블, 선언형 테이블, 선언형그리드, 고수준테이블, 고수준 테이블, 고수준그리드, definecolumns, 컬럼dsl, 컬럼 dsl, 컬럼정의, 설정맵, 설정 맵, smartcolumns, ismartcolumn, ismarttableprops, ismarttablehandle, 배지매핑, badge매핑, 상태배지, 병합헤더, 다단계헤더, 그룹헤더, 세로병합, mergecells, 합계행, summary, aggregate, 집계, 행선택, 다중선택, bulkactions, 일괄액션, renderrowactions, 행액션, 서버모드, 클라이언트모드, parammap, 응답어댑터, exportable, 내보내기, 엑셀다운로드, xlsx, 그리드만들기, 표만들기, 회원목록표, 데이터그리드만들기]
+- keywords: [smarttable, smart-table, smart table, 스마트테이블, 스마트 테이블, 스마트그리드, 스마트 그리드, 데이터테이블, 데이터 테이블, 데이터그리드, 데이터 그리드, 선언형테이블, 선언형 테이블, 선언형그리드, 고수준테이블, 고수준 테이블, 고수준그리드, definecolumns, 컬럼dsl, 컬럼 dsl, 컬럼정의, 설정맵, 설정 맵, smartcolumns, ismartcolumn, ismarttableprops, ismarttablehandle, 배지매핑, badge매핑, 상태배지, 병합헤더, 다단계헤더, 그룹헤더, 세로병합, mergecells, 합계행, summary, aggregate, 집계, 행선택, 다중선택, bulkactions, 일괄액션, renderrowactions, 행액션, 서버모드, 클라이언트모드, parammap, 응답어댑터, exportable, 내보내기, 엑셀다운로드, xlsx, 그리드만들기, 표만들기, 회원목록표, 데이터그리드만들기]
   files: [components/SmartTable.md]
 
 - keywords: [dialog, modal, 모달, popup, 팝업, 다이얼로그, sheet, 사이드패널]

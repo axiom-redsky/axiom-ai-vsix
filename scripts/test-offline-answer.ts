@@ -165,6 +165,29 @@ await (async () => {
   check('②‴ 광범위 질문 → 전체 6개 섹션 유지(좁히지 않음)', broadHasAll && !/다른 섹션:/.test(broadBlock),
     broadHasAll ? 'all' : 'narrowed');
 
+  // ⑨ SmartTable 의도 → SmartTable.md가 형제 Table.md 위로(SMARTTABLE_INTENT_BONUS).
+  //    "smart table"은 'table' 부분문자열로 Table.md도 동시 매칭돼 동점이 되고, Table이 의미점수까지
+  //    더 높아도(노이즈) SmartTable 의도 보너스로 SmartTable이 1등. Table은 2순위로 함께 노출.
+  const smartTableDeps = {
+    keywordSources: () => ['components/Table.md', 'components/SmartTable.md'], // 둘 다 키워드 매칭(동점), Table이 합집합서 먼저
+    semanticScores: async () => [
+      { source: 'components/Table.md', score: 0.6 },        // Table이 의미점수 더 높아도(노이즈)
+      { source: 'components/SmartTable.md', score: 0.2 },
+    ],
+    fileContextSources: () => [] as string[],
+    loadDoc,
+  };
+  const smartTable = new OfflineKnowledgeRetriever(smartTableDeps);
+  const stDocs = await smartTable.retrieve('smart table 사용법 알려줘', qnaIntent);
+  check('⑨ SmartTable 의도 → SmartTable.md가 1등(Table 위로)',
+    stDocs[0].includes('[components/SmartTable.md]'), stDocs.map((b) => b.split('\n')[0]).join(' | '));
+  check('⑨ Table.md는 2순위로 함께 노출',
+    stDocs.some((b) => b.includes('[components/Table.md]')), stDocs.map((b) => b.split('\n')[0]).join(' | '));
+  // ⑨' SmartTable 신호 없는 순수 "table" 질문엔 보너스 미발동(Table 선두 유지 — 과교정 방지).
+  const plainTableDocs = await smartTable.retrieve('table 사용법 알려줘', qnaIntent);
+  check("⑨' 순수 table 질문 → 보너스 미발동(Table 선두)",
+    plainTableDocs[0].includes('[components/Table.md]'), plainTableDocs.map((b) => b.split('\n')[0]).join(' | '));
+
   // 후보 0개 + 폴백 미주입 → 빈 배열(섹션 생략, 종전 동작)
   const empty = new OfflineKnowledgeRetriever({
     keywordSources: () => [], semanticScores: async () => [], fileContextSources: () => [], loadDoc,

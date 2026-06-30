@@ -2,7 +2,7 @@
 title: SmartTable 컴포넌트 (선언형 고수준 데이터 그리드)
 category: component
 kind: component
-tags: [smarttable, smart-table, 스마트테이블, 스마트 테이블, 스마트그리드, 데이터그리드, datagrid, data-grid,
+tags: [smarttable, smart-table, smart table, 스마트테이블, 스마트 테이블, 스마트그리드, 스마트 그리드, 데이터테이블, 데이터 테이블, 데이터그리드, 데이터 그리드, datagrid, data-grid,
        고수준테이블, 선언형테이블, 선언형 그리드, 그리드, grid, definecolumns, 컬럼dsl, 컬럼 dsl, 컬럼정의, 설정맵,
        smartcolumns, ismartcolumn, ismarttableprops, ismarttablehandle, ismartcellcontext,
        format, 포맷, badge, 배지, 상태배지, cell, 커스텀셀, accessor, aggregate, 집계,

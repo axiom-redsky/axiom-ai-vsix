@@ -60,6 +60,25 @@ const SHOWCODE_BONUS = 0.25;
 const UTIL_INTENT_TOKENS = ['유틸리티', '유틸', 'util', '헬퍼', 'helper', '공통함수', '공통유틸', '$util'];
 
 /**
+ * 쿼리가 **SmartTable**(선언형 고수준 그리드)을 명시적으로 지목하는 신호 토큰(오프라인 전용 판정).
+ * 이 신호가 있으면 SmartTable.md를 **형제 Table.md 위로** 끌어올린다(아래 SMARTTABLE_INTENT_BONUS).
+ */
+const SMARTTABLE_INTENT_TOKENS = [
+  'smarttable', 'smart-table', 'smart table', '스마트테이블', '스마트 테이블',
+  '스마트그리드', '스마트 그리드', '데이터테이블', '데이터 테이블', 'definecolumns',
+];
+
+/**
+ * SmartTable 의도 명시 시 SmartTable.md를 **형제 Table.md 동점 위로** 끌어올리는 보너스.
+ *
+ * 배경: "smart table 사용법"은 SmartTable.md(키워드 'smarttable')와 Table.md(키워드 'table'이 'smarttable'의
+ * 부분문자열)가 **동시 매칭**돼 KEYWORD_BOOST+SCAFFOLD_BONUS=1.4로 동점이 된다. _index 등장 순서로 Table이
+ * 우연히 1등이 되던 것을(실측: 캡처에서 SmartTable이 아예 안 뜸), 사용자가 SmartTable을 명시했으면 그 문서를
+ * 선두로 둔다. UTIL_INTENT_BONUS와 동일 패턴·동일 값. Table.md는 2순위로 남아 함께 노출된다.
+ */
+const SMARTTABLE_INTENT_BONUS = 0.6;
+
+/**
  * scaffold 전역 `$util` 문서(utils/util.md)를 **라이브러리 문서(dayjs·date-fns 등) 위로** 끌어올리는 보너스.
  *
  * 배경(실측): "오늘날짜 유틸리티"는 dayjs.md(키워드 "날짜")와 util.md(키워드 "유틸리티")가 **동시 매칭**돼
@@ -117,6 +136,18 @@ export function hasShowCodeIntent(query: string): boolean {
 export function hasUtilIntent(query: string): boolean {
   const q = query.toLowerCase();
   return UTIL_INTENT_TOKENS.some((t) => q.includes(t));
+}
+
+/** 쿼리에 명시적 SmartTable 의도가 있는지(SmartTable.md를 형제 Table.md 위로 올릴지 판정). */
+export function hasSmartTableIntent(query: string): boolean {
+  const q = query.toLowerCase();
+  return SMARTTABLE_INTENT_TOKENS.some((t) => q.includes(t));
+}
+
+/** SmartTable 가이드 문서(components/SmartTable.md)인지 — 경로 구분자 정규화 후 판별. */
+function isSmartTableDoc(source: string): boolean {
+  const s = source.replace(/\\/g, '/').toLowerCase();
+  return s === 'components/smarttable.md' || s.endsWith('/components/smarttable.md');
 }
 
 /** scaffold 전역 $util 가이드 문서(utils/util.md)인지 — 경로 구분자 정규화 후 판별. */
@@ -207,6 +238,7 @@ export class OfflineKnowledgeRetriever {
   ): KnowledgeDoc[] {
     const showCode = hasShowCodeIntent(query);
     const utilIntent = hasUtilIntent(query);
+    const smartTableIntent = hasSmartTableIntent(query);
     const scoreOf = (d: KnowledgeDoc): number => {
       // 의미점수는 노이즈라 down-weight(키워드 라우팅을 명확히 우위로). 키워드 동점자 타이브레이커.
       let s = (sig.semScore.get(d.source) ?? 0) * SEMANTIC_WEIGHT;
@@ -216,6 +248,8 @@ export class OfflineKnowledgeRetriever {
       if (showCode && (d.kind === 'example' || d.kind === 'source')) s += SHOWCODE_BONUS;
       // 유틸 의도 명시 시 scaffold $util을 라이브러리(dayjs 등) 동점 위로 끌어올린다(컨벤션 우선).
       if (utilIntent && isScaffoldUtilDoc(d.source)) s += UTIL_INTENT_BONUS;
+      // SmartTable 의도 명시 시 SmartTable.md를 형제 Table.md 동점 위로 끌어올린다.
+      if (smartTableIntent && isSmartTableDoc(d.source)) s += SMARTTABLE_INTENT_BONUS;
       // soft precedence: scaffold가 **진짜 토픽 매칭(키워드/파일)** 일 때만 보너스 → 진짜 충돌에선
       // scaffold가 앞서되, 의미점수만 걸린 노이즈 scaffold는 강한 React 정밀 매칭을 매장하지 못한다.
       if (routed && !isGenericReference(d.source)) s += SCAFFOLD_BONUS;
