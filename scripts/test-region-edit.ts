@@ -856,6 +856,35 @@ console.log('\n기존 const 결정론 교체:');
     check('엔드포인트 다른 재선언 → 교체 안 함(원본 엔드포인트 보존)', t2.includes('useApi<TEmployeeListResponse>(EMPLOYEES_ENDPOINT') && !t2.includes("'/api/staff'"));
   }
 
+  // (h2) 상수 별칭 엔드포인트 + 갈라진 바인딩 → 중복 추가 금지(실측 버그/스크린샷): 기존이 상수
+  //      `useApi(EMPLOYEES_ENDPOINT)`로 페치 중인데, 타입/매핑 수정 요청에 약한 모델이 같은 API를
+  //      리터럴 `'/api/employees'` + 다른 구조분해(`{data, isPending, error, refetch}`)로 통째 재선언.
+  //      엔드포인트 텍스트가 달라(상수↔리터럴) 종전 안전망을 빠져나가 **중복 줄로 삽입**되던 것을,
+  //      엔드포인트 정규화(별칭 해소)로 "같은 API 중복 페치"로 인식해 삽입 거부.
+  {
+    const C = [
+      "import { useApi } from '@axiom/hooks';",
+      "const EMPLOYEES_ENDPOINT = '/api/employees';",
+      '',
+      'export default function EmployeeListPage(): React.ReactNode {',
+      '  const { data: employeeResponse } = useApi<TEmployeeResponse>(EMPLOYEES_ENDPOINT);',
+      '  const employeeItems = employeeResponse?.data ?? [];',
+      '  return (<div>{employeeItems.length}</div>);',
+      '}',
+    ].join('\n');
+    // 모델 출력: 같은 엔드포인트(리터럴)지만 바인딩이 갈라짐 → employeeResponse 가 사라지면 다운스트림 깨짐.
+    const dupReDecl = "const { data, isPending, error, refetch } = useApi<TEmployeeResponse>('/api/employees');";
+    const { text, changes } = applyStructuralEdit(C, { hookCode: dupReDecl }, { stripDeadInserts: true });
+    check('별칭 엔드포인트 중복 페치 → useApi 호출 1곳(중복 추가 없음)', (text.match(/useApi<TEmployeeResponse>/g) ?? []).length === 1, changes.join(' | '));
+    check('별칭 엔드포인트 중복 페치 → 기존 선언/다운스트림 보존', text.includes('const { data: employeeResponse } = useApi<TEmployeeResponse>(EMPLOYEES_ENDPOINT)') && text.includes('employeeResponse?.data'), changes.join(' | '));
+    check('별칭 엔드포인트 중복 페치 → 중복 드롭 변경 기록', changes.some((c) => c.includes('중복 useApi 페치') && c.includes('차단')), changes.join(' | '));
+
+    // 같은 엔드포인트 + 바인딩 상위집합(구조분해 확장: isPending/error/refetch 추가) → in-place 교체로 살림.
+    const expand = "const { data: employeeResponse, isPending, error, refetch } = useApi<TEmployeeResponse>('/api/employees');";
+    const { text: tExp } = applyStructuralEdit(C, { hookCode: expand }, { stripDeadInserts: true });
+    check('별칭 엔드포인트 + 바인딩 상위집합 → in-place 교체(refetch 추가)', (tExp.match(/useApi<TEmployeeResponse>/g) ?? []).length === 1 && tExp.includes('refetch') && tExp.includes('employeeResponse'), tExp);
+  }
+
   // (i) 훅 코드 안에 섞여 온 import → 본문에 안 박히고 파일 상단으로 hoist (실측 버그: Skeleton import가
   //     함수 컴포넌트 중간 라인에 삽입돼 컴파일 에러). 멀티라인 import도 합쳐 처리.
   {

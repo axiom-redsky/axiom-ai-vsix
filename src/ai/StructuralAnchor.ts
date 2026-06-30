@@ -844,6 +844,30 @@ function useApiEndpoint(body: string): string | null {
   return arg.trim() || null;
 }
 
+/**
+ * 엔드포인트 표현을 비교 가능한 **정규형 경로 문자열**로 환산한다.
+ *  - 식별자(예: `EMPLOYEES_ENDPOINT`)면 같은 파일의 top-level `const EMPLOYEES_ENDPOINT = '/api/employees'`를
+ *    찾아 리터럴로 해소한다. 약한 모델이 상수↔리터럴을 환각해(상수→`'/api/employees'`) 같은 API를 다른 표기로
+ *    재선언할 때 "같은 엔드포인트"임을 인식시켜, 중복 페치 삽입/헛 교체를 막는다.
+ *  - 리터럴이면 양끝 따옴표(' " `)와 공백을 벗겨 경로만 남긴다.
+ *  - 식별자 해소 실패 시 식별자 자체를 반환(여전히 같은 식별자끼리는 일치).
+ */
+function normalizeEndpointExpr(ep: string | null, sourceLines: string[]): string | null {
+  if (ep === null) return null;
+  const s = ep.trim();
+  if (/^[A-Za-z_$][\w$]*$/.test(s)) {
+    // 식별자 → 같은 파일 top-level const 문자열 리터럴 해소(s는 식별자로 검증되어 정규식 주입 안전).
+    const re = new RegExp(`^\\s*(?:export\\s+)?const\\s+${s}\\s*=\\s*(['"\`])([^'"\`]*)\\1`);
+    for (const line of sourceLines) {
+      const m = line.match(re);
+      if (m) return m[2].trim();
+    }
+    return s;
+  }
+  const lit = s.match(/^(['"`])([\s\S]*)\1$/);
+  return lit ? lit[2].trim() : s;
+}
+
 /** 모델 조각 본문을 base 들여쓰기로 재정렬(모델의 상대 들여쓰기 보존 + base 부여). */
 function reindentBody(body: string, indent: string): string[] {
   const lines = body.split('\n');
@@ -863,23 +887,31 @@ function reindentBody(body: string, indent: string): string[] {
  * dropDuplicateDeclarations에 먹혀 **조용히 사라지고**(실측: response/isPending/… 드롭 → 부서 params 미적용),
  * 사용자는 "수정이 안 됐다"고 느낀다.
  *
- * 안전 조건(엔드포인트 환각 차단 — [[project_fetch_hook_replace_only]]의 우려를 유지):
- *  - 바인딩 집합이 기존 useApi 선언과 **정확히 일치** + RHS가 useApi 페치 + 내용이 실제로 다름.
- *  - **엔드포인트(첫 인자)가 기존과 동일**할 때만 교체한다. 엔드포인트가 다르면(상수→리터럴 등) 환각 위험이라
- *    교체하지 않고 종전 경로(드롭)로 둔다. 즉 "같은 API의 params만 바뀐" 안전한 수정만 in-place 적용.
+ * 비교는 **엔드포인트 동일성**으로 한다(바인딩 모양 정확 일치가 아니라). 엔드포인트는 normalizeEndpointExpr로
+ * 정규화해 상수↔리터럴(`EMPLOYEES_ENDPOINT` vs `'/api/employees'`)을 같은 API로 인식한다. 약한 모델이 같은
+ * API를 다른 표기/다른 구조분해로 재선언해도 모양 갭으로 안전망을 빠져나가 **중복 추가**되던 두더지를 막는다.
+ *
+ * 분기(엔드포인트 환각 차단 — [[project_fetch_hook_replace_only]]의 우려는 유지):
+ *  - **같은 엔드포인트** + 새 바인딩이 기존 바인딩의 **상위집합**(기존 전부 보존) + 내용 다름
+ *      → params/옵션 추가나 구조분해 확장(isPending/error/refetch 추가 등)으로 보고 **in-place 교체**.
+ *        기존 바인딩이 전부 남으므로 다운스트림 참조가 깨지지 않는다.
+ *  - **같은 엔드포인트** + 바인딩이 갈라짐(리네임·축소, 예: `{data: employeeResponse}` → `{data, …}`)
+ *      → 다운스트림 참조가 깨질 위험 + 사실상 중복 페치 재선언 → **삽입 거부(드롭)**, 기존 선언 유지.
+ *  - **다른 엔드포인트** → 새 fetch일 수 있으니 손대지 않고 종전 경로(중복 드롭 게이트)로 흘려보낸다.
  */
 function extractFetchHookParamReplacements(
   hookRest: string,
   sourceLines: string[],
   range: { startLine: number; endLine: number },
-): { reduced: string; ops: ConstReplaceOp[]; replaced: string[] } {
+): { reduced: string; ops: ConstReplaceOp[]; replaced: string[]; redundant: string[] } {
   const ops: ConstReplaceOp[] = [];
   const replaced: string[] = [];
+  const redundant: string[] = [];
 
-  // 컴포넌트 본문의 useApi 페치 선언을 (멀티라인 포함) 완결 문장 단위로 인덱싱: 정렬 바인딩키 → 위치/본문/엔드포인트.
+  // 컴포넌트 본문의 useApi 페치 선언을 (멀티라인 포함) 완결 문장 단위로 인덱싱: 정규화된 엔드포인트 → 위치/본문/바인딩.
   // 깊이 추적은 **선언 시작 라인(const/let/var)부터** 시작한다 — 함수 래퍼의 여는 `{`를 세면 본문 전체가
   // depth>0로 묶여 어떤 문장도 닫히지 않는다(실측 버그).
-  const existing = new Map<string, { start0: number; end0: number; body: string; endpoint: string | null }>();
+  const byEndpoint = new Map<string, { start0: number; end0: number; body: string; bindings: string[] }>();
   const lastIdx = Math.min(range.endLine, sourceLines.length) - 1;
   for (let i = range.startLine - 1; i <= lastIdx; i++) {
     if (!/^\s*(?:const|let|var)\s/.test(sourceLines[i])) continue;
@@ -895,31 +927,39 @@ function extractFetchHookParamReplacements(
     const b = declBindings(body);
     const rhs = constRhs(body);
     if (b.length > 0 && rhs !== null && DATA_FETCH_HOOK_RHS.test(rhs)) {
-      existing.set([...b].sort().join(','), { start0: i, end0: end, body, endpoint: useApiEndpoint(body) });
+      const epNorm = normalizeEndpointExpr(useApiEndpoint(body), sourceLines);
+      if (epNorm && !byEndpoint.has(epNorm)) {
+        byEndpoint.set(epNorm, { start0: i, end0: end, body, bindings: b });
+      }
     }
     i = end; // 소비한 라인 건너뛰기
   }
-  if (existing.size === 0) return { reduced: hookRest, ops, replaced };
+  if (byEndpoint.size === 0) return { reduced: hookRest, ops, replaced, redundant };
 
   const kept: string[] = [];
   for (const stmt of splitStatements(hookRest)) {
     const b = declBindings(stmt);
     const rhs = constRhs(stmt);
     if (b.length > 0 && rhs !== null && DATA_FETCH_HOOK_RHS.test(rhs)) {
-      const ex = existing.get([...b].sort().join(','));
+      const epNorm = normalizeEndpointExpr(useApiEndpoint(stmt), sourceLines);
+      const ex = epNorm ? byEndpoint.get(epNorm) : undefined;
       if (ex && normDecl(ex.body) !== normDecl(stmt)) {
-        const newEp = useApiEndpoint(stmt);
-        if (ex.endpoint && newEp && ex.endpoint === newEp) {
+        const isSuperset = ex.bindings.every((name) => b.includes(name));
+        if (isSuperset) {
+          // 같은 엔드포인트 + 기존 바인딩 전부 보존 → params/구조분해 확장 → in-place 교체(안전).
           const indent = sourceLines[ex.start0].match(/^[ \t]*/)?.[0] ?? '';
           ops.push({ atLine: ex.start0 + 1, removeCount: ex.end0 - ex.start0 + 1, content: reindentBody(stmt, indent) });
           replaced.push(b.join(', '));
-          continue; // 소비 — 드롭 경로로 안 보냄
+        } else {
+          // 같은 엔드포인트지만 바인딩이 갈라짐 → 중복 페치 재선언 → 삽입 거부(기존 유지, 다운스트림 보호).
+          redundant.push(b.join(', '));
         }
+        continue; // 소비 — 드롭/삽입 경로로 안 보냄
       }
     }
     kept.push(stmt);
   }
-  return { reduced: kept.join('\n'), ops, replaced };
+  return { reduced: kept.join('\n'), ops, replaced, redundant };
 }
 
 /**
@@ -997,6 +1037,9 @@ export function applyStructuralEdit(
     for (const op of fetchRepl.ops) ops.push(op);
     for (const name of fetchRepl.replaced) {
       changes.push(`기존 useApi 페치 '${name}' params/옵션 in-place 교체 (같은 엔드포인트) — 영역 밖 선언 수정`);
+    }
+    for (const name of fetchRepl.redundant) {
+      changes.push(`중복 useApi 페치 '${name}' 재선언 드롭(이미 같은 엔드포인트 페치 중) — 중복 추가 차단`);
     }
 
     // 컴포넌트 본문 코드에 삽입하기 전, 대상 파일(모듈+컴포넌트 본문)에 **이미 선언된 이름을 다시
