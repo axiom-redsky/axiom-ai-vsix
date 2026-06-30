@@ -1536,6 +1536,19 @@ export interface ReplaceResult {
   changes: string[];
   /** 앵커를 파일에서 못 찾은 블록들 */
   unresolved: string[];
+  /** guard(내용손실 등)가 적용을 거부한 블록들 — 앵커는 찾았으나 위험해 적용 안 함. */
+  rejected: string[];
+}
+
+/**
+ * applyReplaceBlocks 옵션.
+ * - guard: 한 블록의 (교체될 원본 텍스트, 새 텍스트)를 받아 **거부 사유 문자열**을 돌려주면 그 블록을
+ *   적용하지 않고 rejected에 담는다(null이면 정상 적용). 호출부가 query·deps를 아는 정책(내용손실·
+ *   컴포넌트 교체 예외 등)을 주입하는 통로. anchor 해소 로직(span 산정)은 여기 그대로 두고, "이 교체가
+ *   파괴적인가"의 판단만 위임한다.
+ */
+export interface ApplyReplaceOptions {
+  guard?: (oldText: string, newText: string) => string | null;
 }
 
 /** 라인의 순델리미터 깊이((){}[] open−close, 문자열·주석 무시). */
@@ -1598,9 +1611,10 @@ function statementStart(lines: string[], aIdx: number): number {
  * 균형이 0 복귀하며 `;`로 끝나는 줄까지)을 통째로 replacement로 바꾼다. 멀티라인 `const {…} =
  * useApi(…);` 도 한 문장으로 잡는다. 못 찾으면 unresolved에 담아 호출부가 폴백 판단하게 한다.
  */
-export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[]): ReplaceResult {
+export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[], opts?: ApplyReplaceOptions): ReplaceResult {
   const changes: string[] = [];
   const unresolved: string[] = [];
+  const rejected: string[] = [];
   const hasCRLF = source.includes('\r\n');
   let text = hasCRLF ? source.replace(/\r\n/g, '\n') : source;
 
@@ -1643,11 +1657,22 @@ export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[]): Repl
     const minIndent = nonblank.length ? Math.min(...nonblank.map((l) => l.match(/^[ \t]*/)![0].length)) : 0;
     const reindented = rlines.map((l) => (l.trim() ? indent + l.slice(minIndent) : ''));
 
+    // guard — span은 위에서 산정했고, "이 교체가 파괴적인가"만 호출부 정책에 묻는다. 거부면 적용 안 함.
+    if (opts?.guard) {
+      const oldText = lines.slice(start, end + 1).join('\n');
+      const newText = reindented.join('\n');
+      const reason = opts.guard(oldText, newText);
+      if (reason) {
+        rejected.push(`${anchor.slice(0, 48)}… [${reason}]`);
+        continue;
+      }
+    }
+
     const next = [...lines.slice(0, start), ...reindented, ...lines.slice(end + 1)];
     text = next.join('\n');
     changes.push(`replace 적용(앵커 "${anchor.slice(0, 48)}…") 원본 ${start + 1}~${end + 1}줄`);
   }
 
   if (hasCRLF) text = text.replace(/\n/g, '\r\n');
-  return { text, changes, unresolved };
+  return { text, changes, unresolved, rejected };
 }

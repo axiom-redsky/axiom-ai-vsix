@@ -92,6 +92,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       project: {
         axiomFolder:         ExtensionConfig.getSddAxiomFolder(),
         regionEdit:          ExtensionConfig.isRegionEditEnabled(),
+        regionVerify:        ExtensionConfig.isRegionVerifyEnabled(),
+        anchorFirstEdit:     ExtensionConfig.isAnchorFirstEditEnabled(),
         intentClassifier:    ExtensionConfig.isIntentClassifierEnabled(),
         pageCreationLlmMode: ExtensionConfig.isPageCreationLlmMode(),
         logSystemPrompt:     ExtensionConfig.isLogSystemPromptEnabled(),
@@ -133,6 +135,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       // 나머지 프로젝트 키 → <axiomFolder>/axiom.config.json (자동 생성). 빈 객체는 기록하지 않는다.
       const fileValues: Record<string, unknown> = {};
       if (proj.regionEdit          !== undefined) fileValues['experimental.regionEdit']          = proj.regionEdit;
+      if (proj.regionVerify        !== undefined) fileValues['experimental.regionVerify']        = proj.regionVerify;
+      if (proj.anchorFirstEdit     !== undefined) fileValues['experimental.anchorFirstEdit']     = proj.anchorFirstEdit;
       if (proj.intentClassifier    !== undefined) fileValues['experimental.intentClassifier']    = proj.intentClassifier;
       if (proj.pageCreationLlmMode !== undefined) fileValues['experimental.pageCreationLlmMode'] = proj.pageCreationLlmMode;
       if (proj.logSystemPrompt     !== undefined) fileValues['debug.logSystemPrompt']            = proj.logSystemPrompt;

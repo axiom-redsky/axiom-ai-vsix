@@ -37,6 +37,10 @@ export interface AxiomSettings {
     axiomFolder: string;
     /** 실험: 영역(region/hybrid) 편집. */
     regionEdit: boolean;
+    /** 실험: 영역 편집 검증-교정 루프(Stage 0). */
+    regionVerify: boolean;
+    /** 실험: 앵커-우선 편집(Stage 1). */
+    anchorFirstEdit: boolean;
     /** 실험: 의도 분류기. */
     intentClassifier: boolean;
     /** 실험: 페이지 본문 LLM 생성 모드. */

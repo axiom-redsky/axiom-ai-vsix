@@ -7,6 +7,8 @@ type Tab = 'home' | 'settings';
 const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
   axiomFolder: '',
   regionEdit: true,
+  regionVerify: true,
+  anchorFirstEdit: false,
   intentClassifier: true,
   pageCreationLlmMode: false,
   logSystemPrompt: false,
@@ -553,6 +555,24 @@ function SettingsTab({
             onChange={(e) => onProjectChange('regionEdit', e.target.checked)}
           />
           <span>영역(region) 편집 — experimental.regionEdit</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.regionVerify}
+            onChange={(e) => onProjectChange('regionVerify', e.target.checked)}
+          />
+          <span>영역 편집 검증 루프 — experimental.regionVerify</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.anchorFirstEdit}
+            onChange={(e) => onProjectChange('anchorFirstEdit', e.target.checked)}
+          />
+          <span>앵커-우선 편집 — experimental.anchorFirstEdit</span>
         </label>
 
         <label className="settings__toggle">

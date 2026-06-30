@@ -1121,6 +1121,53 @@ console.log('\napplyReplaceBlocks — 앵커 모호성 게이트:');
   check('멀티라인 단일 문장 앵커 → 모호 아님(적용)', ml.unresolved.length === 0 && ml.text.includes('page, q'), `unresolved=${ml.unresolved.join('|')}`);
 }
 
+// ─── applyReplaceBlocks — guard(내용손실) 게이트: 파괴적 replace 거부(필터바 삭제 방지) ──────
+console.log('\napplyReplaceBlocks — guard 내용손실 게이트:');
+{
+  // 앵커가 작은 수정을 넘어 버튼+필터바 전체(여는태그 다수)를 한 문장으로 잡고, 새 내용이 버튼만 남겨
+  // 필터바 Select들을 통째 누락하는 실측 시나리오. guard가 JSX 여는태그 급감을 보고 거부해야 한다.
+  const BIG = [
+    '  return (',
+    '    <div className="filters">',
+    '      <Button>직원 등록</Button>',
+    '      <Select><SelectItem>전체</SelectItem></Select>',
+    '      <Select><SelectItem>개발팀</SelectItem></Select>',
+    '      <Input placeholder="검색" />',
+    '    </div>',
+    '  );',
+  ].join('\n');
+  const tagCount = (s: string): number => (s.match(/<[A-Za-z][A-Za-z0-9]*/g) ?? []).length;
+  const guard = (oldText: string, newText: string): string | null => {
+    const o = tagCount(oldText), n = tagCount(newText);
+    return o >= 6 && n < o * 0.5 && o - n >= 4 ? `내용손실(${o}→${n})` : null;
+  };
+  // 파괴적 교체: div 전체를 버튼만 남기고 재작성 → 거부.
+  const destructive = applyReplaceBlocks(
+    BIG,
+    [{ anchor: '직원 등록', replacement: '    <div className="filters">\n      <Button>등록</Button>\n    </div>' }],
+    { guard },
+  );
+  check('guard: 파괴적 replace 거부(원본 불변)', destructive.text === BIG, 'text changed');
+  check('guard: rejected에 사유 표기', destructive.rejected.length === 1 && /내용손실/.test(destructive.rejected[0]), `rejected=${destructive.rejected.join('|')}`);
+
+  // 비-JSX 문장 교체(useApi params 보강): span이 `;`로 올바로 닫혀 태그 급감 없음 → 통과(정상 적용).
+  //  (가드는 파괴적 JSX 누락만 막고, 정당한 영역-밖 문장 교체는 종전대로 적용한다 — replace 본래 용도.)
+  const STMT = [
+    "  const { data } = useApi<TResp>('/api/employees', { params: { page } });",
+    '  const rows = data?.list ?? [];',
+  ].join('\n');
+  const surgical = applyReplaceBlocks(
+    STMT,
+    [{ anchor: "useApi<TResp>('/api/employees'", replacement: "  const { data } = useApi<TResp>('/api/employees', { params: { page, dept } });" }],
+    { guard },
+  );
+  check('guard: 비-JSX 문장 교체는 통과', surgical.rejected.length === 0 && surgical.text.includes('page, dept'), `rejected=${surgical.rejected.join('|')}`);
+
+  // guard 미주입(기존 호출부) → 거부 없음(회귀 0).
+  const noGuard = applyReplaceBlocks(BIG, [{ anchor: '직원 등록', replacement: '    <div className="filters">\n      <Button>등록</Button>\n    </div>' }]);
+  check('guard 미주입 → rejected 빈 배열(회귀 0)', noGuard.rejected.length === 0, `rejected=${noGuard.rejected.join('|')}`);
+}
+
 // ─── 컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트 ────────────────────────
 console.log('\n컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트:');
 {

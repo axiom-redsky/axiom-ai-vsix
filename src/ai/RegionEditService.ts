@@ -590,7 +590,34 @@ export async function runHybridRegionEdit(
   // 5.5) <replace> — 영역 밖 기존 문장(useApi params 등) 결정론 교체(C). 앵커 미해소면 full 폴백
   //      (모델이 존재하지 않는 문장을 가리킨 것 → 적용하면 의도 누락).
   if (replaceBlocks.length > 0) {
-    const rep = applyReplaceBlocks(composed, replaceBlocks);
+    // 5.5-가드) replace 내용손실 게이트 — region 재작성용 4.7 게이트와 같은 원칙을 <replace> 적용 경로에도
+    //   건다. anchorFirst가 켜지면 모델이 작은 수정을 surgical하게 안 내고 영역 전체를 <replace>로 감싸
+    //   일부 JSX를 통째 누락하는 사고가 가능한데(실측: "버튼 텍스트 바꿔줘"가 앵커 1개로 97~177줄을 잡아
+    //   필터바 Select들을 삭제, tsc는 삭제를 타입유효로 봐 통과), 종전 replace 경로엔 이 가드가 없어
+    //   그대로 적용됐다. 삭제 의도가 아닌데 한 블록이 JSX 여는태그를 절반↓(≥4개) 날리면 거부 → full 폴백.
+    //   컴포넌트 교체(<table>→<SmartTable> 등)는 면제(태그 접힘이 정상).
+    const tagCount = (s: string): number => (s.match(/<[A-Za-z][A-Za-z0-9]*/g) ?? []).length;
+    const replaceGuard = removalIntent
+      ? undefined
+      : (oldText: string, newText: string): string | null => {
+          if (componentReplacementTargets({ deps: loc.depsHeader, region: oldText, query }).length > 0) return null;
+          const o = tagCount(oldText);
+          const n = tagCount(newText);
+          if (o >= 6 && n < o * 0.5 && o - n >= 4) {
+            return `replace 내용손실(JSX 여는태그 ${o}→${n}) — 파괴적 생략 의심`;
+          }
+          return null;
+        };
+    const rep = applyReplaceBlocks(composed, replaceBlocks, replaceGuard ? { guard: replaceGuard } : undefined);
+    if (rep.rejected.length > 0) {
+      return {
+        status: 'fallback',
+        reason: 'replace-content-loss',
+        diagnostics:
+          `[regionEdit] <replace> 적용 거부(${rep.rejected.join(' / ')}) → full 폴백. ` +
+          `앵커가 작은 수정을 넘어 큰 영역을 잡아 내용을 누락합니다. 바꿀 코드만 더 좁게 인용하세요.`,
+      };
+    }
     if (rep.unresolved.length > 0) {
       return {
         status: 'fallback',
