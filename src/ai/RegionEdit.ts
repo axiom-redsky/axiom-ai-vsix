@@ -847,11 +847,25 @@ export function locateEditRegion(
  * 원본 영역의 첫 JSX 태그 ≠ 모델 출력의 첫 태그면(예: <SelectTrigger> → <Select>) splice 시
  * 중첩/고아 요소로 프랑켄 머지가 난다 → false 반환(호출부가 splice 거부, full 폴백).
  *
+ * **예외(의도된 컴포넌트 교체):** `allowedRootTags`에 출력 루트 태그가 들어 있으면 통과시킨다.
+ * 예: "직원 테이블을 SmartTable로 적용해줘" → 레시피 카드가 `<table>`을 `<SmartTable>`로 **교체**하라고
+ * 지시하므로 루트 변경이 정상이다. 이 화이트리스트가 없으면 모델이 옳게 만든 교체를 가드가 버려 full 폴백되고,
+ * 폴백 경로는 레시피 계약을 잃어 사소한 수정만 남는다(실측 버그). 화이트리스트에 없는 예상 밖 태그는 여전히 거부.
+ *
+ * @param allowedRootTags 루트 변경을 허용할 타깃 컴포넌트 태그들(예: ['SmartTable']). 비면 종전 동작.
  * @returns true = splice 안전, false = 거부(영역 밖 재작성)
  */
-export function checkRegionRootTag(originalRegion: string, modelOutput: string): { ok: boolean; origTag: string | null; outTag: string | null } {
+export function checkRegionRootTag(
+  originalRegion: string,
+  modelOutput: string,
+  allowedRootTags: string[] = [],
+): { ok: boolean; origTag: string | null; outTag: string | null } {
   const origTag = firstJsxTag(originalRegion);
   const outTag = modelOutput.trim() ? firstJsxTag(modelOutput) : null;
+  // 의도된 교체: 출력 루트가 허용 타깃이면 루트가 바뀌어도 통과(레시피가 지정한 컴포넌트만).
+  if (outTag && allowedRootTags.some((t) => t.toLowerCase() === outTag.toLowerCase())) {
+    return { ok: true, origTag, outTag };
+  }
   // 둘 다 JSX 태그를 가질 때만 비교한다(한쪽이 순수 로직이면 검사 보류 → ok).
   const ok = !(origTag && outTag && origTag !== outTag);
   return { ok, origTag, outTag };

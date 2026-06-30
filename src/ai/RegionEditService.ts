@@ -14,7 +14,7 @@
  */
 import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './RegionEdit';
 import { impliedControlTags, countTag } from './RegionIntent';
-import { buildContractSection } from './ScaffoldContracts';
+import { buildContractSection, componentReplacementTargets } from './ScaffoldContracts';
 import {
   applyStructuralEdit,
   applyReplaceBlocks,
@@ -254,6 +254,13 @@ export function buildHybridPrompt(
   // scaffold 계약 자동 주입(트리거 기반) — deps/region/query에 관련된 가이드 카드만 끼운다.
   // region 경로는 RAG/coreRules를 안 보내므로(토큰 절약), 이 압축 카드가 useApi·라우터·타입 계약을 가르친다.
   const contractSection = buildContractSection({ deps: depsHeader, region, query });
+  // 영역 루트를 컴포넌트로 교체하는 레시피(예: SmartTable)가 발동했는지 — 발동 시 "최상위 태그 유지"
+  // 지침을 교체 허용으로 바꾼다(가드도 같은 타깃을 화이트리스트). 일반 편집은 종전대로 루트 유지.
+  const swapTargets = componentReplacementTargets({ deps: depsHeader, region, query });
+  const rootTagRule =
+    swapTargets.length > 0
+      ? `이번 요청은 편집 영역을 **<${swapTargets[0]} …/>로 통째 교체**하는 것이 목표이므로 최상위 태그가 바뀌어도 됩니다(영역 전체를 새 컴포넌트로 대체).`
+      : `영역의 최상위 태그는 바꾸지 마세요(예: <Select>로 시작하면 <Select>로 끝나야 함).`;
   const wantsFilter = /필터|filter|검색|search|정렬|sort|refetch|파라미터|파라메터|parameter|매개변수/i.test(query);
   const hasServerParams = /useApi/.test(depsHeader) && /\bparams\s*:/.test(depsHeader);
   const filterSection =
@@ -298,7 +305,7 @@ export function buildHybridPrompt(
     `아래 "의존성 헤더"는 같은 파일의 다른 부분(읽기 전용 참고)입니다. 기존 훅/state/타입/import와 충돌·중복 금지.\n\n` +
     `요청을 두 종류 출력으로 나누어 답하세요(둘 다 필요하면 둘 다 출력):\n` +
     `1) "편집 영역"의 JSX 수정 → <region>…</region> 안에 편집 영역 **전체를 다시** 쓰기. ` +
-    `영역의 최상위 태그는 바꾸지 마세요(예: <Select>로 시작하면 <Select>로 끝나야 함).\n` +
+    `${rootTagRule}\n` +
     `2) 새로 필요한 훅/state/타입 → <hook>…</hook> 안에 줄 단위로(들여쓰기 없이). ` +
     `<region>에서 새로 쓰는 컴포넌트·유틸의 import → <import module="모듈" named="A, B" /> **태그로만** 내보내세요. ` +
     `⛔ \`import … from …\` **문장 자체를 <hook> 안에 쓰지 마세요** — 컴포넌트 함수 본문 중간에 박혀 컴파일이 깨집니다(import는 파일 최상단에만 와야 함). ` +
@@ -434,9 +441,13 @@ export async function runHybridRegionEdit(
     return { status: 'fallback', reason: 'empty-output', diagnostics: '[regionEdit] 모델 산출물 없음 → full 폴백' };
   }
 
-  // 4) 후처리 root-tag 게이트 — 모델이 영역 밖을 재작성했으면 거부
+  // 4) 후처리 root-tag 게이트 — 모델이 영역 밖을 재작성했으면 거부.
+  //    단, 발동한 레시피가 영역을 특정 컴포넌트로 **의도적으로 교체**(예: <table>→<SmartTable>)하는 경우
+  //    그 타깃 태그로의 루트 변경은 허용한다 — 안 그러면 모델이 옳게 만든 교체를 버리고 full 폴백돼
+  //    레시피 계약을 잃는다(실측: "직원 테이블을 SmartTable로 적용"이 useApi 한 줄만 바뀌고 끝남).
   if (newRegion.trim()) {
-    const rt = checkRegionRootTag(loc.region, newRegion);
+    const swapTargets = componentReplacementTargets({ deps: loc.depsHeader, region: loc.region, query });
+    const rt = checkRegionRootTag(loc.region, newRegion, swapTargets);
     if (!rt.ok) {
       return {
         status: 'fallback',

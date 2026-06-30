@@ -7,7 +7,7 @@
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
-import { selectScaffoldContracts, buildContractSection } from '../src/ai/ScaffoldContracts';
+import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 const SRC = [
@@ -965,6 +965,66 @@ console.log('\nimport provenance — 경로 + default/named 형태 교정:');
   const unknown: ImportRequest[] = [{ module: 'x', named: ['Unknown'] }];
   const r3 = reconcileImportsWithReference(unknown, prov);
   check('참조에 없는 심볼은 손대지 않음', r3.corrections.length === 0);
+}
+
+// ─── 컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트 ────────────────────────
+console.log('\n컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트:');
+{
+  // checkRegionRootTag: allowedRootTags 화이트리스트
+  const tableRegion = '<table>\n  <thead><tr><th>이름</th></tr></thead>\n</table>';
+  const smartOut = '<SmartTable data={items} columns={cols} searchable />';
+  const divOut = '<div>아무거나</div>';
+  check('교체 허용: <table>→<SmartTable> (화이트리스트) ok', checkRegionRootTag(tableRegion, smartOut, ['SmartTable']).ok);
+  check('비허용 태그는 여전히 거부: <table>→<div>', !checkRegionRootTag(tableRegion, divOut, ['SmartTable']).ok);
+  check('화이트리스트 없으면 종전대로 거부: <table>→<SmartTable>', !checkRegionRootTag(tableRegion, smartOut).ok);
+  check('같은 루트는 화이트리스트 무관 ok', checkRegionRootTag(tableRegion, '<table><tbody/></table>', ['SmartTable']).ok);
+
+  // componentReplacementTargets: SmartTable 지목 시 ['SmartTable'], 아니면 []
+  check('SmartTable 쿼리 → 교체 타깃 SmartTable', componentReplacementTargets({ deps: '', region: '<table/>', query: '직원 테이블을 SmartTable 컴포넌트로 적용해줘' }).includes('SmartTable'));
+  check('일반 테이블 쿼리 → 교체 타깃 없음', componentReplacementTargets({ deps: '', region: '<table/>', query: '테이블에 목록 api 적용해줘' }).length === 0);
+
+  // 프롬프트: 교체 모드면 "최상위 태그 바꿔도 됨", 아니면 "바꾸지 마세요"
+  const pSwap = buildHybridPrompt("const { data } = useApi<T>('/x');", '<table/>', 1, 5, undefined, undefined, '직원 테이블을 SmartTable로 적용', '');
+  check('교체 모드 프롬프트: 최상위 태그 변경 허용 문구', pSwap.includes('통째 교체') && pSwap.includes('최상위 태그가 바뀌어도'));
+  const pNormal = buildHybridPrompt("const { data } = useApi<T>('/x');", '<Select/>', 1, 5, undefined, undefined, '재직상태 select 수정', '');
+  check('일반 모드 프롬프트: 최상위 태그 유지 문구', pNormal.includes('최상위 태그는 바꾸지 마세요'));
+}
+
+// ─── e2e: <table> 영역을 <SmartTable>로 교체 → 게이트 통과 + 합성(폴백 아님) ──────────
+console.log('\ne2e: 테이블→SmartTable 영역 교체 적용:');
+{
+  const TABLE_SRC = [
+    "import { useApi } from '@axiom/hooks';",
+    "const EMPLOYEES_ENDPOINT = '/api/employees';",
+    '',
+    'export default function EmployeeListPage(): React.ReactNode {',
+    '  const { data: employeeResponse } = useApi<TEmployeeResponse>(EMPLOYEES_ENDPOINT);',
+    '  const employeeItems = employeeResponse?.data ?? [];',
+    '  return (',
+    '    <table className="employee-table">',
+    '      <thead><tr><th>이름</th><th>이메일</th></tr></thead>',
+    '      <tbody>',
+    '        {employeeItems.map((e) => (<tr key={e.id}><td>{e.name}</td><td>{e.email}</td></tr>))}',
+    '      </tbody>',
+    '    </table>',
+    '  );',
+    '}',
+  ].join('\n');
+  // 모델이 레시피대로 <table>을 <SmartTable>로 교체 + 타입+컬럼DSL 훅 출력
+  const model = [
+    '<region>',
+    '    <SmartTable data={employeeItems} columns={employeeColumns} searchable />',
+    '</region>',
+    '<hook>type TEmployee = { id: number; name: string; email: string };',
+    'const employeeColumns = defineColumns<TEmployee>({ name: \'이름\', email: \'이메일\' });</hook>',
+    '<import module="@axiom/components/ui" named="SmartTable, defineColumns" />',
+  ].join('\n');
+  const o = await runHybridRegionEdit(TABLE_SRC, '직원 테이블을 SmartTable 컴포넌트로 적용해줘', async () => model);
+  check('e2e: 루트태그-불일치 폴백 안 됨(핵심 수정)', o.reason !== 'root-tag-mismatch', `status=${o.status}, reason=${o.reason}`);
+  check('e2e: 적용됨(applied)', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+  check('e2e: <SmartTable> 교체 반영', !!o.finalText && o.finalText.includes('<SmartTable'));
+  check('e2e: 원래 <table> 제거', !!o.finalText && !/<table\b/.test(o.finalText ?? ''));
+  check('e2e: 타입+defineColumns 훅 삽입', !!o.finalText && o.finalText.includes('type TEmployee') && o.finalText.includes('defineColumns<TEmployee>'));
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);

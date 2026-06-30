@@ -35,6 +35,12 @@ export interface IScaffoldContract {
   applies: (ctx: IContractContext) => boolean;
   /** 주입할 압축 계약 본문(마크다운 불릿). */
   card: string;
+  /**
+   * 이 카드가 **편집 영역의 루트를 통째로 다른 컴포넌트로 교체**하는 레시피면 그 타깃 컴포넌트 태그명
+   * (예: 'SmartTable'). 설정 시 region 루트태그 게이트가 그 태그로의 루트 변경을 허용하고(checkRegionRootTag),
+   * region 프롬프트의 "최상위 태그 유지" 지침을 교체 허용으로 바꾼다. 일반 카드는 미설정(루트 변경 금지 유지).
+   */
+  replacesRegionRootWith?: string;
 }
 
 /** `\bword\b` 매칭(정규식 메타 이스케이프). */
@@ -140,6 +146,8 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
   {
     id: 'smart-table-binding',
     title: 'SmartTable에 list API 적용 — 타입+훅+컬럼DSL+SmartTable 재작성 (레시피)',
+    // 이 레시피는 영역의 <table>(또는 컨테이너 내용)을 <SmartTable/>로 통째 교체한다 → 루트태그 변경이 정상.
+    replacesRegionRootWith: 'SmartTable',
     // 요청이 SmartTable(선언형 고수준 그리드)을 명시적으로 지목하면 발동.
     // region 경로는 knowledge/components/SmartTable.md 를 주입하지 않으므로(토큰 절약), 이 카드가
     // SmartTable 계약(defineColumns + <SmartTable data=… columns=…/>)을 가르친다. 미지정 시(=순수 table)는
@@ -206,6 +214,17 @@ export function selectScaffoldContracts(ctx: IContractContext): IScaffoldContrac
       return false;
     }
   });
+}
+
+/**
+ * 이 컨텍스트에서 발동한 카드 중 **영역 루트를 컴포넌트로 교체**하는 레시피들의 타깃 태그명 목록
+ * (예: ['SmartTable']). region 루트태그 게이트의 화이트리스트 + 프롬프트의 교체 허용 지침에 쓴다.
+ * 발동 카드가 없거나 교체형이 없으면 빈 배열(종전 동작 — 루트 변경 금지).
+ */
+export function componentReplacementTargets(ctx: IContractContext): string[] {
+  return selectScaffoldContracts(ctx)
+    .map((c) => c.replacesRegionRootWith)
+    .filter((t): t is string => typeof t === 'string' && t.length > 0);
 }
 
 /**
