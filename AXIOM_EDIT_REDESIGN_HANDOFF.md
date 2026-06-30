@@ -82,7 +82,8 @@ IQ가 아니라 harness 설계 문제. `<replace anchor="...">...</replace>` 가
 
 **핵심 통찰:** "멍청해 보이는 AI"는 모델이 멍청해서가 아니라 **harness가 위험한 도구(영역 통째 재작성, 전체 재생성)를
 주고 믿기 때문**이다. 위 7개를 다 녹이면, 경로가 어디로 가든 "버튼 텍스트 바꿨더니 필터바 삭제" 같은 사고는
-구조적으로 안 난다. **남은 큰 과제는 ②의 승격, ④의 전 경로 수렴, ⑥의 구현** (= 5·6번 섹션의 다음 단계와 일치).
+구조적으로 안 난다. ②승격·④전경로수렴 완료 → **남은 큰 과제는 ⑥의 구현(locate 축소)과 실모델 라이브 검증**
+(= §6의 다음 단계와 일치).
 
 ---
 
@@ -99,15 +100,34 @@ IQ가 아니라 harness 설계 문제. `<replace anchor="...">...</replace>` 가
 - 플래그: `experimental.regionVerify` (기본 **true**).
 - ⚠️ **사각지대**: tsc는 "내용 삭제"를 못 본다(JSX 요소 지워도 타입 유효). → Stage 1의 content-loss 가드로 보완.
 
-### Stage 1 — 앵커 계약 승격 (적용 일부, 프롬프트는 플래그 OFF)
+### Stage 1 — 앵커 계약 승격 (기본 ON 승격 완료)
 **(A) 모호성 게이트 (결정론, ON)** — `src/ai/StructuralAnchor.ts`
 `applyReplaceBlocks`의 앵커 해소를 `findAnchorLines`(전부 수집) + `statementStart`(문장경계)로 교체.
 같은 앵커가 **2곳 이상 문장**에 걸리면 첫 곳 말없이 교체 안 하고 거부("[모호: N곳]")→재인용 유도. 유일 앵커는 무영향.
 
-**(B) 앵커-우선 프롬프트 (플래그 OFF — 라이브 검증 대기)** — `src/ai/RegionEditService.ts`
-`buildHybridPrompt`에 `anchorFirst` 파라미터. 켜면 "작은 국소수정은 영역 통째 대신 `<replace>`로 인용교체" 지침 주입.
-- 플래그: `experimental.anchorFirstEdit` (기본 **false**).
-- ⚠️ **오프라인 eval로 측정 불가**(녹화 재생은 옛 `<region>` 포맷). 실 qwen3-coder 라이브 프로브로만 검증.
+**(B) 앵커-우선 프롬프트 (기본 ON)** — `src/ai/RegionEditService.ts`
+`buildHybridPrompt`에 `anchorFirst` 파라미터. "작은 국소수정은 영역 통째 대신 `<replace>`로 인용교체" 지침 주입.
+- 플래그: `experimental.anchorFirstEdit` (기본 **true** — 검증 스윕 통과 후 사용자 결정으로 승격, 2026-06-30).
+- ⚠️ 프롬프트 효과는 **오프라인 eval로 측정 불가**(녹화 재생은 옛 `<region>` 포맷). 실 qwen3-coder 라이브로만.
+
+### Stage 1 후속 증분 (Stage 1 졸업 — 전부 기본 ON, 2026-06-30)
+**증분1 — `<replace>` literal 정확매칭 (= Claude Code `Edit(old,new)`)** — `src/ai/StructuralAnchor.ts`
+포맷 `<replace><old>원본 그대로</old><new>새코드</new></replace>`. `ReplaceBlock.old` + `findLiteralLines`
+(3-pass exact→trimEnd→trim, **유일매칭만** 교체)로 앵커 `;` 추측을 폐기하고 그 범위만 교체. old 없으면 레거시
+anchor 경로 유지(회귀 0). 이게 북극성 ② surgical-edit의 핵심 메커니즘.
+
+**증분3 — patchFirst (현재 파일 in-place 수정)** — `src/ai/ScaffoldContextBuilder.ts` `_buildScenarioCPrompt`
+lines 모드를 빼고 patch를 주력으로 제시. 모드를 structural(추가)+patch(수정) 2개로 압축 → 약한 모델 선택부담↓ +
+드리프트 잦은 lines 우회 제거. 플래그 `experimental.patchFirstEdit` (기본 **true**).
+
+**의존성 dead-end → full 자동 재시도 1회** — `src/providers/ChatViewProvider.ts`
+structural이 `useApi<TFoo>`만 내고 `TFoo` 선언 누락 시 종전엔 "Full로 재시도" 카드(클릭=실패 UX)였는데, 이제
+**full 자동 재시도 1회**(의존성 게이트 분기, `groundedRetryDone` 가드, 실패 시에만 카드). "주입은 됐는데 코드가
+안 바뀜"의 핵심 원인(모델이 region 퇴화/타입누락으로 빠지는 run-to-run 변동) 해소.
+
+**정확한 타입 = 파일 첨부 방식** — SDD 미사용·별도 스펙 미운영 확정 → 스펙 자동탐색 대신 **첨부**.
+채팅 입력 📎 버튼(`showOpenDialog`→`@상대경로` 삽입)으로 referencedSpec 주입(`_loadReferencedFiles`가 큰 md를
+질문 키워드로 엔드포인트 섹션 추출). 라이브: `@plan/api-spec.md` 참조→ `emp.status`→`emp.employment_status` 정확 반영.
 
 ### 라이브 테스트로 발견·수정한 버그 3건 (2026-06-30)
 
@@ -117,19 +137,48 @@ IQ가 아니라 harness 설계 문제. `<replace anchor="...">...</replace>` 가
 | 2 | "버튼 텍스트 바꿔줘"가 아래 필터바 Select들까지 삭제, 그런데 "✅ 타입검증 통과" | region 통째 재작성 — 모델이 버튼만 내고 필터바 누락. 삭제는 타입 유효라 tsc 못 봄 | `runHybridRegionEdit`에 **region-content-loss 게이트(4.7)**: 삭제의도 아닌데 JSX 여는태그 절반↓+4개↓ 급감하면 거부. 컴포넌트 교체(SmartTable 등)는 면제 |
 | 3 | "데이터 바인딩 수정"이 anchor-mismatch ×2 → **전체 파일 재생성**(느림) | lines 모드 — grounded 재시도가 patch 모드엔 있는데 lines엔 없음(비대칭) | `ChatViewProvider._tryGroundedLineEditRetry` 추가. lines 앵커 실패 시 full 전에 실제 텍스트 grounding 재요청 1회. 위치문제+전부실패+grounding 성공일 때만(아니면 종전 full) |
 
+### 증분2 — region→grounded 경로 수렴 (★이번 세션, 핵심 부채 해소 / 북극성 ④)
+
+**문제:** region 합성이 실패하면(content-loss·root-tag·빈출력·앵커미해소) **무조건 full 재생성**으로 떨어졌는데,
+그 full이 약한 sLLM이 **대형 단일컴포넌트 파일을 통째로 환각**하는 가장 위험한 길이었다.
+
+**처방(patch·lines 재시도와 동일 철학):** region locate는 이미 **정확한 영역(실제 디스크 텍스트)**을 알고 있으므로,
+"위치는 맞게 찾았으나 모델이 산출물을 망가뜨린" fallback에선 그 영역만 그대로 인용해 surgical `<patch>`로 1회
+grounded 재요청한다. ground truth가 손에 있어 grounding 비용 0.
+
+- `src/ai/RegionEditService.ts`:
+  - `RegionEditOutcome.locatedRegion?: {startLine,endLine,text}` 추가 — 디스크 라인 그대로(`<search>` 글자단위 매칭용).
+  - `export REGION_GROUNDABLE_REASONS` = `region-content-loss` / `replace-content-loss` / `replace-anchor-missing` /
+    `root-tag-mismatch` / `empty-output`. 이 5개 fallback에만 `locatedRegion` 첨부.
+  - **비-groundable 제외**: `unresolved-deps`/`unresolved-components`/`dead-binding`/`duplicate-decl`은 영역 **밖**
+    새 선언이 필요해 영역 patch로 못 푼다 → 기존 의존성 dead-end 자동 full 재시도가 담당. `no-op`·locate 단계
+    게이트(영역 미확정)도 제외.
+- `src/providers/ChatViewProvider.ts`: `_tryGroundedRegionRetry(filePath, outcome)` 추가. `_tryRegionEdit`의 full 폴백
+  직전에 호출. `_retryForAxiomAction({groundedPatches})` 재사용, `intent:''`→누적 히스토리의 원요청 사용,
+  `_handleAxiomAction(.,false,true)`로 `groundedRetryDone=true`(정확히 1회).
+- ⚠️ **잔여 주의**: grounded patch가 실제 텍스트를 줘도 매칭 실패하면 `patchFailed` 카드("Full로 재시도" 버튼)로 —
+  자동 full 아님(원칙 #3 준수, 조용한 파손 아님). 실모델에서 매칭 성공률·카드 빈도 라이브 측정 필요.
+- **검증**: typecheck/compile green, `test:region-edit` **195 pass**(locatedRegion 계약 3건 추가), `eval:region` 회귀 0,
+  patch 30·lines 15·react 13 무회귀.
+
 ---
 
 ## 3. 설정 플래그 (axiom.config.json 또는 VSCode 설정)
 
+현재 **전부 기본 ON**(코드 기본값 = `ExtensionConfig.ts`). 사이트별로 끄려면 `axiom.config.json`에 명시:
+
 ```jsonc
 {
+  "experimental.regionEdit": true,        // 영역(하이브리드) 편집 경로 (기본 ON)
   "experimental.regionVerify": true,      // Stage 0 검증-교정 루프 (기본 ON)
-  "experimental.anchorFirstEdit": false,  // Stage 1 앵커-우선 프롬프트 (기본 OFF — 라이브 검증용)
-  "multiPatch.groundedRetry": true        // grounded 재시도 (lines/patch 공통, 기본 ON)
+  "experimental.anchorFirstEdit": true,   // Stage 1 앵커-우선 프롬프트 (기본 ON — 2026-06-30 승격)
+  "experimental.patchFirstEdit": true,    // 현재파일 in-place 수정 시 patch 주력 (기본 ON — 2026-06-30 승격)
+  "multiPatch.groundedRetry": true        // grounded 재시도 (patch/lines/region 공통, 기본 ON)
 }
 ```
 
-집에서 **가장 먼저 할 것**: `experimental.anchorFirstEdit: true` 켜고 작은 편집("버튼 텍스트 바꿔줘") 테스트.
+회사에서 **가장 먼저 할 것**: 코드 변경 없이 바로 §5 라이브 검증 — 플래그가 이미 다 켜져 있으므로 실모델
+(qwen3-coder)로 작은 편집·API 연동 편집을 돌려 출력채널 배너를 기록하면 된다. 끄고 비교하려면 위 플래그를 false로.
 
 ---
 
@@ -147,9 +196,10 @@ npm run compile              # esbuild 번들
 
 ---
 
-## 5. 라이브 검증 체크리스트 (집에서 할 것)
+## 5. 라이브 검증 체크리스트 (회사에서 할 것 — 플래그 이미 다 ON)
 
-**준비**: `axiom-ai` 출력 채널 열기 + 편집할 파일을 에디터에 열어둔 채로 요청(baseline 진단용).
+**준비**: `axiom-ai` 출력 채널 열기 + 편집할 파일을 에디터에 열어둔 채로 요청(baseline 진단용). 모델은 qwen3-coder
+(provider=ollama 권장, thinking 억제용).
 
 1. **버그①·② 재발 안 하는지**
    - "PageHeader 위에 버튼 만들고…" → PageHeader.tsx로 안 새고 **현재 파일** 편집 + 출력채널에 `cross-file 억제(landmark...)`
@@ -164,29 +214,31 @@ npm run compile              # esbuild 번들
    - malformed/empty로 full 폴백 잦으면 → anchor-first가 이 모델엔 아직 이름(보류)
 4. **버그③ lines grounded 재시도**
    - "데이터 바인딩 수정" → `🔁 매칭 실패 부분의 실제 코드로 patch를 다시 만드는 중` 뜨고 전체 재생성 안 가야 정상
+5. **증분2 region grounded 재시도** ★이번 세션 — 핵심 측정 대상
+   - region이 큰 영역을 받아 일부를 누락하는 케이스(예: 큰 필터바 영역 편집) → 출력채널에
+     `🔁 grounded(region) 재시도 ... 실제 영역(라인 N~M)만으로 surgical patch 재요청 (full 재생성 회피)` 떠야 정상.
+   - 그 후 **patch가 매칭 성공해 적용**되면 ✅ (full 환각 회피 성공). `patchFailed` 카드가 뜨면 → 모델이 실제 텍스트를
+     줘도 `<search>`를 못 베낀 것 → 빈도 기록(잦으면 grounded 프롬프트의 "그대로 복사" 강조 또는 region 진입 자체를 줄이는 방향).
+   - 사유별로 어떤 게 grounded로 회복되고 어떤 게 카드/실패로 가는지 표로 기록 → §6 Stage 2 튜닝 입력.
 
 → 결과(출력채널 배너/이상동작)를 기록해두면 다음 작업에서 프롬프트·임계값 튜닝에 사용.
 
 ---
 
-## 6. 다음 단계 (미구현)
+## 6. 다음 단계 (우선순위 순)
 
-- **Stage 1 라이브 검증 → 졸업**: anchorFirstEdit가 통하면 기본 ON 승격 + locate가 "가능한 가장 작은 영역"을
-  고르게(작은 편집에 큰 영역 안 주게) 개선. = "smallest sufficient edit" 원칙.
-- **Stage 2 — locate 850줄 축소**: `src/ai/RegionEdit.ts`의 ②.5/②.7/②.8/②.9 랜드마크 휴리스틱을
-  eval로 회귀 측정하며 점진 삭제(앵커 계약이 위치를 모델에 위임하므로 결정론 추측 기계가 덜 필요).
-- **경로 수렴(핵심 부채 — region 완료 2026-06-30)**: region/lines/patch의 "앵커 실패 → full 재생성"을 전부
-  "다시 읽고 재인용"(grounded 재시도)으로 통일. patch·lines에 이어 **region도 수렴**.
-  `RegionEditService.runHybridRegionEdit`이 "위치는 맞게 찾았으나 모델이 산출물을 망가뜨린" 합성 fallback
-  (`REGION_GROUNDABLE_REASONS` = region-content-loss / replace-content-loss / replace-anchor-missing /
-  root-tag-mismatch / empty-output)에 **실제 영역 텍스트**(`locatedRegion`: 디스크 라인 그대로)를 첨부.
-  `ChatViewProvider._tryGroundedRegionRetry`가 그 영역만으로 surgical `<patch>`를 1회 grounded 재요청
-  (`_retryForAxiomAction({groundedPatches})`, `intent:''`→히스토리 원요청 사용, `groundedRetryDone=true`로 정확히 1회).
-  비-groundable(의존성 미해소·dead-binding·duplicate-decl = 영역 밖 선언 필요)은 제외 — 기존 의존성 dead-end 자동
-  full 재시도가 담당. **검증**: test:region-edit 195 pass(locatedRegion 계약 3건 추가), eval:region 회귀 0.
-  ⚠️ 잔여: grounded patch가 **실제 텍스트를 줘도 매칭 실패**하면 patchFailed 카드("Full로 재시도" 버튼)로 — 자동
-  full 아님(원칙 #3 준수). 실모델에서 매칭 성공률·카드 빈도 라이브 측정 필요.
-- **Stage 3 (선택)**: 바운디드 read 도구(모델이 필요한 라인범위 요청, 깊이 1~2 상한).
+1. **실모델 라이브 검증 (최우선 — 모든 승격의 전제)**: §5 체크리스트를 qwen3-coder로 돌려 anchorFirst/patchFirst/
+   region-grounded가 실제로 통하는지 측정. 프롬프트 효과는 **오프라인 eval로 측정 불가**(녹화 재생은 옛 포맷).
+   결과 표(사유→grounded회복/카드/실패)를 만들면 아래 Stage 2의 임계값·삭제 대상 입력이 된다.
+2. **Stage 2 — locate 850줄 축소 (= 북극성 ⑥ smallest-edit)**: `src/ai/RegionEdit.ts`의 ②.5/②.7/②.8/②.9 랜드마크
+   휴리스틱을 `eval:region` 회귀 측정하며 점진 삭제. 앵커 계약(`<replace>`)·patch가 위치를 모델에 위임하므로
+   결정론 추측 기계가 덜 필요. locate가 "가능한 가장 작은 영역"을 고르게 개선(작은 편집에 큰 영역 안 주게).
+3. **잔여 미흡점**: ① import 추가 가끔 no-op(멀티라인 dedup 수정 후 재현 케이스 확인 — 남았으면 수정, 없으면 종결).
+   ② region이 작은 편집서 locate(anchor-import)로 자주 빠짐 — patchFirst가 우회하므로 실질 영향 적음(저우선).
+4. **Stage 3 (선택)**: 바운디드 read 도구(모델이 필요한 라인범위 요청, 깊이 1~2 상한).
+
+> ✅ **경로 수렴(핵심 부채)은 완료** — region/lines/patch의 "앵커 실패 → full 재생성"을 전부 "다시 읽고 재인용"
+> (grounded 재시도)으로 통일. 상세는 §2.5 / 버그 3건 / North Star ④ 행 참고.
 
 ---
 
@@ -194,16 +246,17 @@ npm run compile              # esbuild 번들
 
 | 파일 | 역할 |
 |---|---|
-| `src/ai/RegionEdit.ts` | locate(편집영역 결정, 850줄 결정론) + 안전 게이트 |
-| `src/ai/RegionEditService.ts` | `runHybridRegionEdit`(오케스트레이터) + 검증루프 + content-loss 게이트 + 프롬프트 빌더 |
-| `src/ai/StructuralAnchor.ts` | `applyReplaceBlocks`(앵커 계약 적용) + 모호성 게이트 + 훅/import 삽입 |
-| `src/ai/CrossFileTargeting.ts` | (신규) cross-file 재타겟 억제 판정(use-as/landmark) |
-| `src/providers/ChatViewProvider.ts` | 진입·라우팅 / `_tryRegionEdit` / `_verifyTextByDiagnostics` / grounded 재시도(patch+lines) |
-| `src/config/ExtensionConfig.ts` | 플래그(regionVerify/anchorFirstEdit/groundedRetry) |
-| `scripts/test-region-edit.ts` | 단위 테스트(177개) |
+| `src/ai/RegionEdit.ts` | locate(편집영역 결정, 850줄 결정론) + 안전 게이트 ← **Stage 2 축소 대상** |
+| `src/ai/RegionEditService.ts` | `runHybridRegionEdit`(오케스트레이터) + 검증루프 + content-loss 게이트 + 프롬프트 빌더 + `REGION_GROUNDABLE_REASONS`/`locatedRegion`(증분2) |
+| `src/ai/StructuralAnchor.ts` | `applyReplaceBlocks`(앵커 계약 적용) + 모호성 게이트 + `ReplaceBlock.old`/`findLiteralLines`(증분1 literal) + 훅/import 삽입 |
+| `src/ai/CrossFileTargeting.ts` | cross-file 재타겟 억제 판정(use-as/landmark) |
+| `src/ai/ScaffoldContextBuilder.ts` | `_buildScenarioCPrompt`(patchFirst 압축 프롬프트, 증분3) |
+| `src/providers/ChatViewProvider.ts` | 진입·라우팅 / `_tryRegionEdit` / `_verifyTextByDiagnostics` / grounded 재시도 **patch+lines+region**(`_tryGroundedRegionRetry`) / `_retryForAxiomAction({groundedPatches})` |
+| `src/config/ExtensionConfig.ts` | 플래그(regionEdit/regionVerify/anchorFirstEdit/patchFirstEdit/groundedRetry — 전부 기본 ON) |
+| `scripts/test-region-edit.ts` | 단위 테스트(195개 — locatedRegion 계약 포함) |
 
-관련 메모리(Claude): `project_verify_correct_loop_stage0`, `project_cross_file_retarget`,
-`project_grounded_patch_retry`, `project_region_eval_harness`.
+관련 메모리(Claude): `project_replace_span_overexpansion`(증분1·2·3 + 경로수렴 최신),
+`project_current_state_robustness_mapping`, `project_patch_apply_model`, `project_section_split_trailing_comment`.
 
 ---
 
