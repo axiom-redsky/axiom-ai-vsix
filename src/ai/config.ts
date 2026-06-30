@@ -174,14 +174,6 @@ export const AI_DEFAULTS = {
     compactModes: true,
   },
   /**
-   * 편집 보호 가드. 여기 글롭에 매칭되는 워크스페이스 상대 경로는 **절대 편집 대상이 될 수 없다**
-   * (cross-file 재타겟·수동 선택·현재 파일 모두). react-app-scaffold에서 core/shared는 업무 개발자
-   * 미작업 영역(프레임워크/공유 프리미티브)이라 기본 보호한다. 글롭: `**`=구분자 포함 임의, `*`=구분자 제외.
-   */
-  guard: {
-    protectedPaths: ['src/core/**', 'src/shared/**'] as string[],
-  },
-  /**
    * 디버그용 기본값.
    */
   debug: {

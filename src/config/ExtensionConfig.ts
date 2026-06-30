@@ -20,7 +20,6 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
   'experimental.onlineKnowledgeAnswer',
   'scenarioC.compactModes',
-  'guard.protectedPaths',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
   'promptDiet.adaptiveBudget.targetRatio', 'promptDiet.adaptiveBudget.charsPerToken',
@@ -321,15 +320,6 @@ export class ExtensionConfig {
       frequencyPenalty: ExtensionConfig._resolve<number>('llm.qnaAntiRepeat.frequencyPenalty',  d.frequencyPenalty),
       presencePenalty:  ExtensionConfig._resolve<number>('llm.qnaAntiRepeat.presencePenalty',   d.presencePenalty),
     };
-  }
-
-  /**
-   * 편집 보호 가드 글롭 목록. 매칭되는 워크스페이스 상대 경로는 Axiom이 절대 수정하지 않는다
-   * (core/shared 등 프레임워크 영역). 빈 배열·비배열이면 기본값으로 폴백한다.
-   */
-  static getProtectedPaths(): string[] {
-    const v = ExtensionConfig._resolve<string[]>('guard.protectedPaths', AI_DEFAULTS.guard.protectedPaths);
-    return Array.isArray(v) && v.length > 0 ? v.filter((s) => typeof s === 'string' && s.trim()) : AI_DEFAULTS.guard.protectedPaths;
   }
 
   /** 시스템 프롬프트 전문을 'axiom-ai: Prompt' 출력 채널에 기록할지 여부(디버그). */

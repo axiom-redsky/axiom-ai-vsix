@@ -32,7 +32,6 @@ import { IntentEmbeddingClassifier } from '../ai/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../ai/OfflineIntentResolver';
 import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from '../ai/JsonTypeGenerator';
 import { fillSlots } from '../ai/IntentSignals';
-import { isProtectedPath } from '../ai/PathGuard';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
@@ -706,17 +705,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ? (activePath.split(/[/\\]/).pop() ?? '').replace(/\.[tj]sx?$/, '')
       : '';
 
-    // 보호 가드(현재 파일): 현재 열린 파일 자체가 보호 영역(core/shared 등)이면 수정 불가 → 차단.
-    // 수정 요청 경로에서만 호출되므로(qna 아님) 편집 차단이 옳다. 되돌릴 현재 파일이 없어 proceed:false.
-    if (activePath && this._isProtected(activePath)) {
-      this._post({
-        type: 'token',
-        content: `\n\n> 🛡️ 현재 파일 \`${activePath}\` 는 **보호 영역(core/shared)** 이라 Axiom이 수정할 수 없습니다. 업무 영역(domains/publishing)의 파일에서 요청해 주세요.\n`,
-      });
-      this._corpusOutputChannel.appendLine(`[Axiom AI] 보호 영역 편집 차단(현재 파일): ${activePath}`);
-      return { proceed: false, editorCtx };
-    }
-
     // cross-file 재타겟: 요청이 **현재 파일이 아닌 다른 컴포넌트**를 고치라는 것이면(예: 선택 칩은
     // EmployeeListPage에 박혀 있는데 "StatusBadge 컴포넌트를 수정해줘"), 그 컴포넌트의 실제 파일을
     // import 경로로 디스크 해석해 편집 대상으로 전환한다. 대상 추출은 **모델(IntentClassifier.targetComponent)이
@@ -804,25 +792,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ignoreFocusOut: true,
     });
     if (!picked) return undefined;
-    // 보호 가드(수동 선택): 사용자가 보호 영역 파일을 골라도 편집 대상으로 삼지 않는다.
-    const pickedRel = vscode.workspace.asRelativePath(picked.uri);
-    if (this._isProtected(pickedRel)) {
-      this._post({
-        type: 'token',
-        content: `\n\n> 🛡️ \`${pickedRel}\` 는 **보호 영역(core/shared)** 이라 Axiom이 수정할 수 없습니다.\n`,
-      });
-      this._corpusOutputChannel.appendLine(`[Axiom AI] 보호 영역 편집 차단(수동 선택): ${pickedRel}`);
-      return undefined;
-    }
     const doc = await vscode.workspace.openTextDocument(picked.uri);
     await vscode.window.showTextDocument(doc, { preview: false });
     // 활성 에디터가 바뀌었으니 컨텍스트 재수집 (새 파일엔 선택 영역 없음)
     return this._editorCollector.collect();
-  }
-
-  /** 워크스페이스 상대 경로가 보호 영역 글롭(ExtensionConfig.getProtectedPaths)에 매칭되는지. */
-  private _isProtected(relPath: string): boolean {
-    return isProtectedPath(relPath, ExtensionConfig.getProtectedPaths());
   }
 
   /**
@@ -895,16 +868,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const rel = vscode.workspace.asRelativePath(uri);
     // 해석 결과가 현재 파일과 같으면 전환 불필요(현재 파일 수정).
     if (editorCtx.filePath && rel === editorCtx.filePath) return null;
-    // 보호 가드(재타겟): 전환하려는 파일이 보호 영역(core/shared)이면 전환하지 않고 현재 파일 흐름 유지.
-    // "SmartTable 컴포넌트로 적용해줘"를 SmartTable 편집으로 오인해도 프레임워크 파일이 절대 안 깨지게 한다.
-    if (this._isProtected(rel)) {
-      this._post({
-        type: 'token',
-        content: `\n\n> 🛡️ **${name}**(\`${rel}\`)은(는) 보호 영역(core/shared)이라 수정하지 않습니다. 현재 파일에 **${name}**을(를) 적용하는 방향으로 진행합니다.\n`,
-      });
-      this._corpusOutputChannel.appendLine(`[Axiom AI] cross-file 재타겟 차단(보호 영역): ${rel}`);
-      return null; // 현재 파일 흐름으로 폴백
-    }
     this._post({
       type: 'token',
       content: `\n\n> 🎯 현재 파일이 import한 **${name}** 컴포넌트를 편집 대상으로 전환합니다: \`${rel}\`\n`,
