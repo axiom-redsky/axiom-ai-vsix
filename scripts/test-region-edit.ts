@@ -8,7 +8,8 @@ import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/Reg
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
-import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
+import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
+import { crossFileSuppressionReason } from '../src/ai/CrossFileTargeting';
 
 const SRC = [
   /*  1 */ "import { useState } from 'react';",
@@ -112,7 +113,7 @@ await (async () => {
   {
     const model = [
       // timer를 region에서 실제 사용(ref) → 미사용 삽입 아님 + region 변경됨(dead-binding 게이트 비대상)
-      '<region>\n      <Select value={status} onValueChange={(v) => { timer.current = Date.now(); setStatus(v); }}>\n        <SelectTrigger/>\n      </Select>\n</region>',
+      '<region>\n      <Select value={status} onValueChange={(v) => { timer.current = Date.now(); setStatus(v); }}>\n        <SelectTrigger><SelectValue/></SelectTrigger>\n        <SelectContent><SelectItem value="all">전체</SelectItem></SelectContent>\n      </Select>\n</region>',
       '<hook>const timer = useRef<number | null>(null);</hook>',
     ].join('\n');
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
@@ -155,10 +156,24 @@ await (async () => {
     check('root-tag 불일치: fallback', o.status === 'fallback' && o.reason === 'root-tag-mismatch', `status=${o.status}, reason=${o.reason}`);
   }
 
+  // 내용손실(4.7): 큰 영역(Select+옵션들, 6태그)을 받아 루트만 내고 내부를 통째 누락 → region-content-loss 폴백.
+  //   (실측: "버튼 텍스트 바꿔줘"에 필터바 포함 영역을 받아 버튼만 내고 Select들을 삭제. tsc는 통과시킴.)
+  {
+    const model = '<region>\n      <Select value={status} onValueChange={setStatus}>\n      </Select>\n</region>';
+    const o = await runHybridRegionEdit(SRC, '재직상태 텍스트 바꿔줘', async () => model);
+    check('내용 대량 누락 → region-content-loss 폴백', o.status === 'fallback' && o.reason === 'region-content-loss', `status=${o.status}, reason=${o.reason}`);
+  }
+  // 대조군: 삭제 의도면 누락이 정당 → content-loss로 막지 않음(다른 경로로 진행).
+  {
+    const model = '<region>\n      <Select value={status} onValueChange={setStatus}>\n      </Select>\n</region>';
+    const o = await runHybridRegionEdit(SRC, '재직상태 옵션 삭제해줘', async () => model);
+    check('삭제 의도 → region-content-loss 비발동', o.reason !== 'region-content-loss', `reason=${o.reason}`);
+  }
+
   // 의존성 미해소: 훅이 선언/ import 없는 타입을 참조 → fallback (조용한 컴파일 깨짐 차단)
   {
     const model = [
-      '<region>\n      <Select value={status} onValueChange={setStatus}>\n        <SelectTrigger/>\n      </Select>\n</region>',
+      '<region>\n      <Select value={status} onValueChange={setStatus}>\n        <SelectTrigger><SelectValue/></SelectTrigger>\n        <SelectContent><SelectItem value="all">전체</SelectItem></SelectContent>\n      </Select>\n</region>',
       "<hook>const { data } = useApi<TUnknownResp>('/x');</hook>",
     ].join('\n');
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
@@ -336,6 +351,103 @@ await (async () => {
   }
 })();
 
+// ─── cross-file 재타겟 억제 — 위치 랜드마크/use-as는 현재 파일 유지 ───────────────────────────
+console.log('\ncross-file 억제(crossFileSuppressionReason):');
+{
+  // 실측 버그: "PageHeader 위에 버튼 만들고…" → PageHeader.tsx 통째 재작성으로 샘. 위치 랜드마크라 억제돼야.
+  check('"PageHeader 위에 버튼 만들고" → landmark 억제', crossFileSuppressionReason('현재파일에서 사용한 PageHeader 위에 버튼을 만들고 버튼을 누르면 로그인 api 호출하게 수정해줘', 'PageHeader') === 'landmark');
+  check('"X 아래에 …" → landmark 억제', crossFileSuppressionReason('PageHeader 아래에 설명 추가', 'PageHeader') === 'landmark');
+  check('"X 옆에 …" → landmark 억제', crossFileSuppressionReason('Toolbar 옆에 버튼', 'Toolbar') === 'landmark');
+  // use-as: "X로 적용/사용"
+  check('"SmartTable로 적용" → use-as 억제', crossFileSuppressionReason('직원 테이블을 SmartTable로 적용해줘', 'SmartTable') === 'use-as');
+  // 편집 대상 표현은 억제 안 함(진짜 cross-file 편집 보존)
+  check('"StatusBadge를 수정" → 억제 안 함(null)', crossFileSuppressionReason('StatusBadge를 수정해줘', 'StatusBadge') === null);
+  check('"StatusBadge 색 바꿔줘" → 억제 안 함(null)', crossFileSuppressionReason('StatusBadge 색 바꿔줘', 'StatusBadge') === null);
+  // "X를 위로 옮겨"(편집)는 landmark('위에' 아님)로 오인하지 않음
+  check('"X를 위로 옮겨" → landmark 오인 안 함(null)', crossFileSuppressionReason('PageHeader를 위로 옮겨줘', 'PageHeader') === null);
+}
+
+// ─── 검증-교정 루프(Stage 0) — verify 콜백 주입 시에만 작동(미주입=종전 동일) ─────────────────
+console.log('\n검증-교정 루프(Stage 0) — verify 콜백:');
+await (async () => {
+  // 게이트를 통과해 applied 되는 정상 편집(같은 루트 <Select> 재작성 + useApi 훅).
+  const mainEdit = [
+    '<region>',
+    '      <Select value={status} onValueChange={setStatus}>',
+    '        <SelectTrigger><SelectValue placeholder="재직상태" /></SelectTrigger>',
+    '        <SelectContent>',
+    '          {statuses.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}',
+    '        </SelectContent>',
+    '      </Select>',
+    '</region>',
+    "<hook>const { data: statuses } = useApi<string[]>('/api/statuses');</hook>",
+  ].join('\n');
+
+  // 1) 검증 통과(첫 verify ok) → 교정 호출 없음, ✅ 통과 노트. 모델 1회·verify 1회만.
+  {
+    let modelCalls = 0;
+    let verifyCalls = 0;
+    const o = await runHybridRegionEdit(
+      SRC, '재직상태 select를 api로',
+      async () => { modelCalls++; return mainEdit; },
+      undefined, undefined, undefined,
+      async () => { verifyCalls++; return { ok: true, errors: [] }; },
+    );
+    check('verify 통과 → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+    check('verify 통과 → 교정 모델 호출 없음(모델 1회)', modelCalls === 1, `modelCalls=${modelCalls}`);
+    check('verify 통과 → verify 1회만', verifyCalls === 1, `verifyCalls=${verifyCalls}`);
+    check('verify 통과 → ✅ 노트', /✅ 타입검증 통과/.test(o.diagnostics) && !/교정/.test(o.diagnostics), o.diagnostics);
+  }
+
+  // 2) 첫 verify 실패 → <replace> 교정 → 재검증 통과(에러 1→0) → 교정안 채택, ✅(교정) 노트.
+  {
+    let modelCalls = 0;
+    let verifyCalls = 0;
+    const o = await runHybridRegionEdit(
+      SRC, '재직상태 select를 api로',
+      async () => {
+        modelCalls++;
+        if (modelCalls === 1) return mainEdit;
+        // 교정 라운드: composed에 실제로 있는 앵커를 인용해 교체(앵커 계약).
+        return `<replace anchor="useApi<string[]>('/api/statuses')">useApi<string[]>(STATUSES_ENDPOINT)</replace>`;
+      },
+      undefined, undefined, undefined,
+      async () => {
+        verifyCalls++;
+        return verifyCalls === 1 ? { ok: false, errors: ['42:10 mock type error'] } : { ok: true, errors: [] };
+      },
+    );
+    check('verify 실패→교정 성공 → applied', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+    check('교정 라운드 모델 호출됨(모델 2회)', modelCalls === 2, `modelCalls=${modelCalls}`);
+    check('교정 <replace> 반영(STATUSES_ENDPOINT)', !!o.finalText && o.finalText.includes('STATUSES_ENDPOINT'), `has=${o.finalText?.includes('STATUSES_ENDPOINT')}`);
+    check('✅(교정) 노트 + 에러 1→0 기록', /✅ 타입검증 통과\(교정\)/.test(o.diagnostics) && /1→0/.test(o.diagnostics), o.diagnostics);
+  }
+
+  // 3) 교정해도 에러 안 줄면(동일) → 교정안 버리고 원안 유지, ⚠️ 잔존 노트 + 그대로 applied.
+  {
+    let modelCalls = 0;
+    const o = await runHybridRegionEdit(
+      SRC, '재직상태 select를 api로',
+      async () => {
+        modelCalls++;
+        if (modelCalls === 1) return mainEdit;
+        return `<replace anchor="useApi<string[]>('/api/statuses')">useApi<string[]>(STATUSES_ENDPOINT)</replace>`;
+      },
+      undefined, undefined, undefined,
+      async () => ({ ok: false, errors: ['42:10 mock type error'] }), // 항상 동일 에러(교정 무효)
+    );
+    check('교정 무효 → 여전히 applied(컨펌 카드 위임)', o.status === 'applied', `status=${o.status}, reason=${o.reason}`);
+    check('교정 무효 → 교정안 버림(STATUSES_ENDPOINT 없음)', !!o.finalText && !o.finalText.includes('STATUSES_ENDPOINT'), `has=${o.finalText?.includes('STATUSES_ENDPOINT')}`);
+    check('⚠️ 잔존 노트', /⚠️ 타입에러 1건 잔존/.test(o.diagnostics), o.diagnostics);
+  }
+
+  // 4) verify 미주입 → 검증 루프 미작동(노트 없음), 종전과 동일하게 applied.
+  {
+    const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => mainEdit);
+    check('verify 미주입 → applied + 검증 노트 없음', o.status === 'applied' && !/타입검증|타입에러/.test(o.diagnostics), o.diagnostics);
+  }
+})();
+
 // ─── buildHybridPrompt — refetch·파라미터 요청도 서버 params 규칙 노출(트리거 확장) ──────────
 console.log('\nbuildHybridPrompt — 서버 params 규칙 트리거:');
 {
@@ -352,6 +464,12 @@ console.log('\nbuildHybridPrompt — 서버 params 규칙 트리거:');
   // 무관한 요청(필터/refetch 키워드 없음) → 비노출
   const p3 = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '버튼 색을 바꿔줘', '');
   check('무관 요청 → 규칙 비노출', !p3.includes('필터·검색·파라미터 구현 규칙'));
+
+  // 앵커-우선(Stage 1) — anchorFirst=true면 "작은 수정은 <replace>로" 지침 노출, 기본(false)은 비노출.
+  const pa = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '버튼 텍스트 바꿔줘', '', true);
+  check('anchorFirst=true → <replace> 우선 규칙 노출', pa.includes('작은 수정은 <replace>로') && pa.includes('딱 한 곳'));
+  const pb = buildHybridPrompt(deps, '<Select/>', 1, 5, undefined, undefined, '버튼 텍스트 바꿔줘', '');
+  check('anchorFirst 기본(off) → 우선 규칙 비노출', !pb.includes('작은 수정은 <replace>로'));
 }
 
 // ─── ScaffoldContracts — 트리거 기반 scaffold 계약 자동 주입(일반화 메커니즘) ──────────────
@@ -965,6 +1083,42 @@ console.log('\nimport provenance — 경로 + default/named 형태 교정:');
   const unknown: ImportRequest[] = [{ module: 'x', named: ['Unknown'] }];
   const r3 = reconcileImportsWithReference(unknown, prov);
   check('참조에 없는 심볼은 손대지 않음', r3.corrections.length === 0);
+}
+
+// ─── applyReplaceBlocks — 앵커 계약: 유일 적용 + 모호성 거부(Stage 1 승격 안전판) ──────────
+console.log('\napplyReplaceBlocks — 앵커 모호성 게이트:');
+{
+  const SRC2 = [
+    "  const { data } = useApi<TResp>('/api/employees', { params: { page } });",
+    '  const rows = data?.list ?? [];',
+    '  const title = "직원";',
+  ].join('\n');
+
+  // 유일 앵커 → 정확히 그 문장만 교체(기존 params 경로 회귀 가드).
+  const u = applyReplaceBlocks(SRC2, [{ anchor: "useApi<TResp>('/api/employees'", replacement: "  const { data } = useApi<TResp>('/api/employees', { params: { page, dept } });" }]);
+  check('유일 앵커 → 적용(unresolved 없음)', u.unresolved.length === 0, `unresolved=${u.unresolved.join('|')}`);
+  check('유일 앵커 → params에 dept 반영', u.text.includes('page, dept'));
+  check('유일 앵커 → 다른 줄 보존', u.text.includes('const rows = data?.list'));
+
+  // 모호 앵커 — 같은 문자열이 서로 다른 두 문장에 등장 → 첫 곳 말없이 교체 금지, unresolved(모호).
+  const AMB = [
+    '  const a = compute(value);',
+    '  const b = other(value);',
+    '  const c = value;',
+  ].join('\n');
+  const m = applyReplaceBlocks(AMB, [{ anchor: 'value', replacement: '  const X = 1;' }]);
+  check('모호 앵커 → 적용 거부(원본 불변)', m.text === AMB, 'text changed');
+  check('모호 앵커 → unresolved에 "모호" 표기', m.unresolved.length === 1 && /모호/.test(m.unresolved[0]), `unresolved=${m.unresolved.join('|')}`);
+
+  // 같은 앵커라도 **한 문장**(멀티라인)에만 걸리면 모호 아님 — 정상 교체.
+  const MULTI = [
+    '  const {',
+    '    data,',
+    "  } = useApi<TResp>('/api/x', { params: { page } });",
+    '  const rows = [];',
+  ].join('\n');
+  const ml = applyReplaceBlocks(MULTI, [{ anchor: 'params', replacement: "  const { data } = useApi<TResp>('/api/x', { params: { page, q } });" }]);
+  check('멀티라인 단일 문장 앵커 → 모호 아님(적용)', ml.unresolved.length === 0 && ml.text.includes('page, q'), `unresolved=${ml.unresolved.join('|')}`);
 }
 
 // ─── 컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트 ────────────────────────

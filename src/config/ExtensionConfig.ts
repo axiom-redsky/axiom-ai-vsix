@@ -18,7 +18,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'stubs.userStubsFolder',
   'debug.logSystemPrompt',
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
-  'experimental.onlineKnowledgeAnswer',
+  'experimental.onlineKnowledgeAnswer', 'experimental.regionVerify', 'experimental.anchorFirstEdit',
   'scenarioC.compactModes',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
@@ -334,6 +334,27 @@ export class ExtensionConfig {
    */
   static isRegionEditEnabled(): boolean {
     return ExtensionConfig._resolve<boolean>('experimental.regionEdit', true);
+  }
+
+  /**
+   * 실험: 영역 편집 검증-교정 루프(Stage 0). 합성된 편집 결과를 적용 직전에 VSCode TS 언어서버
+   * 진단으로 검증하고, 새 타입에러가 있으면 에러+코드창을 모델에 주고 <replace> 앵커 계약으로
+   * 1회 교정한다(델타 전송). 교정 후에도 남으면 경고를 붙여 그대로 적용(컨펌 카드에서 최종 판단).
+   * 진단을 못 얻으면 fail-open(ok)으로 절대 편집을 막지 않는다. 종전엔 검증 0이었으므로 순수 보강.
+   */
+  static isRegionVerifyEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.regionVerify', true);
+  }
+
+  /**
+   * 실험: 앵커-우선 편집(Stage 1). 영역 편집 프롬프트에 "작은 국소 수정(텍스트·속성·단일 값/prop·
+   * 제자리 rename)은 영역 전체를 다시 쓰지 말고 바꿀 기존 코드를 그대로 인용해 <replace>로 교체"
+   * 지침을 추가한다. 약한 모델의 실제 출력 형태에 영향을 주므로 **오프라인 eval로 측정 불가** —
+   * 실모델(qwen3-coder) 라이브 프로브로만 검증된다. 적용 레이어는 모호성 게이트로 이미 안전하지만,
+   * 모델 유도 효과가 검증될 때까지 기본 off. on이어도 적용은 종전과 동일(앵커 모호 시 거부·재인용).
+   */
+  static isAnchorFirstEditEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.anchorFirstEdit', false);
   }
 
   /**

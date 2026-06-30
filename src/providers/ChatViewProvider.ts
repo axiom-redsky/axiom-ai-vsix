@@ -10,6 +10,7 @@ import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance } from '../ai/RegionEditService';
+import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
 import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
@@ -843,14 +844,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     if (!name) return null; // 단서 없음·모호 → 기존 흐름
 
-    // 조사 가드: "<name> (컴포넌트)로 적용/변환/교체/바꿔/사용/만들"은 그 컴포넌트를 **쓰라**는 뜻이지
-    // 고치라는 게 아니다(현재 파일 편집). 모델이 오인해 name을 줘도 여기서 재타겟을 보류한다.
-    const useAsRe = new RegExp(
-      `${name}\\s*(?:컴포넌트|component)?\\s*(?:으로|로)\\s*(?:적용|변환|교체|바꿔|바꾸|사용|만들|구현)`,
-    );
-    if (useAsRe.test(userQuery)) {
+    // 억제 가드: name이 편집 **대상**이 아니라 **사용/위치 기준**으로 쓰였으면 재타겟 보류(현재 파일 편집).
+    //  - "X로 적용/사용/만들" = 그 컴포넌트를 쓰라는 뜻(use-as).
+    //  - "X 위에/아래에 … 만들" = X는 위치 랜드마크(landmark) — 실측 오라우팅("PageHeader 위에 버튼")의 원인.
+    // 경로 하드차단이 아니라 의도 정밀화 — "X를 수정/고쳐"는 억제 안 함(진짜 cross-file 편집 보존).
+    const suppress = crossFileSuppressionReason(userQuery, name);
+    if (suppress) {
       this._corpusOutputChannel.appendLine(
-        `[Axiom AI] cross-file 억제(use-as 조사 "…로 적용"): ${name} → 현재 파일 유지`,
+        `[Axiom AI] cross-file 억제(${suppress === 'use-as' ? 'use-as "…로 적용"' : 'landmark "…위에/아래에"'}): ${name} → 현재 파일 유지`,
       );
       return null;
     }
@@ -2743,8 +2744,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     };
 
+    // 검증-교정 루프(Stage 0) — 합성 결과를 적용 직전 VSCode TS 진단으로 검증하고, 새 타입에러가
+    // 있으면 모델에게 <replace> 앵커 계약으로 1회 교정시킨다. 플래그 off면 미주입 → 종전 동작.
+    const verify = ExtensionConfig.isRegionVerifyEnabled()
+      ? (candidateText: string): Promise<{ ok: boolean; errors: string[] }> =>
+          this._verifyTextByDiagnostics(filePath, candidateText)
+      : undefined;
+
     this._postStatus('영역 편집 시도 중…');
-    const outcome = await runHybridRegionEdit(source, query, callModel, refResult.block || undefined, disambiguate, referenceImports);
+    const outcome = await runHybridRegionEdit(
+      source, query, callModel, refResult.block || undefined, disambiguate, referenceImports, verify,
+      ExtensionConfig.isAnchorFirstEditEnabled(),
+    );
     this._corpusOutputChannel.appendLine(outcome.diagnostics);
 
     // region 사퇴 시 UX 분기 — 분류는 단일 정책(classifyRegionDecline)에 위임(계기판과 규칙 동기화).
@@ -2819,6 +2830,75 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._history.push({ role: 'assistant', content: '(영역 편집 적용)' });
     await this._handleAxiomAction(wrapped, false, false, undefined, regionDiff);
     return true;
+  }
+
+  /**
+   * 합성된 편집 결과를 적용 전에 VSCode TS 언어서버 진단으로 검증한다(Stage 0 검증 루프의 "눈").
+   *
+   * 디스크/열린 버퍼를 건드리지 않으려고 **같은 폴더에 임시 형제 파일**을 만들어 진단을 받는다
+   * (상대 import·tsconfig paths가 원본과 동일하게 해소됨). Vite 등 번들러는 import 안 된 파일을
+   * 처리하지 않아 실행 중 앱 HMR에 영향이 없다. 진단을 못 얻으면(타임아웃·서버 부재) fail-open
+   * (ok:true)으로 **절대 편집을 막지 않는다**. 원본 파일이 이미 가진 에러(편집 무관)는 baseline으로
+   * 빼고 새 에러만 반환한다. 반환 항목은 `"L:C 메시지"`(verify 콜백 계약).
+   */
+  private async _verifyTextByDiagnostics(filePath: string, candidateText: string): Promise<{ ok: boolean; errors: string[] }> {
+    let tmpPath = '';
+    try {
+      const absPath = this._resolveWorkspacePath(filePath);
+      const dir = path.dirname(absPath);
+      const ext = path.extname(absPath) || '.tsx';
+      tmpPath = path.join(dir, `__axiom_verify_${process.pid}_${Date.now()}${ext}`);
+
+      // baseline — 원본이 이미 가진 에러(편집과 무관)는 제외한다. 파일이 열려 있으면 즉시 구해진다.
+      const baseMsgs = new Set(
+        vscode.languages.getDiagnostics(vscode.Uri.file(absPath))
+          .filter((d) => d.severity === vscode.DiagnosticSeverity.Error)
+          .map((d) => d.message),
+      );
+
+      fs.writeFileSync(tmpPath, candidateText, 'utf-8');
+      const uri = vscode.Uri.file(tmpPath);
+      await vscode.workspace.openTextDocument(uri); // TS 서버 분석 트리거
+      const diags = await this._collectDiagnostics(uri, 5000);
+      const errors = diags
+        .filter((d) => d.severity === vscode.DiagnosticSeverity.Error && !baseMsgs.has(d.message))
+        .map((d) => `${d.range.start.line + 1}:${d.range.start.character + 1} ${d.message}`);
+      return { ok: errors.length === 0, errors };
+    } catch {
+      return { ok: true, errors: [] }; // fail-open — 검증 불가가 편집을 막지 않게
+    } finally {
+      if (tmpPath) { try { fs.unlinkSync(tmpPath); } catch { /* noop */ } }
+    }
+  }
+
+  /**
+   * 주어진 URI의 진단이 "안정될 때까지" 기다렸다 반환한다. onDidChangeDiagnostics를 구독해 변경 후
+   * QUIET 동안 추가 변경이 없으면 확정, 또는 하드 타임아웃에 현재 진단을 반환한다. (TS 서버는 구문→
+   * 의미 진단을 여러 배치로 내보내므로 첫 배치만 보면 에러를 놓친다.)
+   */
+  private _collectDiagnostics(uri: vscode.Uri, timeoutMs: number): Promise<vscode.Diagnostic[]> {
+    return new Promise((resolve) => {
+      const QUIET = 600;
+      const start = Date.now();
+      const target = uri.toString();
+      let lastChange = 0;
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        sub.dispose();
+        clearInterval(timer);
+        resolve(vscode.languages.getDiagnostics(uri));
+      };
+      const sub = vscode.languages.onDidChangeDiagnostics((e) => {
+        if (e.uris.some((u) => u.toString() === target)) lastChange = Date.now();
+      });
+      const timer = setInterval(() => {
+        const now = Date.now();
+        if (now - start > timeoutMs) return finish();
+        if (lastChange > 0 && now - lastChange > QUIET) return finish();
+      }, 150);
+    });
   }
 
   // ─── axiom-action ────────────────────────────────────────────────────────────
@@ -3216,6 +3296,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             anchorSearchRadius: le.anchorSearchRadius,
           });
           if (lr.text === null) {
+            // grounded bounded retry(lines) — patch 모드와 동일하게, 앵커 실패 부분을 실제 파일 텍스트로
+            // grounding해 1회만 surgical 재요청한다. 곧장 full 재생성으로 떨어지면 약한 full 경로의 위험
+            // (느림·내용 누락)을 그대로 떠안으므로, "다시 읽고 정확히 재인용"을 먼저 시도한다(=Claude Code 방식).
+            // grounding 불가·부분 성공이면 false → 종전 full 폴백(회귀 0).
+            if (await this._tryGroundedLineEditRetry(action, originalContent, lr.results, groundedRetryDone)) {
+              break;
+            }
             const failureSummary = lr.results
               .filter((r) => !r.success)
               .map((r) => `#${r.index + 1}:${r.reason}`)
@@ -3940,6 +4027,75 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // groundedRetryDone=true → 재시도 결과가 또 실패해도 다시 grounding하지 않고 기존 폴백으로.
     // carryPatches → 모델이 다시 낸 실패분 patch 앞에 성공분을 합쳐 atomic 재적용.
     await this._handleAxiomAction(resp, false, true, carryPatches);
+    return true;
+  }
+
+  /**
+   * lines 모드 앵커 실패(anchor-mismatch/out-of-range)를 patch 모드와 동일하게 grounded 재시도한다.
+   *
+   * 종전엔 lines 실패 시 곧장 full 재생성으로 떨어져, 약한 모델이 기억으로 재구성한 앵커가 한 번 빗나가면
+   * 전체 파일을 다시 받는(느리고 내용 누락 위험 큰) 길로 갔다. 실패한 edit의 anchor를 실제 파일에 fuzzy
+   * 매칭(locateFuzzyRegion)해 그 **실제 텍스트**를 모델에 돌려주고 `<patch>`로 1회만 재요청한다
+   * (Claude Code의 "read해서 정확히 안다"를 모델 없이 재현 — _tryGroundedPatchRetry와 동일 철학).
+   *
+   * 안전장치(하나라도 어긋나면 false → 종전 full 폴백, 회귀 0):
+   *  - 이미 grounded 재시도를 했으면 false(정확히 1회).
+   *  - 위치 문제(anchor-mismatch/out-of-range)만 대상. 그 외 사유 섞이면 false.
+   *  - **전부 실패일 때만** 시도 — 부분 성공이면 성공분을 patch 재시도로 보존하기 어려워 누락 위험 → full로.
+   *  - 실패 edit에 anchor가 없거나 위치 grounding 실패면 false(변경 누락 방지).
+   */
+  private async _tryGroundedLineEditRetry(
+    action: AxiomAction,
+    originalContent: string,
+    results: { index: number; success: boolean; reason?: string }[],
+    groundedRetryDone: boolean,
+  ): Promise<boolean> {
+    if (groundedRetryDone) return false;
+    const cfg = ExtensionConfig.getMultiPatchConfig();
+    if (!cfg.groundedRetry) return false;
+    const edits = action.lineEdits;
+    if (!edits || edits.length === 0) return false;
+
+    const failed = results.filter((r) => !r.success);
+    if (failed.length === 0) return false;
+    if (!failed.every((r) => r.reason === 'anchor-mismatch' || r.reason === 'out-of-range')) return false;
+    // 부분 성공이면 성공분이 patch 재시도에서 누락될 수 있으므로 전부 실패일 때만(드롭 방지).
+    if (failed.length !== edits.length) return false;
+
+    const origLines = originalContent.replace(/\r\n/g, '\n').split('\n');
+    const grounded: GroundedPatchRegion[] = [];
+    for (const r of failed) {
+      const e = edits[r.index];
+      const anchor = e?.anchor?.trim();
+      if (!anchor) return false; // 앵커 없으면 grounding 불가 → full
+      const region = this._fileCreator.locateFuzzyRegion(
+        origLines, anchor, cfg.minContextLines, cfg.fuzzyLocateThreshold,
+      );
+      if (!region) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] grounded(lines) 재시도 포기 (${action.filePath}): edit #${r.index + 1}(${r.reason}) 위치 grounding 실패`,
+        );
+        return false;
+      }
+      grounded.push({
+        index: r.index, intent: e.content,
+        realText: region.text, startLine: region.startLine, endLine: region.endLine,
+      });
+    }
+    grounded.sort((a, b) => a.index - b.index);
+
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🔁 grounded(lines) 재시도 (${action.filePath}): 앵커 실패 ${grounded.length}건을 실제 코드로 재요청(위치 grounding 성공)`,
+    );
+    this._post({
+      type: 'token',
+      content: '\n\n> 🔁 **매칭 실패 부분의 실제 코드로 patch를 다시 만드는 중…** (현재 파일 기준, 1회)\n',
+    });
+
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const resp = await this._retryForAxiomAction(action.filePath, config, { groundedPatches: grounded });
+    if (!resp) return false;
+    await this._handleAxiomAction(resp, false, true);
     return true;
   }
 

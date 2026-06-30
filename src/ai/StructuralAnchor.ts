@@ -1545,25 +1545,49 @@ function netDelims(line: string): number {
 }
 
 /**
- * 앵커가 든 라인 인덱스를 관대하게 찾는다(0-based, 없으면 -1).
+ * 앵커가 든 라인 인덱스를 **전부** 관대하게 찾는다(0-based, 빈 배열=없음).
  *
  * 모델은 멀티라인 문장(`const {\n…\n} = useApi(…)`)을 앵커로 줄 때 **한 줄로 펼쳐** 쓰는 경향이 있어
- * (실측: 패널 sLLM 출력), 단순 `line.includes(anchor)`로는 어떤 단일 라인도 매칭 못 한다. 3단계로:
- *  ① 정확 단일 라인 ② 공백 정규화 단일 라인 ③ 첫 `{` 이전 distinctive head(예: `useApi<T>(ENDPOINT,`).
+ * (실측: 패널 sLLM 출력), 단순 `line.includes(anchor)`로는 어떤 단일 라인도 매칭 못 한다. 3단계로,
+ * **가장 엄격한 단계에서 매칭이 나오면 그 단계의 결과만** 쓴다(느슨한 단계로 안 내려가 가짜 모호 방지):
+ *  ① 정확 부분일치 ② 공백 정규화 부분일치 ③ 첫 `{` 이전 distinctive head(예: `useApi<T>(ENDPOINT,`).
+ *
+ * 모호성 판정은 호출부가 "문장 시작 기준 distinct 개수"로 한다(여러 줄이 한 문장에 속하면 모호 아님).
  */
-function resolveAnchorLine(lines: string[], anchor: string): number {
+function findAnchorLines(lines: string[], anchor: string): number[] {
   const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
-  let i = lines.findIndex((l) => l.includes(anchor));
-  if (i >= 0) return i;
+  const collect = (pred: (l: string) => boolean): number[] =>
+    lines.map((l, i) => (pred(l) ? i : -1)).filter((i) => i >= 0);
+
+  let hits = collect((l) => l.includes(anchor));
+  if (hits.length) return hits;
   const na = norm(anchor);
-  i = lines.findIndex((l) => norm(l).includes(na));
-  if (i >= 0) return i;
+  hits = collect((l) => norm(l).includes(na));
+  if (hits.length) return hits;
   const head = norm(anchor.split('{')[0]); // 멀티라인 펼침 대응 — 호출 head만으로 매칭
   if (head.length >= 8) {
-    i = lines.findIndex((l) => norm(l).includes(head));
-    if (i >= 0) return i;
+    hits = collect((l) => norm(l).includes(head));
+    if (hits.length) return hits;
   }
-  return -1;
+  return [];
+}
+
+/**
+ * 주어진 라인이 속한 **완결 문장의 시작 인덱스**를 찾는다(위로 경계까지). applyReplaceBlocks의
+ * 문장경계 로직을 모호성 판정과 공유하기 위해 분리했다.
+ * 경계: 빈 줄 / 주석 / `;`·`}`로 끝남. `{`로 끝나는 줄은 보통 블록 오프너(경계)지만,
+ * `const {`·`let {` 같은 객체 구조분해 시작은 우리 문장의 첫 줄이므로 경계가 아니다.
+ */
+function statementStart(lines: string[], aIdx: number): number {
+  let start = aIdx;
+  while (start > 0) {
+    const prev = stripTrailingLineComment(lines[start - 1]).trim();
+    if (prev === '' || prev.startsWith('//') || prev.startsWith('/*') || prev.endsWith('*/')) break;
+    if (/[;}]$/.test(prev)) break;
+    if (prev.endsWith('{') && !/^(?:export\s+)?(?:const|let|var)\b/.test(prev)) break; // 블록 오프너(const 구조분해 제외)
+    start--;
+  }
+  return start;
 }
 
 /**
@@ -1584,24 +1608,24 @@ export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[]): Repl
     const anchor = b.anchor.trim();
     if (!anchor || !b.replacement.trim()) continue;
     const lines = text.split('\n');
-    const aIdx = resolveAnchorLine(lines, anchor);
-    if (aIdx < 0) {
+    const hits = findAnchorLines(lines, anchor);
+    if (hits.length === 0) {
       unresolved.push(anchor);
       continue;
     }
 
-    // 문장 시작 — 위로 올라가다 "완결된 문장 경계"를 만나면 멈춘다.
-    // 경계: 빈 줄 / 주석 / `;`·`}`로 끝남. `{`로 끝나는 줄은 보통 블록 오프너(경계)지만,
-    // `const {`·`let {` 같은 **객체 구조분해 시작**은 우리 문장의 첫 줄이므로 경계가 아니다
-    // (예: `const { data } = useApi(...)` 멀티라인 — `const {`에서 멈추면 안 됨).
-    let start = aIdx;
-    while (start > 0) {
-      const prev = stripTrailingLineComment(lines[start - 1]).trim();
-      if (prev === '' || prev.startsWith('//') || prev.startsWith('/*') || prev.endsWith('*/')) break;
-      if (/[;}]$/.test(prev)) break;
-      if (prev.endsWith('{') && !/^(?:export\s+)?(?:const|let|var)\b/.test(prev)) break; // 블록 오프너(const 구조분해 제외)
-      start--;
+    // 모호성 게이트(앵커 계약의 핵심) — 같은 앵커가 **여러 문장**에 걸리면 첫 곳을 말없이 고치지 않는다.
+    // (여러 줄이 한 문장에 속하면 시작 인덱스가 같아 모호 아님.) `<replace>`를 주력 편집 채널로 올릴 때
+    // "value={status} 두 곳 중 엉뚱한 곳 교체" 같은 조용한 오편집을 차단한다 — 모델이 더 구체적 앵커로
+    // 재인용하도록 unresolved로 넘긴다(호출부가 폴백/재시도). 유일 앵커(기존 params 경로)는 영향 없음.
+    const distinctStarts = [...new Set(hits.map((h) => statementStart(lines, h)))];
+    if (distinctStarts.length > 1) {
+      unresolved.push(`${anchor} [모호: ${distinctStarts.length}곳 일치 — 더 고유한 앵커 필요]`);
+      continue;
     }
+
+    const start = distinctStarts[0];
+    const aIdx = Math.max(...hits); // 문장 끝 탐색이 앵커 마지막 줄을 지나도록 가장 아래 매칭을 기준점으로.
     // 문장 끝 — start부터 델리미터 누적이 0으로 돌아오고 `;`로 끝나는 첫 줄.
     let depth = 0;
     let end = aIdx;

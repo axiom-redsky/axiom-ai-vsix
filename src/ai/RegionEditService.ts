@@ -72,6 +72,61 @@ export type RegionDisambiguator = (
 ) => Promise<{ startLine: number; endLine: number } | null>;
 
 /**
+ * 호출부가 주입하는 "편집 결과 검증" 콜백(Stage 0 검증 루프의 눈). 합성된 전체 파일 텍스트를 받아
+ * 타입체크하고 **새 에러 목록**을 돌려준다(각 항목 `"L:C 메시지"`). ChatViewProvider가 VSCode TS
+ * 언어서버 진단으로 구현한다. 검증 불가/서버 부재 시 `ok:true`(fail-open)로 절대 편집을 막지 않는다.
+ * eval/슬라이스 하니스는 미주입이라 검증 루프 자체가 작동하지 않아 종전과 바이트 동일하다.
+ */
+export type EditVerifier = (candidateText: string) => Promise<{ ok: boolean; errors: string[] }>;
+
+/** <replace anchor="…">…</replace> 블록을 파싱한다(메인 파싱·검증 교정 라운드 공용). */
+function parseReplaceBlocks(modelOut: string): ReplaceBlock[] {
+  return [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
+    .map((m) => ({ anchor: m[1].trim(), replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, '') }))
+    .filter((b) => b.anchor && b.replacement.trim());
+}
+
+/** 검증-교정 라운드 시스템 프롬프트 — <replace> 앵커 블록만 출력하게 강제(앵커 계약). */
+export function buildVerifyCorrectionSystem(): string {
+  return (
+    `당신은 react-app-scaffold 전용 코딩 어시스턴트입니다. 아래 코드에 TypeScript 타입 에러가 있습니다.\n` +
+    `에러를 고치기 위해 **수정할 기존 코드 조각을 그대로 인용**해 교체하세요. 출력은 오직 다음 형식만:\n` +
+    `<replace anchor="파일에 실제로 있는 짧고 고유한 문자열">교체할 새 코드 전체</replace>\n` +
+    `규칙:\n` +
+    `- anchor는 파일에 **실제로 존재하는 문자열**이어야 합니다(없으면 적용 거부). 한 문장을 식별할 짧고 고유한 부분을 쓰세요.\n` +
+    `- 에러와 무관한 코드는 건드리지 마세요. 필요한 최소 교체만 하세요.\n` +
+    `- 설명·코드펜스 없이 <replace> 블록만 출력하세요. 고칠 수 없으면 아무것도 출력하지 마세요.`
+  );
+}
+
+/**
+ * 검증-교정 프롬프트 — 깨진 합성 결과에서 **에러 줄 주변 창만** 추려 보낸다(전체 파일 미전송 = 델타).
+ * 에러 항목은 `"L:C 메시지"` 형식(verify 콜백 계약)이라 앞의 L을 파싱해 그 줄 ±3 창을 모은다.
+ */
+export function buildVerifyCorrectionPrompt(composed: string, errors: string[]): string {
+  const lines = composed.split('\n');
+  const windows: string[] = [];
+  const seen = new Set<string>();
+  for (const e of errors.slice(0, 8)) {
+    const m = e.match(/^(\d+):\d+\s/);
+    const ln = m ? parseInt(m[1], 10) : NaN;
+    if (!Number.isFinite(ln)) continue;
+    const lo = Math.max(1, ln - 3);
+    const hi = Math.min(lines.length, ln + 3);
+    const key = `${lo}-${hi}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const snippet = lines.slice(lo - 1, hi).map((l, i) => `${lo + i}: ${l}`).join('\n');
+    windows.push(`— ${ln}번째 줄 부근:\n${snippet}`);
+  }
+  return (
+    `## 타입 에러\n${errors.slice(0, 8).map((e) => `- ${e}`).join('\n')}\n\n` +
+    `## 해당 코드(줄번호 포함, 읽기 전용 참고)\n${windows.join('\n\n')}\n\n` +
+    `위 에러를 고치는 <replace> 블록만 출력하세요.`
+  );
+}
+
+/**
  * 객관식 disambiguation 프롬프트 — 후보를 번호 목록으로 제시하고 번호만 받게 한다(약한 모델 친화).
  * 결정론 locate가 못 정하는 우선순위(예: '입사일' vs 흔한 'input')를 모델의 언어 이해로 메운다.
  */
@@ -244,6 +299,7 @@ export function buildHybridPrompt(
   backingDecls?: string,
   query = '',
   controlInventory = '',
+  anchorFirst = false,
 ): string {
   // 필터·검색 요청 + 의존성 헤더가 이미 useApi(params)로 서버 조회 중일 때만 노출하는 타깃 지침.
   // 약한 모델이 서버 params 대신 클라이언트 파괴적 필터(가져온 목록 state를 filter 결과로 덮어쓰기)나
@@ -300,9 +356,20 @@ export function buildHybridPrompt(
       `스펙에 없는 필드·파라미터(예: code_type, category 등)를 추측해 쓰지 마세요. ` +
       `useApi의 타입 인자로 쓸 \`type\`은 <hook> 안에 스펙 기준으로 함께 선언하세요(미선언 시 적용이 거부됩니다).\n\n`
     : '';
+  // 앵커-우선(Stage 1, 플래그) — 작은 국소 수정은 영역 통째 재작성 대신 기존 코드를 그대로 인용해
+  // <replace>로 교체하게 유도한다. 적용 레이어는 모호성 게이트로 안전(여러 곳 매칭 시 거부·재인용).
+  // 약한 모델의 출력 형태에 영향을 주므로 효과는 실모델 라이브 프로브로만 검증된다(오프라인 eval 무측정).
+  const anchorFirstSection = anchorFirst
+    ? `\n**우선 규칙 — 작은 수정은 <replace>로(영역 통째 재작성 금지):**\n` +
+      `텍스트/속성/단일 값·prop 변경, 제자리 이름변경처럼 **국소적 수정**은 바꿀 **기존 코드 조각을 그대로 인용**해 교체하세요:\n` +
+      `<replace anchor="그 줄의 짧고 고유한 부분문자열">교체할 새 코드 전체</replace>\n` +
+      `- anchor는 파일에서 **딱 한 곳**만 식별하는 고유 문자열이어야 합니다(여러 곳에 있으면 적용이 거부되니 더 길게 인용하세요).\n` +
+      `- 요소를 **추가/삭제하거나 구조를 바꾸는** 편집만 <region>으로 영역 전체를 다시 쓰세요.\n`
+    : '';
   return (
     `당신은 Axiom AI, react-app-scaffold 전용 코딩 어시스턴트입니다.\n` +
     `아래 "의존성 헤더"는 같은 파일의 다른 부분(읽기 전용 참고)입니다. 기존 훅/state/타입/import와 충돌·중복 금지.\n\n` +
+    anchorFirstSection +
     `요청을 두 종류 출력으로 나누어 답하세요(둘 다 필요하면 둘 다 출력):\n` +
     `1) "편집 영역"의 JSX 수정 → <region>…</region> 안에 편집 영역 **전체를 다시** 쓰기. ` +
     `${rootTagRule}\n` +
@@ -361,6 +428,8 @@ export async function runHybridRegionEdit(
   referencedSpec?: string,
   disambiguate?: RegionDisambiguator,
   referenceImports?: Map<string, ImportOrigin>,
+  verify?: EditVerifier,
+  anchorFirst = false,
 ): Promise<RegionEditOutcome> {
   let loc = locateEditRegion(source, query);
 
@@ -390,7 +459,7 @@ export async function runHybridRegionEdit(
   }
 
   // 2) 모델 호출 (영역 + 의존성 헤더만)
-  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query, loc.controlInventory);
+  const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query, loc.controlInventory, anchorFirst);
   let modelOut: string;
   try {
     modelOut = await callModel(system, query);
@@ -406,9 +475,7 @@ export async function runHybridRegionEdit(
     .map((m) => stripNestedControlTags(m[1]).trim())
     .filter((h) => h.length > 0);
   const importMatches = [...modelOut.matchAll(/<import\s+([^>]*?)\/?>/g)].map((m) => m[1]);
-  const replaceBlocks: ReplaceBlock[] = [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
-    .map((m) => ({ anchor: m[1].trim(), replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, '') }))
-    .filter((b) => b.anchor && b.replacement.trim());
+  const replaceBlocks: ReplaceBlock[] = parseReplaceBlocks(modelOut);
 
   // 앞 빈 줄만 제거, 첫 줄 들여쓰기는 보존(.trim()은 splice를 flush-left로 만든다).
   const newRegion = regionMatch ? stripFences(regionMatch[1]).replace(/^\n+/, '').replace(/\s+$/, '') : '';
@@ -479,6 +546,28 @@ export async function runHybridRegionEdit(
   // 삭제 의도 — 옵션 배열 등에서 항목을 빼는 요청. 이때만 const 교체 가드를 완화(새 ⊆ 기존, 환각 차단)해
   // "항목 제거" 재선언을 적용한다. 비-삭제는 무손실(superset) 유지. (실측: '이사 항목 빼줘' → grades subset 교체.)
   const removalIntent = /빼|제거|삭제|없애|지워|remove|delete/i.test(query);
+
+  // 4.7) region 내용손실 게이트 — 모델이 큰 영역을 재작성하라고 받고 **일부만 내고 나머지를 통째 누락**한
+  //      경우를 차단한다(실측: "버튼 텍스트 바꿔줘"에 114~181줄 영역을 받아 버튼만 내고 필터바 Select들을 삭제).
+  //      누락 결과는 JSX 요소를 지워도 **타입이 유효**해서 tsc 검증(Stage 0)을 통과하므로 별도 구조 가드가
+  //      필요하다. 삭제/제거 의도가 아닌데 JSX 여는태그 수가 절반 미만으로 급감하면 파괴적 생략으로 보고 거부.
+  //      (근본 해법은 anchor-first(<replace>) — 작은 수정에 영역 통째 재작성 자체를 안 하게 하는 것.)
+  if (newRegion.trim() && regionChanged && !removalIntent) {
+    // 컴포넌트 교체(예: <table>→<SmartTable>)는 여러 태그를 한 컴포넌트로 접는 게 정상 → 면제.
+    const swap = componentReplacementTargets({ deps: loc.depsHeader, region: loc.region, query });
+    const tagCount = (s: string): number => (s.match(/<[A-Za-z][A-Za-z0-9]*/g) ?? []).length;
+    const origTags = tagCount(loc.region);
+    const outTags = tagCount(newRegion);
+    if (swap.length === 0 && origTags >= 6 && outTags < origTags * 0.5 && origTags - outTags >= 4) {
+      return {
+        status: 'fallback',
+        reason: 'region-content-loss',
+        diagnostics:
+          `[regionEdit] 영역 재작성이 내용을 대량 누락(JSX 여는태그 ${origTags}→${outTags}) — 파괴적 생략 의심 → full 폴백. ` +
+          `작은 국소 수정은 anchor-first(<replace>)를 켜면 영역 통째 재작성 없이 안전합니다.`,
+      };
+    }
+  }
 
   // 5) 합성: JSX 영역 splice → structural(훅/타입/import) 결정론 삽입
   const changes: string[] = [];
@@ -595,12 +684,49 @@ export async function runHybridRegionEdit(
     return { status: 'fallback', reason: 'no-op', diagnostics: '[regionEdit] 합성 결과가 원본과 동일(no-op) → full 폴백' };
   }
 
+  // 7) 검증-교정 루프(Stage 0) — verify 주입 시에만. 종전 14개 게이트는 정적 휴리스틱이라 "절반 수정"·
+  //    "엉뚱한 타입" 같은 의미 오류를 못 잡고 그대로 적용했다. 적용 직전 합성 결과를 타입검증하고,
+  //    새 에러가 있으면 "에러 + 깨진 코드 창"만 주고(델타) <replace> 앵커 계약으로 **1회** 교정한다.
+  //    교정이 에러를 줄였을 때만 채택하고(늘면 모델이 다른 곳을 깬 것 → 원안 유지), 남은 에러는
+  //    경고로 붙여 그대로 적용한다(사용자가 컨펌 카드에서 최종 판단 — 종전엔 검증 자체가 0이었음).
+  let verifyNote = '';
+  if (verify) {
+    const v1 = await verify(composed);
+    if (v1.ok) {
+      verifyNote = ' / ✅ 타입검증 통과';
+    } else if (v1.errors.length > 0) {
+      let bestText = composed;
+      let bestErrors = v1.errors;
+      try {
+        const fixOut = await callModel(buildVerifyCorrectionSystem(), buildVerifyCorrectionPrompt(composed, v1.errors));
+        const fixBlocks = parseReplaceBlocks(fixOut);
+        if (fixBlocks.length > 0) {
+          const rep = applyReplaceBlocks(composed, fixBlocks);
+          if (rep.unresolved.length === 0 && rep.text !== composed) {
+            const v2 = await verify(rep.text);
+            if (v2.errors.length < bestErrors.length) {
+              bestText = rep.text;
+              bestErrors = v2.errors;
+              changes.push(`검증 교정(타입에러 ${v1.errors.length}→${v2.errors.length})`);
+            }
+          }
+        }
+      } catch {
+        /* 교정 호출 실패 → 원안 유지(파손 없음) */
+      }
+      composed = bestText;
+      verifyNote = bestErrors.length === 0
+        ? ' / ✅ 타입검증 통과(교정)'
+        : ` / ⚠️ 타입에러 ${bestErrors.length}건 잔존(확인 후 적용): ${bestErrors.slice(0, 3).join(' | ')}`;
+    }
+  }
+
   const correctionNote = importCorrections.length
     ? ` / 🔧 import 경로 교정(참조 기준): ${importCorrections.join(', ')}`
     : '';
   return {
     status: 'applied',
     finalText: composed,
-    diagnostics: `[regionEdit] 적용: ${changes.join(' / ')}${correctionNote}`,
+    diagnostics: `[regionEdit] 적용: ${changes.join(' / ')}${correctionNote}${verifyNote}`,
   };
 }
