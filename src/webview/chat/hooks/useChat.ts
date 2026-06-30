@@ -49,6 +49,8 @@ export function useChat() {
   // 직전 턴이 오프라인(로컬 RAG)이었는지 — 토큰 메터를 라이브 측정 대신 "오프라인(토큰 미사용)"으로
   // 전환하는 데 쓴다. 세션 단위가 아니라 매 턴 host 신호로 갱신돼 온↔오프 깜빡임을 그대로 따라간다.
   const [isOffline, setIsOffline] = useState(false);
+  // 파일 피커로 첨부한 참조 파일 토큰(`@경로`) — 입력창에 append되도록 InputBar에 전달한다.
+  const [attachText, setAttachText] = useState('');
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -115,6 +117,10 @@ export function useChat() {
         }
         case 'status':
           setStatus(msg.text);
+          break;
+        case 'referenceAttached':
+          // 같은 파일을 연속 첨부해도 effect가 다시 돌도록 매번 새 문자열로 set한다.
+          if (msg.text) setAttachText(msg.text);
           break;
         case 'selectionContext':
           if (msg.filePath && msg.selectedText) {
@@ -293,10 +299,19 @@ export function useChat() {
 
   const dismissSelection = useCallback(() => setSelectionContext(null), []);
 
+  /** 파일 피커를 열어 참조 파일을 첨부한다(호스트가 `@경로`를 referenceAttached로 회신). */
+  const attachReference = useCallback(() => {
+    vscode.postMessage({ type: 'pickReferenceFile' });
+  }, []);
+
+  /** InputBar가 attachText를 입력창에 반영한 뒤 호출 — 다음 첨부를 위해 비운다. */
+  const consumeAttach = useCallback(() => setAttachText(''), []);
+
   return {
     messages, status, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
     selectionContext, dismissSelection,
     systemPromptChars, breakdown, contextWindow, usage, isOffline,
+    attachReference, attachText, consumeAttach,
   };
 }

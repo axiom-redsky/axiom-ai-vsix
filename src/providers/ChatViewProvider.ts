@@ -381,6 +381,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'clearHistory':
           this._history = [];
           break;
+        case 'pickReferenceFile':
+          await this._pickReferenceFile();
+          break;
       }
     });
 
@@ -549,6 +552,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         `\n> ⚠️ 지정하신 엔드포인트 ${list}(을)를 참조 스펙에서 찾지 못했습니다. ` +
         `URL·응답 구조를 검증 없이 진행하니, 경로 철자나 참조 파일이 맞는지 확인해 주세요.\n`,
     });
+  }
+
+  /**
+   * 파일 첨부 — 파일 피커로 고른 참조 파일(API 스펙 등)의 워크스페이스 상대 경로를 `@경로` 토큰으로
+   * 웹뷰 입력창에 삽입한다. 그 토큰은 전송 시 _loadReferencedFiles가 감지해 실제 내용을 ground truth로
+   * 주입하므로(타입·스키마는 추측 금지), 사용자가 경로를 손으로 타이핑할 필요가 없어진다.
+   */
+  private async _pickReferenceFile(): Promise<void> {
+    const picks = await vscode.window.showOpenDialog({
+      canSelectMany: true,
+      openLabel: '참조로 첨부',
+      title: 'API 스펙·참조 파일 첨부 — 타입·스키마 근거로 사용',
+      filters: { '참조 파일': ['md', 'markdown', 'json', 'yaml', 'yml', 'ts', 'tsx', 'js', 'jsx', 'txt'] },
+    });
+    if (!picks || picks.length === 0) return;
+    const tokens = picks
+      .map((uri) => `@${vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/')}`);
+    this._view?.webview.postMessage({ type: 'referenceAttached', text: tokens.join(' ') });
   }
 
   /** 언급된 경로 문자열을 워크스페이스 파일 Uri로 해석한다. 직접결합→전체glob→basename glob 순. */
@@ -3267,6 +3288,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this._corpusOutputChannel.appendLine(
               `[Axiom AI] ⛔ structural 의존성 미해소 (${action.filePath}): ${dep.unresolved.join(', ')}`,
             );
+            // 자동 복구(문서 ④ — dead-end 금지) — structural은 top-level 타입 선언을 표현 못 해, 모델이
+            // useApi<TFoo> 훅만 내고 TFoo 선언을 빠뜨리면 여기 걸린다. 사용자에게 "Full로 재시도"를 미루지
+            // 말고, 그 버튼이 하던 일(full 모드로 타입·import까지 통째 재생성)을 **1회 자동 수행**한다.
+            // 첫 패스(groundedRetryDone=false)에서만 — 재시도 결과가 또 걸리면 루프 방지 위해 카드로 폴백.
+            if (!groundedRetryDone) {
+              this._post({
+                type: 'token',
+                content:
+                  `\n\n> 🔁 **삽입에 필요한 타입 선언(\`${dep.unresolved.join('`, `')}\`)이 빠져 ` +
+                  `full 모드로 자동 재생성합니다…**\n`,
+              });
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] 🔁 structural 의존성 미해소 → full 자동 재시도 (${action.filePath}): ${dep.unresolved.join(', ')}`,
+              );
+              const fbConfig = ExtensionConfig.getEffectiveLlmConfig();
+              const retry = await this._retryForAxiomAction(action.filePath, fbConfig, { forceFull: true });
+              if (retry) {
+                await this._handleAxiomAction(retry, false, true);
+                break;
+              }
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] full 자동 재시도 응답 없음 → 사용자 선택 카드로 폴백 (${action.filePath})`,
+              );
+            }
             this._post({
               type: 'token',
               content:

@@ -917,6 +917,18 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   transform: scale(0.96);
 }
 
+.input-bar__btn--attach {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #999);
+  padding: 7px 8px;
+  margin-right: 2px;
+}
+
+.input-bar__btn--attach:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
+  color: var(--vscode-foreground);
+}
+
 .input-bar__btn--send {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);

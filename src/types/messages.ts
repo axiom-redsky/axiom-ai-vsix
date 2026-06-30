@@ -136,6 +136,7 @@ export type WebviewToHostMessage =
   | { type: 'loadProjectConfig' }
   | { type: 'saveProjectConfig'; config: ProjectConfig }
   | { type: 'testConnection'; llm: AxiomSettings['llm'] }
+  | { type: 'pickReferenceFile' }
   | { type: 'fileConfirmApprove'; actionId: string }
   | { type: 'fileConfirmReject'; actionId: string }
   | { type: 'patchRetryFull'; recoveryId: string }
@@ -164,6 +165,7 @@ export type HostToWebviewMessage =
   | { type: 'error'; message: string }
   | { type: 'status'; text: string }
   | { type: 'selectionContext'; filePath: string; startLine: number; endLine: number; selectedText: string }
+  | { type: 'referenceAttached'; text: string }
   | { type: 'fileCreated'; filePath: string }
   | { type: 'fileUpdated'; filePath: string; diff?: DiffLine[] }
   | { type: 'fileError'; message: string }

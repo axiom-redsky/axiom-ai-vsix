@@ -16,6 +16,11 @@ interface Props {
   isStreaming: boolean;
   prefillText?: string;
   onPrefillConsumed?: () => void;
+  /** 파일 피커를 열어 참조 파일을 첨부한다(호스트가 `@경로`를 appendText로 회신). */
+  onAttach?: () => void;
+  /** 호스트가 첨부한 `@경로` 토큰 — 입력창에 append한다(prefill과 달리 기존 입력 보존). */
+  appendText?: string;
+  onAppendConsumed?: () => void;
   selectionContext?: SelectionContext | null;
   onDismissSelection?: () => void;
   contextTotalChars?: number;
@@ -27,7 +32,7 @@ interface Props {
   offline?: boolean;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, usage, breakdown, offline }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, usage, breakdown, offline }: Props): React.ReactElement {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
@@ -62,6 +67,21 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
       focusTextarea();
     }
   }, [isStreaming, focusTextarea]);
+
+  // 파일 첨부 — 호스트가 보낸 `@경로` 토큰을 입력창에 **append**한다(prefill과 달리 기존 입력 보존).
+  useEffect(() => {
+    if (!appendText) return;
+    setValue((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')} ${appendText} ` : `${appendText} `));
+    onAppendConsumed?.();
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [appendText, onAppendConsumed]);
 
   const closePalette = useCallback(() => {
     setCmdMatches([]);
@@ -195,6 +215,24 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
           className="input-bar__textarea"
         />
         <div className="input-bar__actions">
+          {!isStreaming && onAttach && (
+            <button
+              onClick={onAttach}
+              className="input-bar__btn input-bar__btn--attach"
+              title="참조 파일 첨부 (API 스펙 등 — 타입·스키마 근거)"
+              aria-label="참조 파일 첨부"
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M10.5 5.5L6 10a1.5 1.5 0 002.12 2.12l4.6-4.6a3 3 0 00-4.24-4.24l-4.6 4.6a4.5 4.5 0 006.36 6.36L14 10"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
           {isStreaming ? (
             <button
               onClick={onStop}
