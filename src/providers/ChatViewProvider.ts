@@ -24,6 +24,7 @@ import {
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind } from '../ai/IntentClassifier';
+import { FALLBACK_HINT } from '../ai/OfflineKnowledgeRetriever';
 import { OfflineResponder } from '../ai/OfflineResponder';
 import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/OfflineTransplant';
 import { IntentExampleStore } from '../ai/IntentExampleStore';
@@ -604,14 +605,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const root = folders[0].uri;
     const norm = (p: string): string => p.replace(/\\/g, '/').replace(/^\/+/, '');
     const target = norm(targetRel);
+    const baseLabel = norm(modelPath).split('/').pop() ?? modelPath;
 
     // 1) 모델 경로를 그대로 시도 — 정확하거나 basename이 유일하면 여기서 끝.
+    this._postStatus(`출처 파일 찾는 중 — ${baseLabel}`);
     const literal = await this._resolveReferencedFileUri(root, modelPath);
-    if (literal && norm(vscode.workspace.asRelativePath(literal)) !== target) return literal;
+    if (literal && norm(vscode.workspace.asRelativePath(literal)) !== target) {
+      this._postStatus(`출처 확정 — ${norm(vscode.workspace.asRelativePath(literal))}`);
+      return literal;
+    }
 
     // 2) 모델 경로가 틀렸거나 self-match → basename으로 디스크 전체 조회.
     const base = norm(modelPath).split('/').pop();
     if (!base) return null;
+    this._postStatus(`디스크 검색 중 — ${base}`);
     let found: vscode.Uri[];
     try {
       found = await vscode.workspace.findFiles(`**/${base}`, '**/node_modules/**', 50);
@@ -621,7 +628,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 3) 현재 편집 대상은 출처가 될 수 없다(동명 self-match 제거).
     const pool = found.filter((u) => norm(vscode.workspace.asRelativePath(u)) !== target);
     if (pool.length === 0) return null;
-    if (pool.length === 1) return pool[0];
+    if (pool.length === 1) {
+      this._postStatus(`출처 확정 — ${norm(vscode.workspace.asRelativePath(pool[0]))}`);
+      return pool[0];
+    }
+    this._postStatus(`후보 ${pool.length}개 발견 — 폴더 힌트로 선별 중…`);
 
     // 4) 폴더 힌트로 랭킹 — 쿼리의 영문 토큰 + 모델 경로의 디렉터리 세그먼트가 후보 경로(파일명 제외)에
     //    많이 들어갈수록 가산. "publishing 폴더의 …" → publishing 들어간 후보가 뽑힌다.
@@ -646,10 +657,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     // 5) 유일한 최고점이면 확정.
     if (scored[0].score > 0 && (scored.length === 1 || scored[0].score > scored[1].score)) {
+      this._postStatus(`출처 확정 — ${norm(vscode.workspace.asRelativePath(scored[0].u))}`);
       return scored[0].u;
     }
 
     // 동률·힌트 없음 → 조용히 포기하지 말고 되묻기(실행은 충돌 안전).
+    this._postStatus(`후보가 여러 개 — 선택 대기 중…`);
     type Item = vscode.QuickPickItem & { uri: vscode.Uri };
     const items: Item[] = scored.map(({ u }) => {
       const rel = vscode.workspace.asRelativePath(u);
@@ -1252,9 +1265,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 못 잡아 isFileCtx=true로 새어, 설명만 한 모델 응답을 수정 코드로 래핑해 "원본과 동일한 no-op diff"를
       // 띄우던 근본 원인. forceQnA를 isFileCtx와 buildSystemPrompt 양쪽에 흘려 프롬프트·후처리를 일치시킨다.
       const forceQnA = intent?.intent === 'qna' || intent?.intent === 'smalltalk';
+      const qnaGated = this._scaffoldBuilder.isQnAGated(text, forceQnA);
       const isFileCtx =
-        !this._scaffoldBuilder.isQnAGated(text, forceQnA) &&
+        !qnaGated &&
         this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
+
+      // 온라인 지식 가이드 — Q&A(조회·설명)로 게이팅된 요청은, 로컬 검색기가 정밀 매칭 문서를
+      // **확신**할 때 그 knowledge 문서 전문을 오프라인과 동일하게 렌더하고 LLM 합성을 건너뛴다.
+      // 약한 모델이 topK 청크만 보고 짧게 요약하던 것을(캡처: 온라인 답변이 오프라인보다 빈약) 결정론
+      // 문서 전문 렌더로 대체한다. 확신이 없으면(빈손·카탈로그 폴백 FALLBACK_HINT) false → 아래 기존
+      // LLM 경로로 떨어져 "의도 오판 → 도움 0"을 막는다.
+      if (qnaGated && ExtensionConfig.isOnlineKnowledgeAnswerEnabled()) {
+        if (await this._tryOnlineKnowledgeAnswer(text, editorCtx, intent)) {
+          this._post({ type: 'done' });
+          this._postStatus(config.model);
+          return;
+        }
+      }
+
       if (isFileCtx) {
         const resolved = await this._resolveTargetFile(text, editorCtx, intent?.targetComponent ?? null);
         if (!resolved.proceed) {
@@ -1543,7 +1571,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const cleanedResponse = this._compressForHistory(finalResponse);
       this._history.push({ role: 'assistant', content: cleanedResponse });
 
-      await this._handleAxiomAction(finalResponse);
+      // axiom-action 마크업이 실제로 있을 때만 적용 파이프라인에 흘린다. 순수 Q&A(조회·설명) 응답은
+      // 코드 액션이 없으므로 _handleAxiomAction의 "0-블록" 가드가 "⚠️ 파일 수정을 적용하지 못했습니다"를
+      // 매번 헛발신하던 근본 원인이었다(이건 수정 요청이 아니라 설명 요청이라 경고 자체가 무의미).
+      // 완결 블록(hasActionBlock) 또는 잘린 여는 태그(생성 컨텍스트 truncation 안내 대상)일 때만 호출.
+      if (/<axiom-action>/.test(finalResponse)) {
+        await this._handleAxiomAction(finalResponse);
+      }
 
       // 온라인 지식 답변(코드 액션 아님)은 topK 청크만 보므로 일부만 다룰 수 있다 →
       // 프롬프트에 실제로 주입된 출처 문서를 "전체 보기" 푸터로 노출한다(결정론, 모델 비의존).
@@ -1600,6 +1634,64 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     lines.push('>');
     lines.push('> 💡 같은 질문을 **오프라인 모드**에서 하면 관련 문서 전문이 그대로 표시됩니다.');
     return lines.join('\n') + '\n';
+  }
+
+  /**
+   * 온라인 Q&A 지식 가이드 — Q&A로 게이팅된 요청에서, 오프라인과 **동일한** 로컬 검색기
+   * (retrieveOfflineKnowledge: 의미+키워드로 knowledge 문서를 통째로)를 온라인에서도 호출해
+   * 매칭 문서 전문을 그대로 렌더한다. 약한 모델의 topK 청크 요약(빈약한 답)을 결정론 문서 전문으로
+   * 대체하는 것이 목적이다.
+   *
+   * **안전 게이트(의도 오판 방어)**: 검색기가 정밀 매칭을 확신할 때만(빈손 아님 + 첫 블록이
+   * FALLBACK_HINT(카탈로그 폴백) 아님) true를 반환하고 LLM을 건너뛴다. 확신이 없으면 false →
+   * 호출부가 기존 LLM 경로를 그대로 태운다 → "Q&A로 잘못 분류됐지만 맞는 문서가 없을 때 LLM 답변을
+   * 못 받는" 공백을 차단한다.
+   *
+   * 공유 스코어러(buildContext)·코드 편집 경로는 건드리지 않는다(온라인 수정 흐름 무영향).
+   * @returns 지식 가이드를 렌더했으면 true, (확신 미달로) LLM에 맡겨야 하면 false.
+   */
+  private async _tryOnlineKnowledgeAnswer(
+    text: string,
+    editorCtx: EditorContext,
+    intent: IntentResult | null,
+  ): Promise<boolean> {
+    // 분류기 off 등으로 intent가 없으면 qna로 가정한 최소 IntentResult를 합성한다(검색기는
+    // intent.intent만 fileCtx 게이팅에 쓰며, qna는 열린 파일 import 노이즈를 제외한다).
+    const effIntent: IntentResult = intent ?? {
+      intent: 'qna',
+      pageName: null,
+      domain: null,
+      contentSource: null,
+      targetFile: null,
+      targetComponent: null,
+    };
+
+    let docs: string[];
+    try {
+      docs = await this._scaffoldBuilder.retrieveOfflineKnowledge(
+        text,
+        effIntent,
+        editorCtx.content ?? '',
+      );
+    } catch (err) {
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 온라인 지식 가이드 검색 실패 → LLM 폴백: ${(err as Error).message}`,
+      );
+      return false;
+    }
+
+    // 빈손(무관) 또는 카탈로그 폴백(정확 매칭 아님)이면 LLM에 맡긴다(확신 게이트).
+    if (!docs || docs.length === 0 || docs[0] === FALLBACK_HINT) return false;
+
+    const banner =
+      '> 📚 **scaffold 지식 가이드** — 로컬 문서에서 관련 사용법을 찾아 전문을 표시합니다.';
+    const md = `\n${banner}\n\n${docs.join('\n\n---\n\n')}\n`;
+    this._post({ type: 'token', content: md });
+    this._history.push({ role: 'assistant', content: '(scaffold 지식 가이드 응답)' });
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 온라인 지식 가이드 렌더(문서 ${docs.length}개) — LLM 합성 생략`,
+    );
+    return true;
   }
 
   // ─── /spec 서브 커맨드 ───────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'stubs.userStubsFolder',
   'debug.logSystemPrompt',
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
+  'experimental.onlineKnowledgeAnswer',
   'scenarioC.compactModes',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
@@ -353,6 +354,17 @@ export class ExtensionConfig {
    */
   static isPageCreationLlmMode(): boolean {
     return ExtensionConfig._resolve<boolean>('experimental.pageCreationLlmMode', false);
+  }
+
+  /**
+   * 온라인 지식 가이드. 온라인이어도 Q&A(조회·설명)로 게이팅된 요청이고, 로컬 검색기가
+   * **정밀 매칭 문서를 확신**할 때만(카탈로그 폴백 FALLBACK_HINT 아님) 그 knowledge 문서 전문을
+   * 오프라인과 동일하게 렌더하고 LLM/axiom-action을 건너뛴다. 매칭이 약하면(빈손·폴백) 기존 LLM
+   * 경로로 떨어져 "의도 오판 → 도움 0"을 막는다. 공유 스코어러(buildContext) 미사용 → 온라인 코드 편집
+   * 경로 무영향. 폐쇄망 점진 도입을 위해 옵트아웃 가능하도록 플래그화(기본 on).
+   */
+  static isOnlineKnowledgeAnswerEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.onlineKnowledgeAnswer', true);
   }
 
   /** 사용자가 설정한 오프라인 stubs 보강 폴더 */
