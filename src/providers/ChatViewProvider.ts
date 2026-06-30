@@ -581,6 +581,88 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return null;
   }
 
+  /**
+   * [내용 이식 전용] 출처(.tsx) 파일을 **디스크 grounded**로 해석한다.
+   *
+   * 모델(IntentClassifier)이 낸 contentSource 경로는 추측이라 틀릴 수 있다(예: 현재 파일
+   * `src/domains/employee/...`에서 employee→publishing만 갈아끼운 `src/domains/publishing/...`
+   * 환각 — 실제 publishing은 `src/publishing/<업무>/...`). 그래서 경로 문자열을 그대로 믿지 않고,
+   * 사람이 파일 찾듯 **이름으로 디스크를 glob → 폴더 힌트로 확정**한다:
+   *   1) 모델 경로를 그대로 시도(정확하거나 basename 유일하면 끝 — 기존 동작 보존)
+   *   2) 실패/self-match면 basename으로 전체 glob(개수 제한 없이)
+   *   3) **현재 편집 대상은 출처가 될 수 없으므로 후보에서 제외**(동명 self-match 제거)
+   *   4) 남은 후보를 **폴더 힌트**(사용자 쿼리 영문 토큰 + 모델 경로 디렉터리 세그먼트)로 랭킹
+   *   5) 유일 최고점이면 확정, 동률·힌트 없음이면 **QuickPick으로 되묻기**(조용히 포기 금지)
+   */
+  private async _resolveContentSourceUri(
+    query: string,
+    modelPath: string,
+    targetRel: string,
+  ): Promise<vscode.Uri | null> {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) return null;
+    const root = folders[0].uri;
+    const norm = (p: string): string => p.replace(/\\/g, '/').replace(/^\/+/, '');
+    const target = norm(targetRel);
+
+    // 1) 모델 경로를 그대로 시도 — 정확하거나 basename이 유일하면 여기서 끝.
+    const literal = await this._resolveReferencedFileUri(root, modelPath);
+    if (literal && norm(vscode.workspace.asRelativePath(literal)) !== target) return literal;
+
+    // 2) 모델 경로가 틀렸거나 self-match → basename으로 디스크 전체 조회.
+    const base = norm(modelPath).split('/').pop();
+    if (!base) return null;
+    let found: vscode.Uri[];
+    try {
+      found = await vscode.workspace.findFiles(`**/${base}`, '**/node_modules/**', 50);
+    } catch {
+      return null;
+    }
+    // 3) 현재 편집 대상은 출처가 될 수 없다(동명 self-match 제거).
+    const pool = found.filter((u) => norm(vscode.workspace.asRelativePath(u)) !== target);
+    if (pool.length === 0) return null;
+    if (pool.length === 1) return pool[0];
+
+    // 4) 폴더 힌트로 랭킹 — 쿼리의 영문 토큰 + 모델 경로의 디렉터리 세그먼트가 후보 경로(파일명 제외)에
+    //    많이 들어갈수록 가산. "publishing 폴더의 …" → publishing 들어간 후보가 뽑힌다.
+    const stop = new Set(['src', 'pages', 'page', 'components', 'component', 'common', 'index', 'tsx', 'ts', 'jsx', 'js']);
+    const baseStem = base.replace(/\.[a-z]+$/i, '').toLowerCase();
+    const hints = new Set<string>();
+    for (const seg of norm(modelPath).split('/').slice(0, -1)) {
+      const s = seg.toLowerCase();
+      if (s.length >= 3 && !stop.has(s)) hints.add(s);
+    }
+    for (const w of query.toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? []) {
+      if (!stop.has(w) && w !== baseStem) hints.add(w);
+    }
+    const scored = pool
+      .map((u) => {
+        const dir = norm(vscode.workspace.asRelativePath(u)).split('/').slice(0, -1).join('/').toLowerCase();
+        let score = 0;
+        for (const h of hints) if (dir.includes(h)) score++;
+        return { u, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    // 5) 유일한 최고점이면 확정.
+    if (scored[0].score > 0 && (scored.length === 1 || scored[0].score > scored[1].score)) {
+      return scored[0].u;
+    }
+
+    // 동률·힌트 없음 → 조용히 포기하지 말고 되묻기(실행은 충돌 안전).
+    type Item = vscode.QuickPickItem & { uri: vscode.Uri };
+    const items: Item[] = scored.map(({ u }) => {
+      const rel = vscode.workspace.asRelativePath(u);
+      return { label: rel.split(/[/\\]/).pop() ?? rel, description: rel, uri: u };
+    });
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: `"${base}" 후보가 여러 개입니다 — 어떤 파일 내용을 적용할까요?`,
+      matchOnDescription: true,
+      ignoreFocusOut: true,
+    });
+    return picked?.uri ?? null;
+  }
+
   private _requestFileConfirmation(
     actionId: string,
     filePath: string,
@@ -2347,10 +2429,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    // 출처 파일 해석 — 분류기 경로는 추측일 수 있으므로 basename glob까지 폴백(_resolveReferencedFileUri).
+    // 출처 파일 해석 — 모델 경로는 추측이라 틀릴 수 있으므로(예: src/domains/publishing/… 환각) 디스크
+    // grounded 해석: 모델 경로 → 실패 시 basename 전체 glob(현재 대상 제외) → 폴더 힌트 랭킹 → 동률 QuickPick.
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return false;
-    const srcUri = await this._resolveReferencedFileUri(folders[0].uri, intent.contentSource);
+    const srcUri = await this._resolveContentSourceUri(text, intent.contentSource, curRel);
     if (!srcUri) {
       log(`스킵 — 출처 파일을 찾지 못함: ${intent.contentSource}`);
       return false;
