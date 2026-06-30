@@ -394,6 +394,31 @@ console.log('\nScaffoldContracts — 계약 카드 트리거 주입:');
   check('list-table: 무관 쿼리 → 비발동',
     !ids({ deps: '', region: '<div/>', query: '글자색 변경' }).includes('list-table-binding'));
 
+  // SmartTable 명시 → smart-table-binding 발동 + SmartTable 골격 포함, list-table는 양보(비발동)
+  {
+    const ctx = { deps: '', region: '<table><tbody>{rows.map(r=>(<tr/>))}</tbody></table>', query: "'/api/employees' 데이터를 SmartTable로 직원 테이블에 적용해줘" };
+    check('smart-table: "SmartTable로 적용" → 카드 발동', ids(ctx).includes('smart-table-binding'));
+    check('smart-table: list-table-binding은 양보(비발동)', !ids(ctx).includes('list-table-binding'));
+    const sec = buildContractSection(ctx);
+    check('smart-table 카드: defineColumns 골격 포함', sec.includes('defineColumns'));
+    check('smart-table 카드: <SmartTable 재작성 포함', sec.includes('<SmartTable data={'));
+    check('smart-table 카드: 응답 타입 선언 슬롯 포함', sec.includes('TXxxResponse'));
+    check('smart-table 카드: data/endpoint 동시 금지 경고 포함', sec.includes('동시에 **주지 마세요**') || sec.includes('동시에 주지 마세요'));
+    check('smart-table 카드: 응답 스키마 확인 게이트 포함', sec.includes('응답 스키마 확인 게이트') && sec.includes('되물으세요'));
+  }
+  // 응답 스키마 게이트는 list-table-binding 카드에도 적용된다(스키마 없으면 추측 대신 되묻기).
+  {
+    const sec = buildContractSection({ deps: '', region: '<table/>', query: "직원 목록 테이블에 '/api/employees' api를 적용해줘" });
+    check('list-table 카드: 응답 스키마 확인 게이트 포함', sec.includes('응답 스키마 확인 게이트') && sec.includes('되물으세요'));
+  }
+  // "스마트테이블"·"데이터 테이블" 한글 변형도 SmartTable 카드로 발동
+  check('smart-table: "스마트테이블" → 발동',
+    ids({ deps: '', region: '<Table/>', query: '스마트테이블로 목록 보여줘' }).includes('smart-table-binding'));
+  check('smart-table: "데이터 테이블" → 발동(고수준 그리드=SmartTable)',
+    ids({ deps: '', region: '<table/>', query: '데이터 테이블로 직원 목록 만들어줘' }).includes('smart-table-binding'));
+  check('smart-table: "데이터 테이블" 시 list-table는 양보',
+    !ids({ deps: '', region: '<table/>', query: '데이터 테이블로 직원 목록 만들어줘' }).includes('list-table-binding'));
+
   // 아무 카드도 발동 안 하면 섹션 자체가 빈 문자열
   check('무관 컨텍스트 → 계약 섹션 없음', buildContractSection({ deps: '', region: '<div/>', query: '글자색 변경' }) === '');
 
