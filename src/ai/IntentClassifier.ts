@@ -83,8 +83,10 @@ export function buildIntentPrompt(query: string, ctx: IntentContext): string {
     `- domain: 명시된 대상 도메인. 후보: [${domainList}]. 불명확하면 null.\n` +
     `- contentSource: "이 파일 내용으로 채워/넣어줘"처럼 **복사해 올 원본** 파일 경로. 없으면 null.\n` +
     `- targetFile: 고칠 대상. "현재 화면/파일"이면 "current", 경로가 명시되면 그 경로, 모르면 null.\n` +
-    `- targetComponent: **현재 파일이 아니라 현재 파일이 쓰는 다른 컴포넌트**를 고치라는 요청이면 그 ` +
-    `PascalCase 이름(예: "StatusBadge 컴포넌트를 수정해줘" → "StatusBadge"). 현재 파일 자체 수정이면 null.\n\n` +
+    `- targetComponent: **현재 파일이 아니라 현재 파일이 쓰는 다른 컴포넌트를 고치라는** 요청이면 그 ` +
+    `PascalCase 이름(예: "StatusBadge 컴포넌트**를** 수정해줘" → "StatusBadge"). 현재 파일 자체 수정이면 null.\n` +
+    `  ⚠ 조사 구분: "X 컴포넌트**로/으로** 적용/변환/교체/바꿔/만들어"는 **현재 파일에 X를 쓰라는** 뜻이므로 ` +
+    `X를 고치는 게 아니다 → targetComponent=null, targetFile="current". X를 편집하라는 신호는 "X**를** 수정/고쳐"일 때뿐이다.\n\n` +
     `## 예시\n` +
     `요청: "상품 목록 화면 만들어줘"\n` +
     `{"intent":"create_page","pageName":null,"domain":null,"contentSource":null,"targetFile":null,"targetComponent":null}\n` +
@@ -94,6 +96,8 @@ export function buildIntentPrompt(query: string, ctx: IntentContext): string {
     `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":"src/publishing/inventory/pages/StockPage.tsx","targetFile":"current","targetComponent":null}\n` +
     `요청: "이 화면이 쓰는 StatusBadge 컴포넌트를 수정해줘"\n` +
     `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":null,"targetFile":"current","targetComponent":"StatusBadge"}\n` +
+    `요청: "현재 파일의 표를 DataGrid 컴포넌트로 적용해줘"\n` +
+    `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":null,"targetFile":"current","targetComponent":null}\n` +
     `요청: "이 useApi 훅이 무슨 일을 해?"\n` +
     `{"intent":"qna","pageName":null,"domain":null,"contentSource":null,"targetFile":null,"targetComponent":null}\n` +
     `요청: "고마워 잘 됐어"\n` +

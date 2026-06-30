@@ -9,6 +9,7 @@ import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, pars
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection } from '../src/ai/ScaffoldContracts';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit } from '../src/ai/StructuralAnchor';
+import { isProtectedPath } from '../src/ai/PathGuard';
 
 const SRC = [
   /*  1 */ "import { useState } from 'react';",
@@ -965,6 +966,26 @@ console.log('\nimport provenance — 경로 + default/named 형태 교정:');
   const unknown: ImportRequest[] = [{ module: 'x', named: ['Unknown'] }];
   const r3 = reconcileImportsWithReference(unknown, prov);
   check('참조에 없는 심볼은 손대지 않음', r3.corrections.length === 0);
+}
+
+// ─── PathGuard — 편집 보호 경로 매칭(core/shared 절대 수정 금지) ──────────────────
+console.log('\nPathGuard — 보호 경로 글롭 매칭:');
+{
+  const P = ['src/core/**', 'src/shared/**'];
+  // 보호 영역 → true
+  check('core 파일 보호', isProtectedPath('src/core/api/client.ts', P));
+  check('shared/smart-table 보호(스크린샷 케이스)', isProtectedPath('src/shared/ui/smart-table/SmartTable.tsx', P));
+  check('shadcn 보호', isProtectedPath('src/shared/lib/shadcn/ui/button.tsx', P));
+  check('Windows 역슬래시 경로도 보호', isProtectedPath('src\\shared\\ui\\smart-table\\SmartTable.tsx', P));
+  check('선행 ./ 정규화 후 보호', isProtectedPath('./src/core/utils/format.ts', P));
+  // 업무 영역 → false
+  check('domains 페이지는 편집 허용', !isProtectedPath('src/domains/employee/pages/EmployeeListPage.tsx', P));
+  check('publishing 편집 허용', !isProtectedPath('src/publishing/main/pages/MainPage.tsx', P));
+  check('이름에 shared 포함돼도 다른 경로면 허용', !isProtectedPath('src/domains/shared-utils/x.ts', P));
+  // ** 가 0개 디렉터리도 매칭
+  check('src/core 바로 아래 파일 보호(** 0-depth)', isProtectedPath('src/core/index.ts', P));
+  // 잘못된 글롭은 무시(통과)
+  check('빈 경로는 false', !isProtectedPath('', P));
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
