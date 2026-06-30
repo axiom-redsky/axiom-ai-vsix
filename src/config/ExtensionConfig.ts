@@ -19,6 +19,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'debug.logSystemPrompt',
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
   'experimental.onlineKnowledgeAnswer', 'experimental.regionVerify', 'experimental.anchorFirstEdit',
+  'experimental.patchFirstEdit',
   'scenarioC.compactModes',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
@@ -355,6 +356,17 @@ export class ExtensionConfig {
    */
   static isAnchorFirstEditEnabled(): boolean {
     return ExtensionConfig._resolve<boolean>('experimental.anchorFirstEdit', false);
+  }
+
+  /**
+   * 실험: patch-우선 편집(Stage 1/경로 수렴). 현재 파일 in-place 수정 프롬프트에서 lines 모드를 빼고
+   * patch(`<search>/<replace>` literal 정확매칭 = Claude Code Edit식)를 주력으로 제시한다. lines 앵커가
+   * 드리프트로 자주 빗나가 grounded 재시도로 patch 전환되던 우회를 없애고, 약한 모델의 모드 선택 부담도
+   * 줄인다(structural=추가, patch=수정 2개로 압축). 모델 출력 형태에 영향 → 실모델 라이브로만 검증.
+   * 적용·폴백은 종전과 동일(회귀 0). 선택 영역은 이미 patch 강제라 무영향.
+   */
+  static isPatchFirstEditEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.patchFirstEdit', false);
   }
 
   /**

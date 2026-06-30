@@ -1168,6 +1168,95 @@ console.log('\napplyReplaceBlocks — guard 내용손실 게이트:');
   check('guard 미주입 → rejected 빈 배열(회귀 0)', noGuard.rejected.length === 0, `rejected=${noGuard.rejected.join('|')}`);
 }
 
+// ─── applyReplaceBlocks — old(literal) 정확매칭: JSX 국소교체 과확장 없음(①버그 회귀) ──────────
+console.log('\napplyReplaceBlocks — old(literal) 정확매칭:');
+{
+  // 버튼이 PageHeader actions={...} 안에 있고(앵커+; 추측이면 return 끝까지 과확장됐던 케이스), 아래 필터바 존재.
+  const PAGE = [
+    '  return (',
+    '    <div>',
+    '      <PageHeader',
+    '        title="직원 관리"',
+    '        actions={',
+    '          <Button size="lg">',
+    '            <UserPlus className="w-4 h-4 mr-1.5" />',
+    '            직원 등록',
+    '          </Button>',
+    '        }',
+    '      />',
+    '      <div className="filters">',
+    '        <Select><SelectItem>전체</SelectItem></Select>',
+    '        <Input placeholder="검색" />',
+    '      </div>',
+    '    </div>',
+    '  );',
+  ].join('\n');
+
+  // literal old: 버튼 텍스트 한 줄만 인용 → 그 줄만 교체, 필터바·PageHeader 보존(과확장 없음).
+  const r = applyReplaceBlocks(PAGE, [{ anchor: '', old: '            직원 등록', replacement: '            직원 추가' }]);
+  check('literal 한 줄: 텍스트만 교체', r.text.includes('직원 추가') && !r.text.includes('직원 등록'));
+  check('literal 한 줄: 필터바 보존(과확장 없음)', r.text.includes('<Select>') && r.text.includes('placeholder="검색"'), r.changes.join('|'));
+  check('literal 한 줄: unresolved/rejected 없음', r.unresolved.length === 0 && r.rejected.length === 0);
+
+  // 멀티라인 literal old: 버튼 블록 전체 인용 → 그 블록만 교체.
+  const r2 = applyReplaceBlocks(PAGE, [{
+    anchor: '',
+    old: '          <Button size="lg">\n            <UserPlus className="w-4 h-4 mr-1.5" />\n            직원 등록\n          </Button>',
+    replacement: '          <Button size="sm">사원 추가</Button>',
+  }]);
+  check('literal 멀티라인: 버튼 블록만 교체', r2.text.includes('사원 추가') && !r2.text.includes('<UserPlus'));
+  check('literal 멀티라인: 필터바·PageHeader 보존', r2.text.includes('<Select>') && r2.text.includes('title="직원 관리"'), r2.changes.join('|'));
+
+  // 들여쓰기 차이 흡수(trim pass) — old를 flush-left로 인용해도 매칭.
+  const r3 = applyReplaceBlocks(PAGE, [{ anchor: '', old: '직원 등록', replacement: '            인원 등록' }]);
+  check('literal: 들여쓰기 달라도 매칭(trim pass)', r3.text.includes('인원 등록') && r3.unresolved.length === 0, `unresolved=${r3.unresolved.join('|')}`);
+
+  // not-found: 원본에 없는 old → unresolved(조용한 무시 아님).
+  const nf = applyReplaceBlocks(PAGE, [{ anchor: '', old: '            없는 텍스트', replacement: 'x' }]);
+  check('literal not-found → unresolved', nf.unresolved.length === 1 && /못 찾음/.test(nf.unresolved[0]), `unresolved=${nf.unresolved.join('|')}`);
+
+  // ambiguous: 같은 old가 두 곳 → 거부(원본 불변).
+  const DUP = ['  const a = 1;', '  const b = 2;', '  const a = 1;'].join('\n');
+  const amb = applyReplaceBlocks(DUP, [{ anchor: '', old: '  const a = 1;', replacement: '  const a = 9;' }]);
+  check('literal ambiguous → unresolved(원본 불변)', amb.unresolved.length === 1 && /모호/.test(amb.unresolved[0]) && amb.text === DUP, `unresolved=${amb.unresolved.join('|')}`);
+}
+
+// ─── e2e: anchorFirst + literal <replace><old><new> → 버튼만 바뀌고 필터바 보존(②③버그 통합 회귀) ──
+console.log('\ne2e: anchorFirst literal <replace> — 필터바 보존:');
+{
+  const PAGE_SRC = [
+    "import { Button, Select, SelectItem, Input } from '@axiom/components/ui';",
+    "import { UserPlus } from 'lucide-react';",
+    '',
+    'export default function EmployeeListPage() {',
+    '  return (',
+    '    <div className="p-5">',
+    '      <PageHeader',
+    '        title="직원 관리"',
+    '        actions={',
+    '          <Button size="lg">',
+    '            <UserPlus className="w-4 h-4 mr-1.5" />',
+    '            직원 등록',
+    '          </Button>',
+    '        }',
+    '      />',
+    '      <div className="flex gap-2">',
+    '        <Select><SelectItem value="all">전체</SelectItem></Select>',
+    '        <Input placeholder="이름 검색..." />',
+    '      </div>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  // 모델이 literal <replace>로 버튼 텍스트만 인용·교체(over-expansion 유도 안 함).
+  const model = '<replace><old>            직원 등록</old><new>            사원 추가</new></replace>';
+  const o = await runHybridRegionEdit(PAGE_SRC, '"직원 등록" 텍스트를 바꿔줘', async () => model, undefined, undefined, undefined, undefined, true);
+  check('e2e literal: applied', o.status === 'applied', `status=${o.status} ${o.diagnostics ?? ''}`);
+  const ft = o.finalText ?? '';
+  check('e2e literal: 버튼 텍스트 교체', ft.includes('사원 추가') && !ft.includes('직원 등록'));
+  check('e2e literal: 필터바 Select·Input 보존', ft.includes('<Select>') && ft.includes('이름 검색...'));
+}
+
 // ─── 컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트 ────────────────────────
 console.log('\n컴포넌트 교체(SmartTable) — 루트태그 게이트 화이트리스트:');
 {

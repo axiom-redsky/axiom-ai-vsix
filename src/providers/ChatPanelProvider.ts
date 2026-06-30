@@ -94,6 +94,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         regionEdit:          ExtensionConfig.isRegionEditEnabled(),
         regionVerify:        ExtensionConfig.isRegionVerifyEnabled(),
         anchorFirstEdit:     ExtensionConfig.isAnchorFirstEditEnabled(),
+        patchFirstEdit:      ExtensionConfig.isPatchFirstEditEnabled(),
         intentClassifier:    ExtensionConfig.isIntentClassifierEnabled(),
         pageCreationLlmMode: ExtensionConfig.isPageCreationLlmMode(),
         logSystemPrompt:     ExtensionConfig.isLogSystemPromptEnabled(),
@@ -137,6 +138,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       if (proj.regionEdit          !== undefined) fileValues['experimental.regionEdit']          = proj.regionEdit;
       if (proj.regionVerify        !== undefined) fileValues['experimental.regionVerify']        = proj.regionVerify;
       if (proj.anchorFirstEdit     !== undefined) fileValues['experimental.anchorFirstEdit']     = proj.anchorFirstEdit;
+      if (proj.patchFirstEdit      !== undefined) fileValues['experimental.patchFirstEdit']      = proj.patchFirstEdit;
       if (proj.intentClassifier    !== undefined) fileValues['experimental.intentClassifier']    = proj.intentClassifier;
       if (proj.pageCreationLlmMode !== undefined) fileValues['experimental.pageCreationLlmMode'] = proj.pageCreationLlmMode;
       if (proj.logSystemPrompt     !== undefined) fileValues['debug.logSystemPrompt']            = proj.logSystemPrompt;

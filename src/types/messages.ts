@@ -41,6 +41,8 @@ export interface AxiomSettings {
     regionVerify: boolean;
     /** 실험: 앵커-우선 편집(Stage 1). */
     anchorFirstEdit: boolean;
+    /** 실험: patch-우선 편집(경로 수렴) — in-place 수정에 patch를 주력 제시. */
+    patchFirstEdit: boolean;
     /** 실험: 의도 분류기. */
     intentClassifier: boolean;
     /** 실험: 페이지 본문 LLM 생성 모드. */

@@ -1525,9 +1525,15 @@ export function findUnresolvedJsxComponents(regionJsx: string, fullText: string)
 // ─── 기존 문장 교체(<replace>) — 영역 밖 비-JSX 문장 수정 채널 ──────────────────
 
 export interface ReplaceBlock {
-  /** 교체할 문장 안에 등장하는 식별 문자열(예: `useApi<...>(EMPLOYEES_ENDPOINT`). */
+  /** 교체할 문장 안에 등장하는 식별 문자열(예: `useApi<...>(EMPLOYEES_ENDPOINT`). old가 없을 때만 사용. */
   anchor: string;
-  /** 그 문장 **전체**를 대신할 새 코드(여러 줄 가능). */
+  /**
+   * **바꿀 기존 코드 전체**(원본을 그대로 복사, 여러 줄 가능). 있으면 anchor·문장경계 추측을 버리고
+   * 이 텍스트를 원본에서 literal로 정확매칭(exact→trimEnd→trim)해 그 줄들만 교체한다(=Claude Code Edit식).
+   * JSX처럼 `;`로 끝나지 않는 코드도 과확장 없이 정확히 그 범위만 바뀐다.
+   */
+  old?: string;
+  /** 그 문장/블록 **전체**를 대신할 새 코드(여러 줄 가능). */
   replacement: string;
 }
 
@@ -1604,12 +1610,39 @@ function statementStart(lines: string[], aIdx: number): number {
 }
 
 /**
+ * old(바꿀 기존 코드 전체)를 원본 라인들에서 **literal로 정확매칭**해 그 라인 범위를 돌려준다(=patch
+ * search와 같은 계층). 들여쓰기·줄끝 공백 차이를 흡수하도록 3-pass(exact→trimEnd→trim)로 시도하고,
+ * 각 pass에서 **유일 매칭일 때만** 채택한다(여러 곳=모호, 0곳=없음). 앵커+`;` 문장경계 추측을 쓰지 않아
+ * JSX처럼 `;`로 안 끝나는 코드도 과확장 없이 정확히 그 범위만 잡는다.
+ */
+function findLiteralLines(source: string[], oldText: string): { start: number; end: number } | 'not-found' | 'ambiguous' {
+  const oldLines = oldText.replace(/^\n+/, '').replace(/\s+$/, '').split('\n');
+  const n = oldLines.length;
+  if (n === 0 || (n === 1 && !oldLines[0].trim())) return 'not-found';
+  const passes: Array<(s: string) => string> = [(s) => s, (s) => s.replace(/\s+$/, ''), (s) => s.trim()];
+  for (const norm of passes) {
+    const target = oldLines.map(norm);
+    const starts: number[] = [];
+    for (let i = 0; i + n <= source.length; i++) {
+      let ok = true;
+      for (let j = 0; j < n; j++) {
+        if (norm(source[i + j]) !== target[j]) { ok = false; break; }
+      }
+      if (ok) starts.push(i);
+    }
+    if (starts.length === 1) return { start: starts[0], end: starts[0] + n - 1 };
+    if (starts.length > 1) return 'ambiguous';
+  }
+  return 'not-found';
+}
+
+/**
  * 모델이 낸 `<replace>` 블록을 결정론적으로 적용한다 — region(JSX)·hook(삽입)이 못 다루는
- * **영역 밖 기존 문장 수정**(예: `useApi(endpoint, { params })` 의 params 보강)을 위한 채널.
- *
- * anchor 문자열이 등장하는 줄을 찾아, 그 줄이 속한 **완결 문장**(위로 경계까지 + 아래로 델리미터
- * 균형이 0 복귀하며 `;`로 끝나는 줄까지)을 통째로 replacement로 바꾼다. 멀티라인 `const {…} =
- * useApi(…);` 도 한 문장으로 잡는다. 못 찾으면 unresolved에 담아 호출부가 폴백 판단하게 한다.
+ * **기존 코드 수정**을 위한 채널. 두 형식을 지원한다:
+ *  - **old 형식(권장, literal)**: `old`(바꿀 기존 코드 전체)를 정확매칭해 그 범위만 교체. 과확장 없음.
+ *  - **anchor 형식(레거시)**: anchor 문자열이 든 줄의 **완결 문장**(위 경계 + 아래로 델리미터 0 복귀 &
+ *    `;`로 끝나는 줄까지)을 통째로 바꾼다. 멀티라인 `const {…} = useApi(…);` 같은 문장에 적합.
+ * 못 찾거나 모호하면 unresolved에 담아 호출부가 폴백 판단하게 한다.
  */
 export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[], opts?: ApplyReplaceOptions): ReplaceResult {
   const changes: string[] = [];
@@ -1619,35 +1652,50 @@ export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[], opts?
   let text = hasCRLF ? source.replace(/\r\n/g, '\n') : source;
 
   for (const b of blocks) {
-    const anchor = b.anchor.trim();
-    if (!anchor || !b.replacement.trim()) continue;
+    const anchor = (b.anchor ?? '').trim();
+    const oldText = (b.old ?? '').trim();
+    if (!b.replacement.trim()) continue;
+    if (!anchor && !oldText) continue;
     const lines = text.split('\n');
-    const hits = findAnchorLines(lines, anchor);
-    if (hits.length === 0) {
-      unresolved.push(anchor);
-      continue;
-    }
+    const label = oldText ? oldText.split('\n')[0].slice(0, 48) : anchor.slice(0, 48);
 
-    // 모호성 게이트(앵커 계약의 핵심) — 같은 앵커가 **여러 문장**에 걸리면 첫 곳을 말없이 고치지 않는다.
-    // (여러 줄이 한 문장에 속하면 시작 인덱스가 같아 모호 아님.) `<replace>`를 주력 편집 채널로 올릴 때
-    // "value={status} 두 곳 중 엉뚱한 곳 교체" 같은 조용한 오편집을 차단한다 — 모델이 더 구체적 앵커로
-    // 재인용하도록 unresolved로 넘긴다(호출부가 폴백/재시도). 유일 앵커(기존 params 경로)는 영향 없음.
-    const distinctStarts = [...new Set(hits.map((h) => statementStart(lines, h)))];
-    if (distinctStarts.length > 1) {
-      unresolved.push(`${anchor} [모호: ${distinctStarts.length}곳 일치 — 더 고유한 앵커 필요]`);
-      continue;
-    }
+    let start: number;
+    let end: number;
+    if (oldText) {
+      // old 형식(literal) — 앵커·문장경계 추측을 쓰지 않고 정확매칭한 범위만 교체(=Claude Code Edit).
+      const loc = findLiteralLines(lines, b.old!);
+      if (loc === 'not-found') { unresolved.push(`${label}… [원본 코드 못 찾음 — 그대로 복사해 인용]`); continue; }
+      if (loc === 'ambiguous') { unresolved.push(`${label}… [모호: 여러 곳 일치 — 더 넓게 인용]`); continue; }
+      start = loc.start;
+      end = loc.end;
+    } else {
+      const hits = findAnchorLines(lines, anchor);
+      if (hits.length === 0) {
+        unresolved.push(anchor);
+        continue;
+      }
 
-    const start = distinctStarts[0];
-    const aIdx = Math.max(...hits); // 문장 끝 탐색이 앵커 마지막 줄을 지나도록 가장 아래 매칭을 기준점으로.
-    // 문장 끝 — start부터 델리미터 누적이 0으로 돌아오고 `;`로 끝나는 첫 줄.
-    let depth = 0;
-    let end = aIdx;
-    for (let i = start; i < lines.length && i <= start + 80; i++) {
-      depth += netDelims(lines[i]);
-      const t = stripTrailingLineComment(lines[i]).trim();
-      end = i;
-      if (i >= aIdx && depth <= 0 && /;$/.test(t)) break;
+      // 모호성 게이트(앵커 계약의 핵심) — 같은 앵커가 **여러 문장**에 걸리면 첫 곳을 말없이 고치지 않는다.
+      // (여러 줄이 한 문장에 속하면 시작 인덱스가 같아 모호 아님.) `<replace>`를 주력 편집 채널로 올릴 때
+      // "value={status} 두 곳 중 엉뚱한 곳 교체" 같은 조용한 오편집을 차단한다 — 모델이 더 구체적 앵커로
+      // 재인용하도록 unresolved로 넘긴다(호출부가 폴백/재시도). 유일 앵커(기존 params 경로)는 영향 없음.
+      const distinctStarts = [...new Set(hits.map((h) => statementStart(lines, h)))];
+      if (distinctStarts.length > 1) {
+        unresolved.push(`${anchor} [모호: ${distinctStarts.length}곳 일치 — 더 고유한 앵커 필요]`);
+        continue;
+      }
+
+      start = distinctStarts[0];
+      const aIdx = Math.max(...hits); // 문장 끝 탐색이 앵커 마지막 줄을 지나도록 가장 아래 매칭을 기준점으로.
+      // 문장 끝 — start부터 델리미터 누적이 0으로 돌아오고 `;`로 끝나는 첫 줄.
+      let depth = 0;
+      end = aIdx;
+      for (let i = start; i < lines.length && i <= start + 80; i++) {
+        depth += netDelims(lines[i]);
+        const t = stripTrailingLineComment(lines[i]).trim();
+        end = i;
+        if (i >= aIdx && depth <= 0 && /;$/.test(t)) break;
+      }
     }
 
     // 재인덴트 — replacement의 최소 들여쓰기를 벗기고 기존 문장 들여쓰기로 맞춘다.
@@ -1659,18 +1707,18 @@ export function applyReplaceBlocks(source: string, blocks: ReplaceBlock[], opts?
 
     // guard — span은 위에서 산정했고, "이 교체가 파괴적인가"만 호출부 정책에 묻는다. 거부면 적용 안 함.
     if (opts?.guard) {
-      const oldText = lines.slice(start, end + 1).join('\n');
+      const oldSpanText = lines.slice(start, end + 1).join('\n');
       const newText = reindented.join('\n');
-      const reason = opts.guard(oldText, newText);
+      const reason = opts.guard(oldSpanText, newText);
       if (reason) {
-        rejected.push(`${anchor.slice(0, 48)}… [${reason}]`);
+        rejected.push(`${label}… [${reason}]`);
         continue;
       }
     }
 
     const next = [...lines.slice(0, start), ...reindented, ...lines.slice(end + 1)];
     text = next.join('\n');
-    changes.push(`replace 적용(앵커 "${anchor.slice(0, 48)}…") 원본 ${start + 1}~${end + 1}줄`);
+    changes.push(`replace 적용("${label}…") 원본 ${start + 1}~${end + 1}줄`);
   }
 
   if (hasCRLF) text = text.replace(/\n/g, '\r\n');

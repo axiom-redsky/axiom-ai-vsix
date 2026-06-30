@@ -9,6 +9,7 @@ const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
   regionEdit: true,
   regionVerify: true,
   anchorFirstEdit: false,
+  patchFirstEdit: false,
   intentClassifier: true,
   pageCreationLlmMode: false,
   logSystemPrompt: false,
@@ -573,6 +574,15 @@ function SettingsTab({
             onChange={(e) => onProjectChange('anchorFirstEdit', e.target.checked)}
           />
           <span>앵커-우선 편집 — experimental.anchorFirstEdit</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.patchFirstEdit}
+            onChange={(e) => onProjectChange('patchFirstEdit', e.target.checked)}
+          />
+          <span>patch-우선 편집 — experimental.patchFirstEdit</span>
         </label>
 
         <label className="settings__toggle">

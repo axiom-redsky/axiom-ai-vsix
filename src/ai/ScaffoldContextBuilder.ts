@@ -492,6 +492,7 @@ ${scaffoldSection}${fileSection}${referencedSection}`;
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
         linesAllowed, lineEditCfg.requireAnchor, !!ctx.selection,
         referencedSection, ExtensionConfig.isScenarioCCompactModes(),
+        ExtensionConfig.isPatchFirstEditEnabled(),
       );
       // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 합산)
       this._lastBreakdown.rulesChars = Math.max(
@@ -600,6 +601,7 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     hasSelection: boolean,
     referencedSection = '',
     compactModes = false,
+    patchFirst = false,
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
@@ -612,7 +614,11 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     // structural(추가)+lines(치환/삽입/삭제) 2개로 좁힌다. lines 불가(슬라이싱 등) 시엔 patch가
     // 유일한 국소 편집 수단이라 유지한다(structural+patch).
     const compact = compactModes && !hasSelection;
-    const dropPatch = compact && linesAllowed;
+    // patchFirst: in-place 수정에서 lines를 빼고 patch를 주력으로(=Edit식 정확매칭). 모드를 structural(추가)+
+    // patch(수정) 2개로 압축해 약한 모델의 선택 부담을 줄이고, 드리프트 잦은 lines 앵커 우회를 없앤다.
+    // dropPatch(compact)와 상충하므로 patchFirst가 우선(lines를 빼면 patch는 유일 국소수단이라 유지).
+    const dropLines = patchFirst && linesAllowed && !hasSelection;
+    const dropPatch = compact && linesAllowed && !dropLines;
 
     const mp = ExtensionConfig.getMultiPatchConfig();
 
@@ -675,7 +681,10 @@ const { data, isPending, error } = useApi<TResponse>('/api/endpoint');
     const modeSelectionRules = hasSelection
       ? `> - **patch 모드 (선택 영역 수정 시 필수)**: 위 "🎯 선택 영역"에 표시된 코드를 \`<search>\`/\`<replace>\`로 직접 고치세요. ⛔ **\`<hook>\`(structural)·\`<edit>\`(lines) 모드 절대 금지** — structural은 선택 영역을 무시하고 엉뚱한 위치(컴포넌트 위·훅 다음)에 삽입되어, 정작 선택한 코드는 그대로 남습니다.`
       : `> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.${
-          linesAllowed
+          dropLines
+            ? `
+> - **patch 모드 (그 외 일반 코드 수정의 기본)**: 기존 코드의 텍스트·속성·값·이름을 바꾸는 수정은 \`<patch>\`로 하세요. **바꿀 기존 코드를 \`<search>\`에 원본 그대로(들여쓰기·여러 줄 포함) 인용**하고 \`<replace>\`에 새 코드를 쓰면, 확장이 정확히 그 부분만 안전하게 교체합니다. 바뀌지 않는 줄은 \`<search>\`에 넣지 마세요.`
+            : linesAllowed
             ? `
 > - **lines 모드 (그 외 일반 코드 수정의 기본)**: 위 파일에 붙은 라인 번호를 보고 **바뀐 줄만** \`<edit>\`로 출력하세요. 원본을 다시 복사하지 않아 출력이 가장 작습니다.${
                 dropPatch
@@ -763,7 +772,7 @@ ${modeSelectionRules}
 > - **full 모드**: 파일 절반 이상을 재작성해야 할 때만 사용(출력이 가장 큼 — 최후의 수단).
 > - 선택 영역이 위에 제시되어 있으면 그 영역과 import 추가에만 한정하세요.
 
-${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSelection ? `${lineModeBlock}\n\n` : ''}${dropPatch ? '' : patchModeBlock}
+${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSelection && !dropLines ? `${lineModeBlock}\n\n` : ''}${dropPatch ? '' : patchModeBlock}
 
 **full 모드** — 전체 파일 재작성이 필요할 때만:
 

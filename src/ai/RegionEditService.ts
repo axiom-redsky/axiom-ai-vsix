@@ -79,11 +79,25 @@ export type RegionDisambiguator = (
  */
 export type EditVerifier = (candidateText: string) => Promise<{ ok: boolean; errors: string[] }>;
 
-/** <replace anchor="…">…</replace> 블록을 파싱한다(메인 파싱·검증 교정 라운드 공용). */
+/**
+ * `<replace>` 블록을 파싱한다(메인 파싱·검증 교정 라운드 공용). 두 형식을 지원:
+ *  - **literal(권장)**: `<replace><old>바꿀 기존 코드 전체</old><new>새 코드</new></replace>` —
+ *    old를 원본에서 정확매칭해 그 범위만 교체(=Edit식, 과확장 없음).
+ *  - **anchor(레거시)**: `<replace anchor="식별 문자열">새 코드</replace>` — 앵커 줄의 완결 문장 교체.
+ * 두 정규식은 배타적이다(literal은 attr 없이 `<old>`로 시작, anchor는 `anchor=` attr 필수).
+ */
 function parseReplaceBlocks(modelOut: string): ReplaceBlock[] {
-  return [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
+  const literal: ReplaceBlock[] = [...modelOut.matchAll(/<replace\s*>\s*<old>([\s\S]*?)<\/old>\s*<new>([\s\S]*?)<\/new>\s*<\/replace>/g)]
+    .map((m) => ({
+      anchor: '',
+      old: stripFences(m[1]).replace(/^\n+/, '').replace(/\s+$/, ''),
+      replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, ''),
+    }))
+    .filter((b) => b.old!.trim() && b.replacement.trim());
+  const anchored: ReplaceBlock[] = [...modelOut.matchAll(/<replace\s+anchor\s*=\s*"([^"]*)"\s*>([\s\S]*?)<\/replace>/g)]
     .map((m) => ({ anchor: m[1].trim(), replacement: stripFences(m[2]).replace(/^\n+/, '').replace(/\s+$/, '') }))
     .filter((b) => b.anchor && b.replacement.trim());
+  return [...literal, ...anchored];
 }
 
 /** 검증-교정 라운드 시스템 프롬프트 — <replace> 앵커 블록만 출력하게 강제(앵커 계약). */
@@ -356,14 +370,16 @@ export function buildHybridPrompt(
       `스펙에 없는 필드·파라미터(예: code_type, category 등)를 추측해 쓰지 마세요. ` +
       `useApi의 타입 인자로 쓸 \`type\`은 <hook> 안에 스펙 기준으로 함께 선언하세요(미선언 시 적용이 거부됩니다).\n\n`
     : '';
-  // 앵커-우선(Stage 1, 플래그) — 작은 국소 수정은 영역 통째 재작성 대신 기존 코드를 그대로 인용해
-  // <replace>로 교체하게 유도한다. 적용 레이어는 모호성 게이트로 안전(여러 곳 매칭 시 거부·재인용).
-  // 약한 모델의 출력 형태에 영향을 주므로 효과는 실모델 라이브 프로브로만 검증된다(오프라인 eval 무측정).
+  // 앵커-우선(Stage 1, 플래그) — 작은 국소 수정은 영역 통째 재작성 대신 바꿀 코드만 그대로 인용해
+  // <replace>로 교체하게 유도한다(=Claude Code Edit). old를 원본에서 literal 정확매칭하므로 JSX처럼 `;`로
+  // 안 끝나는 코드도 과확장 없이 그 범위만 바뀐다. 약한 모델 출력 형태에 영향 → 효과는 실모델 라이브로만 검증.
   const anchorFirstSection = anchorFirst
     ? `\n**우선 규칙 — 작은 수정은 <replace>로(영역 통째 재작성 금지):**\n` +
-      `텍스트/속성/단일 값·prop 변경, 제자리 이름변경처럼 **국소적 수정**은 바꿀 **기존 코드 조각을 그대로 인용**해 교체하세요:\n` +
-      `<replace anchor="그 줄의 짧고 고유한 부분문자열">교체할 새 코드 전체</replace>\n` +
-      `- anchor는 파일에서 **딱 한 곳**만 식별하는 고유 문자열이어야 합니다(여러 곳에 있으면 적용이 거부되니 더 길게 인용하세요).\n` +
+      `텍스트/속성/단일 값·prop 변경, 제자리 이름변경처럼 **국소적 수정**은 바꿀 **기존 코드를 원본 그대로 복사**해 교체하세요:\n` +
+      `<replace><old>바꿀 기존 코드 전체(원본을 그대로 복사 — 들여쓰기·여러 줄 포함)</old><new>교체할 새 코드</new></replace>\n` +
+      `- <old>는 원본 파일에 **있는 그대로** 복사하세요(공백·들여쓰기 포함). 확장이 정확히 그 범위만 찾아 바꿉니다.\n` +
+      `- <old>는 파일에서 **딱 한 곳**만 일치하도록 충분히 넓게 인용하세요(여러 곳 일치 시 적용 거부 → 더 넓게 인용).\n` +
+      `- 바꿀 부분만 좁게 인용하세요 — 안 바뀌는 줄(필터바·다른 컴포넌트 등)은 <old>에 넣지 마세요(넣으면 통째로 사라집니다).\n` +
       `- 요소를 **추가/삭제하거나 구조를 바꾸는** 편집만 <region>으로 영역 전체를 다시 쓰세요.\n`
     : '';
   return (
