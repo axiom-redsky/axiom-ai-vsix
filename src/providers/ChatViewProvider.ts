@@ -1186,6 +1186,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         editorCtx = resolved.editorCtx;
 
+        // 내용 이식(content port): 분류기가 "다른 .tsx 파일 내용을 현재 파일에 통째로 적용"으로 확정하면
+        // 영역편집/모델 모드선택에 맡기지 않고 전용 경로로 처리한다. 통째 이식 의도가 부분 삽입(structural)
+        // 으로 새어 의존성 게이트(예: TEmployee 미해소)에 걸리던 dead-end를 없앤다. 온라인 결정론 진입 +
+        // 모델이 import만 검증·보정. 게이트 미충족이면 false → 아래 기존 흐름(영역편집/full)으로 폴백.
+        if (intent && (await this._tryContentPortOnline(text, editorCtx, intent, config))) {
+          this._post({ type: 'done' });
+          this._postStatus(config.model);
+          return;
+        }
+
         // [실험] 영역 편집(설정 off 기본): 선택 없는 TSX 수정 요청은 확장이 편집 영역을 결정론적으로
         // 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성 + 훅/import structural 삽입한다.
         // 게이트 미통과·의존성 미해소·root-tag 불일치면 handled=false → 아래 기존 full 입력 흐름으로 폴백.
@@ -2298,6 +2308,160 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._history.push({ role: 'assistant', content: '(오프라인 JSX 이식 적용)' });
     await this._handleAxiomAction(wrapped, false, false, undefined, diff);
     return true;
+  }
+
+  // ─── 온라인 내용 이식(content port) ───────────────────────────────────────────
+
+  /**
+   * [온라인] 분류기가 "다른 .tsx 파일 내용을 현재 파일에 통째로 적용"(modify_file + contentSource(.tsx)
+   * + targetFile=current)으로 확정한 요청을 전용 경로로 처리한다.
+   *
+   * 영역편집/모델 모드선택에 맡기면 통째 이식 의도가 부분 삽입(structural)으로 새어 의존성 게이트에
+   * 걸리던 dead-end(예: 출처가 쓰는 TEmployee 타입 미해소 → patch 매칭 실패)를 없앤다. 출처 파일
+   * **전체**를 베이스로 적용하므로 import·타입·훅이 빠지지 않고, 온라인이라 모델이 대상 경로 기준으로
+   * import를 검증·보정한다. 모델 출력이 의심스러우면(빈/절단/export default 소실) **베이스(출처 원문)로
+   * 안전 폴백**해 결코 더 나빠지지 않는다.
+   *
+   * @returns true = 이식 적용 카드로 처리됨 / false = 게이트 미충족 → 호출부가 기존 흐름으로 폴백
+   */
+  private async _tryContentPortOnline(
+    text: string,
+    editorCtx: EditorContext,
+    intent: IntentResult,
+    config: LlmConfig,
+  ): Promise<boolean> {
+    const log = (m: string): void => this._corpusOutputChannel.appendLine(`[Axiom AI] 내용 이식(온라인): ${m}`);
+
+    // 게이트: modify_file + .tsx 출처 + 대상이 현재(.tsx) 파일.
+    if (intent.intent !== 'modify_file' || !intent.contentSource) return false;
+    if (!/\.tsx?$/.test(intent.contentSource)) return false;
+    const targetPath = editorCtx.filePath;
+    if (!targetPath || !/\.tsx?$/.test(targetPath)) return false;
+    const curRel = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    // targetFile은 'current' 또는 현재 파일 경로일 때만(다른 경로 지정이면 일반 흐름에 양보).
+    if (intent.targetFile && intent.targetFile !== 'current') {
+      const tRel = intent.targetFile.replace(/\\/g, '/').replace(/^\/+/, '');
+      if (!curRel.endsWith(tRel) && !tRel.endsWith(curRel)) {
+        log(`스킵 — 대상이 현재 파일이 아님(targetFile=${intent.targetFile}, 현재=${curRel})`);
+        return false;
+      }
+    }
+
+    // 출처 파일 해석 — 분류기 경로는 추측일 수 있으므로 basename glob까지 폴백(_resolveReferencedFileUri).
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) return false;
+    const srcUri = await this._resolveReferencedFileUri(folders[0].uri, intent.contentSource);
+    if (!srcUri) {
+      log(`스킵 — 출처 파일을 찾지 못함: ${intent.contentSource}`);
+      return false;
+    }
+    const srcRel = vscode.workspace.asRelativePath(srcUri).replace(/\\/g, '/');
+    if (srcRel === curRel) {
+      log(`스킵 — 출처와 대상이 동일(${srcRel})`);
+      return false;
+    }
+
+    let sourceContent: string;
+    let currentContent: string;
+    try {
+      sourceContent = Buffer.from(await vscode.workspace.fs.readFile(srcUri)).toString('utf-8');
+      currentContent = fs.readFileSync(this._resolveWorkspacePath(targetPath), 'utf-8');
+    } catch (e) {
+      log(`스킵 — 파일 읽기 실패: ${(e as Error).message}`);
+      return false;
+    }
+    if (!sourceContent.trim()) {
+      log(`스킵 — 출처 파일이 비어 있음(${srcRel})`);
+      return false;
+    }
+
+    this._postStatus('내용 이식 — import 검증 중…');
+    // 베이스 = 출처 전체. 모델은 대상 경로 기준으로 import만 검증·보정(실패/의심 시 베이스로 폴백).
+    const finalContent = await this._verifyPortedImports(sourceContent, srcRel, curRel, config);
+    log(`적용(${srcRel} → ${curRel}): ${finalContent === sourceContent ? '원문 그대로' : 'import 보정 반영'}`);
+
+    const diff = computeDiffHunks(currentContent, finalContent);
+    if (diff.length === 0) {
+      this._post({
+        type: 'token',
+        content: '\n\n> ℹ️ **현재 파일이 이미 출처 파일과 동일합니다** — 변경 없음.\n',
+      });
+      return true;
+    }
+
+    this._post({
+      type: 'token',
+      content:
+        `\n\n> 🧩 **내용 이식** — 참조 파일 \`${srcRel}\`의 **전체 내용**을 현재 파일에 적용합니다` +
+        `${finalContent === sourceContent ? '' : ' (import 검증·보정 포함)'}. 아래에서 확인 후 적용하세요.\n`,
+    });
+
+    const wrapped = this._wrapCodeBlockAsAxiomAction('```tsx\n' + finalContent + '\n```', targetPath);
+    if (!wrapped) {
+      log('스킵 — axiom-action 래핑 실패(코드블록 추출 불가)');
+      return false;
+    }
+    this._history.push({ role: 'assistant', content: `(내용 이식 적용: ${srcRel} → ${curRel})` });
+    await this._handleAxiomAction(wrapped, false, false, undefined, diff);
+    return true;
+  }
+
+  /**
+   * 이식된 출처 파일을 대상 경로 기준으로 **import만** 검증·보정한다(모델). 모델은 전체 파일을 다시
+   * 내되 import 외 본문은 그대로 보존하도록 강하게 제약하고, 출력이 의심스러우면(빈/절단/구조 소실)
+   * 출처 원문을 그대로 돌려준다 — 통째 적용은 보장하고 보정은 best-effort.
+   */
+  private async _verifyPortedImports(
+    sourceContent: string,
+    srcRel: string,
+    targetRel: string,
+    config: LlmConfig,
+  ): Promise<string> {
+    const system =
+      '당신은 코드 이식 도우미입니다. 주어진 파일을 다른 경로로 옮길 때 깨지는 import만 바로잡고, ' +
+      '나머지는 한 글자도 바꾸지 않습니다. 전체 파일을 단일 ```tsx 코드블록으로만 출력하세요.';
+    const user =
+      `아래 파일을 \`${srcRel}\` 에서 \`${targetRel}\` 위치로 그대로 옮깁니다.\n` +
+      `규칙:\n` +
+      `- 새 위치에서 깨지는 **상대경로 import**(\`./\` \`../\`)만 보정하세요.\n` +
+      `- 별칭 import(\`@/\`, \`@axiom/\`)·로직·JSX·타입 선언은 **절대 변경 금지**.\n` +
+      `- 새 코드·기능을 추가하지 말고, 누락 없이 **전체 파일**을 그대로 출력하세요.\n\n` +
+      '```tsx\n' + sourceContent + '\n```';
+
+    let out = '';
+    try {
+      const signal = this._abortController?.signal;
+      for await (const token of this._llm.streamChat(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        config,
+        signal,
+        () => {},
+      )) {
+        out += token;
+      }
+    } catch {
+      return sourceContent; // 모델 호출 실패 → 베이스(원문) 그대로
+    }
+
+    const m = [...out.matchAll(/```(?:tsx|ts|jsx|js|typescript|javascript)\n([\s\S]*?)```/g)].pop();
+    const candidate = m ? m[1].trimEnd() : '';
+    // 안전 게이트: 비었거나 / 원문엔 있던 export default가 사라졌거나 / 길이가 원문의 60% 미만(절단)
+    //             이면 모델 출력을 버리고 출처 원문을 쓴다 — 통째 적용을 보장(보정은 best-effort).
+    const srcHasDefault = /export\s+default/.test(sourceContent);
+    const ok =
+      candidate.length > 0 &&
+      candidate.length >= sourceContent.length * 0.6 &&
+      (!srcHasDefault || /export\s+default/.test(candidate));
+    if (!ok) {
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 내용 이식(온라인): 모델 보정 출력 의심(길이 ${candidate.length}/${sourceContent.length}) → 출처 원문으로 폴백`,
+      );
+      return sourceContent;
+    }
+    return candidate;
   }
 
   /**
