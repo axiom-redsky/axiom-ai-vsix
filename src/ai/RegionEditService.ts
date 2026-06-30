@@ -39,7 +39,30 @@ export interface RegionEditOutcome {
   reason?: string;
   /** reason==='ambiguous' 일 때 호출부가 "어느 구역?" 되물을 후보 섹션 라벨들. */
   ambiguousCandidates?: string[];
+  /**
+   * locate가 영역을 찾은 **뒤**의 합성 fallback일 때, 그 영역의 실제 현재 텍스트(디스크 기준 ground truth).
+   * 호출부가 full 재생성 대신 이 영역만으로 grounded patch 재시도를 하게 한다(Claude Code §6 ④: 앵커 실패 →
+   * 다시 읽고 재인용, 절대 전체 재생성 안 함). locate 단계 fallback(영역 없음)에는 없다.
+   */
+  locatedRegion?: { startLine: number; endLine: number; text: string };
 }
+
+/**
+ * grounded(region) 재시도가 **의미 있는** fallback 사유들 — "모델이 위치는 맞게 찾았으나 산출물을 망가뜨림"
+ * 계열. 이때 실제 영역 텍스트를 그대로 인용해 surgical patch로 다시 받으면 약한 모델 full 재생성(대형파일 환각)을
+ * 회피할 수 있다.
+ *
+ * 제외(grounded patch로 못 푸는 것): 의존성 미해소(unresolved-deps/components)·dead-binding·duplicate-decl 은
+ * 영역 **밖**에 새 선언이 필요하므로 영역 patch로 해결 불가(기존 의존성 dead-end 자동 full 재시도가 담당).
+ * no-op·locate 단계 게이트(영역 없음)도 제외.
+ */
+export const REGION_GROUNDABLE_REASONS: ReadonlySet<string> = new Set([
+  'region-content-loss',   // 큰 영역 재작성에서 JSX 대량 누락
+  'replace-content-loss',  // 파괴적 <replace>
+  'replace-anchor-missing',// <replace> 앵커 미해소
+  'root-tag-mismatch',     // 영역 밖 재작성
+  'empty-output',          // 빈 산출물(locate는 성공)
+]);
 
 /**
  * region 이 사퇴(fallback)했을 때 호스트가 취할 UX를 결정하는 **단일 정책**.
@@ -474,6 +497,14 @@ export async function runHybridRegionEdit(
     };
   }
 
+  // locate 성공 후의 합성 fallback에 첨부할 ground truth 영역. 디스크 텍스트(loc.lines)에서 그대로
+  // 잘라 grounded patch의 <search>가 글자 단위로 매칭되게 한다(loc.region은 정규화됐을 수 있어 비사용).
+  const groundedRegion = (): { startLine: number; endLine: number; text: string } => ({
+    startLine: loc.startLine,
+    endLine: loc.endLine,
+    text: loc.lines.slice(loc.startLine - 1, loc.endLine).join('\n'),
+  });
+
   // 2) 모델 호출 (영역 + 의존성 헤더만)
   const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query, loc.controlInventory, anchorFirst);
   let modelOut: string;
@@ -521,7 +552,7 @@ export async function runHybridRegionEdit(
 
   // 아무 산출물도 없으면(빈 응답) full로 넘긴다 — region이 줄 수 있는 게 없음.
   if (!newRegion.trim() && !hookCode.trim() && imports.length === 0 && replaceBlocks.length === 0) {
-    return { status: 'fallback', reason: 'empty-output', diagnostics: '[regionEdit] 모델 산출물 없음 → full 폴백' };
+    return { status: 'fallback', reason: 'empty-output', diagnostics: '[regionEdit] 모델 산출물 없음 → full 폴백', locatedRegion: groundedRegion() };
   }
 
   // 4) 후처리 root-tag 게이트 — 모델이 영역 밖을 재작성했으면 거부.
@@ -536,6 +567,7 @@ export async function runHybridRegionEdit(
         status: 'fallback',
         reason: 'root-tag-mismatch',
         diagnostics: `[regionEdit] 영역-밖 재작성(원본 루트 <${rt.origTag}> ≠ 출력 <${rt.outTag}>) → full 폴백`,
+        locatedRegion: groundedRegion(),
       };
     }
   }
@@ -581,6 +613,7 @@ export async function runHybridRegionEdit(
         diagnostics:
           `[regionEdit] 영역 재작성이 내용을 대량 누락(JSX 여는태그 ${origTags}→${outTags}) — 파괴적 생략 의심 → full 폴백. ` +
           `작은 국소 수정은 anchor-first(<replace>)를 켜면 영역 통째 재작성 없이 안전합니다.`,
+        locatedRegion: groundedRegion(),
       };
     }
   }
@@ -632,6 +665,7 @@ export async function runHybridRegionEdit(
         diagnostics:
           `[regionEdit] <replace> 적용 거부(${rep.rejected.join(' / ')}) → full 폴백. ` +
           `앵커가 작은 수정을 넘어 큰 영역을 잡아 내용을 누락합니다. 바꿀 코드만 더 좁게 인용하세요.`,
+        locatedRegion: groundedRegion(),
       };
     }
     if (rep.unresolved.length > 0) {
@@ -639,6 +673,7 @@ export async function runHybridRegionEdit(
         status: 'fallback',
         reason: 'replace-anchor-missing',
         diagnostics: `[regionEdit] <replace> 앵커 미해소(${rep.unresolved.join(' / ')}) → full 폴백`,
+        locatedRegion: groundedRegion(),
       };
     }
     composed = rep.text;

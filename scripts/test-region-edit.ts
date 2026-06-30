@@ -5,7 +5,7 @@
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
-import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
@@ -154,6 +154,7 @@ await (async () => {
     const model = '<region>\n  <SelectTrigger><SelectValue/></SelectTrigger>\n</region>';
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
     check('root-tag 불일치: fallback', o.status === 'fallback' && o.reason === 'root-tag-mismatch', `status=${o.status}, reason=${o.reason}`);
+    check('root-tag-mismatch → locatedRegion 첨부(grounded 재시도 대상)', !!o.locatedRegion && o.locatedRegion.startLine === 20 && REGION_GROUNDABLE_REASONS.has(o.reason ?? ''), `locatedRegion=${JSON.stringify(o.locatedRegion)}`);
   }
 
   // 내용손실(4.7): 큰 영역(Select+옵션들, 6태그)을 받아 루트만 내고 내부를 통째 누락 → region-content-loss 폴백.
@@ -162,6 +163,15 @@ await (async () => {
     const model = '<region>\n      <Select value={status} onValueChange={setStatus}>\n      </Select>\n</region>';
     const o = await runHybridRegionEdit(SRC, '재직상태 텍스트 바꿔줘', async () => model);
     check('내용 대량 누락 → region-content-loss 폴백', o.status === 'fallback' && o.reason === 'region-content-loss', `status=${o.status}, reason=${o.reason}`);
+    // 경로 수렴(§6 ④): content-loss fallback은 실제 영역(20~28줄)을 ground truth로 첨부해 호출부가 full 대신
+    //   grounded patch 재시도를 하게 한다. 텍스트는 디스크 그대로(<search> 글자단위 매칭용).
+    check(
+      'region-content-loss → locatedRegion 첨부(20~28줄, 디스크 텍스트 그대로)',
+      !!o.locatedRegion && o.locatedRegion.startLine === 20 && o.locatedRegion.endLine === 28 &&
+        o.locatedRegion.text === SRC.split('\n').slice(19, 28).join('\n') &&
+        REGION_GROUNDABLE_REASONS.has(o.reason ?? ''),
+      `locatedRegion=${JSON.stringify(o.locatedRegion)}`,
+    );
   }
   // 대조군: 삭제 의도면 누락이 정당 → content-loss로 막지 않음(다른 경로로 진행).
   {
@@ -178,6 +188,8 @@ await (async () => {
     ].join('\n');
     const o = await runHybridRegionEdit(SRC, '재직상태 select를 api로', async () => model);
     check('의존성 미해소(TUnknownResp): fallback', o.status === 'fallback' && o.reason === 'unresolved-deps', `status=${o.status}, reason=${o.reason}`);
+    // 비-groundable: 의존성 미해소는 영역 밖 새 선언이 필요해 patch로 못 푼다 → grounded 재시도 대상 아님.
+    check('unresolved-deps → grounded 재시도 비대상(REGION_GROUNDABLE_REASONS 제외)', !REGION_GROUNDABLE_REASONS.has(o.reason ?? ''), `reason=${o.reason}`);
   }
 
   // region 컴포넌트 폐쇄(6.5): 모델이 <region>에 새 UI 컴포넌트(<Card>)를 쓰고 <import> 누락 →

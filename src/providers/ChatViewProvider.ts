@@ -9,7 +9,7 @@ import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
-import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance } from '../ai/RegionEditService';
+import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
 import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
@@ -2820,6 +2820,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (outcome.status !== 'applied' || !outcome.finalText) {
+      // 경로 수렴(핸드오프 §6 ④) — "위치는 맞게 찾았으나 모델이 산출물을 망가뜨린"(content-loss·root-tag·
+      // 빈출력·앵커미해소) fallback이면, 곧장 약한 full 재생성으로 떨어지지 않고 **실제 영역 텍스트만으로**
+      // surgical patch를 1회 grounded 재요청한다(patch/lines 재시도와 동일 철학). 성공하면 처리 완료.
+      if (await this._tryGroundedRegionRetry(filePath, outcome)) return true;
       // fallback/error → 기존 full 입력 흐름으로 (조용한 파손 대신 안전)
       return false;
     }
@@ -4139,6 +4143,53 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     const config = ExtensionConfig.getEffectiveLlmConfig();
     const resp = await this._retryForAxiomAction(action.filePath, config, { groundedPatches: grounded });
+    if (!resp) return false;
+    await this._handleAxiomAction(resp, false, true);
+    return true;
+  }
+
+  /**
+   * region(하이브리드) 편집의 합성 fallback을 patch/lines 와 동일하게 grounded 재시도한다 — **경로 수렴**
+   * (핸드오프 §6 ④: 앵커 실패 → 다시 읽고 재인용, 절대 전체 재생성 안 함).
+   *
+   * 종전엔 region 합성이 실패하면(내용손실·root-tag·빈출력·앵커미해소) 무조건 full 재생성으로 떨어졌는데,
+   * 그 full 경로가 약한 sLLM이 대형 단일컴포넌트 파일을 통째로 환각하는 가장 위험한 길이다. region locate는
+   * 이미 **정확한 영역(실제 디스크 텍스트)**을 알고 있으므로, 그 영역만 그대로 인용해 surgical `<patch>` 로
+   * 1회 재요청하면 full 환각을 피하고 국소 수정으로 수렴한다. ground truth가 이미 손에 있어 grounding 비용 0.
+   *
+   * 안전장치(하나라도 어긋나면 false → 종전 full 폴백, 회귀 0):
+   *  - groundedRetry 설정 off면 false.
+   *  - locatedRegion(영역 ground truth)이 없으면 false — locate 단계 fallback(영역 미확정)은 grounding 불가.
+   *  - 사유가 REGION_GROUNDABLE_REASONS 가 아니면 false — 의존성 미해소 등 영역 밖 선언이 필요한 건 patch로
+   *    못 풀어 기존 full(또는 의존성 dead-end 자동 재시도)에 맡긴다.
+   *  - 재시도 결과는 _handleAxiomAction(groundedRetryDone=true)로 처리 → patch가 또 실패해도 재-grounding
+   *    안 함(정확히 1회). intent는 비워 누적 히스토리의 원래 요청이 변경 의도를 전달하게 한다(stub 케이스와 동일).
+   */
+  private async _tryGroundedRegionRetry(
+    filePath: string,
+    outcome: RegionEditOutcome,
+  ): Promise<boolean> {
+    const cfg = ExtensionConfig.getMultiPatchConfig();
+    if (!cfg.groundedRetry) return false;
+    const lr = outcome.locatedRegion;
+    if (!lr || !lr.text.trim()) return false;
+    if (!REGION_GROUNDABLE_REASONS.has(outcome.reason ?? '')) return false;
+
+    const grounded: GroundedPatchRegion[] = [
+      { index: 0, intent: '', realText: lr.text, startLine: lr.startLine, endLine: lr.endLine },
+    ];
+
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🔁 grounded(region) 재시도 (${filePath}): region 합성 실패(${outcome.reason}) → ` +
+      `실제 영역(라인 ${lr.startLine}~${lr.endLine})만으로 surgical patch 재요청 (full 재생성 회피)`,
+    );
+    this._post({
+      type: 'token',
+      content: '\n\n> 🔁 **바꿀 영역의 실제 코드만으로 patch를 다시 만드는 중…** (전체 재생성 대신, 1회)\n',
+    });
+
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const resp = await this._retryForAxiomAction(filePath, config, { groundedPatches: grounded });
     if (!resp) return false;
     await this._handleAxiomAction(resp, false, true);
     return true;

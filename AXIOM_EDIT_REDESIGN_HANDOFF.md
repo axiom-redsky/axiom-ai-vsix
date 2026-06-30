@@ -40,7 +40,7 @@ IQ가 아니라 harness 설계 문제. `<replace anchor="...">...</replace>` 가
 | **① Read before write** — 안 보고 절대 안 고침 | 환각이 아니라 실제 파일에 grounding | locate가 실제 디스크 텍스트 주입 / `_loadReferencedFiles` / grounded 재시도가 실제 코드 재주입 | ✅ 대체로 |
 | **② Surgical edit** — `Edit(old_string,new_string)`, 바꿀 것만 인용·교체 | 안 건드린 코드는 **출력조차 안 함** → 누락 불가능 | `<replace anchor="...">...</replace>` (=Edit 도구) | ⚠️ 있으나 보조(승격 대기) |
 | **③ 유일 앵커 강제** — old_string 안 unique면 에러 | 엉뚱한 곳 조용히 교체 불가 | 모호성 게이트(`findAnchorLines`+`statementStart`) | ✅ |
-| **④ Fail loud → grounded 재시도** — 앵커 빗나가면 다시 읽고 재인용. **절대 전체 재생성 안 함** | 큰 파일 통째 재생성의 토큰폭증·내용누락 회피 | `_tryGroundedPatchRetry` / `_tryGroundedLineEditRetry` | ⚠️ patch·lines만(region·full 미수렴) |
+| **④ Fail loud → grounded 재시도** — 앵커 빗나가면 다시 읽고 재인용. **절대 전체 재생성 안 함** | 큰 파일 통째 재생성의 토큰폭증·내용누락 회피 | `_tryGroundedPatchRetry` / `_tryGroundedLineEditRetry` / `_tryGroundedRegionRetry` | ✅ patch·lines·region 수렴(full만 잔존) |
 | **⑤ Verify after acting** — 편집 후 typecheck/test 돌려 에러 피드백·수정 | 깨진 코드를 조용히 안 남김 | Stage 0 검증-교정 루프(`getDiagnostics`) | ✅ (단 tsc는 내용삭제 못 봄 → content-loss 게이트 보완) |
 | **⑥ Smallest sufficient change** — 필요한 만큼만 | 부수효과·과편집 최소화 | locate "가장 작은 영역" + 작은편집은 `<replace>` | ⛔ 미구현(Stage 1 졸업 과제) |
 | **⑦ Bounded loop + 결정론 안전망** — 약한 모델은 1~2스텝으로 묶고 게이트가 잡음 | 무한 에이전트 스파이럴 방지 | 재시도 1회 상한 + 게이트들(모호성·검증·content-loss) | ✅ 부분 |
@@ -102,7 +102,7 @@ IQ가 아니라 harness 설계 문제. `<replace anchor="...">...</replace>` 가
 
 ```bash
 npm run typecheck            # tsc (extension + webview)
-npm run test:region-edit     # 177 passed — region/검증루프/모호성/cross-file/content-loss
+npm run test:region-edit     # 195 passed — region/검증루프/모호성/cross-file/content-loss/grounded수렴(locatedRegion)
 npm run eval:region          # 85% 적용률, 회귀 0 (녹화 재생)
 npm run test:line-edits      # 15 passed
 npm run test:patch-grounded  # 30 passed
@@ -140,8 +140,17 @@ npm run compile              # esbuild 번들
   고르게(작은 편집에 큰 영역 안 주게) 개선. = "smallest sufficient edit" 원칙.
 - **Stage 2 — locate 850줄 축소**: `src/ai/RegionEdit.ts`의 ②.5/②.7/②.8/②.9 랜드마크 휴리스틱을
   eval로 회귀 측정하며 점진 삭제(앵커 계약이 위치를 모델에 위임하므로 결정론 추측 기계가 덜 필요).
-- **경로 수렴(핵심 부채 해소)**: region/lines/patch의 "앵커 실패 → full 재생성"을 전부 "다시 읽고 재인용"
-  (grounded 재시도)으로 통일. 오늘 lines를 한 칸 당김. patch/region도 동일 철학으로 정리.
+- **경로 수렴(핵심 부채 — region 완료 2026-06-30)**: region/lines/patch의 "앵커 실패 → full 재생성"을 전부
+  "다시 읽고 재인용"(grounded 재시도)으로 통일. patch·lines에 이어 **region도 수렴**.
+  `RegionEditService.runHybridRegionEdit`이 "위치는 맞게 찾았으나 모델이 산출물을 망가뜨린" 합성 fallback
+  (`REGION_GROUNDABLE_REASONS` = region-content-loss / replace-content-loss / replace-anchor-missing /
+  root-tag-mismatch / empty-output)에 **실제 영역 텍스트**(`locatedRegion`: 디스크 라인 그대로)를 첨부.
+  `ChatViewProvider._tryGroundedRegionRetry`가 그 영역만으로 surgical `<patch>`를 1회 grounded 재요청
+  (`_retryForAxiomAction({groundedPatches})`, `intent:''`→히스토리 원요청 사용, `groundedRetryDone=true`로 정확히 1회).
+  비-groundable(의존성 미해소·dead-binding·duplicate-decl = 영역 밖 선언 필요)은 제외 — 기존 의존성 dead-end 자동
+  full 재시도가 담당. **검증**: test:region-edit 195 pass(locatedRegion 계약 3건 추가), eval:region 회귀 0.
+  ⚠️ 잔여: grounded patch가 **실제 텍스트를 줘도 매칭 실패**하면 patchFailed 카드("Full로 재시도" 버튼)로 — 자동
+  full 아님(원칙 #3 준수). 실모델에서 매칭 성공률·카드 빈도 라이브 측정 필요.
 - **Stage 3 (선택)**: 바운디드 read 도구(모델이 필요한 라인범위 요청, 깊이 1~2 상한).
 
 ---
