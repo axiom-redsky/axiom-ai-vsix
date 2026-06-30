@@ -2873,10 +2873,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         continue;
       }
 
+      // 약한 모델이 시스템 프롬프트의 예시 자리표시자(`[ComponentName].tsx` 등)를 그대로
+      // filePath에 베껴 넣으면 실재하지 않는 경로를 읽으려다 "파일을 읽을 수 없습니다"로 데드엔드가 난다.
+      // 선택/현재 파일 수정은 정의상 지금 열린 파일이 대상이므로, 자리표시자가 끼면 활성 에디터 경로로 핀 고정한다.
+      if (action.filePath && /[\[\]]/.test(action.filePath)) {
+        const activeDoc = vscode.window.activeTextEditor?.document;
+        const activeRel = activeDoc
+          ? vscode.workspace.asRelativePath(activeDoc.uri).replace(/\\/g, '/')
+          : undefined;
+        if (activeRel && !/[\[\]]/.test(activeRel)) {
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] 🔧 filePath 자리표시자 감지("${action.filePath}") → 활성 파일로 교체: ${activeRel}`,
+          );
+          action.filePath = activeRel;
+        } else {
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] ⚠️ filePath 자리표시자("${action.filePath}")인데 활성 파일을 못 찾음 — 수정 중단`,
+          );
+          this._post({
+            type: 'fileError',
+            message: `수정 대상 파일 경로가 확정되지 않았습니다(자리표시자 \`${action.filePath}\`). 수정할 파일을 열고 다시 시도해주세요.`,
+          });
+          continue;
+        }
+      }
+
       // 페이지 생성 플로우에서는 InputBox 없이 자동 저장
       if (forcePageAutoWrite && action.templateType === 'page') {
         action.autoWrite = true;
       }
+
+      // 약한 모델이 닫는 태그를 틀리면(예: <replace> 블록을 </replace> 대신 </search>로 닫음)
+      // 비탐욕 캡처가 잘못 들어간 제어 태그 줄까지 본문(코드)으로 빨아들여 파일에 누수된다.
+      // search/replace 본문에는 제어 태그가 단독 줄로 등장할 일이 없으므로 결정론적으로 제거한다.
+      const stripControlTagLines = (s: string): string =>
+        s
+          .split('\n')
+          .filter((ln) => !/^\s*<\/?(?:search|replace|patch)>\s*$/.test(ln))
+          .join('\n')
+          .replace(/\n$/, '');
 
       // 1차: <patch> 래핑된 다중 쌍 파싱
       const patchBlockMatches = [...blockContent.matchAll(/<patch>\s*([\s\S]*?)\s*<\/patch>/g)];
@@ -2888,8 +2923,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const r = inner.match(/<replace>\n?([\s\S]*?)<\/replace>/);
           if (s?.[1] !== undefined && r?.[1] !== undefined) {
             patches.push({
-              search: s[1].replace(/\n$/, ''),
-              replace: r[1].replace(/\n$/, ''),
+              search: stripControlTagLines(s[1].replace(/\n$/, '')),
+              replace: stripControlTagLines(r[1].replace(/\n$/, '')),
             });
           }
         }
@@ -2904,8 +2939,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const replaceMatch = blockContent.match(/<replace>\n?([\s\S]*?)<\/replace>/);
         if (searchMatch?.[1] !== undefined && replaceMatch?.[1] !== undefined) {
           action.patches = [{
-            search: searchMatch[1].replace(/\n$/, ''),
-            replace: replaceMatch[1].replace(/\n$/, ''),
+            search: stripControlTagLines(searchMatch[1].replace(/\n$/, '')),
+            replace: stripControlTagLines(replaceMatch[1].replace(/\n$/, '')),
           }];
         }
       }
