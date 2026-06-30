@@ -351,11 +351,12 @@ export class ExtensionConfig {
    * 실험: 앵커-우선 편집(Stage 1). 영역 편집 프롬프트에 "작은 국소 수정(텍스트·속성·단일 값/prop·
    * 제자리 rename)은 영역 전체를 다시 쓰지 말고 바꿀 기존 코드를 그대로 인용해 <replace>로 교체"
    * 지침을 추가한다. 약한 모델의 실제 출력 형태에 영향을 주므로 **오프라인 eval로 측정 불가** —
-   * 실모델(qwen3-coder) 라이브 프로브로만 검증된다. 적용 레이어는 모호성 게이트로 이미 안전하지만,
-   * 모델 유도 효과가 검증될 때까지 기본 off. on이어도 적용은 종전과 동일(앵커 모호 시 거부·재인용).
+   * 실모델(qwen3-coder) 라이브 프로브로만 검증된다. 적용 레이어는 모호성·content-loss 게이트 + literal
+   * 정확매칭으로 안전하다(파괴적 replace는 거부·폴백). 사용자 결정으로 기본 ON 승격(2026-06-30).
+   * 사이트별로 axiom.config.json에서 off 가능. on이어도 적용은 종전과 동일(앵커 모호/누락 시 거부·재인용).
    */
   static isAnchorFirstEditEnabled(): boolean {
-    return ExtensionConfig._resolve<boolean>('experimental.anchorFirstEdit', false);
+    return ExtensionConfig._resolve<boolean>('experimental.anchorFirstEdit', true);
   }
 
   /**
@@ -364,9 +365,10 @@ export class ExtensionConfig {
    * 드리프트로 자주 빗나가 grounded 재시도로 patch 전환되던 우회를 없애고, 약한 모델의 모드 선택 부담도
    * 줄인다(structural=추가, patch=수정 2개로 압축). 모델 출력 형태에 영향 → 실모델 라이브로만 검증.
    * 적용·폴백은 종전과 동일(회귀 0). 선택 영역은 이미 patch 강제라 무영향.
+   * 사용자 결정으로 기본 ON 승격(2026-06-30). 사이트별로 axiom.config.json에서 off 가능.
    */
   static isPatchFirstEditEnabled(): boolean {
-    return ExtensionConfig._resolve<boolean>('experimental.patchFirstEdit', false);
+    return ExtensionConfig._resolve<boolean>('experimental.patchFirstEdit', true);
   }
 
   /**
