@@ -1,7 +1,7 @@
 # Axiom 편집 파이프라인 재설계 — 작업 핸드오프
 
-> 작성일: 2026-06-30 · 목적: 편집 결과 품질을 "Claude Code 방식"(앵커 계약 + 검증 루프 + grounded 재시도)으로
-> 끌어올리는 재설계. 이 문서 하나로 집에서 이어서 작업 가능.
+> 작성일: 2026-06-30 · 최종갱신: 2026-06-30 · 목적: 편집 결과 품질을 "Claude Code 방식"(앵커 계약 + 검증 루프 +
+> grounded 재시도)으로 끌어올리는 재설계. 이 문서 하나로 회사/집 어디서든 이어서 작업 가능.
 
 ---
 
@@ -9,7 +9,42 @@
 
 현재 편집 파이프라인은 **open-loop one-shot**(모델이 한 방에 큰 영역/전체를 재작성 → 정적 게이트 14개 →
 의심되면 "전체 재생성") 구조라 두더지잡기가 끝이 없다. 처방은 **"바꿀 만큼만 건드린다 + 틀리면 다시 읽고 재인용한다"**
-(= Claude Code의 Edit 도구 방식)로 모든 경로를 수렴시키는 것. 그 1차 작업(Stage 0/1 + 라이브 버그 3건)을 끝냈다.
+(= Claude Code의 Edit 도구 방식)로 모든 경로를 수렴시키는 것. Stage 0/1을 끝내고 **앵커-우선·patch-우선을
+기본 ON으로 승격**했으며, region·patch·lines의 "앵커 실패 → grounded 재시도" **경로 수렴까지 완료**했다.
+
+---
+
+## 0.5 현재 상태 요약 (★여기부터 읽으면 됨 — 2026-06-30 최신)
+
+**한 문장:** 북극성 7개 행동 중 ①②③④⑤⑦이 작동(기본 ON), 남은 큰 과제는 **⑥ smallest-edit(locate 850줄 축소)**
+과 **실모델 라이브 검증**(폐쇄망 qwen3-coder로만 가능).
+
+**지금 켜져 있는 것(전부 기본 ON, 사이트별 axiom.config.json에서 off 가능):**
+- `experimental.regionEdit: true` — 영역(하이브리드) 편집 경로
+- `experimental.regionVerify: true` — Stage 0 검증-교정 루프(적용 직전 tsc 진단 → <replace>로 1회 교정)
+- `experimental.anchorFirstEdit: true` — Stage 1 앵커-우선(작은 수정은 영역 통째 대신 `<replace>` 인용교체)
+- `experimental.patchFirstEdit: true` — 현재 파일 in-place 수정 시 lines 빼고 patch 주력(드리프트 잦은 lines 우회 제거)
+- `multiPatch.groundedRetry: true` — 앵커 실패 시 실제 코드 재인용 재시도(patch·lines·**region** 공통)
+
+**완료된 마일스톤(시간순, 상세는 §2):**
+1. Stage 0 검증-교정 루프 + Stage 1 모호성 게이트 + 라이브 버그 3건(cross-file/content-loss/lines-grounded).
+2. **증분1**: `<replace><old>원본</old><new>새코드</new></replace>` = Claude Code `Edit(old,new)` literal 정확매칭
+   (앵커 `;` 추측 폐기, 유일매칭만 교체). anchorFirst 프롬프트도 literal 지시로.
+3. **증분3**: patchFirst — 모드를 structural(추가)+patch(수정)로 압축, 약한 모델 선택부담↓.
+4. **검증 스윕 → anchorFirst·patchFirst 기본 ON 승격**(사용자 결정). 속성/값/다중 편집 한 방에 깔끔, "테이블 useApi로
+   불러와"는 region→full로 import+타입+훅+데이터와이어링 완전 연결. 모든 위험 케이스를 게이트가 차단(조용한 파손 0).
+5. **의존성 dead-end → full 자동 재시도 1회**(structural이 useApi<TFoo>만 내고 TFoo 선언 누락 시 카드 클릭 없이 자동).
+6. **정확한 타입 = 파일 첨부 방식**(SDD 미사용 확정). 채팅 입력 📎 버튼으로 `@상대경로` 삽입 → referencedSpec 주입.
+7. **증분2(핵심 부채 해소): region→grounded 경로 수렴** ← 이번 세션. region 합성 실패가 곧장 약한 full로
+   떨어지던 걸 "실제 영역 텍스트로 surgical patch 1회 재요청"으로 바꿈(§2.5).
+
+**바로 다음 할 일(우선순위 순, §6):**
+1. **실모델 라이브 검증** — anchorFirst/patchFirst/region-grounded가 qwen3-coder에서 실제로 통하는지(§5 체크리스트).
+   프롬프트 효과는 **오프라인 eval로 측정 불가** → 이게 모든 승격의 전제.
+2. **Stage 2 — locate 850줄 축소**(`RegionEdit.ts`): 앵커 계약이 위치를 모델에 위임하므로 결정론 추측 휴리스틱을
+   eval 회귀 측정하며 점진 삭제. = 북극성 ⑥ smallest-edit.
+3. 잔여 미흡점: import 추가 가끔 no-op(멀티라인 dedup 수정 후 재현 케이스 확인), region이 작은 편집서 locate로 자주
+   빠짐(patchFirst가 우회하므로 실질 영향 적음).
 
 ---
 
@@ -38,7 +73,7 @@ IQ가 아니라 harness 설계 문제. `<replace anchor="...">...</replace>` 가
 | Claude Code의 행동 | 왜 안전한가 | Axiom 매핑(메커니즘) | 상태 |
 |---|---|---|---|
 | **① Read before write** — 안 보고 절대 안 고침 | 환각이 아니라 실제 파일에 grounding | locate가 실제 디스크 텍스트 주입 / `_loadReferencedFiles` / grounded 재시도가 실제 코드 재주입 | ✅ 대체로 |
-| **② Surgical edit** — `Edit(old_string,new_string)`, 바꿀 것만 인용·교체 | 안 건드린 코드는 **출력조차 안 함** → 누락 불가능 | `<replace anchor="...">...</replace>` (=Edit 도구) | ⚠️ 있으나 보조(승격 대기) |
+| **② Surgical edit** — `Edit(old_string,new_string)`, 바꿀 것만 인용·교체 | 안 건드린 코드는 **출력조차 안 함** → 누락 불가능 | `<replace><old>원본</old><new>새코드</new></replace>` literal 정확매칭(=Edit 도구) + anchorFirst·patchFirst 기본 ON | ✅ 승격(라이브 효과 측정만 남음) |
 | **③ 유일 앵커 강제** — old_string 안 unique면 에러 | 엉뚱한 곳 조용히 교체 불가 | 모호성 게이트(`findAnchorLines`+`statementStart`) | ✅ |
 | **④ Fail loud → grounded 재시도** — 앵커 빗나가면 다시 읽고 재인용. **절대 전체 재생성 안 함** | 큰 파일 통째 재생성의 토큰폭증·내용누락 회피 | `_tryGroundedPatchRetry` / `_tryGroundedLineEditRetry` / `_tryGroundedRegionRetry` | ✅ patch·lines·region 수렴(full만 잔존) |
 | **⑤ Verify after acting** — 편집 후 typecheck/test 돌려 에러 피드백·수정 | 깨진 코드를 조용히 안 남김 | Stage 0 검증-교정 루프(`getDiagnostics`) | ✅ (단 tsc는 내용삭제 못 봄 → content-loss 게이트 보완) |
