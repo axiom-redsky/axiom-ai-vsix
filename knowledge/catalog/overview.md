@@ -49,4 +49,6 @@ related: [utils/util.md, utils/cn.md, patterns/router.md, catalog/hooks.md, desi
 
 `@axiom/components/ui`에서 import. Button·Input·Select·Form·Card·Table·Dialog·Badge·Tabs·Accordion 등 다수 제공.
 
+데이터 그리드가 필요하면 **`SmartTable`**(컬럼을 설정 맵으로 선언 → 포맷·정렬·검색·페이징·병합헤더·합계·행선택·export·서버모드 자동) 사용. 상세: [SmartTable.md](../components/SmartTable.md)
+
 전체 목록·variants·상태(confirmed/tbd)는 [components.md](../design-system/components.md) 참고.

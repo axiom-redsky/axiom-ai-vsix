@@ -139,6 +139,20 @@ for (const c of [
   check(`"${c.query}" → react/component.md 비매칭`, !files.includes('react/component.md'), `matched=${JSON.stringify(files)}`);
 }
 
+// SmartTable(선언형 고수준 그리드) → 전용 문서로 라우팅.
+console.log('\nSmartTable 라우팅:');
+for (const c of [
+  { query: 'SmartTable 사용법 알려줘', expect: 'components/SmartTable.md' },
+  { query: '스마트테이블 컬럼 정의 방법', expect: 'components/SmartTable.md' },
+  { query: 'defineColumns 로 컬럼 만드는 법', expect: 'components/SmartTable.md' },
+  { query: '테이블 합계행 만들기', expect: 'components/SmartTable.md' },
+  { query: '병합헤더 그리드 만드는 법', expect: 'components/SmartTable.md' },
+  { query: '서버모드 endpoint 테이블 페이징', expect: 'components/SmartTable.md' },
+]) {
+  const files = kr.matchedFiles(c.query);
+  check(`"${c.query}" → ${c.expect}`, files.includes(c.expect), `matched=${JSON.stringify(files)}`);
+}
+
 // "목록" 범용어 정리 — 유틸/카탈로그 "목록" 질문이 Table/list-page에 끌려가지 않아야 한다.
 console.log('\n"목록" 범용어 누수 방지:');
 for (const c of [

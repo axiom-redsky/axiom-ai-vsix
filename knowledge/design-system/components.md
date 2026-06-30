@@ -58,6 +58,7 @@ import { Button, Input, Card } from '@axiom/components/ui';
 | 컴포넌트 | 주요 variants / props | status | 상세 문서 |
 |---------|---------------------|--------|---------|
 | `Table`, `TableHeader`, `TableBody`, `TableRow`, `TableHead`, `TableCell` | — | confirmed | [Table.md](../components/Table.md) |
+| `SmartTable`, `defineColumns` | 선언형 고수준 데이터 그리드: format·badge DSL · 정렬/검색/페이징 · 병합헤더 · 합계행 · 행선택/일괄액션 · export(xlsx/csv) · 클라이언트/서버(`endpoint`) 모드 | confirmed | [SmartTable.md](../components/SmartTable.md) |
 | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | — | confirmed | — |
 | `Accordion`, `AccordionItem`, `AccordionTrigger`, `AccordionContent` | type: single / multiple | confirmed | — |
 
