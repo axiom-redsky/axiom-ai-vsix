@@ -76,6 +76,7 @@ function PresetNumberField({
 const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
   axiomFolder: '',
   regionEdit: true,
+  composeBinding: false,
   regionVerify: true,
   anchorFirstEdit: true,
   patchFirstEdit: true,
@@ -635,6 +636,15 @@ function SettingsTab({
             onChange={(e) => onProjectChange('regionEdit', e.target.checked)}
           />
           <span>영역(region) 편집 — experimental.regionEdit</span>
+        </label>
+
+        <label className="settings__toggle">
+          <input
+            type="checkbox"
+            checked={project.composeBinding}
+            onChange={(e) => onProjectChange('composeBinding', e.target.checked)}
+          />
+          <span>조립 바인딩(API→테이블) — experimental.composeBinding</span>
         </label>
 
         <label className="settings__toggle">

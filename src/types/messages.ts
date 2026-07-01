@@ -37,6 +37,8 @@ export interface AxiomSettings {
     axiomFolder: string;
     /** 실험: 영역(region/hybrid) 편집. */
     regionEdit: boolean;
+    /** 실험: 조립 바인딩(compose) — API→테이블 결정론 조립. */
+    composeBinding: boolean;
     /** 실험: 영역 편집 검증-교정 루프(Stage 0). */
     regionVerify: boolean;
     /** 실험: 앵커-우선 편집(Stage 1). */
