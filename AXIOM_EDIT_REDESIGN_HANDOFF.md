@@ -1,7 +1,10 @@
 # Axiom 편집 파이프라인 재설계 — 작업 핸드오프
 
-> 작성일: 2026-06-30 · 최종갱신: 2026-06-30 · 목적: 편집 결과 품질을 "Claude Code 방식"(앵커 계약 + 검증 루프 +
+> 작성일: 2026-06-30 · 최종갱신: **2026-07-01** · 목적: 편집 결과 품질을 "Claude Code 방식"(앵커 계약 + 검증 루프 +
 > grounded 재시도)으로 끌어올리는 재설계. 이 문서 하나로 회사/집 어디서든 이어서 작업 가능.
+>
+> **2026-07-01 추가:** 인접 트랙 **조립 바인딩(compose) — API→테이블**을 완료하고 기본 ON으로 승격했다(§2.6).
+> 실 qwen3-coder 라이브 검증까지 마친 유일한 트랙. 편집 파이프라인(§2) 본 트랙은 여전히 §5 라이브 검증 대기.
 
 ---
 
@@ -25,6 +28,11 @@
 - `experimental.anchorFirstEdit: true` — Stage 1 앵커-우선(작은 수정은 영역 통째 대신 `<replace>` 인용교체)
 - `experimental.patchFirstEdit: true` — 현재 파일 in-place 수정 시 lines 빼고 patch 주력(드리프트 잦은 lines 우회 제거)
 - `multiPatch.groundedRetry: true` — 앵커 실패 시 실제 코드 재인용 재시도(patch·lines·**region** 공통)
+- `experimental.composeBinding: true` — **[인접 트랙, 2026-07-01 승격]** API→테이블 조립 바인딩(상세 §2.6)
+
+**★ 인접 트랙(compose, 2026-07-01 완료·유일하게 라이브 검증됨):** "테이블에 /api/… 적용"은 편집이 아니라
+다부품 레시피(import+type+useApi+가드+셀 재바인딩)라 약한 모델이 통째로 실패하던 것을, 확장이 **결정론으로 조립**하게
+만들었다. 실 qwen3-coder에서 봉투 3종·미매핑 되묻기까지 검증하고 기본 ON 승격. **상세·재개 지점은 §2.6.**
 
 **완료된 마일스톤(시간순, 상세는 §2):**
 1. Stage 0 검증-교정 루프 + Stage 1 모호성 게이트 + 라이브 버그 3건(cross-file/content-loss/lines-grounded).
@@ -163,6 +171,68 @@ grounded 재요청한다. ground truth가 손에 있어 grounding 비용 0.
 
 ---
 
+## 2.6 인접 트랙 — 조립 바인딩(compose): API→테이블 (2026-07-01 완료·기본 ON 승격)
+
+> ★ **집에서 이어서 읽을 때 여기부터.** 이 트랙은 편집 파이프라인(§2)과 **별개**지만 같은 철학("똑똑함=분해·대조·
+> 검증을 모델 토큰 아닌 결정론 코드로 산다")을 공유한다. **유일하게 실 qwen3-coder 라이브 검증을 마친 트랙.**
+> 전체 상세·재개 블록은 메모리 `project_compose_binding_recipe`에 있다(이 문서는 요약).
+
+### 배경 (왜 만들었나)
+"직원 테이블에 `/api/employees` 적용"은 한 편집이 아니라 **다부품 레시피**(import + type + useApi + 파생 const +
+로딩/에러 가드 + 테이블 셀 재바인딩)다. 이 조율을 약한 모델에 통째로 맡기면 실패한다 — 실측: 모델이 useApi만 넣고
+존재하지 않는 더미 필드를 계속 참조하거나, 2-3 검증에선 **엉뚱한 영역(페이지네이션 버튼)을 헛수정**했다. 처방:
+확장이 스펙과 테이블을 **결정론으로 분해·대조·조립**하고, 모델은 "안 줄어드는 의미 판단 한 조각"(약어 필드 매핑)만.
+
+### 완료 내역
+- **순수 모듈** `src/ai/ApiBindingRecipe.ts`(vscode/디스크 비의존, 테스트 고정 64개): 테이블 컬럼 추출 ·
+  스펙 Response 스키마 추출 · reconcile(안전 매핑만) · buildBindingCode(type+useApi+가드 결정론 생성) ·
+  rewriteMappedFields(셀 재바인딩) · 작은 필드매핑 모델콜(프롬프트/파싱).
+- **A1 — 봉투(envelope) 계약 지식 정합성:** `useApi<T>`의 `data`는 **서버 HTTP 바디 그대로**(scaffold 내부
+  `ApiResponse` 봉투는 감싸기↔풀기 상쇄로 컴포넌트 미도달, 서버 봉투는 통과). 이 **불변식**을 `knowledge/patterns/
+  use-api.md`(주 RAG 경로)+`scaffold-docs/use-api.md`에 "봉투 계약" 섹션으로 명시(+`_index.md` 키워드). ⚠️ 구체
+  봉투 모양(`{success,data,meta}`)은 사이트마다 달라 **박지 않고**, "스펙 Response를 보고 T를 맞춰라"로 위임.
+  실 스캐폴드 소스로 교차검증(경로: 메모리 `reference_scaffold_source_path`).
+- **A2 — 봉투키 일반화:** `extractResponseSchema`의 봉투키 `'data'` 고정 → `detectEnvelopeKey`(export)로 일반 감지
+  (data/list/items/result/… 배열 담은 키 → 없으면 형제 전부 메타일 때 미지 배열키). ⚠️ 단건 행의 우연한 배열
+  필드(`{id,name,skills:[]}`)를 봉투로 오인 안 하는 가드 포함.
+- **미매핑 컬럼 되묻기:** API에 대응 없는 컬럼(project·rate)은 조립 **전에** QuickPick으로 물음 — **컬럼 제거**
+  (`removeTableColumns` 결정론으로 헤더 th+행 td 삭제→타입에러 0) / **그대로 두기(경고)** / **취소**. 취소는 무편집
+  `return true`(잘못된 full 폴백 차단).
+- **배선:** `ChatViewProvider._tryComposeBinding` — `_tryRegionEdit` **직전** 분기. 트리거(4개 모두 충족 시만):
+  현재 파일에 데이터 테이블(`<tbody>`+`.map`) + 필드컬럼 ≥2 + 요청에 정확 엔드포인트 + 참조 스펙. 미충족·실패 시
+  false → 기존(region/full) 폴백(회귀 0).
+- **기본 ON 승격(2026-07-01):** `experimental.composeBinding` false→true 3곳(`ExtensionConfig.ts` ·
+  `package.json` · `LauncherApp.tsx` DEFAULT_PROJECT). 토글 UI는 유지(사이트별 off 스위치).
+
+### 라이브 검증 결과 (실 qwen3-coder-64k, 2026-07-01) — 전부 통과
+| 검증 | 결과 |
+|---|---|
+| `{data:[...]}` 봉투 | `useApi<{ data: TEmployee[] }>` + `data?.data ?? []` ✅ |
+| `result` 봉투 | `useApi<{ result: TEmployee[] }>` + `data?.result ?? []` ✅ |
+| `list` 봉투 | `useApi<{ list: TEmployee[] }>` + `data?.list ?? []` ✅ |
+| bare 배열 | `useApi<TEmployee[]>` + `data ?? []` ✅ |
+| 매핑 | dept→department, grade→position, status→employment_status (약어는 작은 모델콜) ✅ |
+| 되묻기 | "그대로 두기"·"컬럼 제거" 분기 라이브 확인 ✅ |
+| 2-3(compose OFF) | 비-compose 모델 경로는 이 작업 **불가**(엉뚱 영역 헛수정) → compose 필수 재증명 |
+
+### 핵심 파일
+- `src/ai/ApiBindingRecipe.ts` — 순수 조립 로직(extractResponseSchema/**detectEnvelopeKey**/reconcile/
+  buildBindingCode/rewriteMappedFields/**removeTableColumns**/tagBlockRanges).
+- `src/providers/ChatViewProvider.ts` — `_tryComposeBinding`(트리거·되묻기 QuickPick·조립·제출).
+- `knowledge/patterns/use-api.md`(+`scaffold-docs/use-api.md`, `_index.md`) — 봉투 계약 지식.
+- `scripts/test-api-binding.ts` — 단위 64개. `docs/phase-b-live-verification-checklist.md` — 라이브 체크리스트(부록에 봉투 변형 스펙).
+
+### 검증 명령
+`npm run test:api-binding`(64 pass) · `npm run typecheck` · `npm run compile` — 전부 green. region/react 무회귀(195/13).
+
+### 남은 것 (compose 트랙)
+1. **skills 오탐 가드·"취소" 분기** 라이브(minor — 단위테스트로 고정됨).
+2. **부수 버그(별개):** 활성 에디터가 실제 tsx가 아닐 때(출력채널 포커스 등) 타겟이 새는 것 — bare 첫 시도가
+   `filePath: extension-output-…Corpus`로 거부됐다(메모리 `project_modify_to_create_leak` 계열). 재현·보강 대상.
+3. **다른 SI 사이트 스펙·테이블 구조**로 폭넓은 실검증(현재 직원 테이블 한 시나리오만). 오작동 사이트는 토글 off.
+
+---
+
 ## 3. 설정 플래그 (axiom.config.json 또는 VSCode 설정)
 
 현재 **전부 기본 ON**(코드 기본값 = `ExtensionConfig.ts`). 사이트별로 끄려면 `axiom.config.json`에 명시:
@@ -173,7 +243,8 @@ grounded 재요청한다. ground truth가 손에 있어 grounding 비용 0.
   "experimental.regionVerify": true,      // Stage 0 검증-교정 루프 (기본 ON)
   "experimental.anchorFirstEdit": true,   // Stage 1 앵커-우선 프롬프트 (기본 ON — 2026-06-30 승격)
   "experimental.patchFirstEdit": true,    // 현재파일 in-place 수정 시 patch 주력 (기본 ON — 2026-06-30 승격)
-  "multiPatch.groundedRetry": true        // grounded 재시도 (patch/lines/region 공통, 기본 ON)
+  "multiPatch.groundedRetry": true,       // grounded 재시도 (patch/lines/region 공통, 기본 ON)
+  "experimental.composeBinding": true     // API→테이블 조립 바인딩 (기본 ON — 2026-07-01 승격, §2.6)
 }
 ```
 
@@ -227,6 +298,9 @@ npm run compile              # esbuild 번들
 
 ## 6. 다음 단계 (우선순위 순)
 
+> **compose 트랙(§2.6)은 라이브 검증까지 완료·기본 ON 승격됨.** 아래는 **편집 파이프라인(§2) 본 트랙**의 남은 일이다.
+> compose 잔여(부수 버그·폭넓은 사이트 검증)는 §2.6 "남은 것" 참고.
+
 1. **실모델 라이브 검증 (최우선 — 모든 승격의 전제)**: §5 체크리스트를 qwen3-coder로 돌려 anchorFirst/patchFirst/
    region-grounded가 실제로 통하는지 측정. 프롬프트 효과는 **오프라인 eval로 측정 불가**(녹화 재생은 옛 포맷).
    결과 표(사유→grounded회복/카드/실패)를 만들면 아래 Stage 2의 임계값·삭제 대상 입력이 된다.
@@ -251,12 +325,15 @@ npm run compile              # esbuild 번들
 | `src/ai/StructuralAnchor.ts` | `applyReplaceBlocks`(앵커 계약 적용) + 모호성 게이트 + `ReplaceBlock.old`/`findLiteralLines`(증분1 literal) + 훅/import 삽입 |
 | `src/ai/CrossFileTargeting.ts` | cross-file 재타겟 억제 판정(use-as/landmark) |
 | `src/ai/ScaffoldContextBuilder.ts` | `_buildScenarioCPrompt`(patchFirst 압축 프롬프트, 증분3) |
-| `src/providers/ChatViewProvider.ts` | 진입·라우팅 / `_tryRegionEdit` / `_verifyTextByDiagnostics` / grounded 재시도 **patch+lines+region**(`_tryGroundedRegionRetry`) / `_retryForAxiomAction({groundedPatches})` |
-| `src/config/ExtensionConfig.ts` | 플래그(regionEdit/regionVerify/anchorFirstEdit/patchFirstEdit/groundedRetry — 전부 기본 ON) |
+| `src/providers/ChatViewProvider.ts` | 진입·라우팅 / `_tryRegionEdit` / `_verifyTextByDiagnostics` / grounded 재시도 **patch+lines+region**(`_tryGroundedRegionRetry`) / `_retryForAxiomAction({groundedPatches})` / **`_tryComposeBinding`(§2.6)** |
+| `src/config/ExtensionConfig.ts` | 플래그(regionEdit/regionVerify/anchorFirstEdit/patchFirstEdit/groundedRetry/**composeBinding** — 전부 기본 ON) |
 | `scripts/test-region-edit.ts` | 단위 테스트(195개 — locatedRegion 계약 포함) |
+| **`src/ai/ApiBindingRecipe.ts`** (§2.6) | **compose 순수 조립 로직**(extractResponseSchema/detectEnvelopeKey/reconcile/buildBindingCode/rewriteMappedFields/removeTableColumns) — 테스트 고정 64개(`scripts/test-api-binding.ts`) |
+| **`knowledge/patterns/use-api.md`** (§2.6) | **봉투 계약 지식**(A1) — `+scaffold-docs/use-api.md`, `_index.md` 키워드 |
 
 관련 메모리(Claude): `project_replace_span_overexpansion`(증분1·2·3 + 경로수렴 최신),
-`project_current_state_robustness_mapping`, `project_patch_apply_model`, `project_section_split_trailing_comment`.
+`project_current_state_robustness_mapping`, `project_patch_apply_model`, `project_section_split_trailing_comment`,
+**`project_compose_binding_recipe`(§2.6 compose 전체 상세·재개 블록), `reference_scaffold_source_path`**.
 
 ---
 
