@@ -21,6 +21,7 @@ import {
   buildBindingCode,
   rewriteMappedFields,
   stripModuleConst,
+  removeTableColumns,
   buildFieldMappingPrompt,
   parseFieldMapping,
   deriveRootName,
@@ -2806,13 +2807,50 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       renames.push(...parseFieldMapping(resp, ambiguous, rec.unusedApiFields));
     }
 
-    // ⑤ 여전히 미매핑(API에 대응 없음) = 언더스펙 → 추측 금지, 알림만(되묻기)
+    // ⑤ 여전히 미매핑(API에 대응 없음) = 언더스펙 → 추측 금지, **되묻기**.
+    //    바로 조립하면 남은 `{emp.project}`가 새 타입에 없어 타입에러(컴파일 실패)가 나므로, 조립 전에
+    //    사용자에게 제거/유지/취소를 물어 그 답대로 진행한다(설계원칙: 추론 전환 시에만 되묻기).
     const mappedFroms = new Set(renames.map((r) => r.from));
     const unresolved = ambiguous.filter((c) => !mappedFroms.has(c.field!));
 
+    let workingSource = originalContent;
+    let unresolvedMode: 'removed' | 'kept' = 'kept';
+    if (unresolved.length > 0) {
+      const labels = unresolved.map((c) => c.headerLabel || c.field).join(', ');
+      const REMOVE = '컬럼 제거';
+      const KEEP = '그대로 두기 (경고)';
+      const CANCEL = '다른 API 지정 (조립 취소)';
+      const picked = await vscode.window.showQuickPick(
+        [
+          { label: REMOVE, description: `${labels} 컬럼(헤더+셀)을 표에서 빼고 조립 — 바로 컴파일됨` },
+          { label: KEEP, description: `그대로 두고 경고만 — 남는 타입에러는 직접 처리` },
+          { label: CANCEL, description: `이 컬럼은 다른 엔드포인트 소관 — 조립 취소하고 다시 요청` },
+        ],
+        {
+          placeHolder: `"${labels}" 컬럼은 ${endpoint} 응답에 없습니다. 어떻게 할까요?`,
+          ignoreFocusOut: true,
+        },
+      );
+      if (!picked || picked.label === CANCEL) {
+        this._post({
+          type: 'token',
+          content:
+            `\n\n> 🧩 조립을 취소했습니다. \`${labels}\` 데이터를 제공하는 엔드포인트를 함께 지정해 다시 요청해 주세요.\n`,
+        });
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 🧩 조립 바인딩: 미매핑 컬럼(${labels}) 되묻기 → 취소`,
+        );
+        return true; // 처리됨(무편집) — region/full 폴백으로 흘려 잘못된 재작성을 유발하지 않는다.
+      }
+      if (picked.label === REMOVE) {
+        workingSource = removeTableColumns(originalContent, unresolved.map((c) => c.index));
+        unresolvedMode = 'removed';
+      }
+    }
+
     // ⑥ 결정론 조립: 셀 재바인딩 → 더미 배열 제거 → type·useApi·가드 삽입
     //    (파생 `const employees = data?.data ?? []`가 더미와 이름이 겹쳐 드롭되지 않도록 더미를 먼저 제거)
-    const rewritten = stripModuleConst(rewriteMappedFields(originalContent, renames, mapVar).text, collectionVar);
+    const rewritten = stripModuleConst(rewriteMappedFields(workingSource, renames, mapVar).text, collectionVar);
     const rootName = deriveRootName(endpoint);
     const bind = buildBindingCode({ schema, endpoint, rootName, collectionVar });
     const applied = applyStructuralEdit(rewritten, { hookCode: bind.hookCode, imports: bind.imports }).text;
@@ -2822,7 +2860,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._corpusOutputChannel.appendLine(
       `[Axiom AI] 🧩 조립 바인딩 (${filePath}): endpoint=${endpoint} type=${bind.typeName} ` +
         `매핑=${renames.map((r) => `${r.from}→${r.to}`).join(', ') || '(정확일치만)'} ` +
-        `미매핑=${unresolved.map((c) => c.field).join(', ') || '없음'}`,
+        `미매핑=${unresolved.map((c) => c.field).join(', ') || '없음'}` +
+        (unresolved.length > 0 ? ` → ${unresolvedMode === 'removed' ? '컬럼 제거' : '유지(경고)'}` : ''),
     );
     this._post({
       type: 'token',
@@ -2835,8 +2874,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this._post({
         type: 'token',
         content:
-          `>\n> ⚠️ ${list} 컬럼은 \`${endpoint}\` 응답에 **없어 그대로 뒀습니다**(추측하지 않음). ` +
-          `다른 엔드포인트가 필요하거나 이 컬럼을 빼야 할 수 있습니다.\n`,
+          unresolvedMode === 'removed'
+            ? `>\n> 🧹 ${list} 컬럼은 \`${endpoint}\`에 없어 **표에서 제거**했습니다.\n`
+            : `>\n> ⚠️ ${list} 컬럼은 \`${endpoint}\` 응답에 **없어 그대로 뒀습니다**(추측하지 않음). ` +
+              `남는 타입에러는 직접 처리하거나 다른 엔드포인트를 지정해 주세요.\n`,
       });
     }
 

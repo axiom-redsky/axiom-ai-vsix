@@ -14,6 +14,7 @@ import {
   parseFieldMapping,
   stripModuleConst,
   detectEnvelopeKey,
+  removeTableColumns,
 } from '../src/ai/ApiBindingRecipe';
 import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
@@ -274,6 +275,34 @@ eq(schemaBare.envelopeKey, null, 'bare 배열 → envelopeKey null');
 const codeBare = buildBindingCode({ schema: schemaBare, endpoint: '/api/employees', rootName: 'Employee', collectionVar: 'employees' });
 ok(codeBare.hookCode.includes("useApi<TEmployee[]>('/api/employees')"), 'bare 제네릭: useApi<TEmployee[]>');
 ok(codeBare.hookCode.includes('const employees = data ?? [];'), 'bare 목록 추출: data ?? []');
+
+// ── 되묻기 "컬럼 제거": API에 없는 컬럼(project·rate)을 표에서 결정론 제거 ──────────
+console.log('\napi-binding — removeTableColumns(미매핑 컬럼 되묻기 "제거"):');
+// FILE 컬럼 순서: 0이름 1부서 2직급 3프로젝트 4투입률 5상태 6액션 → project(3)·rate(4) 제거
+const removed = removeTableColumns(FILE, [3, 4]);
+ok(!removed.includes('현재 투입 프로젝트') && !removed.includes('투입률'), '헤더 th(프로젝트·투입률) 제거');
+ok(!removed.includes('{emp.project}') && !removed.includes('{emp.rate}'), '행 셀 td(emp.project·emp.rate) 제거');
+// 남은 컬럼은 유지
+ok(removed.includes('이름') && removed.includes('부서') && removed.includes('직급') && removed.includes('상태'), '남은 헤더 유지');
+ok(removed.includes('{emp.name}') && removed.includes('{emp.dept}') && removed.includes('{emp.grade}') && removed.includes('status={emp.status}'), '남은 셀 유지');
+// 헤더 수 = 셀 수 = 5 (기존 7 - 2)
+eq(extractTableColumns(removed).length, 5, '제거 후 컬럼 5개');
+eq(extractTableColumns(removed).map((c) => c.field), ['name', 'dept', 'grade', 'status', null], '제거 후 컬럼 순서(프로젝트·투입률 빠짐)');
+// 빈 배열이면 원본 그대로
+eq(removeTableColumns(FILE, []), FILE, '빈 인덱스 → 원본 그대로');
+
+// 제거 후 조립하면 타입에러 유발 셀이 사라짐(컴파일 안전) — 통합 확인
+console.log('\napi-binding — removeTableColumns 후 조립(타입에러 셀 소거 e2e):');
+const rmSource = removeTableColumns(FILE_DUMMY, [/* FILE_DUMMY: 0이름 1부서 2직급 3상태 → 제거 없음 */]);
+ok(rmSource === FILE_DUMMY, 'FILE_DUMMY는 미매핑 컬럼 없어 변화 없음(가드)');
+// project/rate가 있는 표에서 제거 → 조립 결과에 emp.project/emp.rate 없음
+const withUnmapped = removeTableColumns(FILE, [3, 4]);
+const rw2 = rewriteMappedFields(withUnmapped, [
+  { from: 'dept', to: 'department' },
+  { from: 'grade', to: 'position' },
+  { from: 'status', to: 'employment_status' },
+], 'emp');
+ok(!rw2.text.includes('emp.project') && !rw2.text.includes('emp.rate'), '제거+재바인딩 후 미매핑 필드 참조 완전 소거');
 
 console.log(`\n결과: ${pass} 통과 / ${fail} 실패\n`);
 if (fail > 0) process.exit(1);

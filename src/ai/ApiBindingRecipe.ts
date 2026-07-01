@@ -467,6 +467,42 @@ export function findRowCollectionVar(source: string): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * 주어진 0-based 컬럼 인덱스들을 테이블에서 **결정론 제거**한다: `<thead>`의 해당 `<th>` + `<tbody>` 첫 `<tr>`의
+ * 해당 최상위 `<td>`. API 응답에 대응 필드가 없는 컬럼(project·rate 등)을 사용자가 "제거" 선택했을 때, 남은
+ * `{emp.project}`가 새 타입에 없어 타입에러가 나는 걸 없애기 위해 조립 전에 컬럼째 들어낸다.
+ * 헤더/셀은 extractTableColumns와 같은 순서(최상위 태그 깊이 기준)라 index가 정렬된다. 대상 없으면 원본 그대로.
+ */
+export function removeTableColumns(source: string, indices: number[]): string {
+  const drop = new Set(indices);
+  if (drop.size === 0) return source;
+
+  // region(thead/tr) 내부의 최상위 cell(th/td)들을 index로 지운다. 앞쪽 공백·개행도 함께 접어 깔끔한 diff.
+  const removeCellsIn = (text: string, regionTag: string, cellTag: string): string => {
+    const region = tagBlockRanges(text, regionTag)[0];
+    if (!region) return text;
+    let inner = text.slice(region.innerStart, region.innerEnd);
+    const cells = tagBlockRanges(inner, cellTag);
+    for (let i = cells.length - 1; i >= 0; i--) {
+      if (!drop.has(i)) continue;
+      let s = cells[i].start;
+      while (s > 0 && (inner[s - 1] === ' ' || inner[s - 1] === '\t')) s--;
+      if (s > 0 && inner[s - 1] === '\n') s--;
+      inner = inner.slice(0, s) + inner.slice(cells[i].end);
+    }
+    return text.slice(0, region.innerStart) + inner + text.slice(region.innerEnd);
+  };
+
+  let result = removeCellsIn(source, 'thead', 'th');
+  const tbody = tagBlockRanges(result, 'tbody')[0];
+  if (tbody) {
+    const inner = result.slice(tbody.innerStart, tbody.innerEnd);
+    const newInner = removeCellsIn(inner, 'tr', 'td'); // tbody의 첫 tr(행 템플릿)
+    result = result.slice(0, tbody.innerStart) + newInner + result.slice(tbody.innerEnd);
+  }
+  return result;
+}
+
 // ── 공용 헬퍼 ─────────────────────────────────────────────────────────────────
 
 /** 필드명 정규화: 소문자 + 영숫자만(snake/camel/구분자 차이 흡수). */
@@ -491,6 +527,51 @@ function containsNorm(a: string, b: string): boolean {
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * `source`에서 **최상위(중첩 아님)** `<tag …>…</tag>` 블록들의 위치 범위를 태그 깊이 카운팅으로 반환한다.
+ * start/end=여는~닫는 태그 포함 범위, innerStart/innerEnd=내부 텍스트 범위. sliceTopLevelTags의 위치판.
+ */
+function tagBlockRanges(source: string, tag: string): Array<{ start: number; end: number; innerStart: number; innerEnd: number }> {
+  const open = new RegExp(`<${tag}\\b[^>]*?(/?)>`, 'g');
+  const close = new RegExp(`</${tag}\\s*>`, 'g');
+  type Tok = { at: number; end: number; kind: 'open' | 'close' | 'selfclose' };
+  const toks: Tok[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = open.exec(source)) !== null) {
+    toks.push({ at: m.index, end: m.index + m[0].length, kind: m[1] === '/' ? 'selfclose' : 'open' });
+  }
+  while ((m = close.exec(source)) !== null) {
+    toks.push({ at: m.index, end: m.index + m[0].length, kind: 'close' });
+  }
+  toks.sort((a, b) => a.at - b.at);
+
+  const out: Array<{ start: number; end: number; innerStart: number; innerEnd: number }> = [];
+  let depth = 0;
+  let startAt = -1;
+  let innerStart = -1;
+  for (const t of toks) {
+    if (t.kind === 'selfclose') {
+      if (depth === 0) out.push({ start: t.at, end: t.end, innerStart: t.end, innerEnd: t.end });
+      continue;
+    }
+    if (t.kind === 'open') {
+      if (depth === 0) {
+        startAt = t.at;
+        innerStart = t.end;
+      }
+      depth++;
+    } else {
+      depth--;
+      if (depth === 0 && startAt >= 0) {
+        out.push({ start: startAt, end: t.end, innerStart, innerEnd: t.at });
+        startAt = -1;
+      }
+      if (depth < 0) depth = 0;
+    }
+  }
+  return out;
 }
 
 /** 소스에서 `<tag …>…</tag>` 첫 블록 전체(여는·닫는 태그 포함)를 태그 깊이로 정확히 잘라 반환. */
