@@ -5,6 +5,7 @@
 import {
   extractTableColumns,
   extractResponseSchema,
+  pickResponseSchema,
   reconcile,
   buildBindingCode,
   rewriteMappedFields,
@@ -16,6 +17,7 @@ import {
   detectEnvelopeKey,
   removeTableColumns,
 } from '../src/ai/ApiBindingRecipe';
+import { extractApiPaths } from '../src/ai/SectionExtractor';
 import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 let pass = 0;
@@ -303,6 +305,47 @@ const rw2 = rewriteMappedFields(withUnmapped, [
   { from: 'status', to: 'employment_status' },
 ], 'emp');
 ok(!rw2.text.includes('emp.project') && !rw2.text.includes('emp.rate'), '제거+재바인딩 후 미매핑 필드 참조 완전 소거');
+
+// ── 인라인 스펙(프롬프트 붙여넣기) → 조립 스키마 파싱 ──────────────────────────
+// 회귀: compose-binding이 스펙을 **참조 파일 전용**(_loadReferencedFiles)으로만 읽어, 사용자가 스펙을
+// 프롬프트에 통째로 붙여넣으면(파일 참조 없음) 첫 관문에서 탈락 → region/structural 반쪽 편집으로 새던
+// 버그. 수정: specText = [프롬프트 text, ...참조파일] 로 합쳐 pickResponseSchema에 넘긴다. 이 블록은 그
+// 수정이 의존하는 전제 — "파서가 인라인 프롬프트 텍스트에서 엔드포인트+응답 스키마를 뽑는다" — 를 잠근다.
+console.log('\napi-binding — 인라인 스펙(프롬프트 붙여넣기) 파싱(회귀):');
+// 사용자가 실제로 붙여넣은 형태: 지시문 + GET 섹션 + Response JSON 이 한 프롬프트에 인라인. 파일 참조 없음.
+const INLINE_PROMPT = `직원 테이블을 다음 api 데이터로 적용해줘.
+
+### GET \`/api/employees\`
+직원 목록 조회. 페이지네이션 + 검색 지원.
+
+**Response**
+\`\`\`json
+{
+  "success": true,
+  "data": [
+    { "id": 1, "name": "김민준", "email": "minjun.kim@peoplify.com", "phone": "010-1001-0001", "department": "개발팀", "position": "선임 개발자", "hire_date": "2021-03-02", "employment_status": "active", "skills": ["Java", "Spring", "AWS"] }
+  ],
+  "meta": { "total": 18, "page": 1, "limit": 20 }
+}
+\`\`\`
+`;
+// 1) 엔드포인트는 인라인 텍스트에서 뽑힌다(종전에도 OK).
+eq(extractApiPaths(INLINE_PROMPT), ['/api/employees'], '인라인: extractApiPaths → /api/employees');
+// 2) 핵심 — 스키마도 인라인 텍스트에서 뽑혀야 조립이 발동한다(수정 지점).
+const inlineSchema = pickResponseSchema(INLINE_PROMPT, '/api/employees');
+ok(inlineSchema !== null, '인라인: pickResponseSchema가 프롬프트 텍스트에서 스키마 파싱');
+eq(inlineSchema?.envelopeKey, 'data', '인라인: 봉투 키 = data');
+eq(
+  inlineSchema?.rowFields,
+  ['id', 'name', 'email', 'phone', 'department', 'position', 'hire_date', 'employment_status', 'skills'],
+  '인라인: 행 필드 9개',
+);
+// 3) 수정된 글루 재현: specText = [프롬프트 text, ...참조파일(없음=[])]. 참조 0개여도 스키마가 나와야 한다.
+const specTextNoRef = [INLINE_PROMPT, ...[]].join('\n\n');
+ok(
+  pickResponseSchema(specTextNoRef, '/api/employees')?.rowFields.length === 9,
+  '인라인+참조0: specText 합성으로도 스키마 확보(조립 발동 조건 충족)',
+);
 
 console.log(`\n결과: ${pass} 통과 / ${fail} 실패\n`);
 if (fail > 0) process.exit(1);

@@ -2800,8 +2800,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (apiPaths.length === 0) return false;
     const endpoint = apiPaths[0];
     const ref = await this._loadReferencedFiles(text, filePath);
-    if (!ref.contents.length) return false;
-    const schema = pickResponseSchema(ref.contents.join('\n\n'), endpoint);
+    // 스펙 소스 = 인라인 프롬프트 본문 + 참조 파일. 사용자가 스펙을 파일(@api-spec.md)로 참조하지 않고
+    // 프롬프트에 **통째로 붙여넣어도**(실측: `### GET /api/employees … **Response** ```json {…}```) 응답
+    // 스키마를 읽어 조립이 발동하게 한다. 파서(pickResponseSchema→extractResponseSchema)가 Response JSON
+    // 블록을 텍스트에서 파싱하므로 text를 그대로 넘기면 된다. 종전엔 참조 파일 전용(ref.contents)이라
+    // 인라인 붙여넣기가 첫 관문에서 탈락 → region/structural 반쪽 편집으로 새던 뿌리. 어디에도 스키마가
+    // 없으면 아래 !schema에서 깔끔히 폴백(회귀 0).
+    const specText = [text, ...ref.contents].join('\n\n');
+    const schema = pickResponseSchema(specText, endpoint);
     if (!schema || schema.rowFields.length === 0) return false;
 
     // ③ 대조(결정론) — 확정 매핑 + 애매/미매핑 분리
