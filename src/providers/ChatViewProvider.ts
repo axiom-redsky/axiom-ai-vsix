@@ -7,7 +7,7 @@ import { EditorContextCollector, type EditorContext } from '../ai/EditorContextC
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
-import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
+import { restoreSlicedStubs, splitTsSections } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
@@ -3322,6 +3322,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               dep = findUnresolvedReferences(action.structural.hookCode ?? '', finalText);
             }
           }
+          // 빠진 top-level 타입 선언(예: TEmployee)만 결정론적으로 채워 넣어 **full 전체 재생성을 회피**한다.
+          // structural은 top-level 타입을 표현 못 해, 약한 모델이 useApi<TFoo> 훅만 내고 TFoo 선언을 빠뜨리면
+          // 여기 걸린다(프롬프트로 "타입도 내라" 유도해도 약한 모델은 자주 누락 — 실측). full로 통째 재생성하는
+          // 대신 **그 타입 선언만** 짧게 재요청해 모듈 스코프에 주입하면 surgical 편집을 유지한다.
+          // 실패(타입 후보 없음·모델 무응답·주입 후에도 미해소)면 그대로 아래 기존 full 폴백으로 떨어진다(회귀 0).
+          if (!dep.ok && !groundedRetryDone) {
+            const typeDecls = await this._retryStructuralMissingTypes(
+              dep.unresolved,
+              ExtensionConfig.getEffectiveLlmConfig(),
+            );
+            if (typeDecls) {
+              const injected = applyStructuralEdit(finalText, { hookCode: typeDecls });
+              const recheck = findUnresolvedReferences(action.structural.hookCode ?? '', injected.text);
+              if (recheck.ok) {
+                finalText = injected.text;
+                dep = recheck;
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] ✅ 빠진 타입 선언 주입으로 의존성 해소 — full 폴백 없이 structural 유지 (${action.filePath})`,
+                );
+                this._post({
+                  type: 'token',
+                  content: `\n\n> 🔧 **빠진 타입 선언을 채워 넣었습니다** — 전체 파일 재생성 없이 필요한 부분만 반영합니다.\n`,
+                });
+              } else {
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] ⚠️ 타입 선언 주입 후에도 의존성 미해소 (${action.filePath}): ${recheck.unresolved.join(', ')} → full 폴백`,
+                );
+              }
+            }
+          }
           if (!dep.ok) {
             this._corpusOutputChannel.appendLine(
               `[Axiom AI] ⛔ structural 의존성 미해소 (${action.filePath}): ${dep.unresolved.join(', ')}`,
@@ -4361,6 +4391,66 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
 
     return `<axiom-action>\n${meta}\n\`\`\`tsx\n${code}\n\`\`\`\n</axiom-action>`;
+  }
+
+  /**
+   * structural 편집이 참조하는 top-level 타입(예: TEmployee)이 파일에 없어 의존성 미해소로
+   * **full 전체 재생성**되기 직전에 호출한다. 그 **타입 선언만** 모델에 짧게 물어(작은 출력) 반환한다.
+   * 성공하면 호출부가 structural에 주입해 전체 파일 재생성 없이 surgical 편집을 유지한다.
+   *
+   * - 타입 후보(PascalCase, 언더스코어 없는 식별자)만 대상 — SCREAMING_SNAKE 상수 등은 제외.
+   * - 누적 history(이번 턴의 참조 스펙 포함)를 재사용하므로 스펙을 다시 주입하지 않는다.
+   * - 코드펜스 제거 후 `splitTsSections`로 type/interface 선언만 걸러 반환(모델이 곁가지 코드를 붙여도 안전).
+   * @returns 모듈 스코프에 주입할 `type TX = {…}` 텍스트, 또는 null(후보 없음·무응답·추출 실패).
+   */
+  private async _retryStructuralMissingTypes(
+    unresolved: string[],
+    config: ReturnType<typeof ExtensionConfig.getEffectiveLlmConfig>,
+  ): Promise<string | null> {
+    const typeNames = unresolved.filter((n) => /^[A-Z][A-Za-z0-9]*$/.test(n));
+    if (typeNames.length === 0) return null;
+
+    this._post({
+      type: 'token',
+      content: `\n\n> 🧩 **빠진 타입 선언(\`${typeNames.join('`, `')}\`)만 생성 중…** (전체 재생성 회피)\n`,
+    });
+
+    const prompt = `직전 구조적 편집이 참조한 타입 ${typeNames.map((n) => `\`${n}\``).join(', ')} 의 선언이 현재 파일에 없습니다.
+그 **타입 선언만** 출력하세요. 규칙(엄수):
+- 다른 코드·import·주석·설명·axiom-action 없이 TypeScript \`type\` 선언들만 코드펜스(\`\`\`ts) 하나에 담을 것.
+- API 응답/요청 타입의 필드명은 **위 대화의 참조 스펙 response 스키마**를 그대로 따르고, \`T\` 접두사를 쓸 것.
+- 참조가 걸린 하위 타입도 함께 선언(예: \`type TXxxResponse = { data: TXxx[] }\`).
+\`\`\`ts
+type ${typeNames[0]} = { /* 스펙 필드 */ };
+\`\`\``;
+
+    const messages: ChatMessage[] = [...this._history, { role: 'user', content: prompt }];
+    const abort = new AbortController();
+    const timeoutId = setTimeout(() => abort.abort(), 60_000);
+    const relay = () => abort.abort();
+    this._abortController?.signal.addEventListener('abort', relay, { once: true });
+
+    let resp = '';
+    try {
+      for await (const token of this._llm.streamChat(messages, config, abort.signal)) {
+        resp += token;
+        this._post({ type: 'token', content: token });
+      }
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+      this._abortController?.signal.removeEventListener('abort', relay);
+    }
+
+    // 코드펜스 제거 후 type/interface 선언만 추출 — 모델이 곁가지 코드를 붙여도 걸러진다.
+    const stripped = resp.replace(/```[a-zA-Z]*\n?/g, '');
+    const decls = splitTsSections(stripped)
+      .filter((s) => s.kind === 'type' || s.kind === 'interface')
+      .map((s) => s.body.trim())
+      .filter(Boolean);
+    if (decls.length === 0) return null;
+    return decls.join('\n\n');
   }
 
   /**
