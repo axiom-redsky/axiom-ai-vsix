@@ -396,6 +396,28 @@ function SettingsTab({
           />
         </label>
 
+        {/* 프리셋 목록 — 입력창에 드롭다운으로 추천값을 제시하되, 직접 숫자 입력도 가능한 editable combobox.
+            qwen3-coder 기준 권장값(temperature 0.2 / maxTokens 8192 / contextWindow 32768)을 첫 프리셋으로 둔다. */}
+        <datalist id="preset-temperature">
+          <option value="0.1">0.1 · 결정적(코드 편집 권장)</option>
+          <option value="0.2">0.2 · 기본(권장)</option>
+          <option value="0.3">0.3 · 약간 다양</option>
+          <option value="0.7">0.7 · Qwen 일반 권장</option>
+        </datalist>
+        <datalist id="preset-max-tokens">
+          <option value="2048">2048</option>
+          <option value="4096">4096</option>
+          <option value="8192">8192 · 기본(권장)</option>
+          <option value="16384">16384 · 큰 파일 재생성</option>
+        </datalist>
+        <datalist id="preset-context-window">
+          <option value="8192">8192</option>
+          <option value="16384">16384</option>
+          <option value="32768">32768 · 기본(권장)</option>
+          <option value="65536">65536 · qwen3-coder-64k 최대(VRAM 여유 시)</option>
+          <option value="131072">131072 · 128k(고VRAM)</option>
+        </datalist>
+
         <div className="settings__row">
           <label className="settings__label settings__label--half">
             Temperature
@@ -405,18 +427,20 @@ function SettingsTab({
               step="0.1"
               min="0"
               max="2"
+              list="preset-temperature"
               value={settings.llm.temperature}
               onChange={(e) => onLlmChange('temperature', parseFloat(e.target.value))}
             />
           </label>
 
           <label className="settings__label settings__label--half">
-            Max Tokens
+            Max Tokens (출력 상한)
             <input
               className="settings__input"
               type="number"
               step="256"
               min="256"
+              list="preset-max-tokens"
               value={settings.llm.maxTokens}
               onChange={(e) => onLlmChange('maxTokens', parseInt(e.target.value, 10))}
             />
@@ -424,15 +448,19 @@ function SettingsTab({
         </div>
 
         <label className="settings__label">
-          Context Window (토큰 메터 분모 · 모델 컨텍스트 한도)
+          Context Window (입력+출력 합산 · Ollama num_ctx로 전달)
           <input
             className="settings__input"
             type="number"
             step="1024"
             min="1024"
+            list="preset-context-window"
             value={settings.llm.contextWindow}
             onChange={(e) => onLlmChange('contextWindow', parseInt(e.target.value, 10))}
           />
+          <span className="settings__hint">
+            qwen3-coder 권장: Context 32768 · Max Tokens 8192 · Temp 0.2. Context를 올리면 서버 VRAM(KV 캐시)이 늘어납니다.
+          </span>
         </label>
 
         <div className="settings__actions-row">

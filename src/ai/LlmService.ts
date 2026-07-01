@@ -470,6 +470,13 @@ export class LlmService {
         temperature: config.temperature,
         num_predict: opts.maxTokens,
       };
+      // ⚠️ num_ctx(컨텍스트 창)를 명시적으로 전달한다. 이걸 보내지 않으면 Ollama는 모델 기본값
+      // (보통 4096)으로 컨텍스트를 잡아 긴 프롬프트(참조 스펙 + 현재 파일 등)를 **앞에서 조용히 잘라**
+      // 모델이 요청 전체를 못 보고 응답이 중간에 끊긴다. 설정의 Context Window를 실제 요청에 반영해
+      // 토큰 미터 표시값과 서버 동작을 일치시킨다. (서버 VRAM이 감당 가능한 값으로 설정할 것.)
+      if (config.contextWindow && config.contextWindow > 0) {
+        options.num_ctx = config.contextWindow;
+      }
       // per-call 튜닝(Q&A 경로에서만 주입). 미지정이면 Modelfile/서버 기본값을 그대로 둔다.
       if (opts.tuning?.repeatPenalty != null) {
         options.repeat_penalty = opts.tuning.repeatPenalty;
