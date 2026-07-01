@@ -71,3 +71,32 @@ export function buildComponentPropsSection(names: string[]): string {
 export function buildComponentPropsSectionForRegion(region: string): string {
   return buildComponentPropsSection(detectComponentsInRegion(region));
 }
+
+/**
+ * 산문(질문) 텍스트에서 인덱스에 있는 컴포넌트 이름을 단어 단위로 감지한다(등장 순서·중복 제거).
+ * "Select 컴포넌트 옵션 보여줘"의 `Select` 처럼 JSX 태그가 아닌 평문 언급을 잡는다.
+ * PascalCase 정확 매칭(대소문자 구분) — 흔한 영단어(select 등 소문자)의 오탐을 피한다.
+ */
+export function detectComponentsInText(text: string): string[] {
+  const seen: string[] = [];
+  for (const name of Object.keys(COMPONENT_PROPS_INDEX)) {
+    if (new RegExp(`\\b${name}\\b`).test(text) && !seen.includes(name)) seen.push(name);
+  }
+  // 서브파트(SelectItem 등)보다 루트(Select)를 앞세우려면 이름 길이 짧은 순 우선(루트가 보통 더 짧다).
+  return seen.sort((a, b) => a.length - b.length);
+}
+
+/**
+ * Q&A "컴포넌트 옵션 보여줘"용 — 지목된 컴포넌트의 **전체 고유 prop** 레퍼런스 마크다운.
+ * region 편집용 buildComponentPropsSection과 달리, 이건 조회 답변으로 정독하는 용도라 헤더 톤이 다르다.
+ */
+export function buildComponentOptionsReference(names: string[]): string {
+  const picked = names.filter((n) => COMPONENT_PROPS_INDEX[n]).slice(0, MAX_COMPONENTS);
+  if (picked.length === 0) return '';
+  const body = picked.map((n) => renderComponent(n, COMPONENT_PROPS_INDEX[n])).join('\n\n');
+  return (
+    `## 📋 컴포넌트 옵션 레퍼런스 (실 scaffold 소스에서 파생)\n` +
+    `> 아래는 지목한 컴포넌트가 받는 **전체 고유 prop**입니다(className 등 표준 DOM 속성은 제외). ` +
+    `사용 예시는 이어지는 문서를 참고하세요.\n${body}\n`
+  );
+}

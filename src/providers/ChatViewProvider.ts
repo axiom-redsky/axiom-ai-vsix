@@ -12,6 +12,7 @@ import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclaration
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
 import { buildContractSection } from '../ai/ScaffoldContracts';
+import { buildComponentOptionsReference, detectComponentsInText } from '../ai/ComponentPropsIndex';
 import {
   findRowCollectionVar,
   findRowMapVar,
@@ -1777,18 +1778,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return false;
     }
 
-    // 빈손(무관) 또는 카탈로그 폴백(정확 매칭 아님)이면 LLM에 맡긴다(확신 게이트).
-    if (!docs || docs.length === 0 || docs[0] === FALLBACK_HINT) return false;
+    // 질문이 특정 컴포넌트를 지목하면(예: "Select 컴포넌트 옵션 보여줘") 그 컴포넌트의 **전체 prop**을
+    // 결정론적으로 붙인다. RAG 지식문서(Select.md 등)는 '사용 패턴' 위주라 옵션 전량을 나열하지 못하는데,
+    // 자동생성 인덱스(componentPropsIndex)엔 53개 컴포넌트의 완전한 prop이 있다(실측 갭: "옵션 보여줘"에
+    // 문서만 렌더돼 옵션 일부만 보였다). 문서가 약해도(FALLBACK) 옵션 질문이면 이 표만으로 답한다.
+    const componentRef = buildComponentOptionsReference(detectComponentsInText(text));
+    const asksOptions = /옵션|속성\b|prop|option|무슨.*(있|받)|어떤.*(있|받)|전체.*(속성|prop|옵션)|목록/i.test(text);
+    const docsWeak = !docs || docs.length === 0 || docs[0] === FALLBACK_HINT;
+
+    // 문서가 약하고, (컴포넌트 지목 + 옵션 질문)도 아니면 종전대로 LLM에 맡긴다(확신 게이트 유지).
+    if (docsWeak && !(componentRef && asksOptions)) return false;
 
     // 정독용 턴 — webview가 답변 바닥이 아니라 이번 질문을 뷰포트 상단에 고정하게 한다(위→아래로 정독).
     this._post({ type: 'pinQuestion' });
     const banner =
       '> 📚 **scaffold 지식 가이드** — 로컬 문서에서 관련 사용법을 찾아 전문을 표시합니다.';
-    const md = `\n${banner}\n\n${docs.join('\n\n---\n\n')}\n`;
+    const parts = [banner];
+    if (componentRef) parts.push(componentRef); // 옵션 전량을 문서보다 위에 — "옵션 보여줘"에 바로 응답
+    if (!docsWeak) parts.push(docs.join('\n\n---\n\n'));
+    const md = `\n${parts.join('\n\n')}\n`;
     this._post({ type: 'token', content: md });
     this._history.push({ role: 'assistant', content: '(scaffold 지식 가이드 응답)' });
     this._corpusOutputChannel.appendLine(
-      `[Axiom AI] 온라인 지식 가이드 렌더(문서 ${docs.length}개) — LLM 합성 생략`,
+      `[Axiom AI] 온라인 지식 가이드 렌더(문서 ${docsWeak ? 0 : docs.length}개${componentRef ? ' + 컴포넌트 옵션표' : ''}) — LLM 합성 생략`,
     );
     return true;
   }

@@ -8,7 +8,7 @@ import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/Reg
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
-import { detectComponentsInRegion, buildComponentPropsSectionForRegion } from '../src/ai/ComponentPropsIndex';
+import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/ComponentPropsIndex';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
 import { crossFileSuppressionReason } from '../src/ai/CrossFileTargeting';
 
@@ -1371,6 +1371,23 @@ console.log('\n기존 SmartTable 옵션 추가(존재 기반 prop 계층):');
   // 5) 컴포넌트가 없는 영역엔 섹션 미출력(회귀·잡음 방지).
   const plainPrompt = buildHybridPrompt("const { data } = useApi<T>('/x');", '<div>{items.map((i) => <span>{i}</span>)}</div>', 1, 3, undefined, undefined, '텍스트 바꿔줘', '');
   check('buildHybridPrompt: 인덱스에 없는 컴포넌트만 있으면 prop 섹션 미출력', !plainPrompt.includes('컴포넌트 prop 레퍼런스'));
+}
+
+// ─── Q&A "컴포넌트 옵션 보여줘" — 산문에서 컴포넌트 감지 + 전체 prop 레퍼런스 ──────────
+console.log('\nQ&A 컴포넌트 옵션 조회(산문 감지):');
+{
+  // 평문(질문)에서 PascalCase 컴포넌트명 감지.
+  check('detectText: "Select 컴포넌트 옵션 보여줘"에서 Select 감지', detectComponentsInText('Select 컴포넌트 옵션 보여줘').includes('Select'));
+  // 오탐 가드: 소문자 영단어 select는 컴포넌트로 오인하지 않는다.
+  check('detectText: 소문자 select(평문)는 미감지', !detectComponentsInText('please select one option').includes('Select'));
+  // 루트(Select)를 서브파트(SelectItem)보다 앞세운다.
+  const both = detectComponentsInText('SelectItem 과 Select');
+  check('detectText: 루트 우선 정렬(Select < SelectItem)', both.indexOf('Select') < both.indexOf('SelectItem'));
+
+  // Q&A 레퍼런스: 전체 고유 prop이 나온다(Select의 onValueChange 등).
+  const ref = buildComponentOptionsReference(detectComponentsInText('Select 옵션'));
+  check('optionsRef: Select 전체 prop(onValueChange 포함)', ref.includes('컴포넌트 옵션 레퍼런스') && ref.includes('onValueChange') && ref.includes('disabled'));
+  check('optionsRef: 감지 없으면 빈 문자열', buildComponentOptionsReference(detectComponentsInText('오늘 날씨 어때')) === '');
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
