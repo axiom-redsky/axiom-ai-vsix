@@ -11,6 +11,7 @@ import { restoreSlicedStubs } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
+import { buildContractSection } from '../ai/ScaffoldContracts';
 import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
@@ -109,6 +110,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * 새 메시지 처리 시작 시 갱신, 선택 없으면 undefined.
    */
   private _lastSelectionLineRange: { startLine: number; endLine: number } | undefined;
+  /** 직전 사용자 요청 원문 — 재시도·후처리 게이트가 삭제 의도 판정 등에 참조(retry 지시문에 오염되지 않음). */
+  private _lastUserQuery = '';
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._llm = new LlmService(_extensionUri);
@@ -1257,6 +1260,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     this._history.push({ role: 'user', content: text });
+    this._lastUserQuery = text;
 
     // 히스토리가 너무 길면 오래된 메시지 제거 (최신 20개 유지)
     if (this._history.length > 20) {
@@ -3785,6 +3789,47 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
         }
 
+        // full 재생성 파괴적 누락 가드 — 긴 파일을 full 모드로 통째 다시 받을 때, 약한 모델이 중간을
+        // 조용히 빠뜨려 파일이 truncate되는 사고를 적용 직전에 차단한다(이슈2: structural 의존성 미해소로
+        // full 폴백된 뒤 긴 파일이 반토막 나던 위험). region 경로엔 내용손실 게이트가 있지만 full 경로엔
+        // 없었다. JSX 여는태그 수·비어있지 않은 라인 수가 절반 미만으로 급감하면 파괴적 생략으로 본다.
+        // 보수적 임계(큰 파일 + 심한 급감)로 정상 편집 오탐을 피하고, 삭제 의도 요청은 면제한다.
+        if (
+          action.mode !== 'patch' &&
+          action.mode !== 'lines' &&
+          originalContent !== undefined &&
+          action.generatedCode
+        ) {
+          const removalIntent = /빼|제거|삭제|없애|지워|간소화|줄여|remove|delete|simplify/i.test(this._lastUserQuery);
+          const countTags = (s: string): number => (s.match(/<[A-Za-z][A-Za-z0-9]*/g) ?? []).length;
+          const countLines = (s: string): number => s.split('\n').filter((l) => l.trim() !== '').length;
+          const origTags = countTags(originalContent);
+          const genTags = countTags(action.generatedCode);
+          const origLines = countLines(originalContent);
+          const genLines = countLines(action.generatedCode);
+          const suspiciousTagDrop =
+            origTags >= 12 && genTags < origTags * 0.5 && origTags - genTags >= 6;
+          const suspiciousLineDrop = origLines >= 200 && genLines < origLines * 0.5;
+          if (!removalIntent && (suspiciousTagDrop || suspiciousLineDrop)) {
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] ⛔ full 파괴적 누락 가드 (${action.filePath}): ` +
+                `라인 ${origLines}→${genLines}, JSX태그 ${origTags}→${genTags} — 통째 재생성 중 대량 누락 의심 → 적용 거부`,
+            );
+            this._post({
+              type: 'token',
+              content:
+                `\n\n> ⛔ **이 수정은 적용하지 않았습니다.** 전체 재생성 결과가 현재 파일보다 크게 짧아졌습니다 ` +
+                `(라인 ${origLines}→${genLines}, 요소 ${origTags}→${genTags}). 파일이 길어 모델이 일부를 ` +
+                `누락한 것으로 보입니다. **수정할 부분만 지정**해 다시 요청하시면(예: 특정 함수·영역) 안전하게 반영합니다.\n`,
+            });
+            this._reportPatchFailure(action.filePath, [
+              `[full 파괴적 누락] 라인 ${origLines}→${genLines}, JSX태그 ${origTags}→${genTags}`,
+            ]);
+            this._post({ type: 'fileCancelled' });
+            break;
+          }
+        }
+
         // precomputedDiff(region 경로의 디스크 기준 diff)가 있으면 재계산을 건너뛴다 — 에디터 버퍼와
         // 디스크 합성본의 정규화 mismatch로 빈 diff가 되는 것을 막는다(확인 카드 diff 보존).
         const diff =
@@ -4377,6 +4422,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // patch 실패·위반 차단 시점엔 아직 디스크에 쓰지 않았으므로 "현재 파일 = 수정 대상 원본"이 보장된다.
     // 이 경로는 항상 기존 파일 수정이다(신규 파일 생성은 이 폴백으로 오지 않음).
     let currentFileBlock = '';
+    // Scaffold 계약 카드(useApi 등) — region/structural 경로는 buildContractSection으로 계약을 주입하지만,
+    // full 자동 폴백은 systemPrompt(coreRules)를 재전송하지 않고 압축된 _history만 보내 그 계약이 통째로
+    // 유실됐다(약한 모델이 useApi 대신 생짜 fetch로 회귀하던 근본 원인). 폴백에도 관련 계약 카드를
+    // 결정론적으로 재주입해 scaffold 규칙(useApi 필수 등)을 다시 가르친다. 트리거 미발동이면 빈 문자열.
+    let contractBlock = '';
     if (forceFull && filePath) {
       const { originalContent } = await this._fileCreator.readFileContent({
         action: 'updateFile', templateType: 'page', domain: domain ?? '', componentName: '', filePath,
@@ -4385,6 +4435,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const sel = this._lastSelectionLineRange;
         const selNote = sel ? ` (원래 수정 요청 영역: 라인 ${sel.startLine}~${sel.endLine})` : '';
         currentFileBlock = `\n\n아래는 **현재 \`${filePath}\` 파일의 실제 전체 내용**입니다. 직전 응답을 신뢰하지 말고 반드시 이것을 기준으로 작성하세요.${selNote}\n\`\`\`${lang}\n${originalContent}\n\`\`\`\n`;
+        // deps=현재 파일 + query=직전 사용자 요청으로 트리거 판정(현재 파일엔 useApi가 없어도 요청이
+        // "api/데이터/조회"를 언급하면 use-api 카드가 발동한다).
+        const contractSection = buildContractSection({ deps: originalContent, region: '', query: this._lastUserQuery });
+        if (contractSection) {
+          contractBlock = `\n\n${contractSection}\n`;
+          this._corpusOutputChannel.appendLine(
+            `[Axiom AI] full 폴백에 scaffold 계약 카드 재주입 (${filePath})`,
+          );
+        }
       }
     }
 
@@ -4441,8 +4500,11 @@ ${fullActionBlock}`;
     } else if (forceFull) {
       // patch 매칭 실패 후 "Full로 재시도" — patch를 다시 쓰지 말고 현재 파일 기준 full 전체 출력.
       retryMsg = `직전 patch가 현재 파일과 매칭되지 않았습니다. 모델이 **원본에 존재하지 않는 코드**를 \`<search>\`에 넣었기 때문입니다(예: 실제로 없는 import·변수). patch를 다시 쓰지 말고 **full 모드로 전체 파일만** 출력하세요.
-${currentFileBlock}
-위 대화의 원래 요청을 반영해, **위 현재 파일 전체를 기준으로** 변경분을 적용한 전체 파일 내용을 출력하세요(부가 설명 없이 블록만). 현재 파일에 없는 import·훅·변수를 임의로 가정하지 말고, 실제 파일 내용만 근거로 하세요:
+${currentFileBlock}${contractBlock}
+위 대화의 원래 요청을 반영해, **위 현재 파일 전체를 기준으로** 변경분을 적용한 전체 파일 내용을 출력하세요(부가 설명 없이 블록만).
+
+- 기존 코드는 실제 현재 파일 내용만 근거로 하고, 원본에 없던 import·훅·변수를 **임의로 지어내지 마세요**.
+- 단, 위 **scaffold 계약(useApi 등)** 을 지키기 위해 필요한 표준 훅·import·타입은 새로 추가해야 합니다 — 데이터 조회는 반드시 \`useApi\`(@axiom/hooks)로 하고, 생짜 \`fetch\`/\`axios\`/\`useQuery\`/\`useState\`+\`useEffect\` 미러링으로 되돌아가지 마세요:
 
 ${fullActionBlock}`;
     } else if (mp.enabled) {

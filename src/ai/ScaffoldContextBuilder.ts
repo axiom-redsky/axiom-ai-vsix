@@ -665,6 +665,7 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
 - useApi/useState/useEffect 등 **훅 추가**, **import 추가**는 이 모드를 쓰세요.
 - \`<hook>\`: 컴포넌트 본문에 추가할 훅/코드 줄만 작성 (들여쓰기 없이 — 확장이 맞춰 넣음).
 - \`<hook>\` 안에 \`type\`/\`interface\`/\`enum\` 선언을 함께 써도 됩니다. 확장이 이를 자동으로 분리해 **함수 컴포넌트 바로 위(모듈 스코프)** 에 배치하므로, 컴포넌트 본문 안에 직접 박지 마세요.
+- ⚠️ **제네릭 타입을 쓰면 그 타입 선언도 반드시 \`<hook>\`에 함께 내세요.** 예: \`useApi<TEmployee[]>('/api/employees')\` 를 쓰면서 \`TEmployee\` 가 현재 파일에 아직 없으면, 참조 스펙의 응답 필드로 \`type TEmployee = { … };\` 도 같은 \`<hook>\` 안에 선언하세요(확장이 모듈 스코프로 올림). 선언을 빠뜨리면 타입 미해소로 전체 파일 재생성으로 폴백됩니다.
 - 기존 더미 변수를 실제 데이터로 교체할 때는 **같은 이름**으로 받으세요 (예: \`const { data: teamReports } = useApi(...)\`). 그러면 확장이 같은 이름의 기존 더미 선언을 자동으로 삭제합니다 — 더미를 지우는 별도 출력은 필요 없습니다.
 - \`<import>\`: 추가할 import. 이미 있으면 자동 무시됩니다. named는 콤마로 구분.
 
