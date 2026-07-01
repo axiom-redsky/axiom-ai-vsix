@@ -1,0 +1,305 @@
+/**
+ * API → 기존 테이블 바인딩 레시피 — Stage 1: 결정론 스키마 추출·대조 (순수 함수, vscode/디스크 비의존).
+ *
+ * 배경(설계 합의): "직원 테이블에 /api/employees 적용" 같은 요청은 한 편집이 아니라 다부품 레시피다
+ * (import + type + useApi + 파생 const + 로딩/에러 가드 + 테이블 셀 재바인딩). 지금 파이프라인은 이 조율을
+ * 약한 모델에 통째로 떠넘겨 실패한다(실측: useApi만 넣고 테이블은 존재하지 않는 더미 필드를 계속 참조).
+ *
+ * Claude Code 방식을 작은 모델·토큰 제약에 맞춘 처방: **분해·대조의 똑똑함을 모델 토큰이 아니라 결정론
+ * 코드로 산다.** 이 모듈은 그 토대 — 모델 0토큰으로:
+ *   ① extractTableColumns  : 현재 파일의 테이블에서 (헤더 라벨 ↔ 참조 필드)를 추출
+ *   ② extractResponseSchema: 스펙 섹션의 Response JSON 예시에서 (봉투 구조 + 행 필드)를 추출
+ *   ③ reconcile            : 테이블 필드 ↔ API 필드를 대조 → 매핑 / 미매핑 / 미사용 API필드
+ *
+ * reconcile 결과가 이후 단계의 입력이다: 매핑은 결정론 재바인딩에, 미매핑(API에 아예 없음=project/rate)은
+ * "추측 금지·되묻기"에, 미사용 API필드가 남는 애매한 컬럼(grade↔position 등)만 **작은 모델 1콜**(필드목록
+ * 수준, 파일 아님)로 넘긴다. 즉 대부분 결정론, 모델은 안 줄어드는 의미 판단 한 조각만.
+ */
+
+/** 테이블 한 컬럼 — 헤더 라벨과 그 셀이 읽는 행 필드(없으면 null: 액션 버튼 등). */
+export interface ITableColumn {
+  /** 0-based 컬럼 순서. */
+  index: number;
+  /** `<th>` 텍스트(예: "부서"). 헤더가 셀보다 적으면 ''. */
+  headerLabel: string;
+  /** 셀이 읽는 행 필드명(예: "dept"). 셀에 `item.X`가 없으면 null. */
+  field: string | null;
+}
+
+/** 스펙 Response JSON에서 뽑은 스키마. */
+export interface IResponseSchema {
+  /** 행(레코드) 객체의 필드명 목록(예: ["id","name","email","department",…]). */
+  rowFields: string[];
+  /** 행 객체 JSON 원본(generateTypeFromJson에 그대로 넘겨 타입 생성). */
+  rowJson: Record<string, unknown> | null;
+  /**
+   * 목록이 감싸인 봉투 키. `{ data: [...] , meta }` 면 "data", 최상위가 바로 배열이면 null.
+   * useApi 제네릭·파생 const(`resp?.data ?? []`) 생성에 쓴다.
+   */
+  envelopeKey: string | null;
+}
+
+/** 한 컬럼과 매핑된 API 필드. */
+export interface IColumnMapping {
+  column: ITableColumn;
+  apiField: string;
+  /** 'exact' = 필드명 동일 · 'fuzzy' = 정규화 후 포함관계(dept⊂department 등). */
+  how: 'exact' | 'fuzzy';
+}
+
+/** 대조 결과. */
+export interface IReconciliation {
+  /** 결정론으로 확정된 매핑(재바인딩에 바로 사용). */
+  mapping: IColumnMapping[];
+  /** 필드를 참조하지만 API에 대응이 없는 컬럼(예: project·rate → 이 엔드포인트에 없음 = 언더스펙). */
+  unmappedColumns: ITableColumn[];
+  /** 어느 컬럼에도 매핑되지 않고 남은 API 필드(애매 컬럼을 작은 모델콜로 맞출 후보 풀). */
+  unusedApiFields: string[];
+}
+
+// ── ① 테이블 컬럼 추출 ────────────────────────────────────────────────────────
+
+/**
+ * 소스에서 `.map((item) => ( … <tr> … ))` 행 템플릿을 찾아 (헤더 라벨 ↔ 셀 참조 필드)를 추출한다.
+ * 테이블(`<tbody>`의 첫 `<tr>`)이 없으면 빈 배열.
+ */
+export function extractTableColumns(source: string): ITableColumn[] {
+  const mapVar = findRowMapVar(source);
+  if (!mapVar) return [];
+
+  const headers = extractHeaderLabels(source);
+  const rowCells = extractRowCells(source, mapVar);
+  if (rowCells.length === 0) return [];
+
+  return rowCells.map((cell, index) => ({
+    index,
+    headerLabel: headers[index] ?? '',
+    field: firstItemField(cell, mapVar),
+  }));
+}
+
+/** `<tbody>` 안 `X.map((item) =>` 의 item 변수명을 찾는다(첫 매치). */
+function findRowMapVar(source: string): string | null {
+  const tbodyStart = source.search(/<tbody\b/);
+  const scope = tbodyStart >= 0 ? source.slice(tbodyStart) : source;
+  // {rows.map((emp) => ( …   ·   {rows.map((emp, i) => { …
+  const m = scope.match(/\.map\(\s*\(?\s*([A-Za-z_$][\w$]*)\s*(?:,[^)]*)?\)?\s*=>/);
+  return m ? m[1] : null;
+}
+
+/** `<thead>` 내 `<th>` 텍스트를 순서대로. 없으면 빈 배열. */
+function extractHeaderLabels(source: string): string[] {
+  const thead = matchTagBlock(source, 'thead');
+  if (!thead) return [];
+  const out: string[] = [];
+  const re = /<th\b[^>]*>([\s\S]*?)<\/th>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(thead)) !== null) {
+    out.push(m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim());
+  }
+  return out;
+}
+
+/**
+ * `<tbody>`의 **첫 `<tr>`** 안 최상위 `<td>` 셀들의 내부 텍스트를 순서대로 반환한다.
+ * 중첩 `<td>`는 없지만 셀 안에 `<div>` 등이 있으므로 태그 깊이로 최상위 td만 자른다.
+ */
+function extractRowCells(source: string, _mapVar: string): string[] {
+  const tbody = matchTagBlock(source, 'tbody');
+  if (!tbody) return [];
+  const tr = matchTagBlock(tbody, 'tr');
+  if (!tr) return [];
+  return sliceTopLevelTags(tr, 'td');
+}
+
+/** 셀 텍스트에서 `item.field` 형태로 **처음 참조되는** 필드명. 없으면 null(액션 버튼 등). */
+function firstItemField(cellText: string, mapVar: string): string | null {
+  const re = new RegExp(`\\b${escapeRe(mapVar)}\\.([A-Za-z_$][\\w$]*)`);
+  const m = cellText.match(re);
+  return m ? m[1] : null;
+}
+
+// ── ② 스펙 Response 스키마 추출 ───────────────────────────────────────────────
+
+/**
+ * 스펙 섹션 텍스트(예: `### GET /api/employees` 섹션)에서 **Response** JSON 예시를 파싱해 스키마를 뽑는다.
+ * 여러 ```json 블록이 있으면 "Response" 표기 뒤의 것을 우선(요청 본문 JSON과 혼동 방지).
+ */
+export function extractResponseSchema(specText: string): IResponseSchema | null {
+  const json = parseResponseJson(specText);
+  if (json === null || typeof json !== 'object') return null;
+
+  // 봉투 해체: { success, data: [...] | {...}, meta } 형태면 data를 벗긴다.
+  let rowContainer: unknown = json;
+  let envelopeKey: string | null = null;
+  const obj = json as Record<string, unknown>;
+  if (!Array.isArray(json) && 'data' in obj) {
+    rowContainer = obj.data;
+    envelopeKey = 'data';
+  }
+
+  const rowJson = Array.isArray(rowContainer) ? rowContainer[0] : rowContainer;
+  if (!rowJson || typeof rowJson !== 'object' || Array.isArray(rowJson)) return null;
+
+  return {
+    rowFields: Object.keys(rowJson as Record<string, unknown>),
+    rowJson: rowJson as Record<string, unknown>,
+    envelopeKey,
+  };
+}
+
+/** "Response" 라벨 뒤의 첫 ```json 블록을 파싱. 없으면 아무 ```json 블록. 파싱 실패 시 null. */
+function parseResponseJson(specText: string): unknown {
+  const blocks: Array<{ at: number; body: string }> = [];
+  const re = /```json\s*\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(specText)) !== null) blocks.push({ at: m.index, body: m[1] });
+  if (blocks.length === 0) return null;
+
+  const respIdx = specText.search(/\*\*?Response\*?\*?|^#+.*response/im);
+  const ordered =
+    respIdx >= 0
+      ? [...blocks].sort((a, b) => rank(a.at, respIdx) - rank(b.at, respIdx))
+      : blocks;
+
+  for (const b of ordered) {
+    const parsed = tryParseLooseJson(b.body);
+    if (parsed !== undefined) return parsed;
+  }
+  return null;
+}
+
+/** Response 라벨 이후 블록을 앞순위로: 이후면 거리, 이전이면 큰 페널티. */
+function rank(at: number, respIdx: number): number {
+  return at >= respIdx ? at - respIdx : 1e9 + (respIdx - at);
+}
+
+/** 스펙 JSON 예시는 `...`·주석 꼬리가 붙기도 한다. 관대하게 파싱(실패 시 undefined). */
+function tryParseLooseJson(body: string): unknown {
+  const cleaned = body
+    .replace(/\/\/[^\n]*/g, '') // 라인 주석
+    .replace(/,\s*\.\.\.\s*/g, ' ') // { …, ... }
+    .replace(/"\s*\.\.\.\s*"/g, '""')
+    .replace(/,(\s*[}\]])/g, '$1'); // 트레일링 콤마
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return undefined;
+  }
+}
+
+// ── ③ 대조 ────────────────────────────────────────────────────────────────────
+
+/**
+ * 테이블 컬럼(참조 필드 있는 것)을 API 응답 필드에 대조한다.
+ * - exact: 필드명이 동일(정규화 후).
+ * - fuzzy: 정규화 후 한쪽이 다른 쪽을 **포함**(dept⊂department, status⊂employment_status).
+ * 필드 없는 컬럼(액션 등)은 무시. 매핑 안 된 참조 컬럼 = unmappedColumns(언더스펙 후보).
+ */
+export function reconcile(columns: ITableColumn[], schema: IResponseSchema): IReconciliation {
+  const apiFields = schema.rowFields;
+  const usedApi = new Set<string>();
+  const mapping: IColumnMapping[] = [];
+  const unmappedColumns: ITableColumn[] = [];
+
+  for (const col of columns) {
+    if (!col.field) continue; // 참조 없는 컬럼(액션 등) — 대상 아님
+    const exact = apiFields.find((f) => !usedApi.has(f) && norm(f) === norm(col.field!));
+    if (exact) {
+      usedApi.add(exact);
+      mapping.push({ column: col, apiField: exact, how: 'exact' });
+      continue;
+    }
+    const fuzzy = apiFields.find((f) => !usedApi.has(f) && containsNorm(f, col.field!));
+    if (fuzzy) {
+      usedApi.add(fuzzy);
+      mapping.push({ column: col, apiField: fuzzy, how: 'fuzzy' });
+      continue;
+    }
+    unmappedColumns.push(col);
+  }
+
+  return {
+    mapping,
+    unmappedColumns,
+    unusedApiFields: apiFields.filter((f) => !usedApi.has(f)),
+  };
+}
+
+// ── 공용 헬퍼 ─────────────────────────────────────────────────────────────────
+
+/** 필드명 정규화: 소문자 + 영숫자만(snake/camel/구분자 차이 흡수). */
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * 정규화 후 한쪽이 다른 쪽을 **부분문자열로 포함**하고 짧은 쪽이 4자 이상일 때만 매칭.
+ * (status⊂employment_status ✓). ⚠️ **약어는 일부러 안 잡는다** — `dept`는 `department`의 부분문자열이
+ * 아니라(dep-artment) 약어라, subsequence로 억지로 잡으면 `rate`가 `hire_date`에 걸리는 오매칭이 난다.
+ * 약어(dept→department, grade→position)는 결정론으로 억측하지 않고 **작은 모델콜(라벨+필드) 한 번**에 맡긴다
+ * — 그게 Claude Code 방식의 "안 줄어드는 의미 판단만 모델에게" 원칙이다.
+ */
+function containsNorm(a: string, b: string): boolean {
+  const x = norm(a);
+  const y = norm(b);
+  const short = x.length <= y.length ? x : y;
+  const long = x.length <= y.length ? y : x;
+  return short.length >= 4 && long.includes(short);
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 소스에서 `<tag …>…</tag>` 첫 블록 전체(여는·닫는 태그 포함)를 태그 깊이로 정확히 잘라 반환. */
+function matchTagBlock(source: string, tag: string): string | null {
+  const blocks = sliceTopLevelTags(source, tag, true);
+  return blocks.length > 0 ? blocks[0] : null;
+}
+
+/**
+ * `source`에서 **최상위(중첩 아님)** `<tag …>…</tag>` 블록들을 태그 깊이 카운팅으로 잘라 반환한다.
+ * @param withWrapper true면 여는/닫는 태그 포함, false면 내부 텍스트만.
+ */
+function sliceTopLevelTags(source: string, tag: string, withWrapper = false): string[] {
+  const open = new RegExp(`<${tag}\\b[^>]*?(/?)>`, 'g');
+  const close = new RegExp(`</${tag}\\s*>`, 'g');
+  // 여는·닫는 태그 위치를 시간순으로 스캔하며 깊이 0→1 시작, 1→0 종료 구간을 수집.
+  type Tok = { at: number; end: number; kind: 'open' | 'close' | 'selfclose' };
+  const toks: Tok[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = open.exec(source)) !== null) {
+    toks.push({ at: m.index, end: m.index + m[0].length, kind: m[1] === '/' ? 'selfclose' : 'open' });
+  }
+  while ((m = close.exec(source)) !== null) {
+    toks.push({ at: m.index, end: m.index + m[0].length, kind: 'close' });
+  }
+  toks.sort((a, b) => a.at - b.at);
+
+  const out: string[] = [];
+  let depth = 0;
+  let startAt = -1;
+  let startInner = -1;
+  for (const t of toks) {
+    if (t.kind === 'selfclose') {
+      if (depth === 0) out.push(withWrapper ? source.slice(t.at, t.end) : '');
+      continue;
+    }
+    if (t.kind === 'open') {
+      if (depth === 0) {
+        startAt = t.at;
+        startInner = t.end;
+      }
+      depth++;
+    } else {
+      depth--;
+      if (depth === 0 && startAt >= 0) {
+        out.push(withWrapper ? source.slice(startAt, t.end) : source.slice(startInner, t.at));
+        startAt = -1;
+      }
+      if (depth < 0) depth = 0; // 방어
+    }
+  }
+  return out;
+}
