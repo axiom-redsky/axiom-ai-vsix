@@ -4,6 +4,75 @@ import type { HostToWebviewMessage, AxiomSettings } from '../../types/messages';
 
 type Tab = 'home' | 'settings';
 
+type TPreset = { value: number; label: string };
+
+/**
+ * 프리셋 드롭다운 + 직접 입력 겸용 필드(editable combobox).
+ *
+ * 배경: `<input type="number" list=…>`(datalist)는 브라우저가 **현재 입력값과 매칭되는 옵션만** 필터해
+ * 보여줘서(값이 16384면 16384 하나만 뜸) 프리셋 선택 UX가 깨진다. 그래서 네이티브 `<select>`로 항상 전체
+ * 프리셋을 보여주고, 목록에 없는 값이 필요하면 "직접 입력…"을 골라 숫자 입력창을 노출한다.
+ */
+function PresetNumberField({
+  label, hint, value, presets, step, min, max, halfWidth, onChange,
+}: {
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  value: number;
+  presets: TPreset[];
+  step: number;
+  min: number;
+  max?: number;
+  halfWidth?: boolean;
+  onChange: (v: number) => void;
+}): React.ReactElement {
+  const matchesPreset = presets.some((p) => p.value === value);
+  const [custom, setCustom] = useState(!matchesPreset);
+  // 값이 바뀌면(설정 로드·직접입력 타이핑) 프리셋 매칭 여부로 모드를 재동기화한다.
+  // dep은 value만 — presets는 인라인 배열이라 매 렌더 새 참조가 되므로 dep에 넣으면 효과가 매 렌더 실행돼
+  // 사용자가 고른 "직접 입력…"이 즉시 취소된다. presets는 정적 설정이라 dep에서 제외해도 안전하다.
+  useEffect(() => {
+    setCustom(!presets.some((p) => p.value === value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const showInput = custom || !matchesPreset;
+  const selectValue = showInput ? '__custom__' : String(value);
+
+  return (
+    <label className={`settings__label${halfWidth ? ' settings__label--half' : ''}`}>
+      {label}
+      <select
+        className="settings__input"
+        value={selectValue}
+        onChange={(e) => {
+          if (e.target.value === '__custom__') setCustom(true);
+          else { setCustom(false); onChange(Number(e.target.value)); }
+        }}
+      >
+        {presets.map((p) => (
+          <option key={p.value} value={String(p.value)}>{p.label}</option>
+        ))}
+        <option value="__custom__">직접 입력…</option>
+      </select>
+      {showInput && (
+        <input
+          className="settings__input"
+          style={{ marginTop: 6 }}
+          type="number"
+          step={step}
+          min={min}
+          max={max}
+          value={value}
+          placeholder="숫자 직접 입력"
+          onChange={(e) => onChange(step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value, 10))}
+        />
+      )}
+      {hint && <span className="settings__hint">{hint}</span>}
+    </label>
+  );
+}
+
 const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
   axiomFolder: '',
   regionEdit: true,
@@ -396,72 +465,54 @@ function SettingsTab({
           />
         </label>
 
-        {/* 프리셋 목록 — 입력창에 드롭다운으로 추천값을 제시하되, 직접 숫자 입력도 가능한 editable combobox.
-            qwen3-coder 기준 권장값(temperature 0.2 / maxTokens 8192 / contextWindow 32768)을 첫 프리셋으로 둔다. */}
-        <datalist id="preset-temperature">
-          <option value="0.1">0.1 · 결정적(코드 편집 권장)</option>
-          <option value="0.2">0.2 · 기본(권장)</option>
-          <option value="0.3">0.3 · 약간 다양</option>
-          <option value="0.7">0.7 · Qwen 일반 권장</option>
-        </datalist>
-        <datalist id="preset-max-tokens">
-          <option value="2048">2048</option>
-          <option value="4096">4096</option>
-          <option value="8192">8192 · 기본(권장)</option>
-          <option value="16384">16384 · 큰 파일 재생성</option>
-        </datalist>
-        <datalist id="preset-context-window">
-          <option value="8192">8192</option>
-          <option value="16384">16384</option>
-          <option value="32768">32768 · 기본(권장)</option>
-          <option value="65536">65536 · qwen3-coder-64k 최대(VRAM 여유 시)</option>
-          <option value="131072">131072 · 128k(고VRAM)</option>
-        </datalist>
-
         <div className="settings__row">
-          <label className="settings__label settings__label--half">
-            Temperature
-            <input
-              className="settings__input"
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              list="preset-temperature"
-              value={settings.llm.temperature}
-              onChange={(e) => onLlmChange('temperature', parseFloat(e.target.value))}
-            />
-          </label>
+          <PresetNumberField
+            label="Temperature"
+            halfWidth
+            value={settings.llm.temperature}
+            step={0.1}
+            min={0}
+            max={2}
+            presets={[
+              { value: 0.1, label: '0.1 · 결정적(코드 편집)' },
+              { value: 0.2, label: '0.2 · 기본(권장)' },
+              { value: 0.3, label: '0.3 · 약간 다양' },
+              { value: 0.7, label: '0.7 · Qwen 일반 권장' },
+            ]}
+            onChange={(v) => onLlmChange('temperature', v)}
+          />
 
-          <label className="settings__label settings__label--half">
-            Max Tokens (출력 상한)
-            <input
-              className="settings__input"
-              type="number"
-              step="256"
-              min="256"
-              list="preset-max-tokens"
-              value={settings.llm.maxTokens}
-              onChange={(e) => onLlmChange('maxTokens', parseInt(e.target.value, 10))}
-            />
-          </label>
+          <PresetNumberField
+            label="Max Tokens (출력 상한)"
+            halfWidth
+            value={settings.llm.maxTokens}
+            step={256}
+            min={256}
+            presets={[
+              { value: 2048, label: '2048' },
+              { value: 4096, label: '4096' },
+              { value: 8192, label: '8192 · 기본(권장)' },
+              { value: 16384, label: '16384 · 큰 파일' },
+            ]}
+            onChange={(v) => onLlmChange('maxTokens', v)}
+          />
         </div>
 
-        <label className="settings__label">
-          Context Window (입력+출력 합산 · Ollama num_ctx로 전달)
-          <input
-            className="settings__input"
-            type="number"
-            step="1024"
-            min="1024"
-            list="preset-context-window"
-            value={settings.llm.contextWindow}
-            onChange={(e) => onLlmChange('contextWindow', parseInt(e.target.value, 10))}
-          />
-          <span className="settings__hint">
-            qwen3-coder 권장: Context 32768 · Max Tokens 8192 · Temp 0.2. Context를 올리면 서버 VRAM(KV 캐시)이 늘어납니다.
-          </span>
-        </label>
+        <PresetNumberField
+          label="Context Window (입력+출력 합산 · Ollama num_ctx로 전달)"
+          value={settings.llm.contextWindow}
+          step={1024}
+          min={1024}
+          presets={[
+            { value: 8192, label: '8192' },
+            { value: 16384, label: '16384' },
+            { value: 32768, label: '32768 · 기본(권장)' },
+            { value: 65536, label: '65536 · qwen3-coder-64k 최대(VRAM 여유 시)' },
+            { value: 131072, label: '131072 · 128k(고VRAM)' },
+          ]}
+          hint="qwen3-coder 권장: Context 32768 · Max Tokens 8192 · Temp 0.2. Context를 올리면 서버 VRAM(KV 캐시)이 늘어납니다."
+          onChange={(v) => onLlmChange('contextWindow', v)}
+        />
 
         <div className="settings__actions-row">
           <button

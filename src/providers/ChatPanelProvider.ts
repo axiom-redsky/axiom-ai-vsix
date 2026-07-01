@@ -104,21 +104,43 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     this._post({ type: 'settingsLoaded', settings });
   }
 
+  /**
+   * 설정값을 Global에 쓰되, 더 높은 우선순위 스코프(Workspace/WorkspaceFolder)에 같은 키의 override가
+   * 남아 있으면 그 스코프도 같은 값으로 덮어쓴다. VSCode 설정 우선순위는 Folder > Workspace > Global 이라,
+   * Global에만 저장하면 프로젝트 `.vscode/settings.json` 등에 옛 값(예: maxTokens 16384)이 있을 때
+   * 읽기 시점에 그게 이겨 UI가 "저장했는데 옛 값으로 되돌아감"을 겪는다(실측 버그). 저장을 authoritative하게 만든다.
+   */
+  private async _updateCfgSticky(
+    cfg: vscode.WorkspaceConfiguration,
+    key: string,
+    value: unknown,
+  ): Promise<void> {
+    await cfg.update(key, value, vscode.ConfigurationTarget.Global);
+    const ins = cfg.inspect(key);
+    if (ins?.workspaceValue !== undefined) {
+      await cfg.update(key, value, vscode.ConfigurationTarget.Workspace);
+    }
+    if (ins?.workspaceFolderValue !== undefined) {
+      await cfg.update(key, value, vscode.ConfigurationTarget.WorkspaceFolder);
+    }
+  }
+
   private async _handleUpdateSettings(partial: Partial<AxiomSettings>): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('axiom-ai');
 
     if (partial.llm) {
       const llm = partial.llm;
       // 머신(전역) 단위 — LLM 연결·신원. 한 번 설정하면 모든 프로젝트 재사용.
+      // (상위 스코프 override가 있으면 함께 갱신 — _updateCfgSticky 참고.)
       if (llm.endpoint   !== undefined) {
-        await cfg.update('llm.endpoint',    llm.endpoint,    vscode.ConfigurationTarget.Global);
+        await this._updateCfgSticky(cfg, 'llm.endpoint',    llm.endpoint);
         await cfg.update('server.endpoint', '',              vscode.ConfigurationTarget.Global);
       }
-      if (llm.model      !== undefined) await cfg.update('llm.model',       llm.model,       vscode.ConfigurationTarget.Global);
-      if (llm.provider   !== undefined) await cfg.update('llm.provider',    llm.provider,    vscode.ConfigurationTarget.Global);
-      if (llm.temperature !== undefined) await cfg.update('llm.temperature', llm.temperature, vscode.ConfigurationTarget.Global);
-      if (llm.maxTokens  !== undefined) await cfg.update('llm.maxTokens',   llm.maxTokens,   vscode.ConfigurationTarget.Global);
-      if (llm.contextWindow !== undefined) await cfg.update('llm.contextWindow', llm.contextWindow, vscode.ConfigurationTarget.Global);
+      if (llm.model      !== undefined) await this._updateCfgSticky(cfg, 'llm.model',        llm.model);
+      if (llm.provider   !== undefined) await this._updateCfgSticky(cfg, 'llm.provider',     llm.provider);
+      if (llm.temperature !== undefined) await this._updateCfgSticky(cfg, 'llm.temperature', llm.temperature);
+      if (llm.maxTokens  !== undefined) await this._updateCfgSticky(cfg, 'llm.maxTokens',    llm.maxTokens);
+      if (llm.contextWindow !== undefined) await this._updateCfgSticky(cfg, 'llm.contextWindow', llm.contextWindow);
       // apiKey만 SecretStorage(키체인) — 평문·Settings Sync 유출 차단.
       if (llm.apiKey     !== undefined) await ExtensionConfig.setApiKey(llm.apiKey);
     }
