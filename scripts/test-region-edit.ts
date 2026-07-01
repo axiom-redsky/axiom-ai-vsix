@@ -8,6 +8,7 @@ import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/Reg
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
+import { detectComponentsInRegion, buildComponentPropsSectionForRegion } from '../src/ai/ComponentPropsIndex';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
 import { crossFileSuppressionReason } from '../src/ai/CrossFileTargeting';
 
@@ -1327,6 +1328,49 @@ console.log('\ne2e: 테이블→SmartTable 영역 교체 적용:');
   check('e2e: <SmartTable> 교체 반영', !!o.finalText && o.finalText.includes('<SmartTable'));
   check('e2e: 원래 <table> 제거', !!o.finalText && !/<table\b/.test(o.finalText ?? ''));
   check('e2e: 타입+defineColumns 훅 삽입', !!o.finalText && o.finalText.includes('type TEmployee') && o.finalText.includes('defineColumns<TEmployee>'));
+}
+
+// ─── 기존 SmartTable에 옵션 추가(exportable) — 존재 기반 prop 주입 + binding 카드 양보 ──────────
+console.log('\n기존 SmartTable 옵션 추가(존재 기반 prop 계층):');
+{
+  const stRegion = [
+    '<div className="bg-card rounded-xl border overflow-hidden">',
+    '  <SmartTable',
+    '    data={employees}',
+    '    columns={employeeColumns}',
+    '    searchable',
+    '  />',
+    '</div>',
+  ].join('\n');
+  const stQuery = '선택한 SmartTable 에 excel 내보내기 옵션 추가해줘';
+
+  // 1) 감지: 영역의 <SmartTable>을 인덱스에서 찾는다.
+  check('detect: 영역에서 SmartTable 감지', detectComponentsInRegion(stRegion).includes('SmartTable'));
+  check('detect: 소문자 div는 컴포넌트 아님', !detectComponentsInRegion(stRegion).includes('div'));
+
+  // 2) prop 섹션이 exportable을 실제로 노출(모델이 그 prop 존재를 보게 됨 — 이번 버그의 핵심 해소).
+  const propSec = buildComponentPropsSectionForRegion(stRegion);
+  check('propSec: exportable prop 노출', propSec.includes('exportable') && propSec.includes('xlsx'));
+  check('propSec: selectable/summary 등 다른 옵션도 포함', propSec.includes('selectable') && propSec.includes('summary'));
+
+  // 3) binding 카드 양보: region에 이미 <SmartTable 이 있으면 "새로 바인딩" 레시피는 발동하지 않는다
+  //    (발동하면 모델을 base 골격으로 되돌려 입력과 동일한 코드 → "변경 없음"이 재발한다).
+  const firedWithExisting = selectScaffoldContracts({ deps: '', region: stRegion, query: stQuery }).map((c) => c.id);
+  check('binding 카드 양보: 기존 SmartTable 영역에 smart-table-binding 미발동', !firedWithExisting.includes('smart-table-binding'));
+  // 회귀 방지: <table> 영역(신규 바인딩)에는 여전히 발동해야 한다.
+  const firedWithTable = selectScaffoldContracts({ deps: '', region: '<table/>', query: '직원 테이블을 SmartTable로 적용' }).map((c) => c.id);
+  check('회귀 없음: <table> 신규 바인딩엔 smart-table-binding 발동', firedWithTable.includes('smart-table-binding'));
+
+  // 4) buildHybridPrompt 통합: SmartTable 영역이면 prop 레퍼런스 섹션이 프롬프트에 들어간다.
+  //    (참고: 사용자가 영역을 '선택'한 경우는 region 경로가 아니라 buildSystemPrompt 경로를 타므로,
+  //     그쪽 주입은 ScaffoldContextBuilder에서 처리한다 — 여기선 region 경로 통합만 확인.)
+  const p = buildHybridPrompt("const { data } = useApi<T>('/x');", stRegion, 130, 140, undefined, undefined, stQuery, '');
+  check('buildHybridPrompt: 컴포넌트 prop 레퍼런스 섹션 주입', p.includes('컴포넌트 prop 레퍼런스') && p.includes('exportable'));
+  check('buildHybridPrompt: 교체 모드 아님(기존 SmartTable 유지)', p.includes('최상위 태그는 바꾸지 마세요'));
+
+  // 5) 컴포넌트가 없는 영역엔 섹션 미출력(회귀·잡음 방지).
+  const plainPrompt = buildHybridPrompt("const { data } = useApi<T>('/x');", '<div>{items.map((i) => <span>{i}</span>)}</div>', 1, 3, undefined, undefined, '텍스트 바꿔줘', '');
+  check('buildHybridPrompt: 인덱스에 없는 컴포넌트만 있으면 prop 섹션 미출력', !plainPrompt.includes('컴포넌트 prop 레퍼런스'));
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);

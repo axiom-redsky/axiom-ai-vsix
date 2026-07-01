@@ -15,6 +15,7 @@
 import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './RegionEdit';
 import { impliedControlTags, countTag } from './RegionIntent';
 import { buildContractSection, componentReplacementTargets } from './ScaffoldContracts';
+import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
 import {
   applyStructuralEdit,
   applyReplaceBlocks,
@@ -347,6 +348,9 @@ export function buildHybridPrompt(
   // scaffold 계약 자동 주입(트리거 기반) — deps/region/query에 관련된 가이드 카드만 끼운다.
   // region 경로는 RAG/coreRules를 안 보내므로(토큰 절약), 이 압축 카드가 useApi·라우터·타입 계약을 가르친다.
   const contractSection = buildContractSection({ deps: depsHeader, region, query });
+  // 존재 기반 컴포넌트 prop 주입 — 편집 영역에 실제 있는 컴포넌트(<SmartTable/> 등)의 고유 prop 표를 준다.
+  // 계약 카드(레시피)가 안 가르치는 "기존 컴포넌트에 옵션 추가"(exportable·selectable 등)를 메운다.
+  const componentPropsSection = buildComponentPropsSectionForRegion(region);
   // 영역 루트를 컴포넌트로 교체하는 레시피(예: SmartTable)가 발동했는지 — 발동 시 "최상위 태그 유지"
   // 지침을 교체 허용으로 바꾼다(가드도 같은 타깃을 화이트리스트). 일반 편집은 종전대로 루트 유지.
   const swapTargets = componentReplacementTargets({ deps: depsHeader, region, query });
@@ -442,6 +446,7 @@ export function buildHybridPrompt(
     `무관한 훅·핸들러·상수(handleSearch, PAGE_LIMIT 등)를 새로 만들거나 옮기지 마세요.\n` +
     `규칙: useApi는 @axiom/hooks, UI는 @axiom/components/ui, 화면이동은 $router, 주석은 한국어.\n\n` +
     contractSection +
+    componentPropsSection +
     filterSection +
     `\n` +
     specSection +

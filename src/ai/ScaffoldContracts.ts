@@ -152,7 +152,11 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
     // region 경로는 knowledge/components/SmartTable.md 를 주입하지 않으므로(토큰 절약), 이 카드가
     // SmartTable 계약(defineColumns + <SmartTable data=… columns=…/>)을 가르친다. 미지정 시(=순수 table)는
     // list-table-binding 카드가 담당한다(wantsSmartTable로 상호 배타).
-    applies: ({ query }) => wantsSmartTable(query),
+    // ⚠ 편집 영역에 **이미 <SmartTable 이 있으면** 이 "새로 바인딩" 레시피는 양보한다 — 그 경우는 "옵션 추가"
+    // (exportable·selectable 등)이지 "새로 만들기"가 아니므로, 이 카드가 발동하면 모델을 base 골격
+    // (<SmartTable data columns searchable/>)으로 되돌려 입력과 동일한 코드를 반환하게 만든다(실측: "변경 없음").
+    // 옵션 추가는 ComponentPropsIndex의 존재 기반 prop 표가 담당한다.
+    applies: ({ query, region }) => wantsSmartTable(query) && !/<SmartTable\b/.test(region),
     card:
       `- **SmartTable**(@axiom/components/ui)은 컬럼을 \`defineColumns\` 설정 맵으로 선언하는 고수준 그리드입니다. ` +
       `손으로 \`<table><tr><td>\`를 짜지 말고 **아래 3부품을 모두** 출력하세요(하나라도 빠지면 적용이 거부됩니다):\n` +

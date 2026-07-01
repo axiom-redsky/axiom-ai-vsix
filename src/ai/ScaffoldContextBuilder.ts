@@ -10,6 +10,7 @@ import type { ContextBreakdown } from '../types/messages';
 import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
 import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
+import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
 import type { IntentResult } from './IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {
@@ -431,6 +432,14 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
         '> 각 줄 앞 `NNN| `는 **위치 파악용 라인 번호**입니다 — 실제 파일 내용이 아니므로 출력(<edit>·코드)에 절대 포함하지 마세요.';
     }
 
+    // 존재 기반 컴포넌트 prop 주입 — 선택/파일에 있는 scaffold 컴포넌트(<SmartTable/> 등)의 고유 prop을
+    // 결정론적으로 준다. 선택 편집·full 경로는 region 경로와 달리 buildContractSection을 안 쓰고 RAG 운에
+    // 기대므로, "기존 SmartTable에 excel(exportable) 추가" 요청이 prop 존재를 못 봐 "변경 없음"으로 끝났다
+    // (실측). 편집 의도일 때만(Q&A 게이팅 시 제외) 선택 텍스트(없으면 파일 본문)에서 감지해 주입한다.
+    const editComponentProps = this.isQnAGated(userQuery, forceQnA)
+      ? ''
+      : buildComponentPropsSectionForRegion(ctx.selection?.text || ctx.selectedText || fileContent);
+
     const fileSection = ctx.available
       ? [
           '\n\n---\n\n## 현재 열린 파일: ' + ctx.filePath,
@@ -440,6 +449,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
           fileBody,
           '```',
           selectionSection,
+          editComponentProps ? '\n' + editComponentProps : '',
         ].join('\n')
       : '';
 

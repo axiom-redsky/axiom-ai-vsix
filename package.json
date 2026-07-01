@@ -488,7 +488,8 @@
   },
   "scripts": {
     "build:corpus": "node scripts/build-corpus.mjs",
-    "prebuild": "npm run build:corpus",
+    "build:component-props": "node scripts/build-component-props.mjs",
+    "prebuild": "npm run build:corpus && npm run build:component-props",
     "compile": "node esbuild.extension.js && node esbuild.webview.js",
     "watch": "concurrently \"node esbuild.extension.js --watch\" \"node esbuild.webview.js --watch\"",
     "package": "vsce package --no-dependencies",
