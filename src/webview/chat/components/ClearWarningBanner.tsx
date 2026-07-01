@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message, ContextUsage } from '../hooks/useChat';
+import { computeContextBudget, budgetPct } from '../contextBudget';
 
 interface Props {
   messages: Message[];
@@ -7,6 +8,8 @@ interface Props {
   onClear: () => void;
   systemPromptChars?: number;
   contextWindow: number;
+  /** 출력 자리 예약(=요청 max_tokens). 분모를 (contextWindow − outputReserve)로 줄인다. */
+  outputReserve?: number;
   usage?: ContextUsage | null;
   /** 오프라인 턴 여부 — LLM 토큰을 쓰지 않으므로 "대화가 길다/품질 저하" 경고를 띄우지 않는다. */
   isOffline?: boolean;
@@ -18,18 +21,20 @@ function getBannerLevel(
   systemPromptChars: number,
   totalChars: number,
   contextWindow: number,
+  outputReserve: number | undefined,
   usage?: ContextUsage | null,
 ): BannerLevel {
   // 서버가 usage를 보고하면 실측치 우선, 아니면 문자 수 추정 (1토큰 ≈ 3자)
   const measuredTokens = usage?.promptTokens ?? usage?.totalTokens;
   const estimatedTokens = measuredTokens ?? (Math.round(systemPromptChars / 3) + Math.round(totalChars / 3));
-  const pct = Math.round((estimatedTokens / contextWindow) * 100);
+  // 분모 = 응답 자리를 남긴 실사용 가능 입력 예산. 막대(InputBar)와 동일 기준으로 경고가 발화한다.
+  const pct = budgetPct(estimatedTokens, computeContextBudget(contextWindow, usage?.outputReserve ?? outputReserve));
   if (pct >= 90) return 'strong';
   if (pct >= 70) return 'soft';
   return null;
 }
 
-export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromptChars = 0, contextWindow, usage, isOffline }: Props): React.ReactElement | null {
+export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromptChars = 0, contextWindow, outputReserve, usage, isOffline }: Props): React.ReactElement | null {
   const [dismissedLevel, setDismissedLevel] = useState<BannerLevel>(null);
 
   const totalChars = useMemo(
@@ -37,7 +42,7 @@ export function ClearWarningBanner({ messages, isStreaming, onClear, systemPromp
     [messages],
   );
 
-  const level = getBannerLevel(systemPromptChars, totalChars, contextWindow, usage);
+  const level = getBannerLevel(systemPromptChars, totalChars, contextWindow, outputReserve, usage);
 
   useEffect(() => {
     if (messages.length === 0) setDismissedLevel(null);

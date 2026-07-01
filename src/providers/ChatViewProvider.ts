@@ -1478,6 +1478,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         systemPromptChars: systemPrompt.length,
         breakdown,
         contextWindow: config.contextWindow,
+        outputReserve: config.maxTokens,
       });
       this._logSystemPrompt(text, systemPrompt, breakdown);
       // 선택 영역 수정 턴은 이전 대화 history를 빼고 "시스템 프롬프트의 최신 현재 파일 + 이번 요청"만
@@ -1566,6 +1567,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               completionTokens: usage.completionTokens,
               totalTokens: usage.totalTokens,
               contextWindow: config.contextWindow,
+              outputReserve: config.maxTokens,
             });
           },
           qnaTuning,
@@ -5969,6 +5971,7 @@ export default routes;`;
       type: 'contextInfo',
       systemPromptChars: 0,
       contextWindow: ExtensionConfig.getEffectiveLlmConfig().contextWindow,
+      outputReserve: ExtensionConfig.getEffectiveLlmConfig().maxTokens,
       offline: true,
     });
   }

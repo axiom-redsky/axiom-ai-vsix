@@ -3,6 +3,7 @@ import { matchSlashCommands } from '../slashCommands';
 import type { SlashCommand } from '../slashCommands';
 import type { SelectionContext, ContextUsage } from '../hooks/useChat';
 import type { ContextBreakdown } from '../../../types/messages';
+import { computeContextBudget, budgetPct } from '../contextBudget';
 
 function getContextLevel(pct: number): 'ok' | 'warn' | 'danger' {
   if (pct >= 90) return 'danger';
@@ -26,13 +27,15 @@ interface Props {
   contextTotalChars?: number;
   systemPromptChars?: number;
   contextWindow: number;
+  /** 출력 자리 예약(=요청 max_tokens). 막대 분모를 (contextWindow − outputReserve)로 줄인다. */
+  outputReserve?: number;
   usage?: ContextUsage | null;
   breakdown?: ContextBreakdown | null;
   /** 직전 턴이 오프라인(로컬 RAG)이면 토큰 메터를 "오프라인 · 토큰 미사용"으로 표시한다. */
   offline?: boolean;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, usage, breakdown, offline }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline }: Props): React.ReactElement {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
@@ -281,9 +284,13 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
           const estimatedTokens = measuredTokens ?? (
             Math.round((systemPromptChars ?? 0) / 3) + Math.round(contextTotalChars / 3)
           );
-          const pct = Math.min(100, Math.round((estimatedTokens / contextWindow) * 100));
+          // 분모 = 응답 자리(max_tokens)를 남긴 실사용 가능 입력 예산. 100% = "모델이 답할 자리 없음".
+          // contextWindow(=num_ctx)·outputReserve(=max_tokens) 둘 다 배포 설정에서 오므로
+          // 다른 서버/모델을 붙이면 이 분모가 그 배포 값으로 자동으로 맞춰진다.
+          const budget = computeContextBudget(contextWindow, usage?.outputReserve ?? outputReserve);
+          const pct = budgetPct(estimatedTokens, budget);
           const level = getContextLevel(pct);
-          const remaining = Math.max(0, contextWindow - estimatedTokens);
+          const remaining = Math.max(0, budget.usableBudget - estimatedTokens);
           const source = measuredTokens !== undefined ? '실측' : '추정';
           const hasBreakdown = breakdown && (
             breakdown.rulesChars + breakdown.fileChars + breakdown.ragChars +
@@ -295,7 +302,9 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
                 type="button"
                 className="input-bar__context-toggle"
                 onClick={() => setBreakdownOpen((v) => !v)}
-                title={`${source} ${estimatedTokens.toLocaleString()} / ${contextWindow.toLocaleString()} 토큰 사용 중 — 클릭하여 상세 보기`}
+                title={`${source} 입력 ${estimatedTokens.toLocaleString()} / 사용가능 ${budget.usableBudget.toLocaleString()} 토큰` +
+                  ` (모델 창 ${budget.contextWindow.toLocaleString()} − 응답 예약 ${budget.reserve.toLocaleString()})` +
+                  ` — 막대가 꽉 차면 모델이 답할 자리가 없어 초기화가 필요합니다.${hasBreakdown ? ' 클릭하여 상세 보기.' : ''}`}
                 disabled={!hasBreakdown}
               >
                 <div className="input-bar__context-bar">

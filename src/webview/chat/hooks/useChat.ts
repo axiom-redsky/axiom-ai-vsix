@@ -7,6 +7,8 @@ export interface ContextUsage {
   completionTokens?: number;
   totalTokens?: number;
   contextWindow: number;
+  /** 이 턴 요청의 max_tokens(출력 자리 예약). 토큰 메터 분모 계산에 사용. */
+  outputReserve?: number;
 }
 
 export interface SelectionContext {
@@ -45,6 +47,9 @@ export function useChat() {
   const [systemPromptChars, setSystemPromptChars] = useState<number>(0);
   const [breakdown, setBreakdown] = useState<ContextBreakdown | null>(null);
   const [contextWindow, setContextWindow] = useState<number>(32_768);
+  // 출력 자리 예약(=요청 max_tokens). 호스트가 매 턴 보고하며, 토큰 메터 분모를
+  // (contextWindow − outputReserve)로 줄이는 데 쓴다. 미보고(구버전 호스트) 시 0 → 종전 동작.
+  const [outputReserve, setOutputReserve] = useState<number>(0);
   const [usage, setUsage] = useState<ContextUsage | null>(null);
   // 직전 턴이 오프라인(로컬 RAG)이었는지 — 토큰 메터를 라이브 측정 대신 "오프라인(토큰 미사용)"으로
   // 전환하는 데 쓴다. 세션 단위가 아니라 매 턴 host 신호로 갱신돼 온↔오프 깜빡임을 그대로 따라간다.
@@ -222,6 +227,7 @@ export function useChat() {
           setSystemPromptChars(msg.systemPromptChars);
           if (msg.breakdown) setBreakdown(msg.breakdown);
           if (msg.contextWindow) setContextWindow(msg.contextWindow);
+          if (msg.outputReserve !== undefined) setOutputReserve(msg.outputReserve);
           // 새 턴 시작 시 이전 usage 측정값 초기화 (이번 턴에 새로 받기 전까지 추정치 사용)
           setUsage(null);
           break;
@@ -232,8 +238,10 @@ export function useChat() {
             completionTokens: msg.completionTokens,
             totalTokens: msg.totalTokens,
             contextWindow: msg.contextWindow,
+            outputReserve: msg.outputReserve,
           });
           if (msg.contextWindow) setContextWindow(msg.contextWindow);
+          if (msg.outputReserve !== undefined) setOutputReserve(msg.outputReserve);
           break;
         case 'pinQuestion':
           // 온라인 지식·가이드 전문 렌더 — 정독용으로 질문을 상단 고정(토큰 메터는 건드리지 않음).
@@ -323,7 +331,7 @@ export function useChat() {
     messages, status, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
     selectionContext, dismissSelection,
-    systemPromptChars, breakdown, contextWindow, usage, isOffline, pinQuestionTop,
+    systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, pinQuestionTop,
     attachReference, attachText, consumeAttach,
   };
 }
