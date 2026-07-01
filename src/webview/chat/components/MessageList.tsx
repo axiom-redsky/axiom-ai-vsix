@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MessageItem } from './MessageItem';
 import { ThinkingIcon } from './ThinkingIcon';
+import { FindBar } from './FindBar';
 import type { Message } from '../hooks/useChat';
 
 interface Props {
@@ -79,8 +80,12 @@ export function MessageList({ messages, isStreaming, isWaiting, status, pinQuest
     if (!isStreaming) setShowScrollBtn(false);
   }, [isStreaming]);
 
+  // 검색 매치 재계산 트리거 — 메시지 수 + 마지막 메시지 길이(스트리밍 중 콘텐츠 증가 반영).
+  const findRevision = messages.length + (messages[messages.length - 1]?.content.length ?? 0);
+
   return (
     <div className="message-list" ref={listRef} onScroll={handleScroll}>
+      <FindBar containerRef={listRef} revision={findRevision} />
       {messages.length === 0 && (
         <div className="empty-state">
           <div className="empty-state__icon">

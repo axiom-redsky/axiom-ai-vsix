@@ -1737,6 +1737,90 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 }
 
 /* ================================================================
+   FIND BAR — 채팅 인-뷰 텍스트 검색 (Ctrl/Cmd+F)
+   ================================================================ */
+.find-bar {
+  position: sticky;
+  top: 6px;
+  align-self: flex-end;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 10px 0 0;
+  padding: 4px 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, rgba(128,128,128,0.3)));
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+
+.find-bar__input {
+  width: 150px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  outline: none;
+}
+
+.find-bar__input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.find-bar__count {
+  min-width: 44px;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.75;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.find-bar__count--empty {
+  color: var(--vscode-errorForeground);
+  opacity: 0.9;
+}
+
+.find-bar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.find-bar__btn:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+  opacity: 1;
+}
+
+.find-bar__btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* CSS Custom Highlight API — 매치는 DOM을 건드리지 않고 Range로만 칠한다 */
+::highlight(chat-find) {
+  background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 192, 50, 0.35));
+}
+
+::highlight(chat-find-current) {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(234, 140, 50, 0.75));
+  color: var(--vscode-editor-findMatchForeground, inherit);
+}
+
+/* ================================================================
    CLEAR WARNING BANNER — 대화 길이 경고
    ================================================================ */
 .clear-warning-banner {
