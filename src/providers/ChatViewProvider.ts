@@ -22,7 +22,9 @@ import {
   extractApiPaths,
   matchedApiPaths,
   unmatchedApiPaths,
+  containsExactApiPath,
   formatExactPathDirective,
+  type MdSection,
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind } from '../ai/IntentClassifier';
@@ -493,12 +495,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // member-summary 등)이 잘려나간다. 질문 키워드로 관련 섹션을 추출해 주입한다.
         const sections = splitIntoSections(rel, content);
         scoreSections(sections, queryTokens, apiPaths);
-        for (const p of matchedApiPaths(sections, apiPaths)) matchedPaths.add(p);
-        const picked = selectByBudget(sections, budget, 1);
+        const matchedHere = matchedApiPaths(sections, apiPaths);
+        for (const p of matchedHere) matchedPaths.add(p);
+
+        // 정확 엔드포인트 focusing — 사용자가 특정 경로(예: `/api/employees`)를 지목했고 그 섹션이
+        // 스펙에 실재하면, **그 섹션(들) + 도입부(타입/frontmatter)만** 주입하고 형제 엔드포인트 전체를
+        // 버린다. 종전엔 selectByBudget이 예산까지 채워 18개(≈스펙 전체 21K자)를 주입 → 입력 토큰 폭증 +
+        // 약한 모델이 형제 URL로 드리프트하던 원인. 좁혔으니 관련도 하한은 0(이미 focus됨).
+        let picked: MdSection[];
+        let focusNote = '';
+        if (matchedHere.length > 0) {
+          const exact = sections.filter((s) =>
+            matchedHere.some((p) => containsExactApiPath(s.header, p)),
+          );
+          const intro = sections.filter((s) => s.header === '' && s.length < 1500);
+          picked = selectByBudget([...intro, ...exact], budget, 0);
+          const dropped = sections.length - picked.length;
+          focusNote = ` (정확 엔드포인트 ${matchedHere.join(', ')} focusing — 형제 ${dropped}개 섹션 제외)`;
+        } else {
+          picked = selectByBudget(sections, budget, 1);
+        }
+
         if (picked.length > 0) {
           injected = `(질문 관련 섹션 추출)\n\n${picked.map((s) => s.body).join('\n\n')}`;
           this._corpusOutputChannel.appendLine(
-            `[Axiom AI] 참조 ${rel}: ${content.length}자(>${budget}) → 관련 섹션 ${picked.length}개 추출: ` +
+            `[Axiom AI] 참조 ${rel}: ${content.length}자(>${budget}) → 관련 섹션 ${picked.length}개 추출${focusNote}: ` +
             picked.map((s) => s.header.replace(/^#+\s*/, '').slice(0, 40)).join(' | '),
           );
         } else {
