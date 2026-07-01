@@ -6,7 +6,12 @@ import {
   extractTableColumns,
   extractResponseSchema,
   reconcile,
+  buildBindingCode,
+  rewriteMappedFields,
+  deriveRootName,
+  findRowCollectionVar,
 } from '../src/ai/ApiBindingRecipe';
+import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 let pass = 0;
 let fail = 0;
@@ -120,6 +125,85 @@ eq(rec.unmappedColumns.map((c) => c.field), ['dept', 'grade', 'project', 'rate']
 // project·rate는 후보가 없어 결국 언더스펙(되묻기) — 이 구분은 다음 단계가 unusedApiFields로 판정.
 ok(rec.unusedApiFields.includes('department') && rec.unusedApiFields.includes('position'), '미사용 API필드에 dept·grade 후보(department·position) 있음');
 ok(!rec.unusedApiFields.includes('name') && !rec.unusedApiFields.includes('employment_status'), '이미 매핑된 필드(name·employment_status)는 미사용에서 빠짐');
+
+console.log('\napi-binding Stage 2 — 파생 이름/컬렉션:');
+eq(deriveRootName('/api/employees'), 'Employee', 'deriveRootName: employees→Employee');
+eq(deriveRootName('/api/companies'), 'Company', 'deriveRootName: companies→Company');
+eq(findRowCollectionVar(FILE), 'employees', 'findRowCollectionVar: employees');
+
+console.log('\napi-binding Stage 2 — 바인딩 코드 생성(결정론):');
+const code = buildBindingCode({ schema, endpoint: '/api/employees', rootName: 'Employee', collectionVar: 'employees' });
+eq(code.typeName, 'TEmployee', '타입명 = TEmployee');
+ok(/type TEmployee = \{/.test(code.hookCode), 'type TEmployee 선언 생성');
+ok(/department: string;/.test(code.hookCode) && /employment_status: string;/.test(code.hookCode), '타입에 API 필드(department·employment_status)');
+ok(code.hookCode.includes("useApi<TEmployee[]>('/api/employees')"), 'useApi<TEmployee[]>(엔드포인트)');
+ok(code.hookCode.includes('const { data: employees, isPending, error } = useApi'), 'data를 컬렉션명으로 구조분해(더미 shadow 제거용)');
+ok(/if \(isPending\)/.test(code.hookCode) && /if \(error\)/.test(code.hookCode), '로딩/에러 가드 포함');
+eq(code.imports, [{ module: '@axiom/hooks', named: ['useApi'] }], 'import useApi');
+
+console.log('\napi-binding Stage 2 — 테이블 셀 재바인딩(결정론):');
+const renames = [
+  { from: 'name', to: 'name' }, // 정확 — 스킵돼야
+  { from: 'dept', to: 'department' },
+  { from: 'grade', to: 'position' },
+  { from: 'status', to: 'employment_status' },
+];
+const rw = rewriteMappedFields(FILE, renames, 'emp');
+ok(rw.text.includes('{emp.department}') && !rw.text.includes('{emp.dept}'), 'emp.dept → emp.department');
+ok(rw.text.includes('{emp.position}') && !rw.text.includes('{emp.grade}'), 'emp.grade → emp.position');
+ok(rw.text.includes('status={emp.employment_status}'), 'emp.status → emp.employment_status (prop)');
+ok(rw.text.includes('{emp.name}'), 'emp.name 유지(정확일치는 미변경)');
+ok(rw.text.includes('{emp.project}') && rw.text.includes('{emp.rate}'), '미매핑(project·rate)은 손대지 않음(Stage 3 되묻기 대상)');
+eq(rw.renamed.map((r) => r.from), ['dept', 'grade', 'status'], '실제 치환된 3개(name 제외)');
+
+// ── 통합: 실제 시작 상태(모듈 스코프 더미 배열)에서 전체 조립 ───────────────────
+const FILE_DUMMY = `import { Button } from '@axiom/components/ui';
+
+const employees = [
+	{ id: 1, name: '김민준', dept: '개발팀', grade: '과장', project: 'A', rate: '100%', status: 'active' as const },
+	{ id: 2, name: '이서연', dept: '디자인', grade: '대리', project: 'B', rate: '0%', status: 'bench' as const },
+];
+
+export default function EmployeeListPage(): React.ReactNode {
+	return (
+		<div className="p-5">
+			<table className="w-full">
+				<thead><tr><th>이름</th><th>부서</th><th>직급</th><th>상태</th></tr></thead>
+				<tbody>
+					{employees.map((emp) => (
+						<tr key={emp.id}>
+							<td>{emp.name}</td>
+							<td>{emp.dept}</td>
+							<td>{emp.grade}</td>
+							<td>{emp.status}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	);
+}
+`;
+
+console.log('\napi-binding — 통합 조립(rewrite + applyStructuralEdit, 결정론 end-to-end):');
+// dept·grade는 모델콜이 반환했다고 가정(department·position). name은 정확일치.
+const fullRenames = [
+  { from: 'name', to: 'name' },
+  { from: 'dept', to: 'department' },
+  { from: 'grade', to: 'position' },
+  { from: 'status', to: 'employment_status' },
+];
+const rewritten = rewriteMappedFields(FILE_DUMMY, fullRenames, 'emp').text;
+const bind = buildBindingCode({ schema, endpoint: '/api/employees', rootName: 'Employee', collectionVar: 'employees' });
+const applied = applyStructuralEdit(rewritten, { hookCode: bind.hookCode, imports: bind.imports }).text;
+
+ok(/import \{[^}]*useApi[^}]*\} from '@axiom\/hooks'/.test(applied), 'import useApi 추가됨');
+ok(applied.indexOf('type TEmployee') >= 0 && applied.indexOf('type TEmployee') < applied.indexOf('export default function'), 'type TEmployee 모듈 스코프로 hoist(컴포넌트 위)');
+ok(applied.includes("useApi<TEmployee[]>('/api/employees')"), '컴포넌트 본문에 useApi 훅');
+ok(applied.includes('const { data: employees, isPending, error } = useApi'), 'data를 employees로 구조분해');
+ok(!applied.includes("dept: '개발팀'"), '모듈 스코프 더미 배열 제거됨');
+ok(applied.includes('{emp.department}') && applied.includes('{emp.employment_status}'), '테이블 셀이 API 필드로 재바인딩');
+ok(!applied.includes('{emp.dept}') && !applied.includes('{emp.status}'), '옛 더미 필드 참조 사라짐');
 
 console.log(`\n결과: ${pass} 통과 / ${fail} 실패\n`);
 if (fail > 0) process.exit(1);

@@ -14,7 +14,13 @@
  * reconcile 결과가 이후 단계의 입력이다: 매핑은 결정론 재바인딩에, 미매핑(API에 아예 없음=project/rate)은
  * "추측 금지·되묻기"에, 미사용 API필드가 남는 애매한 컬럼(grade↔position 등)만 **작은 모델 1콜**(필드목록
  * 수준, 파일 아님)로 넘긴다. 즉 대부분 결정론, 모델은 안 줄어드는 의미 판단 한 조각만.
+ *
+ * Stage 2(조립): buildBindingCode(type+useApi<봉투벗김>+파생const+로딩/에러 가드) + rewriteMappedFields
+ * (매핑대로 `item.old`→`item.new` 결정론 재바인딩). useApi는 `response.data`를 반환(봉투 벗김)하므로
+ * 제네릭은 **행 배열 타입**(`useApi<TEmployee[]>`)이고 컴포넌트는 `const items = data ?? []`로 쓴다.
  */
+import { generateTypeFromJson } from './JsonTypeGenerator';
+import type { ImportRequest } from './StructuralAnchor';
 
 /** 테이블 한 컬럼 — 헤더 라벨과 그 셀이 읽는 행 필드(없으면 null: 액션 버튼 등). */
 export interface ITableColumn {
@@ -224,6 +230,109 @@ export function reconcile(columns: ITableColumn[], schema: IResponseSchema): IRe
     unmappedColumns,
     unusedApiFields: apiFields.filter((f) => !usedApi.has(f)),
   };
+}
+
+// ── Stage 2: 결정론 조립 ──────────────────────────────────────────────────────
+
+/** 완성된 컬럼→API필드 매핑(결정론 + 모델콜 결과 합침). */
+export interface IFieldRename {
+  /** 테이블이 쓰던 필드(예: "dept"). */
+  from: string;
+  /** API 응답 필드(예: "department"). */
+  to: string;
+}
+
+/** buildBindingCode 입력. */
+export interface IBindingCodeInput {
+  schema: IResponseSchema;
+  /** API 엔드포인트(예: "/api/employees"). */
+  endpoint: string;
+  /** 타입 베이스 이름(접두사 제외, 예: "Employee"). deriveRootName로 뽑을 수 있다. */
+  rootName: string;
+  /** 목록 파생 const 이름 — 기존 더미 배열과 **같은 이름**이라야 structural이 더미를 자동 제거한다. */
+  collectionVar: string;
+}
+
+/** buildBindingCode 결과 — structural 삽입 채널(hookCode/imports)에 그대로 넣는다. */
+export interface IBindingCode {
+  /** 모듈 스코프 type + 컴포넌트 본문 훅/파생/가드(structural이 type만 상단 hoist). */
+  hookCode: string;
+  imports: ImportRequest[];
+  /** 생성된 타입명(예: "TEmployee"). */
+  typeName: string;
+}
+
+/**
+ * 스키마로 바인딩 코드를 **결정론 생성**한다(모델 0토큰). type은 generateTypeFromJson,
+ * 훅은 `const { data, isPending, error } = useApi<TX[]>(endpoint)` + `const items = data ?? []`
+ * + 로딩/에러 조기반환 가드. type/interface는 structural이 모듈 스코프로 hoist하고, 나머지는 컴포넌트
+ * 본문에 삽입되며, `collectionVar`가 기존 더미와 같은 이름이라 더미 선언은 자동 제거된다.
+ */
+export function buildBindingCode(input: IBindingCodeInput): IBindingCode {
+  const { schema, endpoint, rootName, collectionVar } = input;
+  const typeCode = generateTypeFromJson({
+    json: schema.rowJson,
+    rootName,
+    kind: 'type',
+    source: 'chat',
+  });
+  const typeName = (typeCode.match(/\b(?:type|interface)\s+([A-Za-z_$][\w$]*)/) ?? [])[1] ?? `T${rootName}`;
+
+  // data를 **컬렉션 이름으로 직접 구조분해**(`data: employees`)한다 — 기존 더미 `const employees=[...]`와
+  // 같은 이름이라 applyStructuralEdit이 더미를 자동 제거(shadow)한다. 별도 `const employees = data ?? []`는
+  // 같은 이름 재선언이라 중복 게이트에 드롭돼 더미가 남는다(실측). 로딩/에러 조기반환 가드로 이후 사용을
+  // 좁힌다(잔여 "possibly undefined"는 Stage 0 tsc 검증-교정 루프가 backstop).
+  const hookCode = [
+    typeCode.trim(),
+    '',
+    `const { data: ${collectionVar}, isPending, error } = useApi<${typeName}[]>('${endpoint}');`,
+    `if (isPending) {`,
+    `  return <div className="p-5 text-muted-foreground">불러오는 중…</div>;`,
+    `}`,
+    `if (error) {`,
+    `  return <div className="p-5 text-red-500">데이터를 불러오지 못했습니다.</div>;`,
+    `}`,
+  ].join('\n');
+
+  return { hookCode, imports: [{ module: '@axiom/hooks', named: ['useApi'] }], typeName };
+}
+
+/**
+ * 매핑대로 소스에서 `mapVar.from` → `mapVar.to`를 **결정론 치환**한다(테이블 셀 재바인딩).
+ * from===to(정확일치 컬럼, 예: name)는 건너뛴다. `mapVar`(행 변수)로 스코프가 한정돼 오치환 위험이 낮다.
+ * @returns 치환된 텍스트 + 실제 바뀐 항목.
+ */
+export function rewriteMappedFields(
+  source: string,
+  renames: IFieldRename[],
+  mapVar: string,
+): { text: string; renamed: IFieldRename[] } {
+  let text = source;
+  const renamed: IFieldRename[] = [];
+  for (const r of renames) {
+    if (r.from === r.to) continue;
+    const re = new RegExp(`\\b${escapeRe(mapVar)}\\.${escapeRe(r.from)}\\b`, 'g');
+    if (re.test(text)) {
+      text = text.replace(re, `${mapVar}.${r.to}`);
+      renamed.push(r);
+    }
+  }
+  return { text, renamed };
+}
+
+/** 엔드포인트에서 타입 베이스 이름을 뽑는다: "/api/employees" → "Employee"(마지막 세그먼트 단수화·PascalCase). */
+export function deriveRootName(endpoint: string): string {
+  const seg = endpoint.split('?')[0].split('/').filter(Boolean).pop() ?? 'Item';
+  const singular = seg.replace(/ies$/i, 'y').replace(/s$/i, '');
+  return singular.charAt(0).toUpperCase() + singular.slice(1);
+}
+
+/** `<tbody>`에서 `X.map(` 앞의 컬렉션 식별자(예: "employees")를 찾는다. 없으면 null. */
+export function findRowCollectionVar(source: string): string | null {
+  const tbodyStart = source.search(/<tbody\b/);
+  const scope = tbodyStart >= 0 ? source.slice(tbodyStart) : source;
+  const m = scope.match(/([A-Za-z_$][\w$]*)\s*\.map\(/);
+  return m ? m[1] : null;
 }
 
 // ── 공용 헬퍼 ─────────────────────────────────────────────────────────────────
