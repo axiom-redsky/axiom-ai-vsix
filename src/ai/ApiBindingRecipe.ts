@@ -21,6 +21,7 @@
  */
 import { generateTypeFromJson } from './JsonTypeGenerator';
 import { splitIntoSections, containsExactApiPath } from './SectionExtractor';
+import { splitTsSections } from './CodeSectionExtractor';
 import type { ImportRequest } from './StructuralAnchor';
 
 /** 테이블 한 컬럼 — 헤더 라벨과 그 셀이 읽는 행 필드(없으면 null: 액션 버튼 등). */
@@ -297,14 +298,20 @@ export function buildBindingCode(input: IBindingCodeInput): IBindingCode {
   });
   const typeName = (typeCode.match(/\b(?:type|interface)\s+([A-Za-z_$][\w$]*)/) ?? [])[1] ?? `T${rootName}`;
 
-  // data를 **컬렉션 이름으로 직접 구조분해**(`data: employees`)한다 — 기존 더미 `const employees=[...]`와
-  // 같은 이름이라 applyStructuralEdit이 더미를 자동 제거(shadow)한다. 별도 `const employees = data ?? []`는
-  // 같은 이름 재선언이라 중복 게이트에 드롭돼 더미가 남는다(실측). 로딩/에러 조기반환 가드로 이후 사용을
-  // 좁힌다(잔여 "possibly undefined"는 Stage 0 tsc 검증-교정 루프가 backstop).
+  // ⚠️ scaffold의 useApi는 HTTP 본문을 **봉투째** 반환한다(응답 `{success, data:[...], meta}`를 안 벗김 —
+  // api-client `request<T>`가 axios `response.data`(=본문 전체)를 그대로 담음). 따라서 스펙의 봉투 구조를
+  // 그대로 반영해 제네릭은 `useApi<{ data: TX[] }>`로, 목록은 `data?.data ?? []`로 꺼낸다. 봉투가 없는
+  // (본문이 바로 배열인) 엔드포인트면 envelopeKey=null → `useApi<TX[]>` + `data ?? []`.
+  // 파생 const는 기존 더미와 이름이 겹쳐 중복 게이트에 드롭되므로, 호출부가 더미를 먼저 결정론 제거한 뒤 적용한다.
+  const listType = schema.envelopeKey ? `{ ${schema.envelopeKey}: ${typeName}[] }` : `${typeName}[]`;
+  const derived = schema.envelopeKey
+    ? `const ${collectionVar} = data?.${schema.envelopeKey} ?? [];`
+    : `const ${collectionVar} = data ?? [];`;
   const hookCode = [
     typeCode.trim(),
     '',
-    `const { data: ${collectionVar}, isPending, error } = useApi<${typeName}[]>('${endpoint}');`,
+    `const { data, isPending, error } = useApi<${listType}>('${endpoint}');`,
+    derived,
     `if (isPending) {`,
     `  return <div className="p-5 text-muted-foreground">불러오는 중…</div>;`,
     `}`,
@@ -395,6 +402,20 @@ export function deriveRootName(endpoint: string): string {
   const seg = endpoint.split('?')[0].split('/').filter(Boolean).pop() ?? 'Item';
   const singular = seg.replace(/ies$/i, 'y').replace(/s$/i, '');
   return singular.charAt(0).toUpperCase() + singular.slice(1);
+}
+
+/**
+ * 모듈 스코프 `const <name> = …;` 선언을 결정론적으로 제거한다(기존 더미 배열 삭제용).
+ * 파생 const가 같은 이름이라 applyStructuralEdit 중복 게이트에 드롭되는 걸 피하려고, 조립 전에 더미를
+ * 먼저 없앤다. 대상이 없으면 원본 그대로.
+ */
+export function stripModuleConst(source: string, name: string): string {
+  const target = splitTsSections(source).find((s) => s.kind === 'const' && s.name === name);
+  if (!target) return source;
+  const lines = source.split('\n');
+  lines.splice(target.startLine - 1, target.endLine - target.startLine + 1);
+  // 제거 자리에 연속 빈 줄이 생기면 하나로 접는다(깔끔한 diff).
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /** `<tbody>`에서 `X.map(` 앞의 컬렉션 식별자(예: "employees")를 찾는다. 없으면 null. */

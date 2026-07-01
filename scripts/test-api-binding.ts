@@ -12,6 +12,7 @@ import {
   findRowCollectionVar,
   buildFieldMappingPrompt,
   parseFieldMapping,
+  stripModuleConst,
 } from '../src/ai/ApiBindingRecipe';
 import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
@@ -138,8 +139,9 @@ const code = buildBindingCode({ schema, endpoint: '/api/employees', rootName: 'E
 eq(code.typeName, 'TEmployee', '타입명 = TEmployee');
 ok(/type TEmployee = \{/.test(code.hookCode), 'type TEmployee 선언 생성');
 ok(/department: string;/.test(code.hookCode) && /employment_status: string;/.test(code.hookCode), '타입에 API 필드(department·employment_status)');
-ok(code.hookCode.includes("useApi<TEmployee[]>('/api/employees')"), 'useApi<TEmployee[]>(엔드포인트)');
-ok(code.hookCode.includes('const { data: employees, isPending, error } = useApi'), 'data를 컬렉션명으로 구조분해(더미 shadow 제거용)');
+ok(code.hookCode.includes("useApi<{ data: TEmployee[] }>('/api/employees')"), '봉투 반영: useApi<{ data: TEmployee[] }>(엔드포인트)');
+ok(code.hookCode.includes('const { data, isPending, error } = useApi'), 'data/isPending/error 구조분해');
+ok(code.hookCode.includes('const employees = data?.data ?? [];'), '봉투에서 목록 추출: const employees = data?.data ?? []');
 ok(/if \(isPending\)/.test(code.hookCode) && /if \(error\)/.test(code.hookCode), '로딩/에러 가드 포함');
 eq(code.imports, [{ module: '@axiom/hooks', named: ['useApi'] }], 'import useApi');
 
@@ -213,14 +215,14 @@ const fullRenames = [
   { from: 'grade', to: 'position' },
   { from: 'status', to: 'employment_status' },
 ];
-const rewritten = rewriteMappedFields(FILE_DUMMY, fullRenames, 'emp').text;
+const rewritten = stripModuleConst(rewriteMappedFields(FILE_DUMMY, fullRenames, 'emp').text, 'employees');
 const bind = buildBindingCode({ schema, endpoint: '/api/employees', rootName: 'Employee', collectionVar: 'employees' });
 const applied = applyStructuralEdit(rewritten, { hookCode: bind.hookCode, imports: bind.imports }).text;
 
 ok(/import \{[^}]*useApi[^}]*\} from '@axiom\/hooks'/.test(applied), 'import useApi 추가됨');
 ok(applied.indexOf('type TEmployee') >= 0 && applied.indexOf('type TEmployee') < applied.indexOf('export default function'), 'type TEmployee 모듈 스코프로 hoist(컴포넌트 위)');
-ok(applied.includes("useApi<TEmployee[]>('/api/employees')"), '컴포넌트 본문에 useApi 훅');
-ok(applied.includes('const { data: employees, isPending, error } = useApi'), 'data를 employees로 구조분해');
+ok(applied.includes("useApi<{ data: TEmployee[] }>('/api/employees')"), '봉투 반영 useApi 훅');
+ok(applied.includes('const employees = data?.data ?? [];'), '봉투에서 목록 추출(data?.data ?? [])');
 ok(!applied.includes("dept: '개발팀'"), '모듈 스코프 더미 배열 제거됨');
 ok(applied.includes('{emp.department}') && applied.includes('{emp.employment_status}'), '테이블 셀이 API 필드로 재바인딩');
 ok(!applied.includes('{emp.dept}') && !applied.includes('{emp.status}'), '옛 더미 필드 참조 사라짐');

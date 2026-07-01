@@ -20,6 +20,7 @@ import {
   reconcile,
   buildBindingCode,
   rewriteMappedFields,
+  stripModuleConst,
   buildFieldMappingPrompt,
   parseFieldMapping,
   deriveRootName,
@@ -2809,8 +2810,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const mappedFroms = new Set(renames.map((r) => r.from));
     const unresolved = ambiguous.filter((c) => !mappedFroms.has(c.field!));
 
-    // ⑥ 결정론 조립: 셀 재바인딩 → type·useApi·가드 삽입
-    const rewritten = rewriteMappedFields(originalContent, renames, mapVar).text;
+    // ⑥ 결정론 조립: 셀 재바인딩 → 더미 배열 제거 → type·useApi·가드 삽입
+    //    (파생 `const employees = data?.data ?? []`가 더미와 이름이 겹쳐 드롭되지 않도록 더미를 먼저 제거)
+    const rewritten = stripModuleConst(rewriteMappedFields(originalContent, renames, mapVar).text, collectionVar);
     const rootName = deriveRootName(endpoint);
     const bind = buildBindingCode({ schema, endpoint, rootName, collectionVar });
     const applied = applyStructuralEdit(rewritten, { hookCode: bind.hookCode, imports: bind.imports }).text;
