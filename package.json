@@ -241,8 +241,8 @@
         },
         "axiom-ai.experimental.composeBinding": {
           "type": "boolean",
-          "default": false,
-          "description": "[실험] 조립 바인딩(compose). \"테이블에 /api/… 적용\" 같은 다부품 요청을 약한 모델에 통째로 맡기지 않고, 확장이 참조 스펙으로 타입을 생성하고 useApi 훅·가드를 삽입하며 테이블 셀을 스펙 필드로 재바인딩합니다(결정론). 약어 등 애매한 필드 매핑만 작은 모델 호출로 해결하고, 스펙에 없는 컬럼은 추측하지 않고 알립니다. 트리거 미충족·실패 시 기존(region/full) 흐름으로 폴백합니다. 기본 꺼짐."
+          "default": true,
+          "description": "[실험] 조립 바인딩(compose). \"테이블에 /api/… 적용\" 같은 다부품 요청을 약한 모델에 통째로 맡기지 않고, 확장이 참조 스펙으로 타입을 생성하고 useApi 훅·가드를 삽입하며 테이블 셀을 스펙 필드로 재바인딩합니다(결정론). 약어 등 애매한 필드 매핑만 작은 모델 호출로 해결하고, 스펙에 없는 컬럼은 추측하지 않고 되묻습니다(제거/유지/취소). 트리거 미충족·실패 시 기존(region/full) 흐름으로 폴백합니다. 기본 켜짐(사이트별로 끌 수 있음)."
         },
         "axiom-ai.experimental.intentClassifier": {
           "type": "boolean",

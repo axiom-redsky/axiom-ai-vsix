@@ -76,7 +76,7 @@ function PresetNumberField({
 const DEFAULT_PROJECT: NonNullable<AxiomSettings['project']> = {
   axiomFolder: '',
   regionEdit: true,
-  composeBinding: false,
+  composeBinding: true,
   regionVerify: true,
   anchorFirstEdit: true,
   patchFirstEdit: true,
