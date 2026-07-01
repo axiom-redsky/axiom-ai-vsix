@@ -41,8 +41,9 @@ export interface IResponseSchema {
   /** 행 객체 JSON 원본(generateTypeFromJson에 그대로 넘겨 타입 생성). */
   rowJson: Record<string, unknown> | null;
   /**
-   * 목록이 감싸인 봉투 키. `{ data: [...] , meta }` 면 "data", 최상위가 바로 배열이면 null.
-   * useApi 제네릭·파생 const(`resp?.data ?? []`) 생성에 쓴다.
+   * 목록이 감싸인 봉투 키. `{ data: [...], meta }`면 "data", `{ result: [...] }`면 "result" — SI 사이트마다
+   * 다르며 detectEnvelopeKey가 감지한다. 최상위가 바로 배열이면 null.
+   * useApi 제네릭(`useApi<{ [key]: T[] }>`)·파생 const(`data?.[key] ?? []`) 생성에 쓴다.
    */
   envelopeKey: string | null;
 }
@@ -155,13 +156,17 @@ export function extractResponseSchema(specText: string): IResponseSchema | null 
   const json = parseResponseJson(specText);
   if (json === null || typeof json !== 'object') return null;
 
-  // 봉투 해체: { success, data: [...] | {...}, meta } 형태면 data를 벗긴다.
+  // 봉투 해체: SI 사이트마다 목록을 감싸는 키가 다르다(data / list / result / items …). 특정 키를 하드코딩하지
+  // 않고 detectEnvelopeKey로 "행 목록/단건을 담은 봉투 키"를 안전하게 감지해 벗긴다(단건 행의 우연한 배열
+  // 필드를 봉투로 오인하지 않도록 보수적으로 판정).
   let rowContainer: unknown = json;
   let envelopeKey: string | null = null;
-  const obj = json as Record<string, unknown>;
-  if (!Array.isArray(json) && 'data' in obj) {
-    rowContainer = obj.data;
-    envelopeKey = 'data';
+  if (!Array.isArray(json)) {
+    const key = detectEnvelopeKey(json as Record<string, unknown>);
+    if (key !== null) {
+      rowContainer = (json as Record<string, unknown>)[key];
+      envelopeKey = key;
+    }
   }
 
   const rowJson = Array.isArray(rowContainer) ? rowContainer[0] : rowContainer;
@@ -172,6 +177,42 @@ export function extractResponseSchema(specText: string): IResponseSchema | null 
     rowJson: rowJson as Record<string, unknown>,
     envelopeKey,
   };
+}
+
+/** 알려진 봉투(목록 래퍼) 키 — 우선순위 순. SI 관례상 목록/페이로드를 감싸는 흔한 이름들. */
+const ENVELOPE_KEYS = ['data', 'list', 'items', 'result', 'results', 'rows', 'records', 'content', 'payload'];
+
+/** 봉투 곁다리(메타/페이징) 키 — 형제가 전부 이 키뿐이면 이름 모르는 배열 키도 봉투로 인정한다(소문자 비교). */
+const ENVELOPE_META_KEYS = new Set([
+  'success', 'code', 'message', 'msg', 'meta', 'error', 'errors', 'status', 'statuscode',
+  'timestamp', 'time', 'total', 'totalcount', 'totalelements', 'totalpages', 'count',
+  'page', 'pageno', 'pagenumber', 'pagesize', 'size', 'number', 'offset', 'limit',
+  'pagination', 'hasnext', 'hasprevious', 'first', 'last', 'empty', 'sort',
+]);
+
+/**
+ * 응답 최상위 객체에서 **행 목록/단건을 담은 봉투 키**를 안전하게 고른다. 없으면 null(최상위가 곧 행 객체).
+ * 전략(오탐 방지 우선):
+ *   1) 알려진 봉투 키(data/list/result/…) 중 **배열**을 담은 첫 키 → 목록 엔드포인트(compose의 주 대상).
+ *   2) 없으면 알려진 봉투 키 중 **객체**를 담은 첫 키 → 단건 봉투(`{ data: {...} }`).
+ *   3) 그래도 없고 **형제가 전부 메타 키뿐**인데 배열 키가 정확히 하나면 그 키(이름 몰라도) → 봉투.
+ * ⚠️ 단건 행이 우연히 배열 필드를 가진 경우(`{ id, name, skills:[…] }`)를 봉투로 오인하지 않도록,
+ * 3)은 형제가 전부 메타일 때만 발동한다(id·name 같은 행 필드가 섞여 있으면 발동 안 하고 null).
+ */
+export function detectEnvelopeKey(obj: Record<string, unknown>): string | null {
+  const isObj = (v: unknown): boolean => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const arrKnown = ENVELOPE_KEYS.find((k) => k in obj && Array.isArray(obj[k]));
+  if (arrKnown) return arrKnown;
+  const objKnown = ENVELOPE_KEYS.find((k) => k in obj && isObj(obj[k]));
+  if (objKnown) return objKnown;
+  const arrayKeys = Object.keys(obj).filter((k) => Array.isArray(obj[k]));
+  if (arrayKeys.length === 1) {
+    const siblings = Object.keys(obj).filter((k) => k !== arrayKeys[0]);
+    if (siblings.length > 0 && siblings.every((k) => ENVELOPE_META_KEYS.has(k.toLowerCase()))) {
+      return arrayKeys[0];
+    }
+  }
+  return null;
 }
 
 /** "Response" 라벨 뒤의 첫 ```json 블록을 파싱. 없으면 아무 ```json 블록. 파싱 실패 시 null. */

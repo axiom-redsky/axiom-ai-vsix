@@ -13,6 +13,7 @@ import {
   buildFieldMappingPrompt,
   parseFieldMapping,
   stripModuleConst,
+  detectEnvelopeKey,
 } from '../src/ai/ApiBindingRecipe';
 import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
@@ -226,6 +227,53 @@ ok(applied.includes('const employees = data?.data ?? [];'), '봉투에서 목록
 ok(!applied.includes("dept: '개발팀'"), '모듈 스코프 더미 배열 제거됨');
 ok(applied.includes('{emp.department}') && applied.includes('{emp.employment_status}'), '테이블 셀이 API 필드로 재바인딩');
 ok(!applied.includes('{emp.dept}') && !applied.includes('{emp.status}'), '옛 더미 필드 참조 사라짐');
+
+// ── A2: 봉투 키 일반화(사이트마다 다른 래퍼 키를 스펙에서 감지) ───────────────────
+console.log('\napi-binding A2 — detectEnvelopeKey(봉투 키 일반 감지):');
+// 목록 래퍼: 알려진 키들
+eq(detectEnvelopeKey({ success: true, data: [{ id: 1 }], meta: {} }), 'data', 'data 래퍼');
+eq(detectEnvelopeKey({ code: 0, result: [{ id: 1 }] }), 'result', 'result 래퍼');
+eq(detectEnvelopeKey({ status: 'ok', list: [{ id: 1 }], total: 3 }), 'list', 'list 래퍼');
+eq(detectEnvelopeKey({ items: [{ id: 1 }], page: 1 }), 'items', 'items 래퍼');
+eq(detectEnvelopeKey({ message: 'ok', payload: [{ id: 1 }] }), 'payload', 'payload 래퍼');
+// 이름 모르는 배열 키 + 형제가 전부 메타 → 봉투로 인정
+eq(detectEnvelopeKey({ code: 200, message: 'ok', totalCount: 5, rowset: [{ id: 1 }] }), 'rowset', '미지 키+메타 형제만 → 봉투');
+// 단건 봉투(객체) 도 알려진 키면 벗김
+eq(detectEnvelopeKey({ success: true, data: { id: 1, name: 'A' } }), 'data', '단건 data 봉투(객체)');
+// ⚠️ 봉투 아님: 최상위가 바로 배열이면 여긴 안 옴(호출부에서 처리) — 단건 행 케이스만 여기서 검증
+eq(detectEnvelopeKey({ id: 1, name: 'A', department: 'dev' }), null, '단건 행(배열/봉투 없음) → null');
+// ⚠️ 오탐 방지 핵심: 단건 행이 배열 필드(skills)를 가져도 봉투로 오인 금지(id·name은 메타 아님)
+eq(detectEnvelopeKey({ id: 1, name: 'A', skills: ['Java', 'AWS'] }), null, '행의 배열 필드(skills)는 봉투 아님');
+
+console.log('\napi-binding A2 — 사이트별 봉투로 extractResponseSchema + buildBindingCode:');
+// result 래퍼 사이트
+const SPEC_RESULT = `
+### GET \`/api/employees\`
+**Response**
+\`\`\`json
+{ "code": 0, "result": [ { "id": 1, "name": "김", "department": "개발" } ], "totalCount": 1 }
+\`\`\`
+`;
+const schemaResult = extractResponseSchema(SPEC_RESULT)!;
+eq(schemaResult.envelopeKey, 'result', 'result 봉투 키 감지');
+eq(schemaResult.rowFields, ['id', 'name', 'department'], 'result 봉투 행 필드');
+const codeResult = buildBindingCode({ schema: schemaResult, endpoint: '/api/employees', rootName: 'Employee', collectionVar: 'employees' });
+ok(codeResult.hookCode.includes("useApi<{ result: TEmployee[] }>('/api/employees')"), 'result 봉투 제네릭: useApi<{ result: TEmployee[] }>');
+ok(codeResult.hookCode.includes('const employees = data?.result ?? [];'), 'result 봉투 목록 추출: data?.result ?? []');
+
+// bare 배열 사이트(봉투 없음)
+const SPEC_BARE = `
+### GET \`/api/employees\`
+**Response**
+\`\`\`json
+[ { "id": 1, "name": "김", "department": "개발" } ]
+\`\`\`
+`;
+const schemaBare = extractResponseSchema(SPEC_BARE)!;
+eq(schemaBare.envelopeKey, null, 'bare 배열 → envelopeKey null');
+const codeBare = buildBindingCode({ schema: schemaBare, endpoint: '/api/employees', rootName: 'Employee', collectionVar: 'employees' });
+ok(codeBare.hookCode.includes("useApi<TEmployee[]>('/api/employees')"), 'bare 제네릭: useApi<TEmployee[]>');
+ok(codeBare.hookCode.includes('const employees = data ?? [];'), 'bare 목록 추출: data ?? []');
 
 console.log(`\n결과: ${pass} 통과 / ${fail} 실패\n`);
 if (fail > 0) process.exit(1);
