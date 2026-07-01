@@ -1,7 +1,7 @@
 ---
 title: "useApi 훅"
 category: pattern
-tags: [useApi, use-api, "@axiom/hooks", query, mutation, get, post, put, delete, patch, 조회, 생성, 수정, 삭제, cache, 캐시, invalidate, enabled, 조건부, tanstack, useQuery, useMutation, 훅]
+tags: [useApi, use-api, "@axiom/hooks", query, mutation, get, post, put, delete, patch, 조회, 생성, 수정, 삭제, cache, 캐시, invalidate, enabled, 조건부, tanstack, useQuery, useMutation, 훅, envelope, 봉투, 응답구조, response-shape, unwrap, 언랩, data, 제네릭, generic]
 priority: 1
 language: ko
 scope: pattern
@@ -55,6 +55,26 @@ export default function MyPage(): React.ReactNode {
 ```
 
 요약: `useApi`를 포함한 모든 `use*` 훅은 반드시 `export default function ComponentName() { ... }` 블록 **안쪽**, `return` 문 위에 작성한다. import 아래·일반 const 옆·유틸 함수 안에 작성하면 React 앱이 즉시 깨진다.
+
+---
+
+## ⚠️ 봉투(Envelope) 계약 — 제네릭 `T`는 **서버 응답 바디 모양**이다 (두 번째로 중요)
+
+`useApi<T>`가 돌려주는 `data`는 **서버가 그 엔드포인트에 대해 내려준 HTTP 응답 바디 전체**다.
+scaffold는 서버의 응답 봉투를 **벗기지 않는다.** 따라서 **제네릭 `T`는 스펙 Response 예시의 바디 모양과 1:1로 맞춰야** 한다. 아무 모양이나 넘겨짚으면 `data.map` / `data.field`가 런타임에 `undefined`가 된다.
+
+> **왜 안 벗기나 (내부 동작):** `callApi` → `request<T>`가 서버 바디를 scaffold 내부 봉투(`ApiResponse = { success, data, statusCode }`)로 감쌌다가, `useApi`의 queryFn이 다시 `response.data`로 풀어 **서버 바디만** 반환한다(`use-api.ts` → `api.ts`). scaffold **내부** 봉투는 컴포넌트에 도달하지 않고(감싸기↔풀기 상쇄), **서버** 봉투는 그대로 통과한다. 둘 다 `{ success, data }`처럼 생겨 헷갈리니 혼동 금지.
+
+**봉투 모양은 SI 사이트/엔드포인트마다 다르다.** 하드코딩하지 말고 **스펙 Response를 보고** T를 정하라:
+
+| 스펙 Response 바디 | 제네릭 `T` | 목록/필드 꺼내기 |
+|---|---|---|
+| 바로 배열 `[ {...}, ... ]` | `useApi<TPost[]>` | `const items = data ?? []` |
+| `{ data: [...], meta }` | `useApi<{ data: TPost[]; meta: TMeta }>` | `const items = data?.data ?? []` |
+| `{ success, result: [...] }` | `useApi<{ result: TPost[] }>` | `const items = data?.result ?? []` |
+| 단건 `{ id, name, ... }` | `useApi<TUser>` | `data?.name` |
+
+> 아래 모든 예제가 `useApi<Post[]>`처럼 **바로 배열**로 쓰는 건, 예제 백엔드(jsonplaceholder)가 봉투 없이 배열을 주기 때문이다. 실제 SI 백엔드가 `{ success, data, meta }`로 감싸면 **T도 그 봉투를 포함**해야 하고 목록은 `data?.data`로 꺼낸다. "예제가 배열이니 내 API도 배열"이라 넘겨짚지 말고 반드시 **스펙 Response를 확인**하라.
 
 ---
 
