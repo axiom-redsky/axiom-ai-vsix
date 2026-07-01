@@ -59,8 +59,18 @@ export class EditorContextCollector {
       if (fromOverride) return fromOverride;
     }
 
-    // 채팅 웹뷰에 포커스가 가면 activeTextEditor가 undefined가 되므로 마지막 유효한 에디터를 사용
-    const editor = vscode.window.activeTextEditor ?? this._lastEditor;
+    // 채팅 웹뷰에 포커스가 가면 activeTextEditor가 undefined가 되므로 마지막 유효한 에디터를 사용.
+    // 그마저 없으면(익스텐션 리로드 직후 편집기를 한 번도 포커스하지 않은 경우 등) — 화면에 **떠 있는**
+    // 텍스트 편집기를 쓴다. 이게 없으면 "현재 파일 없음"으로 판정돼 수정 요청이 생성/덮어쓰기로 새므로,
+    // 코드 파일(.ts/.tsx/.js/.jsx)을 우선해 폴백한다. (Output/diff 등 비파일 편집기는 제외 목적)
+    let editor = vscode.window.activeTextEditor ?? this._lastEditor;
+    if (!editor) {
+      const visible = vscode.window.visibleTextEditors;
+      editor =
+        visible.find((e) => /\.(tsx?|jsx?)$/.test(e.document.fileName)) ??
+        visible.find((e) => e.document.uri.scheme === 'file');
+      if (editor) this._lastEditor = editor;
+    }
     if (!editor) return { available: false };
 
     const doc = editor.document;

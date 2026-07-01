@@ -1304,9 +1304,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 띄우던 근본 원인. forceQnA를 isFileCtx와 buildSystemPrompt 양쪽에 흘려 프롬프트·후처리를 일치시킨다.
       const forceQnA = intent?.intent === 'qna' || intent?.intent === 'smalltalk';
       const qnaGated = this._scaffoldBuilder.isQnAGated(text, forceQnA);
+      // 모델 의도 분류기가 'modify_file'로 **확정**했으면 그 판정을 존중해 파일 수정 컨텍스트로 본다.
+      // 종전엔 isFileCtx를 정규식(isFileModificationContext) + 열린 파일 경로로만 판정해서, 채팅 패널에
+      // 포커스가 있어 activeTextEditor가 비면(리로드 직후 등) filePath가 없어 정규식이 false → 모델이
+      // 옳게 잡은 '수정' 의도가 버려지고 **생성(createFile) 경로로 새어 기존 파일을 덮어쓰려던** 사고가 났다.
+      // 파일 확정은 아래 _resolveTargetFile이 담당한다(파일 있으면 진행, 없으면 생성이 아니라 되묻기).
+      const classifierSaysModify = intent?.intent === 'modify_file';
       const isFileCtx =
         !qnaGated &&
-        this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '');
+        (classifierSaysModify ||
+          this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? ''));
 
       // 온라인 지식 가이드 — Q&A(조회·설명)로 게이팅된 요청은, 로컬 검색기가 정밀 매칭 문서를
       // **확신**할 때 그 knowledge 문서 전문을 오프라인과 동일하게 렌더하고 LLM 합성을 건너뛴다.
