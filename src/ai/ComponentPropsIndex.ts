@@ -35,14 +35,41 @@ function escapeCell(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 }
 
-function renderComponent(name: string, entry: IComponentEntry): string {
+/**
+ * "층 갭" 힌트 — 값이 자체 하위 DSL을 품는 prop(예: SmartTable의 `columns`)은 자동생성 prop 표가
+ * 타입명(`SmartColumns<TRow>`)에서 멈춰, 그 안의 컬럼 레벨 옵션(format/badge/…)이 표에 안 보인다.
+ * 실측 갭: 사용자가 "SmartTable 옵션"을 물어도 `format: 'phone'`을 표에서 못 찾았다(다른 층이라).
+ * 정독용 Q&A 레퍼런스에서만 해당 행 설명에 하위 어휘를 인라인으로 덧붙여 발견성을 살린다
+ * (region 편집 주입 경로는 토큰·회귀 보호차 건드리지 않는다 — dslHints=false 기본).
+ */
+const DSL_HINTS: { match: RegExp; note: string }[] = [
+  {
+    match: /SmartColumns</,
+    note:
+      '각 컬럼: `label` · `format` · `badge` · `align` · `aggregate` · `cell` ' +
+      '(format 값: money·percent·phone·date·datetime·rrn·bizno…) — 상세는 이어지는 SmartTable 문서 참조',
+  },
+];
+
+function renderComponent(
+  name: string,
+  entry: IComponentEntry,
+  opts?: { dslHints?: boolean },
+): string {
   const head = `### <${name}/> (import: \`${entry.import}\`)`;
   if (entry.props.length === 0) {
     // 순수 HTML/Radix 래퍼 — 특이 prop 없음. 표준 attr만 받는다는 사실 자체가 유용한 신호.
     return `${head}\n- 특이 prop 없음(표준 DOM 속성만 받습니다).`;
   }
   const rows = entry.props
-    .map((p) => `| \`${escapeCell(p.name)}\`${p.required ? ' *(필수)*' : ''} | \`${escapeCell(p.type)}\` | ${escapeCell(p.doc || '')} |`)
+    .map((p) => {
+      let doc = p.doc || '';
+      if (opts?.dslHints) {
+        const hint = DSL_HINTS.find((h) => h.match.test(p.type));
+        if (hint) doc = doc ? `${doc} — ${hint.note}` : hint.note;
+      }
+      return `| \`${escapeCell(p.name)}\`${p.required ? ' *(필수)*' : ''} | \`${escapeCell(p.type)}\` | ${escapeCell(doc)} |`;
+    })
     .join('\n');
   const truncNote = entry.truncated ? `\n> (일부 prop 생략됨 — 위는 주요 항목)` : '';
   const domNote = entry.domNote ? ` className 등 표준 DOM 속성도 함께 받습니다.` : '';
@@ -93,7 +120,9 @@ export function detectComponentsInText(text: string): string[] {
 export function buildComponentOptionsReference(names: string[]): string {
   const picked = names.filter((n) => COMPONENT_PROPS_INDEX[n]).slice(0, MAX_COMPONENTS);
   if (picked.length === 0) return '';
-  const body = picked.map((n) => renderComponent(n, COMPONENT_PROPS_INDEX[n])).join('\n\n');
+  const body = picked
+    .map((n) => renderComponent(n, COMPONENT_PROPS_INDEX[n], { dslHints: true }))
+    .join('\n\n');
   return (
     `## 📋 컴포넌트 옵션 레퍼런스 (실 scaffold 소스에서 파생)\n` +
     `> 아래는 지목한 컴포넌트가 받는 **전체 고유 prop**입니다(className 등 표준 DOM 속성은 제외). ` +
