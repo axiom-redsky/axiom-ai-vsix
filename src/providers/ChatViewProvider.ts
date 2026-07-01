@@ -12,6 +12,19 @@ import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclaration
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
 import { buildContractSection } from '../ai/ScaffoldContracts';
+import {
+  findRowCollectionVar,
+  findRowMapVar,
+  extractTableColumns,
+  pickResponseSchema,
+  reconcile,
+  buildBindingCode,
+  rewriteMappedFields,
+  buildFieldMappingPrompt,
+  parseFieldMapping,
+  deriveRootName,
+  type IFieldRename,
+} from '../ai/ApiBindingRecipe';
 import { impliedControlTags } from '../ai/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
@@ -1372,6 +1385,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         }
 
+        // [실험] 조립 바인딩(compose, 기본 off): "테이블에 /api/... 적용"처럼 다부품 레시피는 약한 모델에
+        // 통째로 맡기지 않고 확장이 결정론으로 조립한다(스펙 type 생성 + useApi 삽입 + 셀 재바인딩). 애매
+        // 필드 매핑만 작은 모델콜. 트리거 미충족·실패면 false → region/full 기존 흐름으로 폴백(회귀 0).
+        if (
+          ExtensionConfig.isComposeBindingEnabled() &&
+          !editorCtx.selection &&
+          editorCtx.filePath &&
+          /\.tsx?$/.test(editorCtx.filePath)
+        ) {
+          if (await this._tryComposeBinding(editorCtx.filePath, text, config)) {
+            this._post({ type: 'done' });
+            this._postStatus(config.model);
+            return;
+          }
+        }
+
         // [실험] 영역 편집(설정 off 기본): 선택 없는 TSX 수정 요청은 확장이 편집 영역을 결정론적으로
         // 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성 + 훅/import structural 삽입한다.
         // 게이트 미통과·의존성 미해소·root-tag 불일치면 handled=false → 아래 기존 full 입력 흐름으로 폴백.
@@ -2725,6 +2754,114 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   // ─── 영역 편집(실험) ──────────────────────────────────────────────────────────
+
+  /**
+   * [실험] 조립 바인딩(compose) — "테이블에 /api/… 적용" 같은 다부품 레시피를 약한 모델에 통째로
+   * 맡기지 않고 확장이 **결정론으로 조립**한다. 흐름:
+   *   ① 트리거: 현재 파일에 `<tbody>`+`X.map` 데이터 테이블 + 요청에 정확 엔드포인트.
+   *   ② 참조 스펙에서 그 엔드포인트의 GET 응답 스키마 추출 → 테이블 컬럼과 대조(결정론).
+   *   ③ 약어 등 결정론으로 못 맞춘 컬럼만 **작은 모델콜**(라벨+필드목록, 파일 아님)로 매핑.
+   *   ④ rewrite(셀 재바인딩) + applyStructuralEdit(type·useApi·가드) → 최종 텍스트 → 확인 카드.
+   *   ⑤ API에 없는 컬럼은 추측 금지 → 알림(되묻기). 트리거 미충족·실패 시 false → region/full 폴백(회귀 0).
+   *
+   * 상세/설계: 메모리 project_compose_binding_recipe. 순수 조립 로직은 `ai/ApiBindingRecipe.ts`(테스트 고정).
+   */
+  private async _tryComposeBinding(filePath: string, text: string, config: LlmConfig): Promise<boolean> {
+    // ① 현재 파일 + 데이터 테이블 트리거
+    const domain = this._scaffoldBuilder.extractDomainFromFilePath(filePath) ?? '';
+    const { originalContent } = await this._fileCreator.readFileContent({
+      action: 'updateFile', templateType: 'page', domain, componentName: '', filePath,
+    });
+    if (!originalContent) return false;
+    const collectionVar = findRowCollectionVar(originalContent);
+    const mapVar = findRowMapVar(originalContent);
+    if (!collectionVar || !mapVar) return false;
+    const columns = extractTableColumns(originalContent);
+    if (columns.filter((c) => c.field).length < 2) return false; // 데이터 테이블로 보기 어려움
+
+    // ② 엔드포인트 + 참조 스펙 → GET 응답 스키마
+    const apiPaths = extractApiPaths(text);
+    if (apiPaths.length === 0) return false;
+    const endpoint = apiPaths[0];
+    const ref = await this._loadReferencedFiles(text, filePath);
+    if (!ref.contents.length) return false;
+    const schema = pickResponseSchema(ref.contents.join('\n\n'), endpoint);
+    if (!schema || schema.rowFields.length === 0) return false;
+
+    // ③ 대조(결정론) — 확정 매핑 + 애매/미매핑 분리
+    const rec = reconcile(columns, schema);
+    if (rec.mapping.length === 0 && rec.unmappedColumns.length === 0) return false;
+    const renames: IFieldRename[] = rec.mapping.map((m) => ({ from: m.column.field!, to: m.apiField }));
+
+    // ④ 애매 컬럼(후보 있음)만 작은 모델콜로 매핑
+    const ambiguous = rec.unmappedColumns.filter((c) => c.field);
+    if (ambiguous.length > 0 && rec.unusedApiFields.length > 0) {
+      this._post({
+        type: 'token',
+        content: `\n\n> 🧭 **필드 매핑 확인 중…** (\`${ambiguous.map((c) => c.field).join('`, `')}\`)\n`,
+      });
+      const prompt = buildFieldMappingPrompt(ambiguous, rec.unusedApiFields);
+      const resp = await this._streamCollect([{ role: 'user', content: prompt }], config, 45_000);
+      renames.push(...parseFieldMapping(resp, ambiguous, rec.unusedApiFields));
+    }
+
+    // ⑤ 여전히 미매핑(API에 대응 없음) = 언더스펙 → 추측 금지, 알림만(되묻기)
+    const mappedFroms = new Set(renames.map((r) => r.from));
+    const unresolved = ambiguous.filter((c) => !mappedFroms.has(c.field!));
+
+    // ⑥ 결정론 조립: 셀 재바인딩 → type·useApi·가드 삽입
+    const rewritten = rewriteMappedFields(originalContent, renames, mapVar).text;
+    const rootName = deriveRootName(endpoint);
+    const bind = buildBindingCode({ schema, endpoint, rootName, collectionVar });
+    const applied = applyStructuralEdit(rewritten, { hookCode: bind.hookCode, imports: bind.imports }).text;
+    const diff = computeDiffHunks(originalContent, applied);
+    if (diff.length === 0) return false;
+
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🧩 조립 바인딩 (${filePath}): endpoint=${endpoint} type=${bind.typeName} ` +
+        `매핑=${renames.map((r) => `${r.from}→${r.to}`).join(', ') || '(정확일치만)'} ` +
+        `미매핑=${unresolved.map((c) => c.field).join(', ') || '없음'}`,
+    );
+    this._post({
+      type: 'token',
+      content:
+        `\n\n> 🧩 **조립 바인딩(실험)**: 참조 스펙으로 \`${bind.typeName}\` 타입 생성 + \`useApi\` 연결 + ` +
+        `테이블 셀 재바인딩을 결정론으로 조립했습니다.\n`,
+    });
+    if (unresolved.length > 0) {
+      const list = unresolved.map((c) => `\`${c.headerLabel || c.field}\``).join(', ');
+      this._post({
+        type: 'token',
+        content:
+          `>\n> ⚠️ ${list} 컬럼은 \`${endpoint}\` 응답에 **없어 그대로 뒀습니다**(추측하지 않음). ` +
+          `다른 엔드포인트가 필요하거나 이 컬럼을 빼야 할 수 있습니다.\n`,
+      });
+    }
+
+    const wrapped = this._wrapCodeBlockAsAxiomAction('```tsx\n' + applied + '\n```', filePath);
+    if (!wrapped) return false;
+    this._history.push({ role: 'assistant', content: '(조립 바인딩 적용)' });
+    await this._handleAxiomAction(wrapped, false, false, undefined, diff);
+    return true;
+  }
+
+  /** 짧은 단발 모델콜 — 시스템/히스토리 없이 프롬프트 하나만 스트리밍 수집(필드매핑 등 작은 콜). */
+  private async _streamCollect(messages: ChatMessage[], config: LlmConfig, timeoutMs: number): Promise<string> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), timeoutMs);
+    const relay = () => abort.abort();
+    this._abortController?.signal.addEventListener('abort', relay, { once: true });
+    let out = '';
+    try {
+      for await (const token of this._llm.streamChat(messages, config, abort.signal)) out += token;
+    } catch {
+      /* 타임아웃·중단 → 부분/빈 결과 반환(호출부가 빈 매핑으로 안전 처리) */
+    } finally {
+      clearTimeout(timer);
+      this._abortController?.signal.removeEventListener('abort', relay);
+    }
+    return out;
+  }
 
   /**
    * [실험] 호스트 주도 영역(하이브리드) 편집을 시도한다.

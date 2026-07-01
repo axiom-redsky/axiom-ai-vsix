@@ -10,6 +10,8 @@ import {
   rewriteMappedFields,
   deriveRootName,
   findRowCollectionVar,
+  buildFieldMappingPrompt,
+  parseFieldMapping,
 } from '../src/ai/ApiBindingRecipe';
 import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
@@ -155,6 +157,24 @@ ok(rw.text.includes('status={emp.employment_status}'), 'emp.status → emp.emplo
 ok(rw.text.includes('{emp.name}'), 'emp.name 유지(정확일치는 미변경)');
 ok(rw.text.includes('{emp.project}') && rw.text.includes('{emp.rate}'), '미매핑(project·rate)은 손대지 않음(Stage 3 되묻기 대상)');
 eq(rw.renamed.map((r) => r.from), ['dept', 'grade', 'status'], '실제 치환된 3개(name 제외)');
+
+console.log('\napi-binding Stage 2b — 애매 컬럼 매핑콜(프롬프트/파싱):');
+const ambiguous = cols.filter((c) => c.field === 'dept' || c.field === 'grade');
+const prompt = buildFieldMappingPrompt(ambiguous, rec.unusedApiFields);
+ok(prompt.includes('"부서"') && prompt.includes('"dept"'), '프롬프트에 컬럼 라벨+필드');
+ok(prompt.includes('department') && prompt.includes('position') && !prompt.includes('EmployeeListPage'), '후보 필드 포함·파일 전문 없음(작은 콜)');
+// 모델이 반환했다고 가정한 응답(코드펜스·잡담 섞여도 파싱)
+eq(
+  parseFieldMapping('네, 매핑입니다:\n```json\n{"dept":"department","grade":"position"}\n```', ambiguous, rec.unusedApiFields),
+  [{ from: 'dept', to: 'department' }, { from: 'grade', to: 'position' }],
+  '유효 매핑 파싱',
+);
+eq(
+  parseFieldMapping('{"dept":"salary","grade":"position"}', ambiguous, rec.unusedApiFields),
+  [{ from: 'grade', to: 'position' }],
+  '후보에 없는 환각 필드(salary)는 드롭',
+);
+eq(parseFieldMapping('매핑 없음', ambiguous, rec.unusedApiFields), [], '비-JSON 응답 → 빈 매핑(안전)');
 
 // ── 통합: 실제 시작 상태(모듈 스코프 더미 배열)에서 전체 조립 ───────────────────
 const FILE_DUMMY = `import { Button } from '@axiom/components/ui';

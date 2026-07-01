@@ -239,6 +239,11 @@
           "default": true,
           "description": "[실험] 영역(region/hybrid) 편집. TSX 수정 요청에서 확장이 편집 영역을 결정론적으로 찾아 안전 게이트를 통과한 경우에만 그 영역만 모델에 보내 재작성하고, 새 훅/import는 구조적으로 삽입합니다. 게이트 미통과·의존성 미해소 시 기존 전체 입력 방식으로 자동 폴백합니다(파일 파손 방지). 기본 켜짐."
         },
+        "axiom-ai.experimental.composeBinding": {
+          "type": "boolean",
+          "default": false,
+          "description": "[실험] 조립 바인딩(compose). \"테이블에 /api/… 적용\" 같은 다부품 요청을 약한 모델에 통째로 맡기지 않고, 확장이 참조 스펙으로 타입을 생성하고 useApi 훅·가드를 삽입하며 테이블 셀을 스펙 필드로 재바인딩합니다(결정론). 약어 등 애매한 필드 매핑만 작은 모델 호출로 해결하고, 스펙에 없는 컬럼은 추측하지 않고 알립니다. 트리거 미충족·실패 시 기존(region/full) 흐름으로 폴백합니다. 기본 꺼짐."
+        },
         "axiom-ai.experimental.intentClassifier": {
           "type": "boolean",
           "default": true,

@@ -20,6 +20,7 @@
  * 제네릭은 **행 배열 타입**(`useApi<TEmployee[]>`)이고 컴포넌트는 `const items = data ?? []`로 쓴다.
  */
 import { generateTypeFromJson } from './JsonTypeGenerator';
+import { splitIntoSections, containsExactApiPath } from './SectionExtractor';
 import type { ImportRequest } from './StructuralAnchor';
 
 /** 테이블 한 컬럼 — 헤더 라벨과 그 셀이 읽는 행 필드(없으면 null: 액션 버튼 등). */
@@ -84,8 +85,26 @@ export function extractTableColumns(source: string): ITableColumn[] {
   }));
 }
 
-/** `<tbody>` 안 `X.map((item) =>` 의 item 변수명을 찾는다(첫 매치). */
-function findRowMapVar(source: string): string | null {
+/**
+ * 스펙 전문에서 **해당 엔드포인트의 목록(GET) 응답** 스키마를 고른다. 같은 경로에 POST/GET가 함께 있으면
+ * (예: POST /api/employees 등록 · GET /api/employees 목록) 배열을 반환하는 GET 섹션을 우선한다.
+ */
+export function pickResponseSchema(specText: string, apiPath: string): IResponseSchema | null {
+  const sections = splitIntoSections('spec', specText);
+  const matching = sections.filter((s) => containsExactApiPath(s.header, apiPath));
+  const ordered = [
+    ...matching.filter((s) => /\bGET\b/i.test(s.header)),
+    ...matching.filter((s) => !/\bGET\b/i.test(s.header)),
+  ];
+  for (const s of ordered) {
+    const schema = extractResponseSchema(s.body);
+    if (schema) return schema;
+  }
+  return extractResponseSchema(specText);
+}
+
+/** `<tbody>` 안 `X.map((item) =>` 의 item(행) 변수명을 찾는다(첫 매치). 조립 시 셀 재바인딩 스코프. */
+export function findRowMapVar(source: string): string | null {
   const tbodyStart = source.search(/<tbody\b/);
   const scope = tbodyStart >= 0 ? source.slice(tbodyStart) : source;
   // {rows.map((emp) => ( …   ·   {rows.map((emp, i) => { …
@@ -318,6 +337,57 @@ export function rewriteMappedFields(
     }
   }
   return { text, renamed };
+}
+
+// ── 애매 컬럼 → API필드 매핑: 작은 모델콜(라벨+필드목록만, 파일 아님) ──────────────
+
+/**
+ * 약어 등 결정론으로 못 잡은 컬럼을 API 필드에 맞추는 **작은 모델콜** 프롬프트를 만든다.
+ * 입력은 컬럼 {라벨·필드} 목록 + 후보 API필드 목록뿐 — 파일/스펙 전문 없이 수십 토큰. 출력은 JSON 매핑.
+ */
+export function buildFieldMappingPrompt(columns: ITableColumn[], candidateFields: string[]): string {
+  const cols = columns.map((c) => ({ label: c.headerLabel, field: c.field }));
+  return [
+    '아래 표 컬럼을 API 응답 필드에 매핑하세요. 각 컬럼의 한글 라벨과 기존 필드명의 **의미**를 보고 가장 알맞은 API 필드를 고르세요.',
+    '확신이 없으면 그 컬럼은 **생략**하세요(억지 매핑 금지).',
+    '',
+    `표 컬럼: ${JSON.stringify(cols)}`,
+    `API 필드(이 중에서만 선택): ${JSON.stringify(candidateFields)}`,
+    '',
+    '설명 없이 **JSON만** 출력. 형식(키=기존 필드명, 값=선택한 API 필드): {"dept":"department","grade":"position"}',
+  ].join('\n');
+}
+
+/**
+ * 모델 응답에서 매핑 JSON을 뽑아 검증된 rename 목록으로 만든다.
+ * - 응답의 첫 `{…}` 객체만 파싱(코드펜스·잡담 무시).
+ * - 키는 ambiguousColumns의 field, 값은 candidateFields에 실재해야 채택(환각 필드 차단).
+ */
+export function parseFieldMapping(
+  response: string,
+  ambiguousColumns: ITableColumn[],
+  candidateFields: string[],
+): IFieldRename[] {
+  const m = response.match(/\{[\s\S]*?\}/);
+  if (!m) return [];
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(m[0]);
+  } catch {
+    return [];
+  }
+  const wantFields = new Set(ambiguousColumns.map((c) => c.field));
+  const candSet = new Set(candidateFields);
+  const out: IFieldRename[] = [];
+  const usedTo = new Set<string>();
+  for (const [from, toRaw] of Object.entries(obj)) {
+    if (!wantFields.has(from)) continue;
+    const to = typeof toRaw === 'string' ? toRaw : '';
+    if (!to || to === from || !candSet.has(to) || usedTo.has(to)) continue;
+    usedTo.add(to);
+    out.push({ from, to });
+  }
+  return out;
 }
 
 /** 엔드포인트에서 타입 베이스 이름을 뽑는다: "/api/employees" → "Employee"(마지막 세그먼트 단수화·PascalCase). */

@@ -19,7 +19,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'debug.logSystemPrompt',
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
   'experimental.onlineKnowledgeAnswer', 'experimental.regionVerify', 'experimental.anchorFirstEdit',
-  'experimental.patchFirstEdit',
+  'experimental.patchFirstEdit', 'experimental.composeBinding',
   'scenarioC.compactModes',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
@@ -335,6 +335,17 @@ export class ExtensionConfig {
    */
   static isRegionEditEnabled(): boolean {
     return ExtensionConfig._resolve<boolean>('experimental.regionEdit', true);
+  }
+
+  /**
+   * 실험: 조립 바인딩(compose). "테이블에 /api/... 적용" 같은 다부품 레시피를 약한 모델에 통째로
+   * 떠넘기지 않고, 확장이 결정론으로 조립한다 — 참조 스펙 Response로 type 생성(generateTypeFromJson),
+   * useApi 훅·파생·가드 삽입, 테이블 셀 재바인딩. 필드 매핑 중 약어 등 애매한 것만 작은 모델콜(필드목록
+   * 수준)로 해결하고, API에 없는 컬럼은 추측 대신 되묻는다. 폐쇄망 점진 도입 위해 기본 off. 미충족·실패 시
+   * 기존 흐름으로 폴백(회귀 0). 상세: 메모리 project_compose_binding_recipe.
+   */
+  static isComposeBindingEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.composeBinding', false);
   }
 
   /**
