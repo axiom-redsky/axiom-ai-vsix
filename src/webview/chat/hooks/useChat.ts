@@ -49,6 +49,10 @@ export function useChat() {
   // 직전 턴이 오프라인(로컬 RAG)이었는지 — 토큰 메터를 라이브 측정 대신 "오프라인(토큰 미사용)"으로
   // 전환하는 데 쓴다. 세션 단위가 아니라 매 턴 host 신호로 갱신돼 온↔오프 깜빡임을 그대로 따라간다.
   const [isOffline, setIsOffline] = useState(false);
+  // 이번 턴이 "정독용"(지식·가이드 전문 렌더)인지 — true면 답변 바닥이 아니라 이번 질문을 뷰포트
+  // 맨 위에 고정해 위→아래로 읽게 한다. isOffline(토큰 메터 전용)과 분리된 별도 축: 온라인 지식
+  // 가이드도 켜지고, 오프라인 턴(로컬 RAG)도 켜진다. 매 턴 sendMessage에서 false로 리셋된다.
+  const [pinQuestionTop, setPinQuestionTop] = useState(false);
   // 파일 피커로 첨부한 참조 파일 토큰(`@경로`) — 입력창에 append되도록 InputBar에 전달한다.
   const [attachText, setAttachText] = useState('');
   const streamingIdRef = useRef<string | null>(null);
@@ -210,6 +214,8 @@ export function useChat() {
             // 않는다. 직전 온라인 값은 그대로 두고(온라인 복귀 시 다음 contextInfo가 덮어씀) 표시만
             // InputBar가 "오프라인 · 토큰 미사용"으로 대체한다.
             setIsOffline(true);
+            // 오프라인 턴은 로컬 지식 답변 → 정독용으로 질문을 상단 고정한다.
+            setPinQuestionTop(true);
             break;
           }
           setIsOffline(false);
@@ -229,6 +235,10 @@ export function useChat() {
           });
           if (msg.contextWindow) setContextWindow(msg.contextWindow);
           break;
+        case 'pinQuestion':
+          // 온라인 지식·가이드 전문 렌더 — 정독용으로 질문을 상단 고정(토큰 메터는 건드리지 않음).
+          setPinQuestionTop(true);
+          break;
       }
     };
 
@@ -239,6 +249,8 @@ export function useChat() {
   const sendMessage = useCallback(
     (text: string) => {
       if (!text.trim() || isStreaming || isWaiting) return;
+      // 새 턴 시작 — 정독 고정 해제(이번 턴이 지식·가이드면 host가 pinQuestion으로 다시 켠다).
+      setPinQuestionTop(false);
       setMessages((prev) => [
         ...prev,
         { id: Date.now().toString(), role: 'user', content: text },
@@ -311,7 +323,7 @@ export function useChat() {
     messages, status, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
     selectionContext, dismissSelection,
-    systemPromptChars, breakdown, contextWindow, usage, isOffline,
+    systemPromptChars, breakdown, contextWindow, usage, isOffline, pinQuestionTop,
     attachReference, attachText, consumeAttach,
   };
 }

@@ -1717,6 +1717,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 빈손(무관) 또는 카탈로그 폴백(정확 매칭 아님)이면 LLM에 맡긴다(확신 게이트).
     if (!docs || docs.length === 0 || docs[0] === FALLBACK_HINT) return false;
 
+    // 정독용 턴 — webview가 답변 바닥이 아니라 이번 질문을 뷰포트 상단에 고정하게 한다(위→아래로 정독).
+    this._post({ type: 'pinQuestion' });
     const banner =
       '> 📚 **scaffold 지식 가이드** — 로컬 문서에서 관련 사용법을 찾아 전문을 표시합니다.';
     const md = `\n${banner}\n\n${docs.join('\n\n---\n\n')}\n`;
