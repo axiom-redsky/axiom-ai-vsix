@@ -8,7 +8,7 @@ import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs, splitTsSections } from '../ai/CodeSectionExtractor';
-import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
+import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, ensureUiComponentImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/RegionCaptureRecorder';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
@@ -4163,6 +4163,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this._corpusOutputChannel.appendLine(
               `[Axiom AI] 🔧 전역 객체 import ${glob.removed}건 제거($ui/$util/$router는 import 불필요) (${action.filePath}, mode=${action.mode ?? 'full'})`,
             );
+          }
+          // 사용된 @axiom/components/ui 컴포넌트 import 결정론적 보강(normalizeUiImportPaths 뒤라야 정확). 약한 모델이
+          // <Button> 등을 JSX에 넣고 import를 빠뜨리는 실패(실측: 선택 경로 버튼 삽입 → import 누락 → 컴파일 깨짐)를
+          // region 게이트와 같은 취지로 patch/full/lines 공통 길목에서 주입한다(카탈로그에 있는 이름만, 커스텀 제외).
+          if (/\.(tsx|jsx)$/.test(action.filePath)) {
+            const uiEnsure = ensureUiComponentImports(action.generatedCode);
+            if (uiEnsure.added.length > 0) {
+              action.generatedCode = uiEnsure.text;
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] 🔧 누락된 UI 컴포넌트 import 보강: ${uiEnsure.added.join(', ')} → @axiom/components/ui (${action.filePath}, mode=${action.mode ?? 'full'})`,
+              );
+              this._post({
+                type: 'token',
+                content: `\n\n> 🔧 사용된 컴포넌트의 빠진 import를 자동 추가했습니다: \`${uiEnsure.added.join('`, `')}\`\n`,
+              });
+            }
           }
           const dedup = this._fileCreator.dedupeImportLines(action.generatedCode);
           if (dedup.removed > 0) {

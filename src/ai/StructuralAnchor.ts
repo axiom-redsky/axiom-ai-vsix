@@ -1522,6 +1522,56 @@ export function findUnresolvedJsxComponents(regionJsx: string, fullText: string)
   return { ok: unresolved.length === 0, unresolved };
 }
 
+/**
+ * 사용된 `@axiom/components/ui` 컴포넌트 중 import가 빠진 것을 **결정론적으로 보강**한다.
+ *
+ * 왜: 약한 모델이 patch/full로 `<Button>`·`<Table>` 등 UI 컴포넌트를 JSX에 넣으면서 import를 자주 빠뜨린다
+ * (실측 2026-07-03: 선택 경로 "버튼 넣어줘" → `<Button>` 삽입, `import { Button }` 누락 → 컴파일 깨짐).
+ * region 경로의 findUnresolvedJsxComponents 게이트와 같은 취지를 **주입**으로 patch/full/lines 공통 길목에
+ * 적용한다. UI_COMPONENTS(유한 카탈로그)에 있는 이름만 보강 — 커스텀 컴포넌트(경로 가변)는 건드리지 않는다
+ * (오주입 방지). UI import 경로 정규화(normalizeUiImportPaths) **후**에 호출해야 한다(서브경로가 이미 배럴로
+ * 합쳐진 뒤라야 "이미 import됨"을 올바로 판정).
+ *
+ * @returns text=보강된 파일, added=새로 import에 추가한 컴포넌트명(없으면 빈 배열·text 원본 동일)
+ */
+export function ensureUiComponentImports(fullText: string): { text: string; added: string[] } {
+  const refs = collectJsxComponentRefs(fullText);
+  if (refs.size === 0) return { text: fullText, added: [] };
+  const available = collectAvailableSymbols(fullText);
+  const missing = [...refs].filter((r) => UI_COMPONENTS.has(r) && !available.has(r));
+  if (missing.length === 0) return { text: fullText, added: [] };
+
+  const hasCRLF = fullText.includes('\r\n');
+  const text = hasCRLF ? fullText.replace(/\r\n/g, '\n') : fullText;
+
+  // 기존 @axiom/components/ui named import에 병합. [^}]* 는 개행 포함이라 멀티라인 import도 매칭한다.
+  const uiImportRe = /import\s*\{([^}]*)\}\s*from\s*(['"])@axiom\/components\/ui\2\s*;?/;
+  let out: string;
+  const m = text.match(uiImportRe);
+  if (m) {
+    const merged = m[1].split(',').map((s) => s.trim()).filter(Boolean);
+    for (const name of missing) if (!merged.includes(name)) merged.push(name);
+    out = text.replace(uiImportRe, `import { ${merged.join(', ')} } from '@axiom/components/ui';`);
+  } else {
+    // 배럴 import 라인이 없으면 마지막 top-level import 뒤에 새 줄 삽입(없으면 파일 맨 위).
+    const line = `import { ${missing.join(', ')} } from '@axiom/components/ui';`;
+    const lines = text.split('\n');
+    let lastImport = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (
+        /^\s*import\s.+from\s*['"][^'"]+['"]\s*;?\s*$/.test(lines[i]) ||
+        /^\s*\}\s*from\s*['"][^'"]+['"]\s*;?\s*$/.test(lines[i]) // 멀티라인 import 닫힘 줄
+      ) {
+        lastImport = i;
+      }
+    }
+    if (lastImport >= 0) lines.splice(lastImport + 1, 0, line);
+    else lines.unshift(line);
+    out = lines.join('\n');
+  }
+  return { text: hasCRLF ? out.replace(/\n/g, '\r\n') : out, added: missing };
+}
+
 // ─── 기존 문장 교체(<replace>) — 영역 밖 비-JSX 문장 수정 채널 ──────────────────
 
 export interface ReplaceBlock {

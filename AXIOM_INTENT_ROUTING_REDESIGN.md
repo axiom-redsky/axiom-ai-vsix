@@ -9,6 +9,84 @@
 
 ---
 
+## ★★ 2026-07-03 세션 (최신, 여기부터 읽으면 됨) — 토큰 절감 + 버그/환각 수정
+
+> ⚠️ 이 세션은 라우팅(이 문서 본론)이 아니라 **① 토큰 절감 ② 편집 적용 견고화 ③ 환각 수정** 축이다.
+> 라우팅 B안(S2~S5)은 아직 그대로 남아 있음(아래 07-02 RESUME 참조). 사용자 요청으로 여기 함께 기록.
+
+### 한 문단 요약
+라이브 실모델(qwen3-coder-64k)로 "버튼 넣어줘"·"getProd 결과를 테이블로"·"선택 div 아래 버튼"을 반복 돌리며,
+**토큰이 왜 많은지 진단→절감**하고, 그 과정에서 노출된 **적용 dead-end·useApi 환각·structural 오선택·import 누락**을
+순차 수정했다. 핵심 교훈 재확인: **프롬프트 설득 < 결정론 주입/제거**, 그리고 **재시도·폴백 프롬프트는 coreRules
+가드레일을 유실하므로 핵심 규칙을 재주입해야 한다.**
+
+### 이번 세션 완료 (main 미커밋 — 내일 커밋 필요) — 작업별
+
+**A. 편집 적용 견고화 — patch 실패 시 full 1회 자동 폴백**
+- `ChatViewProvider._tryAutoFullFallback(filePath, groundedRetryDone)` 신설. groundedRetryDone·config 가드 → `_retryForAxiomAction({forceFull})` → `_handleAxiomAction(resp,false,true)`(정확히 1회).
+- 배선한 dead-end 3곳: ① 메인 patch(`mp.text===null`, grounded 재시도 실패 직후) ② router/autoWrite patch 경로(router 제외) ③ **중복선언 가드 거부**(`newDupes.length>0`, patch가 기존 const 재선언 — "getProd로 테이블" 실측 dead-end).
+- config `multiPatch.autoFullFallback`(기본 **on**). 왜: fragile patch는 overlap·매칭실패 시 구조적 좌초, full은 그 실패가 없음.
+
+**B. 토큰 절감 레버 A — coreRules 의도 게이팅 (기본 on)**
+- `_buildCoreRules`에 `includeDataRules/includeTypeNaming/includeRouterRules` 플래그. **순수 가드레일(import 경로·Rules of Hooks·Button·기존코드/핸들러 보존·라이브러리 금지·주석) 항상 주입**, 상황규칙(데이터 출처 우선순위·useApi·타입 네이밍·선언 순서·createBrowserRouter/router import)만 의도 관련 시. 시나리오 C 전용(A/B 신규생성은 전체 유지).
+- 의도감지 `_hasDataIntent`·`_hasTypeIntent`·`_hasNavigationIntent`. config `scenarioC.gateCoreRulesByIntent`(on).
+- **버튼 케이스 실측 −1,581자**(규칙·가이드 −19%). 정확도↑+토큰↓ 정렬 이득(약한 모델은 무관 지시문이 품질을 떨어뜨림).
+
+**C. 토큰 절감 레버 B — 출력 모드 초압축 (기본 off, 실모델 검증 대기)**
+- `_buildScenarioCPrompt`에 `ultraCompactModes` + `ultra = ultraCompactModes && !hasSelection && !requiresRender`. ultra면 coreRules와 중복인 '훅 삽입 위치 규칙' 블록·lines·장황한 모드선택 설명 생략 + structural·patch를 한 예시씩 축약.
+- config `scenarioC.ultraCompactModes`(**off**). **모드섹션 −1,434자(62%)**. 편집전략 메뉴 변경이라 회귀 위험 → 내일 실모델 검증 후 on 결정.
+
+**D. 선택 영역 중복 window 제거**
+- 선택 시 파일 본문(라인번호) + **선택 주변 코드 window(라인번호 붙여 복제)** + 지시문이 3중으로 들어가던 것. `linesAllowed`(파일 안 잘림)일 때 중복 window 생략 + 파일 본문 라인에 `← 선택` 마커 인라인. 슬라이싱된 경우만 종전 window 유지. **−800~900자** + 약한 모델 혼란(첫 시도 axiom-action 누락) 감소 기대.
+
+**E. 환각/버그 수정 3건 (라이브 발굴)**
+1. **full 재시도 프롬프트 useApi 편향** — `_retryForAxiomAction` forceFull 프롬프트가 무조건 "데이터 조회는 반드시 useApi로" 지시 → 로컬 `getProd` 요청에 `useApi('/api/employees')` 환각. **균형 가드레일로 교체**(파일에 getArr/getProd 있으면 그대로 .map(), API 명시 없으면 useApi 지어내지 마라, 진짜 API일 때만 useApi). 교훈: **재시도는 coreRules 미전송이라 데이터출처 우선순위 유실 → 재주입 필요.**
+2. **referencesLocalDataSource 자연어 미인식** — `X()`/`X함수`만 잡아 "getProd **결과 배열을**"(괄호 없음)을 놓침 → local-data-render 카드 미발동 → `requiresPatchMode` 미적용 → structural 오선택 → 선언만·테이블 JSX 누락. **3갈래로 확장**: ①`X()`/`X함수` ②`X 결과/배열/데이터/목록/리스트/값` ③getter형 이름(`get|fetch|load|…`+대문자). id 길이≥3.
+3. **import 누락 결정론 주입** — 약한 모델이 `<Button>` 넣고 `import { Button }` 생략(선택 프롬프트 무시). `StructuralAnchor.ensureUiComponentImports(text)` 신설 — JSX PascalCase 태그 중 `UI_COMPONENTS` 카탈로그(Button·Table 계열 등) 있고 미import·미선언인 것을 배럴 import에 병합. patch/full/lines 공통 길목(normalizeUiImportPaths→stripGlobalImports→**ensureUiComponentImports**→dedupe)에 배선. 커스텀·로컬선언·주석 태그 제외. = region 게이트 `findUnresolvedJsxComponents`의 **주입 버전**(경로 수렴).
+
+**F. RAG 캡 부수 활성 (E-2의 side effect)**
+- 계약카드 발동 시 RAG를 `contractRag.capChars=1500`으로 캡하는 로직은 이미 있었으나(`ScaffoldContextBuilder:387`), local-data-render가 미발동(E-2 버그)이라 캡이 안 걸려 RAG 4,401자였음. E-2 수정으로 카드 발동 → **RAG ~4,400 → ≤1,500** 자동 활성.
+
+### 추가된 config 토글 (내일 사이트 튜닝용)
+| 키 | 기본 | 효과 |
+|---|---|---|
+| `multiPatch.autoFullFallback` | **on** | patch dead-end → full 1회 자동 폴백 |
+| `scenarioC.gateCoreRulesByIntent` | **on** | coreRules 상황규칙 의도 게이팅(레버 A) |
+| `scenarioC.ultraCompactModes` | **off** | 단순편집 모드지시 초압축(레버 B) — 실모델 검증 후 on |
+
+### 남은 작업 (내일 회사에서, 우선순위 순)
+1. **레버 B 실모델 검증** — `scenarioC.ultraCompactModes=true`로 켜고 대표질문(버튼추가·텍스트변경·핸들러수정·선택편집) 품질 확인 → 괜찮으면 기본 on 승격. 규칙·가이드 8,257→~5,200 예상.
+2. **오늘 수정 라이브 회귀 배치** — `eval:edit-live`(폐쇄망 실모델, env 키)로 자동폴백·로컬데이터렌더·import주입을 시드 케이스로 돌려 결함 분포 측정 → 새 실패는 픽스처/케이스로 회귀 고정.
+3. **requiresPatchMode 카드 표현폭 갭 점검** — referencesLocalDataSource처럼, 다른 트리거(button-component·global-ui-alerts·smart-table 등)도 괄호 없는 자연어/동의어 발화를 놓치는지 점검(카드 미발동 시 structural 억제가 조용히 무력화됨).
+4. **TABLE_RENDER_BRANCH 카드 축약 검토(~2,900자)** — 데이터+렌더 요청의 남은 큰 덩어리. 렌더 정확도 직결이라 실모델 before/after 필수. 조심스럽게.
+5. **selection 첫-시도 실패 재확인** — 중복 window 제거(D)로 "axiom-action 누락→재요청" 빈도가 줄었는지 라이브 확인.
+6. **assistant 말풍선 "undefined" UI 글리치** — 선택+응답에서 본문에 `undefined` 렌더(사소, 별개). webview 메시지 렌더 경로 점검.
+7. (병행) 라우팅 B안 S2~S5는 아래 07-02 RESUME 그대로 — 독립 트랙.
+
+### 이번 세션 회귀 상태 (전부 green)
+```
+npm run typecheck && npm run compile
+npm run test:region-edit      # 230/0 (local-data-render 자연어 6건 신규 포함)
+npm run test:react-rules      # 39/0 (ensureUiComponentImports 10건 신규 포함)
+npm run test:api-binding      # 69/0
+npm run test:patch-grounded   # 30/0
+npm run test:offline-intent   # 66/0
+npm run test:line-edits       # 15/0
+```
+
+### 오늘 건드린 파일
+- `src/providers/ChatViewProvider.ts` — 자동 full 폴백(3 dead-end 배선) · full 재시도 프롬프트 균형화 · ensureUiComponentImports 공통 길목 배선
+- `src/ai/ScaffoldContextBuilder.ts` — coreRules 의도 게이팅(레버 A) · 모드 초압축(레버 B) · 선택 중복 window 제거 · 의도감지 헬퍼(`_hasDataIntent`/`_hasTypeIntent`)
+- `src/ai/ScaffoldContracts.ts` — `referencesLocalDataSource` 자연어 3갈래 확장
+- `src/ai/StructuralAnchor.ts` — `ensureUiComponentImports` 신설
+- config 배선: `src/ai/config.ts` · `src/config/ExtensionConfig.ts` · `package.json` · `src/types/messages.ts` · `src/providers/ChatPanelProvider.ts` · `src/webview/launcher/LauncherApp.tsx`
+- 테스트: `scripts/test-region-edit.ts`(+6) · `scripts/test-react-rules.ts`(+10)
+
+### 관련 메모리
+`project_apply_robustness_full_fallback`(A) · `project_prompt_composition`(B·C·D) · `project_local_data_render_card`(E-2·E-3·F) · `project_alert_button_intent_spec`(버튼 4법칙) · `project_patch_apply_model`.
+
+---
+
 ## ★ 집에서 이어서 — RESUME (2026-07-02 최신, 여기부터 읽으면 됨)
 
 ### 이번 세션 결론 (한 문단)

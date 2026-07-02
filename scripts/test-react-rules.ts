@@ -7,7 +7,7 @@
  * 그 줄의 brace depth 가 0이 아니어서 종전 라인 단위 검사가 통째로 놓쳤다.
  */
 import { FileCreatorService } from '../src/ai/FileCreatorService';
-import { findDuplicateDeclarations } from '../src/ai/StructuralAnchor';
+import { findDuplicateDeclarations, ensureUiComponentImports } from '../src/ai/StructuralAnchor';
 
 let passed = 0;
 let failed = 0;
@@ -202,6 +202,44 @@ import { Card } from '@axiom/components/ui';`;
   // 코드 본문의 $ui 사용($ui.alert)은 import가 아니므로 건드리지 않음.
   const g5 = fc.stripGlobalImports(`const f = () => $ui.alert('x');`);
   check('glob: 본문 $ui 사용은 불변', g5.removed === 0 && g5.text.includes('$ui.alert'));
+}
+
+// ─── ensureUiComponentImports: 사용된 UI 컴포넌트 import 결정론적 보강 ──────────────────────
+{
+  // 실측 버그: 선택 경로에서 <Button> 삽입 + import 누락 → 컴파일 깨짐. 배럴 import 없으면 새 줄 추가.
+  const b1 = ensureUiComponentImports(
+    `import type React from 'react';\n\nexport default function P(): React.ReactNode {\n  return (<div><Button onClick={() => {}}>x</Button></div>);\n}`,
+  );
+  check('ensureUI: 누락된 Button 보강(added)', b1.added.includes('Button'));
+  check('ensureUI: 새 배럴 import 라인 추가', b1.text.includes("import { Button } from '@axiom/components/ui';"));
+  check('ensureUI: import를 react import 뒤에 삽입', b1.text.indexOf("from 'react'") < b1.text.indexOf('@axiom/components/ui'));
+
+  // 이미 다른 UI 컴포넌트를 배럴에서 import 중이면 그 라인에 병합(중복 라인 안 만듦).
+  const b2 = ensureUiComponentImports(
+    `import { Card } from '@axiom/components/ui';\n\nfunction P() { return (<Card><Button>x</Button></Card>); }`,
+  );
+  check('ensureUI: 기존 배럴 import에 Button 병합', b2.text.includes('Card, Button') || b2.text.includes('Button, Card'));
+  check('ensureUI: 배럴 import 라인 1개만(중복 없음)', (b2.text.match(/@axiom\/components\/ui/g) || []).length === 1);
+
+  // Table 계열(고유 prop 없어 propsIndex엔 없지만 UI_COMPONENTS 카탈로그엔 있음)도 보강.
+  const b3 = ensureUiComponentImports(`function P() { return (<Table><TableRow><TableCell>x</TableCell></TableRow></Table>); }`);
+  check('ensureUI: Table 계열 보강', b3.added.includes('Table') && b3.added.includes('TableRow') && b3.added.includes('TableCell'));
+
+  // 이미 import된 컴포넌트는 보강 안 함(no-op).
+  const b4 = ensureUiComponentImports(`import { Button } from '@axiom/components/ui';\nfunction P() { return (<Button>x</Button>); }`);
+  check('ensureUI: 이미 import됨 → no-op', b4.added.length === 0);
+
+  // 커스텀 컴포넌트(카탈로그에 없음, 경로 가변)는 건드리지 않음(오주입 방지).
+  const b5 = ensureUiComponentImports(`function P() { return (<StatusBadge value={1} />); }`);
+  check('ensureUI: 커스텀 컴포넌트는 보강 안 함', b5.added.length === 0);
+
+  // 로컬 선언된 컴포넌트는 이미 available → 보강 안 함.
+  const b6 = ensureUiComponentImports(`function Button() { return null; }\nfunction P() { return (<Button/>); }`);
+  check('ensureUI: 로컬 선언 컴포넌트는 보강 안 함', b6.added.length === 0);
+
+  // 주석 처리된 컴포넌트는 사용으로 오인하지 않음.
+  const b7 = ensureUiComponentImports(`function P() { return (<div>{/* <Button/> */}</div>); }`);
+  check('ensureUI: 주석 속 컴포넌트는 보강 안 함', b7.added.length === 0);
 }
 
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
