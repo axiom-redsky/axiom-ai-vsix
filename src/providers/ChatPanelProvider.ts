@@ -10,6 +10,12 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
 
+  /**
+   * 연결 테스트가 성공(온라인 확인)했을 때 호출된다. 채팅 패널(ChatViewProvider)의 토큰 메터를
+   * 오프라인 → 온라인으로 즉시 되돌리는 데 쓰인다. extension.ts에서 배선한다.
+   */
+  public onConnectionOnline?: () => void;
+
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   resolveWebviewView(
@@ -397,6 +403,7 @@ tags: [예시키워드, example, 샘플, 작성예시]
         if (ids.some((id) => stripLatest(id) === want)) {
           const note = await this._autoAlignProvider(llm, headers, controller.signal);
           this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공${note}` });
+          this.onConnectionOnline?.();
           return;
         }
         if (ids.length > 0) {
@@ -427,6 +434,7 @@ tags: [예시키워드, example, 샘플, 작성예시]
       if (chatRes.ok || chatRes.status === 200) {
         const note = await this._autoAlignProvider(llm, headers, controller.signal);
         this._post({ type: 'connectionTestResult', ok: true, endpoint: llm.endpoint, detail: `${llm.model} 연결 성공${note}` });
+        this.onConnectionOnline?.();
         return;
       }
       if (chatRes.status === 401 || chatRes.status === 403) {

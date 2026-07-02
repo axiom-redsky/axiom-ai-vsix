@@ -1047,6 +1047,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (e.affectsConfiguration('axiom-ai.offlineIntent')) {
         this._reloadIntentExamples();
       }
+      // LLM 연결 설정(엔드포인트·모델·provider 등)이 바뀌면 오프라인으로 고정돼 있던 토큰 메터를
+      // 즉시 온라인(라이브)으로 되돌린다 — 다음 턴 헬스체크가 실제 도달 가능 여부를 재평가한다.
+      if (e.affectsConfiguration('axiom-ai.llm')) {
+        this.resetTokenMeter();
+      }
     });
     context.subscriptions.push(this._configChangeDisposable);
   }
@@ -5979,6 +5984,23 @@ export default routes;`;
       contextWindow: ExtensionConfig.getEffectiveLlmConfig().contextWindow,
       outputReserve: ExtensionConfig.getEffectiveLlmConfig().maxTokens,
       offline: true,
+    });
+  }
+
+  /**
+   * 토큰 메터를 온라인(라이브 추정) 상태로 되돌린다. 메터의 offline 표시는 턴 단위 신호라
+   * 직전 오프라인 턴 이후 계속 "오프라인 · 토큰 미사용"으로 고정된다 — 사용자가 설정에서 온라인으로
+   * 전환하거나 연결 테스트에 성공해도 다음 턴 전까지 갱신되지 않던 문제를 해소한다.
+   * offline 플래그 없는 contextInfo를 보내 webview의 isOffline을 즉시 false로 되돌린다.
+   * (실제 도달 가능 여부는 다음 턴의 헬스체크가 재평가 — 죽어 있으면 _postOfflineTurn이 다시 켠다.)
+   */
+  resetTokenMeter(): void {
+    if (!this._view) return;
+    this._post({
+      type: 'contextInfo',
+      systemPromptChars: 0,
+      contextWindow: ExtensionConfig.getEffectiveLlmConfig().contextWindow,
+      outputReserve: ExtensionConfig.getEffectiveLlmConfig().maxTokens,
     });
   }
 

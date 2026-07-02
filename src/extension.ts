@@ -18,6 +18,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const launcherProvider = new ChatPanelProvider(context.extensionUri);
   const chatProvider = new ChatViewProvider(context.extensionUri);
+
+  // 설정 패널의 연결 테스트가 성공하면 채팅 토큰 메터를 즉시 온라인으로 되돌린다
+  // (오프라인 사용 후 온라인 전환 시 "오프라인 · 토큰 미사용"이 다음 턴까지 고정되던 문제).
+  launcherProvider.onConnectionOnline = () => chatProvider.resetTokenMeter();
   const sddPanel = new SddPanelProvider();
   const projectConfigProvider = new ProjectConfigProvider(context.extensionUri);
   const sliceProbeProvider = new SliceProbeProvider(context.extensionUri);
