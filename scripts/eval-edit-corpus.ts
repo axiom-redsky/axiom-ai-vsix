@@ -11,6 +11,8 @@
  * 워크스페이스 스캔에 의존해 node 배치에서 재현 불가(핸드오프 §44) → 순수 조각(buildContractSection)+이 스냅샷으로
  * 근사한다. _buildCoreRules를 고치면 이 스냅샷도 갱신할 것(그 드리프트를 잡는 게 CORE_RULES_SYNC_HINT).
  */
+import * as fs from 'fs';
+import * as path from 'path';
 
 /** _buildCoreRules에서 스냅샷이 커버해야 하는 불변 규칙 앵커(프로덕션 문구가 바뀌면 스냅샷 갱신 신호). */
 export const CORE_RULES_SYNC_HINT = '데이터 출처 우선순위';
@@ -93,6 +95,12 @@ export interface EditCase {
    * 데이터만 선언하고 표를 안 그리면(실측: structural이 JSX 못 만듦 / patch no-op) 결함.
    */
   expectsTableRender?: boolean;
+  /**
+   * 결과에 **반드시 그대로 남아 있어야 하는 토큰**(기존 명명 핸들러·훅 필드명 등). 하나라도 사라지면 판정
+   * ⓗ(보존 위반) — 약한 모델이 기존 코드를 덮어쓰거나 이름 바꾸는 계열(메모리: 이벤트 핸들러 구조 보존,
+   * 기존 훅 필드 이름 변경 금지)을 자동 감지.
+   */
+  preserveTokens?: string[];
   /** 이 케이스가 특히 노리는 판정 플래그(리포트 강조용). */
   focus: JudgeFlag[];
 }
@@ -104,7 +112,9 @@ export type JudgeFlag =
   | 'patchUnmatched' // ⓒ patch가 원본에 매칭 안 됨(atomic 실패)
   | 'ungrounded' // ⓓ 원본에 없는 심볼을 <search>에 넣음
   | 'proseOnly' // ⓔ action 블록 없이 설명만
-  | 'renderMissing'; // ⓕ 데이터만 선언하고 테이블 JSX 렌더 누락(또는 no-op)
+  | 'renderMissing' // ⓕ 데이터만 선언하고 테이블 JSX 렌더 누락(또는 no-op)
+  | 'duplicateTable' // ⓖ 기존 테이블이 있는데 수정 않고 새 테이블을 또 만듦
+  | 'preservationBroken'; // ⓗ 보존해야 할 기존 토큰(핸들러·훅 필드)이 사라짐
 
 // ── 픽스처 1: getArr 로컬 데이터(useApi 없음) ────────────────────────────────
 // 오늘 실패 재현: "getArr 결과를 테이블로 보여줘" → 새 /api/·useApi를 환각하면 안 됨.
@@ -195,6 +205,84 @@ export default function EmployeeListPage(): React.ReactNode {
 }
 `;
 
+// ── 픽스처 5: 이미 <Table>이 있는 파일 — "수정" 분기 검증 ─────────────────────
+// TABLE_RENDER_BRANCH의 "기존 테이블 있으면 수정" 갈래(내가 만들었지만 미검증). 하드코딩 1행 테이블 +
+// 로컬 getArr. 기대: 기존 <Table>의 tbody map 대상만 getArr로 교체(새 <Table> 또 만들면 ⓖ).
+const FIX_EXISTING_TABLE = `import type React from 'react';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@axiom/components/ui';
+
+export default function OrderListPage(): React.ReactNode {
+	const getArr = () => [
+		{ id: 1, product: '노트북', qty: 2 },
+		{ id: 2, product: '마우스', qty: 5 },
+	];
+
+	return (
+		<div className="p-6">
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead>상품</TableHead>
+						<TableHead>수량</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					<TableRow>
+						<TableCell>샘플상품</TableCell>
+						<TableCell>0</TableCell>
+					</TableRow>
+				</TableBody>
+			</Table>
+		</div>
+	);
+}
+`;
+
+// ── 픽스처 6: 명명 이벤트 핸들러 — 구조 보존 검증 ─────────────────────────────
+// 메모리(이벤트 핸들러 구조 보존): 동작 변경 시 명명 함수 본문을 고쳐야지, onClick을 인라인으로 갈아끼워
+// 기존 handleSave를 삭제하면 안 됨. 기대: handleSave 보존(preserveTokens).
+const FIX_HANDLER = `import type React from 'react';
+import { Button } from '@axiom/components/ui';
+
+export default function SettingsPage(): React.ReactNode {
+	const handleSave = () => {
+		console.log('저장');
+	};
+
+	return (
+		<div className="p-6">
+			<Button onClick={handleSave}>저장</Button>
+		</div>
+	);
+}
+`;
+
+// ── 픽스처 7: 기존 useApi 훅 — 필드명 보존 검증 ──────────────────────────────
+// 메모리(기존 훅 필드 이름 변경 금지): 새 useApi 추가 시 기존 { data: users, isPending, error }를 건드리지
+// 말고 새 훅 필드만 alias해야 함. 기대: 기존 필드명 보존 + 새 훅은 API 명시라 정상.
+const FIX_HOOK_FIELDS = `import type React from 'react';
+import { useApi } from '@axiom/hooks';
+
+export default function UserListPage(): React.ReactNode {
+	const { data: users, isPending, error } = useApi<{ id: number; name: string }[]>('/api/users');
+
+	return (
+		<div className="p-6">
+			{isPending ? <p>로딩 중…</p> : error ? <p>에러</p> : <p>{users?.length ?? 0}명</p>}
+		</div>
+	);
+}
+`;
+
+// ── 픽스처 8: 실제 400줄 EmployeeListPage — 대형 실파일 스트레스 ─────────────
+// 작은 stub은 모델이 쉽게 처리(32/32 clean)하지만 진짜 버그는 큰 실파일에서 patch 매칭·보존이
+// 스트레스 받을 때 터진다(메모리 project_full_vs_sliced_finding). 3개 useApi·핸들러·기존 테이블이 있는
+// 실 픽스처로 "열 하나 추가" 같은 국소 편집이 기존 코드를 안 깨는지 본다. (디스크에서 읽음 — cwd=프로젝트 루트.)
+const FIX_REAL_EMPLOYEE = fs.readFileSync(
+  path.resolve(process.cwd(), 'scripts/eval-fixtures/EmployeeListPage.tsx'),
+  'utf8',
+);
+
 export const EDIT_CASES: EditCase[] = [
   {
     id: 'emp-getarr-to-table',
@@ -244,5 +332,54 @@ export const EDIT_CASES: EditCase[] = [
     localData: true,
     expectsTableRender: true,
     focus: ['apiHallucination', 'patchUnmatched', 'proseOnly', 'renderMissing'],
+  },
+  {
+    id: 'existing-table-edit',
+    name: '기존 <Table> 있음 → 수정 분기(새 테이블 또 만들면 ⓖ)',
+    fixture: FIX_EXISTING_TABLE,
+    filePath: 'src/domains/order/pages/OrderListPage.tsx',
+    query: '이 테이블을 getArr 함수 결과로 채워줘',
+    localData: true,
+    expectsTableRender: true,
+    focus: ['duplicateTable', 'apiHallucination', 'renderMissing'],
+  },
+  {
+    id: 'handler-preserve',
+    name: '저장 버튼 동작 추가 → 명명 핸들러 handleSave 보존(인라인 갈아끼우면 ⓗ)',
+    fixture: FIX_HANDLER,
+    filePath: 'src/domains/main/pages/SettingsPage.tsx',
+    query: '저장 버튼 누르면 alert도 띄우게 해줘',
+    localData: false,
+    // 선언 + 바인딩 둘 다 보존해야 함 — 인라인 화살표로 갈아끼우면 onClick={handleSave}가 사라짐.
+    preserveTokens: ['const handleSave', 'onClick={handleSave}'],
+    focus: ['preservationBroken', 'proseOnly'],
+  },
+  {
+    id: 'hook-fields-preserve',
+    name: '새 useApi 추가 → 기존 훅 필드(users·isPending·error) 보존',
+    fixture: FIX_HOOK_FIELDS,
+    filePath: 'src/domains/main/pages/UserListPage.tsx',
+    query: '부서 목록도 /api/departments 에서 불러와줘',
+    localData: false,
+    preserveTokens: ['data: users', 'isPending', 'error'],
+    focus: ['preservationBroken', 'dupImport'],
+  },
+  {
+    id: 'real-emp-add-column',
+    name: '실제 400줄 EmployeeListPage → 전화번호 열 추가(기존 훅·핸들러·엔드포인트 보존)',
+    fixture: FIX_REAL_EMPLOYEE,
+    filePath: 'src/domains/employee/pages/EmployeeListPage.tsx',
+    query: '직원 테이블에 전화번호(phone) 열을 하나 추가해줘',
+    localData: false,
+    expectsTableRender: true,
+    preserveTokens: [
+      'handleSearchChange',
+      'handlePageChange',
+      'EMPLOYEES_ENDPOINT',
+      'DEPARTMENTS_ENDPOINT',
+      'data: response',
+      'data: deptResponse',
+    ],
+    focus: ['preservationBroken', 'patchUnmatched', 'renderMissing'],
   },
 ];

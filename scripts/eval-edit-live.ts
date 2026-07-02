@@ -51,6 +51,20 @@ const stripControlTagLines = (s: string): string =>
     .join('\n')
     .replace(/\n$/, '');
 
+// `<replace>` 관용 캡처(프로덕션 ChatViewProvider와 동일) — 약한 모델이 `</replace>`를 `</search>`·`</patch>`로
+// 잘못 닫는 케이스(실측: 400줄 테이블 편집)를 살린다. `</replace>` 있으면 그대로, 없으면 여는 태그 이후 ~
+// `</patch>`/끝까지를 본문으로.
+const extractReplace = (segment: string): string | undefined => {
+  const closed = segment.match(/<replace>\n?([\s\S]*?)<\/replace>/);
+  if (closed?.[1] !== undefined) return closed[1];
+  const openIdx = segment.indexOf('<replace>');
+  if (openIdx === -1) return undefined;
+  let body = segment.slice(openIdx + '<replace>'.length).replace(/^\n/, '');
+  const endIdx = body.indexOf('</patch>');
+  if (endIdx !== -1) body = body.slice(0, endIdx);
+  return body;
+};
+
 function parseActions(response: string): ParseResult {
   const blockMatches = [...response.matchAll(/<axiom-action>([\s\S]*?)<\/axiom-action>/g)];
   if (blockMatches.length === 0) return { hasCompletedBlock: false, actions: [] };
@@ -73,22 +87,22 @@ function parseActions(response: string): ParseResult {
     for (const pb of patchBlockMatches) {
       const inner = pb[1];
       const s = inner.match(/<search>\n?([\s\S]*?)<\/search>/);
-      const r = inner.match(/<replace>\n?([\s\S]*?)<\/replace>/);
-      if (s?.[1] !== undefined && r?.[1] !== undefined) {
+      const rBody = extractReplace(inner);
+      if (s?.[1] !== undefined && rBody !== undefined) {
         patches.push({
           search: stripControlTagLines(s[1].replace(/\n$/, '')),
-          replace: stripControlTagLines(r[1].replace(/\n$/, '')),
+          replace: stripControlTagLines(rBody.replace(/\n$/, '')),
         });
       }
     }
     // <patch> 래핑 없으면 bare <search>/<replace> 단일 쌍
     if (patches.length === 0) {
       const searchMatch = blockContent.match(/<search>\n?([\s\S]*?)<\/search>/);
-      const replaceMatch = blockContent.match(/<replace>\n?([\s\S]*?)<\/replace>/);
-      if (searchMatch?.[1] !== undefined && replaceMatch?.[1] !== undefined) {
+      const replaceBody = extractReplace(blockContent);
+      if (searchMatch?.[1] !== undefined && replaceBody !== undefined) {
         patches.push({
           search: stripControlTagLines(searchMatch[1].replace(/\n$/, '')),
-          replace: stripControlTagLines(replaceMatch[1].replace(/\n$/, '')),
+          replace: stripControlTagLines(replaceBody.replace(/\n$/, '')),
         });
       }
     }
@@ -157,7 +171,7 @@ interface Outcome {
 }
 
 function emptyFlags(): Record<JudgeFlag, boolean> {
-  return { apiHallucination: false, dupImport: false, patchUnmatched: false, ungrounded: false, proseOnly: false, renderMissing: false };
+  return { apiHallucination: false, dupImport: false, patchUnmatched: false, ungrounded: false, proseOnly: false, renderMissing: false, duplicateTable: false, preservationBroken: false };
 }
 
 /** 모델 응답 텍스트 하나를 판정한다(모델 호출과 분리 — 셀프테스트가 canned 응답을 주입할 수 있게). */
@@ -218,6 +232,23 @@ function judgeResponse(c: EditCase, responseText: string, ms: number): Outcome {
     }
   }
 
+  // ⓖ 중복 테이블: 원본에 이미 <Table>/<table>이 있는데, 수정하지 않고 새 테이블을 또 만들어 개수가 늘어남.
+  const tableCount = (s: string): number => (s.match(/<(Table|table)\b/g) ?? []).length;
+  const fixtureTables = tableCount(c.fixture);
+  if (fixtureTables > 0 && tableCount(applied) > fixtureTables) {
+    flags.duplicateTable = true;
+    note += ` · 중복테이블(${fixtureTables}→${tableCount(applied)})`;
+  }
+
+  // ⓗ 보존 위반: 반드시 남아야 할 기존 토큰(명명 핸들러·훅 필드)이 결과에서 사라짐.
+  if (c.preserveTokens && c.preserveTokens.length > 0) {
+    const lost = c.preserveTokens.filter((t) => !applied.includes(t));
+    if (lost.length > 0) {
+      flags.preservationBroken = true;
+      note += ` · 보존위반(사라짐: ${lost.join(', ')})`;
+    }
+  }
+
   const parses = didApply ? parseOk(applied) : null;
   return { flags, applied: didApply, parses, note, raw: responseText, ms };
 }
@@ -225,7 +256,9 @@ function judgeResponse(c: EditCase, responseText: string, ms: number): Outcome {
 /** 실 모델을 호출해 판정한다. */
 async function runCase(cfg: ReturnType<typeof resolveModelConfig>, c: EditCase): Promise<Outcome> {
   const { system, user } = buildEditPrompt(c);
-  const r = await callLlm(cfg!, `${system}\n\n/no_think`, user, { maxTokens: 2048, temperature: 0.1 });
+  // maxTokens는 라이브(AI_DEFAULTS=8192)와 맞춘다 — 2048은 대형 파일 patch를 잘라 파서 실패(block-no-payload)로
+  // false positive를 낸다(실측: 400줄 EmployeeListPage). 하니스 충실도 = 라이브와 동일 예산.
+  const r = await callLlm(cfg!, `${system}\n\n/no_think`, user, { maxTokens: 8192, temperature: 0.1 });
   if (!r.ok) return { flags: emptyFlags(), applied: false, parses: null, note: '(호출 실패)', ms: r.elapsedMs, error: r.error };
   return judgeResponse(c, r.text, r.elapsedMs);
 }
@@ -238,6 +271,8 @@ const FLAG_LABEL: Record<JudgeFlag, string> = {
   ungrounded: 'ⓓ비그라운딩',
   proseOnly: 'ⓔ설명만',
   renderMissing: 'ⓕ렌더누락',
+  duplicateTable: 'ⓖ중복테이블',
+  preservationBroken: 'ⓗ보존위반',
 };
 
 /**
@@ -314,6 +349,37 @@ function selftest(): void {
         '<replace>\n\t\t\t<Table><TableBody>{employees.map((e) => (<TableRow key={e.id}><TableCell>{e.name}</TableCell></TableRow>))}</TableBody></Table>\n</replace>\n</patch>\n</axiom-action>',
       expect: { renderMissing: false },
     },
+    {
+      // BAD: 기존 <Table>이 있는데 tbody만 고치지 않고 새 <Table>을 통째로 추가 → 중복.
+      name: 'BAD: 중복 테이블(기존 수정 않고 새 테이블 추가)',
+      c: EDIT_CASES.find((c) => c.id === 'existing-table-edit')!,
+      response:
+        '<axiom-action>\n{"actionType":"modify","filePath":"x"}\n' +
+        '<patch>\n<search>\n\t\t</div>\n</search>\n' +
+        '<replace>\n\t\t\t<Table><TableBody>{getArr().map((r) => (<TableRow key={r.id}><TableCell>{r.product}</TableCell></TableRow>))}</TableBody></Table>\n\t\t</div>\n</replace>\n</patch>\n</axiom-action>',
+      expect: { duplicateTable: true },
+    },
+    {
+      // 관용 파서 회귀: 모델이 </replace>를 </search>로 잘못 닫아도 patch를 살려 적용해야 함(prose-only 아님).
+      name: 'GOOD: mis-closed </replace>(→</search>) 복구',
+      c: getArr,
+      response:
+        '<axiom-action>\n{"actionType":"modify","filePath":"x"}\n' +
+        "<patch>\n<search>\n\t\t\t<p className=\"text-muted-foreground\">여기에 상품을 표시합니다.</p>\n</search>\n" +
+        '<replace>\n\t\t\t<table><tbody>{getArr().map((p) => (<tr key={p.id}><td>{p.name}</td></tr>))}</tbody></table>\n</search>\n</patch>\n</axiom-action>',
+      expect: { proseOnly: false, renderMissing: false },
+      expectApplied: true,
+    },
+    {
+      // BAD: 명명 핸들러 handleSave를 인라인 화살표로 갈아끼워 삭제 → 보존 위반.
+      name: 'BAD: 핸들러 보존 위반(handleSave 삭제)',
+      c: EDIT_CASES.find((c) => c.id === 'handler-preserve')!,
+      response:
+        '<axiom-action>\n{"actionType":"modify","filePath":"x"}\n' +
+        '<patch>\n<search>\n\t\t\t<Button onClick={handleSave}>저장</Button>\n</search>\n' +
+        "<replace>\n\t\t\t<Button onClick={() => { console.log('저장'); alert('저장됨'); }}>저장</Button>\n</replace>\n</patch>\n</axiom-action>",
+      expect: { preservationBroken: true },
+    },
   ];
 
   // 계약 카드 발동 가드: local-data-render 카드가 employee getArr 재현 케이스의 프롬프트에 실제로
@@ -380,13 +446,18 @@ async function main(): Promise<void> {
   }
 
   // 플래그별 발생 카운트(분모=repeat*케이스), 케이스별 결과 누적
-  const flagTotals: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0 };
+  const flagTotals: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0, duplicateTable: 0, preservationBroken: 0 };
   let totalRuns = 0;
   let cleanRuns = 0; // 아무 결함 플래그도 없고 실제 적용된 실행
   const focusRegressions: string[] = [];
 
-  for (const c of EDIT_CASES) {
-    const flagHits: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0 };
+  // AXIOM_EVAL_ONLY=<id 부분문자열>로 특정 케이스만 실행(디버깅). 미설정 시 전체.
+  const only = process.env.AXIOM_EVAL_ONLY;
+  const cases = only ? EDIT_CASES.filter((c) => c.id.includes(only)) : EDIT_CASES;
+  const rawLimit = process.env.AXIOM_EVAL_RAW ? 100_000 : 200; // AXIOM_EVAL_RAW=1이면 전체 원문
+
+  for (const c of cases) {
+    const flagHits: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0, duplicateTable: 0, preservationBroken: 0 };
     let cleanForCase = 0;
     let lastNote = '';
     let lastRaw: string | undefined;
@@ -416,7 +487,7 @@ async function main(): Promise<void> {
     }
     console.log(`     ${lastNote || '—'} · ${Math.round(sumMs / repeat)}ms`);
     if (!allClean && lastRaw) {
-      console.log(`     원문: ${lastRaw.trim().slice(0, 200).replace(/\n/g, ' ⏎ ')}`);
+      console.log(`     원문: ${rawLimit > 1000 ? '\n' + lastRaw.trim().slice(0, rawLimit) : lastRaw.trim().slice(0, rawLimit).replace(/\n/g, ' ⏎ ')}`);
     }
 
     // focus 회귀: 이 케이스가 특히 노린 플래그가 하나라도 발생하면 회귀로 표기

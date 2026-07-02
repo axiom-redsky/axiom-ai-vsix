@@ -3347,6 +3347,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           .join('\n')
           .replace(/\n$/, '');
 
+      // `<replace>` 관용 캡처: 약한 모델이 `</replace>`를 `</search>`·`</patch>`로 잘못 닫는 일이 잦다
+      // (실측 2026-07-02: 400줄 EmployeeListPage 테이블 편집에서 3/3 mis-close → replace 미매칭 → patch 통째 드롭
+      // → block-no-payload로 무편집). `</replace>`가 있으면 그대로, 없으면 `<replace>` 여는 태그 이후 ~ `</patch>`/
+      // 세그먼트 끝까지를 본문으로 보고 stripControlTagLines로 새는 제어 태그 줄을 걷어낸다.
+      const extractReplace = (segment: string): string | undefined => {
+        const closed = segment.match(/<replace>\n?([\s\S]*?)<\/replace>/);
+        if (closed?.[1] !== undefined) return closed[1];
+        const openIdx = segment.indexOf('<replace>');
+        if (openIdx === -1) return undefined;
+        let body = segment.slice(openIdx + '<replace>'.length).replace(/^\n/, '');
+        const endIdx = body.indexOf('</patch>');
+        if (endIdx !== -1) body = body.slice(0, endIdx);
+        return body;
+      };
+
       // 1차: <patch> 래핑된 다중 쌍 파싱
       const patchBlockMatches = [...blockContent.matchAll(/<patch>\s*([\s\S]*?)\s*<\/patch>/g)];
       if (patchBlockMatches.length > 0) {
@@ -3354,11 +3369,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         for (const pb of patchBlockMatches) {
           const inner = pb[1];
           const s = inner.match(/<search>\n?([\s\S]*?)<\/search>/);
-          const r = inner.match(/<replace>\n?([\s\S]*?)<\/replace>/);
-          if (s?.[1] !== undefined && r?.[1] !== undefined) {
+          const rBody = extractReplace(inner);
+          if (s?.[1] !== undefined && rBody !== undefined) {
             patches.push({
               search: stripControlTagLines(s[1].replace(/\n$/, '')),
-              replace: stripControlTagLines(r[1].replace(/\n$/, '')),
+              replace: stripControlTagLines(rBody.replace(/\n$/, '')),
             });
           }
         }
@@ -3370,11 +3385,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 2차: <patch> 래핑이 없으면 bare <search>/<replace> 단일 쌍 (구 포맷 하위 호환)
       if (!action.patches) {
         const searchMatch = blockContent.match(/<search>\n?([\s\S]*?)<\/search>/);
-        const replaceMatch = blockContent.match(/<replace>\n?([\s\S]*?)<\/replace>/);
-        if (searchMatch?.[1] !== undefined && replaceMatch?.[1] !== undefined) {
+        const replaceBody = extractReplace(blockContent);
+        if (searchMatch?.[1] !== undefined && replaceBody !== undefined) {
           action.patches = [{
             search: stripControlTagLines(searchMatch[1].replace(/\n$/, '')),
-            replace: stripControlTagLines(replaceMatch[1].replace(/\n$/, '')),
+            replace: stripControlTagLines(replaceBody.replace(/\n$/, '')),
           }];
         }
       }
