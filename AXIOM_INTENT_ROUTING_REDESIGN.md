@@ -5,7 +5,57 @@
 >
 > ⚠️ 이 문서는 [AXIOM_EDIT_REDESIGN_HANDOFF.md](AXIOM_EDIT_REDESIGN_HANDOFF.md)와 **다른 축**을 다룬다.
 > - 그 문서 = **편집 적용 레이어**(region/patch/lines를 어떻게 안전하게 적용하나 — surgical edit, grounded 재시도, verify 루프). 이미 Claude Code 벤치마킹 완료.
-> - 이 문서 = **의도 라우팅 레이어**(애초에 어느 경로로 갈지 — qna vs modify vs create, 어느 파일, 지식가이드 vs 편집). **재설계 미착수.**
+> - 이 문서 = **의도 라우팅 레이어**(애초에 어느 경로로 갈지 — qna vs modify vs create, 어느 파일, 지식가이드 vs 편집).
+
+---
+
+## ★ 집에서 이어서 — RESUME (2026-07-02 최신, 여기부터 읽으면 됨)
+
+### 이번 세션 결론 (한 문단)
+"의도 파악이 안 된다"의 진짜 원인은 **분류기가 아니었다.** 실 qwen3-coder로 canonical 요청 15개 × 3회 = **45/45 (100%, 흔들림 0)** — 프로덕션에서 터졌던 것 전부 정확·일관 분류. 즉 **모델은 의도를 제대로 잡는데, 그 옳은 판단을 하위 파이프라인이 무시/왜곡**했던 것이다. 그래서 처방은 "모델을 똑똑하게"가 아니라 **"이미 맞은 판단을 파이프라인이 신뢰하게"**(B안: 단일 라우터) + **편집 산출·적용 레이어 정상화**다.
+
+### 이번 세션 커밋 완료 (main) — 4개 레이어 순차 수정
+한 요청("보여줘"/"버튼 넣어줘")이 파이프라인 끝까지 처음 관통하면서 레이어별 결함이 순차 노출됨:
+1. **라우팅 게이트** — 분류기가 `modify`로 맞혔는데 `isQnAGated`("보여줘")가 뒤집어 지식가이드로 샘. → `forceModify` 대칭 추가(`isQnAGated`/`buildSystemPrompt`). `ScaffoldContextBuilder.ts`, `ChatViewProvider.ts`.
+2. **계약카드** — `list-table-binding`이 "테이블+보여"에 오발동 → 없는 `/api/…`+`useApi` 환각. → 트리거에서 "보여" 제거 + `referencesLocalDataSource` 가드. coreRules에 "데이터 출처 우선순위" 규칙. `ScaffoldContracts.ts`, `ScaffoldContextBuilder.ts`.
+3. **재시도** — 보강/patch 재시도가 실제 파일을 안 넣어(시스템 프롬프트 미재전송, `_history`엔 파일 없음) 파일명만으로 내용 환각 → `<search>` 매칭 실패. → `currentFileBlock` 주입을 `forceFull`→`!groundedPatches` 전 재시도로 확대. `ChatViewProvider._retryForAxiomAction`.
+4. **중복 import** — `dedupeImportLines`가 patch 경로에만 배선 → full 모드 중복 통과. → **공통 길목**(`_handleAxiomAction` ~4105)으로 이동해 전 모드 커버. `ChatViewProvider.ts`.
+
+### 이번 세션 신규 도구 — 라이브 eval 하니스 (Phase 1 완료)
+케이스바이케이스를 끝내기 위한 **선제형 안전망**. 실 모델로 배치 검증 → 버그를 사용자보다 먼저 잡는다.
+- `scripts/live-model-client.ts` — 공유 클라이언트(설정/env에서 endpoint·model·apiKey → `/v1/chat/completions`).
+- `scripts/eval-intent-live.ts` — 15 canonical 케이스(오늘 실패들 회귀). 실 `buildIntentPrompt`+`parseIntent`로 분류 정확도 측정.
+- `scripts/run-eval-intent-live.mjs` + npm `eval:intent-live`.
+
+**실행 방법(집에서):** apiKey는 익스텐션이 **SecretStorage(암호화)**에 보관 → 스크립트가 못 읽으므로 env로 준다. endpoint/model은 VSCode 설정에서 자동. 접속 정보(baseURL/model/apiKey)는 **로컬 axiom.config / 익스텐션 설정에 이미 있음**(이 문서엔 키를 적지 않음).
+```powershell
+$env:AXIOM_API_KEY="<익스텐션에 넣은 키>"; npm run eval:intent-live
+# 흔들림 측정: $env:AXIOM_EVAL_REPEAT="3"; npm run eval:intent-live
+# 필요시 덮어쓰기: $env:AXIOM_ENDPOINT / $env:AXIOM_MODEL
+```
+현재 baseline: **45/45 (100%)**. 새 라우팅 버그를 발견하면 `eval-intent-live.ts`의 `CASES`에 한 줄 추가해 회귀로 고정.
+
+### 다음 할 일 (집에서, 우선순위 순)
+1. **Phase 2 — 편집품질 라이브 eval (최우선).** 분류는 끝났고(100%) 남은 결함은 전부 **편집 산출·적용** 레이어다. `live-model-client`를 재사용해 새 하니스(`scripts/eval-edit-live.ts` 제안):
+   - 입력: 픽스처 파일(예: 빈 EmployeeListPage.tsx, getArr 있는 버전) + 요청 + 실제 `buildContractSection`(계약카드, 순수) + coreRules 스냅샷.
+   - 실 모델 호출 → 응답 파싱(기존 파서 재사용) → **실제 apply primitives**(`FileCreatorService.computeMultiPatch`/`dedupeImportLines`, `applyStructuralEdit`)로 적용.
+   - **자동 판정**: ⓐ로컬 데이터인데 `/api/`·`useApi` 환각? ⓑ중복 import 생겼나? ⓒpatch가 매칭됐나? ⓓ원본에 없는 심볼을 `<search>`에 넣었나(파일 그라운딩)? ⓔprose-only(action 블록 누락)?
+   - 시드 케이스 = 오늘 실패 3건: "getArr 결과를 테이블로 보여줘"(useApi 환각 X 확인), "alert 버튼 넣어줘"(중복 import X·파일 그라운딩), "이 배열을 테이블로"(로컬 렌더).
+   - ⚠ 난관: `buildSystemPrompt`는 vscode 결합 → 전체 재현 대신 **순수 조각(buildContractSection)+coreRules 스냅샷**으로 근사하거나, vscode 스텁+픽스처 워크스페이스로 `ScaffoldContextBuilder`를 돌리는 길 검토.
+2. **B안 S2~S5 (라우팅 단일화).** 분류기 100% 확증됐으니 안전. S2 qna/scenario 종속화 → S3 단일 switch(`isFileCtx` 불리언조합 제거) → S4 충돌안전(되묻기) → S5 정규식 정리. 각 단계 `eval:intent-live`+`test:region-edit`+`test:offline-intent` 회귀 0 후 승격. (상세 §4)
+3. **S1 실사용 로그 수집.** `[Axiom AI][S1 라우팅측정]` 출력채널 라인에서 `⚠ 불일치` 패턴 모으기 → S2 우선순위 보강.
+
+### 검증 명령 (현재 전부 green)
+```
+npm run typecheck
+npm run test:region-edit      # 224/0 (list-table 로컬출처 4건 포함)
+npm run test:react-rules      # 18/0 (dedupeImportLines 5건 포함)
+npm run test:offline-intent   # 66/0
+npm run eval:intent-live      # 45/45 (실 모델, env 키 필요)
+npm run compile
+```
+
+관련 메모리: `project_intent_routing_redesign`(트랙 전체), `project_qna_gating_consistency`, `project_scaffold_contract_coverage`(issue#3), `project_retry_use_current_file`.
 
 ---
 
