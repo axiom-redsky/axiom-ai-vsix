@@ -283,6 +283,19 @@ function selftest(): void {
     },
   ];
 
+  // 계약 카드 발동 가드: local-data-render 카드가 employee getArr 재현 케이스의 프롬프트에 실제로
+  // 들어가는지 확인(fix가 조용히 빠지는 회귀 방지). 카드 제목 마커로 판정.
+  const empCase = EDIT_CASES.find((c) => c.id === 'emp-getarr-to-table');
+  let cardPass = 0;
+  const cardTotal = 2;
+  if (empCase) {
+    const sys = buildEditPrompt(empCase).system;
+    if (sys.includes('로컬 데이터 렌더')) { cardPass++; console.log('✅ 계약카드: local-data-render 발동(emp getArr 프롬프트에 주입됨)'); }
+    else console.log('❌ 계약카드: local-data-render 미발동 — fix가 프롬프트에 안 닿음');
+    if (/절대 금지[^]*useApi/.test(sys) && sys.includes('/api/')) { cardPass++; console.log('✅ 계약카드: useApi/api 금지 지시 포함'); }
+    else console.log('❌ 계약카드: useApi/api 금지 지시 누락');
+  }
+
   let pass = 0;
   for (const st of suite) {
     const o = judgeResponse(st.c, st.response, 0);
@@ -300,8 +313,8 @@ function selftest(): void {
       console.log(`❌ ${st.name}\n     ${misses.join(' · ')}\n     note=${o.note}`);
     }
   }
-  console.log(`\n셀프테스트: ${pass}/${suite.length} 통과`);
-  if (pass !== suite.length) process.exit(1);
+  console.log(`\n셀프테스트: 판정 ${pass}/${suite.length} · 계약카드 ${cardPass}/${cardTotal} 통과`);
+  if (pass !== suite.length || cardPass !== cardTotal) process.exit(1);
 }
 
 async function main(): Promise<void> {

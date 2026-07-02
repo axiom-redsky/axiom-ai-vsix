@@ -276,6 +276,25 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       SCHEMA_CONFIRM_GATE,
   },
   {
+    id: 'local-data-render',
+    title: '로컬 데이터 렌더 — 이미 파일에 있는 함수·상수를 화면에 표시 (API 아님)',
+    // list-table-binding이 referencesLocalDataSource로 "양보"하는 바로 그 조건에서 발동하는 **긍정 카드**.
+    // 억제만 하면 "새 API 만들지 마"라는 부정 지시만 남는데, 그건 파일명 prior를 못 이긴다 —
+    // 실측 2026-07-02: EmployeeListPage의 로컬 `getArr()`를 "테이블로 보여줘"인데도 모델이
+    // `useApi<T>('/api/employees')`를 환각(getProd로 바꾸면 환각 안 함 → 파일명+데이터의 employee prior가 원인).
+    // 여기서 "기존 함수를 그대로 .map()으로 렌더"를 **강한 긍정 지시**로 준다. list-table-binding과 상호 배타.
+    applies: ({ query, deps, region }) =>
+      referencesLocalDataSource(query, `${deps}\n${region}`) &&
+      /(테이블|목록|리스트|그리드|table|list|grid|보여|표시|출력|렌더|그려|나타)/i.test(query),
+    card:
+      `- **이 요청은 이미 이 파일에 존재하는 함수·상수(로컬 데이터 출처)를 화면에 렌더하는 것입니다** — 서버에서 새로 불러오는 게 아닙니다.\n` +
+      `- ⛔ **절대 금지**: 새 \`useApi\` 호출·새 \`/api/…\` 엔드포인트·\`@axiom/hooks\` import·응답 타입(\`TXxxResponse\`) 추가. ` +
+      `파일명이 \`XxxListPage\`(예: EmployeeListPage)라도 **API를 만들지 마세요** — 데이터는 이미 파일 안 함수/상수에 있습니다.\n` +
+      `- ✅ **해야 할 것**: 쿼리가 지목한 기존 함수·상수(예: \`getArr()\`)를 그대로 호출해 \`.map()\`으로 렌더하세요 ` +
+      `(기존 데이터의 **실제 필드만** 사용, 없는 필드 추측 금지):\n` +
+      `\`{getArr().map((row) => (<tr key={row.id}><td>{row.필드명}</td>…</tr>))}\``,
+  },
+  {
     id: 'form-validation',
     title: '폼 구성·검증 (react-hook-form + zod)',
     // region에 폼 훅/리졸버가 있거나, 요청이 "폼/양식/form" + "검증/유효성/제출"을 함께 언급하면 발동.
