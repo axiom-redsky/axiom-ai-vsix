@@ -254,6 +254,22 @@
           "default": false,
           "description": "[실험] 페이지 생성 시 페이지 본문을 LLM으로 생성합니다. 기본 꺼짐(템플릿 모드): 정본 최소 스켈레톤(헤더+플레이스홀더)을 결정론적으로 생성해 약한 모델이 useApi 시그니처·$router import·존재하지 않는 타입을 지어내 컴파일 불가 코드를 박는 문제를 차단합니다. 켜면 데이터 페치까지 LLM이 생성하지만 약한 모델에선 부정확할 수 있습니다."
         },
+        "axiom-ai.experimental.captureRegionCases": {
+          "type": "boolean",
+          "default": false,
+          "description": "[실험·기본 꺼짐] 영역 편집 '실패 자동 포집'. 켜면 region 편집 결과(기본은 실패=폴백/에러)를 로컬 JSONL 코퍼스(globalStorage/region-captures.jsonl)에 한 줄씩 append 합니다 — 개선 플라이휠의 연료(실제 실패 분포)를 마찰 0으로 모읍니다. 텔레메트리가 아니라 네트워크를 전혀 쓰지 않는 로컬 파일 기록이므로 폐쇄망에서도 안전합니다. 반출 민감도는 captureRegionRedaction으로 조절합니다."
+        },
+        "axiom-ai.experimental.captureRegionRedaction": {
+          "type": "string",
+          "enum": ["full", "skeleton", "meta"],
+          "default": "full",
+          "description": "포집 시 남길 민감도. full=원본 소스(재현 100%, 개발자 dogfooding 전용) · skeleton=구조는 유지하되 문자열/숫자/한글 문구를 마스킹(반출 심사용 중간 민감도, 한글 앵커 재현은 일부 손실) · meta=소스 미포함, 쿼리·게이트·상태만(저민감도, 재현은 못 해도 '어느 실패가 잦은가' 분포 제공). captureRegionCases가 켜져 있을 때만 적용."
+        },
+        "axiom-ai.experimental.captureRegionApplied": {
+          "type": "boolean",
+          "default": false,
+          "description": "포집 시 성공(applied) 케이스도 남길지 여부. 기본 꺼짐(실패=폴백/에러만 포집). 켜면 '적용됐지만 실은 틀림' 후분석·전체 분포 확보용으로 성공 케이스도 함께 기록합니다. captureRegionCases가 켜져 있을 때만 적용."
+        },
         "axiom-ai.scenarioC.compactModes": {
           "type": "boolean",
           "default": true,
@@ -497,6 +513,7 @@
     "test:line-edits": "node scripts/run-test-line-edits.mjs",
     "test:patch-grounded": "node scripts/run-test-patch-grounded.mjs",
     "test:region-edit": "node scripts/test-region-edit.mjs",
+    "test:region-capture": "node scripts/test-region-capture.mjs",
     "test:api-binding": "node scripts/run-test-api-binding.mjs",
     "test:react-rules": "node scripts/run-test-react-rules.mjs",
     "test:offline-intent": "node scripts/run-test-offline-intent.mjs",

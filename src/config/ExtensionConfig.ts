@@ -372,6 +372,29 @@ export class ExtensionConfig {
   }
 
   /**
+   * 실험(기본 OFF): 영역 편집 "실패 자동 포집". 켜면 region 편집 결과(기본은 실패=fallback/error)를
+   * 로컬 JSONL 코퍼스에 append 한다 — 플라이휠 연료(실제 실패 분포). **텔레메트리 아님**(네트워크 0,
+   * 로컬 파일뿐 → 폐쇄망 안전). 반출 민감도는 captureRegionRedaction 으로 조절.
+   */
+  static isCaptureRegionCasesEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.captureRegionCases', false);
+  }
+
+  /**
+   * 포집 반출 민감도: 'full'(원본·재현100%·개발자 dogfooding용) / 'skeleton'(구조 유지·문구/숫자 마스킹)
+   * / 'meta'(소스 미포함·분포만). 잘못된 값은 'full'로. 기본 'full'(dev-first).
+   */
+  static getCaptureRegionRedaction(): 'full' | 'skeleton' | 'meta' {
+    const v = ExtensionConfig._resolve<string>('experimental.captureRegionRedaction', 'full');
+    return v === 'skeleton' || v === 'meta' ? v : 'full';
+  }
+
+  /** 포집 시 성공(applied)도 남길지. 기본 false(실패만 포집). */
+  static isCaptureRegionAppliedEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('experimental.captureRegionApplied', false);
+  }
+
+  /**
    * 실험: patch-우선 편집(Stage 1/경로 수렴). 현재 파일 in-place 수정 프롬프트에서 lines 모드를 빼고
    * patch(`<search>/<replace>` literal 정확매칭 = Claude Code Edit식)를 주력으로 제시한다. lines 앵커가
    * 드리프트로 자주 빗나가 grounded 재시도로 patch 전환되던 우회를 없애고, 약한 모델의 모드 선택 부담도

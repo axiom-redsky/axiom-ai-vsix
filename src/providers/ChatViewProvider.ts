@@ -10,6 +10,7 @@ import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/
 import { restoreSlicedStubs, splitTsSections } from '../ai/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
+import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/RegionCaptureRecorder';
 import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
 import { buildContractSection } from '../ai/ScaffoldContracts';
 import { buildComponentOptionsReference, detectComponentsInText } from '../ai/ComponentPropsIndex';
@@ -113,6 +114,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _healthCache: { at: number; online: boolean } | null = null;
   private readonly _fileCreator = new FileCreatorService();
   private readonly _corpusOutputChannel: vscode.OutputChannel;
+  /** 실패 자동 포집(experimental, 기본 OFF) JSONL 저장 디렉터리 = 확장 globalStorage. registerCorpusWatcher에서 설정. */
+  private _captureDir: string | undefined;
   /** 디버그: AI로 전송하는 시스템 프롬프트 전문을 기록하는 전용 채널 (lazy 생성) */
   private _promptOutputChannel: vscode.OutputChannel | undefined;
   private readonly _pendingConfirmations = new Map<string, { resolve: (approved: boolean) => void }>();
@@ -1005,7 +1008,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** corpus 파일 변경 시 RAG 인덱스를 재빌드하는 파일 와처를 등록한다. */
+  /**
+   * [실험·기본 OFF] 영역 편집 결과를 로컬 코퍼스(JSONL)에 포집한다 — 개선 플라이휠의 연료(실제 실패 분포).
+   * 폐쇄망 안전: 네트워크 0(로컬 append). 반출 민감도는 redaction 모드로 조절(RegionCaptureRecorder).
+   * ⚠ 편집 흐름을 절대 막지 않는다 — 모든 예외를 삼킨다.
+   */
+  private _captureRegionCase(query: string, filePath: string, source: string, outcome: RegionEditOutcome): void {
+    try {
+      if (!ExtensionConfig.isCaptureRegionCasesEnabled()) return;
+      if (!shouldCapture(outcome.status, ExtensionConfig.isCaptureRegionAppliedEnabled())) return;
+      const dir = this._captureDir;
+      if (!dir) return;
+      const ux = outcome.status === 'fallback' ? classifyRegionDecline(query, source, outcome.reason ?? '') : undefined;
+      const entry = buildCaptureEntry(
+        {
+          query,
+          filePath,
+          source,
+          status: outcome.status,
+          reason: outcome.reason,
+          ux,
+          region: outcome.locatedRegion
+            ? { start: outcome.locatedRegion.startLine, end: outcome.locatedRegion.endLine }
+            : undefined,
+          diagnostics: outcome.diagnostics,
+        },
+        new Date().toISOString(),
+        ExtensionConfig.getCaptureRegionRedaction(),
+      );
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, 'region-captures.jsonl'), serializeCaptureLine(entry), 'utf-8');
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 실패 포집: ${entry.id} (${entry.status}/${entry.reason ?? '-'}, redaction=${entry.redaction})`,
+      );
+    } catch {
+      /* 포집 실패는 편집을 막지 않는다 */
+    }
+  }
+
   registerCorpusWatcher(context: vscode.ExtensionContext): void {
+    // 실패 자동 포집 저장 위치 = 확장 globalStorage(프로젝트 간 누적·미커밋·폐쇄망 로컬).
+    this._captureDir = context.globalStorageUri?.fsPath;
+
     const knowledgePath = ExtensionConfig.getKnowledgePath();
     const pattern = new vscode.RelativePattern(
       vscode.workspace.workspaceFolders?.[0] ?? this._extensionUri,
@@ -3026,6 +3070,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ExtensionConfig.isAnchorFirstEditEnabled(),
     );
     this._corpusOutputChannel.appendLine(outcome.diagnostics);
+    this._captureRegionCase(query, filePath, source, outcome); // 실패 자동 포집(기본 OFF)
 
     // region 사퇴 시 UX 분기 — 분류는 단일 정책(classifyRegionDecline)에 위임(계기판과 규칙 동기화).
     if (outcome.status === 'fallback') {
