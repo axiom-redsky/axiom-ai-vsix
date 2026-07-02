@@ -191,6 +191,15 @@ export const AI_DEFAULTS = {
    */
   scenarioC: {
     compactModes: true,
+    /**
+     * coreRules(규칙·가이드)를 의도 기반으로 게이팅한다. 순수 가드레일(import 경로·Rules of Hooks·
+     * Button·핸들러/기존코드 보존 등 약한 모델이 질문에 없어도 어기는 규칙)은 **항상** 주입하되,
+     * 상황용 규칙(데이터 출처 우선순위·useApi·타입 네이밍 컨벤션·컴포넌트 선언 순서·router 생성)은
+     * 요청 의도(데이터/타입/훅/라우터 키워드나 현재 파일의 useApi 사용)와 관련될 때만 주입한다.
+     * 무관 지시문은 토큰만 늘리는 게 아니라 약한 모델의 품질을 떨어뜨리므로(정확도↑+토큰↓ 동시 이득),
+     * 시나리오 C(열린 파일 수정)에만 적용한다. false면 종전처럼 coreRules 전체를 항상 주입한다.
+     */
+    gateCoreRulesByIntent: true,
   },
   /**
    * 디버그용 기본값.

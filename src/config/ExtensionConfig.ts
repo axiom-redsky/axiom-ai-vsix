@@ -20,7 +20,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
   'experimental.onlineKnowledgeAnswer', 'experimental.regionVerify', 'experimental.anchorFirstEdit',
   'experimental.patchFirstEdit', 'experimental.composeBinding',
-  'scenarioC.compactModes',
+  'scenarioC.compactModes', 'scenarioC.gateCoreRulesByIntent',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
   'promptDiet.adaptiveBudget.targetRatio', 'promptDiet.adaptiveBudget.charsPerToken',
@@ -318,6 +318,14 @@ export class ExtensionConfig {
    */
   static isScenarioCCompactModes(): boolean {
     return ExtensionConfig._resolve<boolean>('scenarioC.compactModes', AI_DEFAULTS.scenarioC.compactModes);
+  }
+
+  /**
+   * 시나리오 C에서 coreRules(규칙·가이드)를 의도 기반으로 게이팅할지 여부. 순수 가드레일은 항상 유지하고
+   * 상황용 규칙만 관련 의도일 때 주입한다(무관 지시문 제거 → 정확도↑+토큰↓). 기본 on(약한 모델 이득).
+   */
+  static isGateCoreRulesByIntent(): boolean {
+    return ExtensionConfig._resolve<boolean>('scenarioC.gateCoreRulesByIntent', AI_DEFAULTS.scenarioC.gateCoreRulesByIntent);
   }
 
   /**
