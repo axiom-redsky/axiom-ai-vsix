@@ -95,6 +95,30 @@ console.log('locateEditRegion — Fix 1 (완결 컨트롤 스냅) + 안전 게�
   check('snap-failed: 비-JSX 코드줄 → full', !r.safety.ok && r.safety.gate === 'snap-failed', `gate=${r.safety.gate}, line=${r.bestLine}`);
 }
 
+// T6: handler-body — 이벤트 동작 변경 대상이 region 밖 명명 함수(onClick={handleX}) → full 폴백
+//     (region=JSX 요소만으론 handler 본문 못 고침 → 바인딩 인라인 교체 파손 방지. 실측 버그: "클릭 시 alert")
+{
+  const HSRC = [
+    "import { Button } from '@axiom/components/ui';",
+    '',
+    'export default function Page(): React.ReactNode {',
+    '  const handleRegisterClick = () => {',
+    "    console.log('신규 등록 버튼 클릭');",
+    '  };',
+    '  return (',
+    '    <div className="p-6">',
+    '      <Button onClick={handleRegisterClick}>신규 등록</Button>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(HSRC, "신규등록 버튼을 클릭 시 alert을 띄워줘 메시지는 'alert 테스트!'");
+  check('handler-body: 클릭 동작 변경 대상이 밖 명명함수 → full', !r.safety.ok && r.safety.gate === 'handler-body', `gate=${r.safety.gate}`);
+  // 동작이 아닌 텍스트 변경은 오발 안 함(region이 처리) — 같은 소스, 다른 의도
+  const r2 = locateEditRegion(HSRC, '신규 등록 버튼 텍스트를 "직원 추가"로 바꿔줘');
+  check('handler-body 오발 없음: 버튼 텍스트 변경은 region 유지(ok)', r2.safety.gate !== 'handler-body', `gate=${r2.safety.gate}`);
+}
+
 console.log('\ncheckRegionRootTag — Fix 2 (영역-밖 재작성 거부):');
 {
   const a = checkRegionRootTag('<SelectTrigger>\n  <SelectValue/>\n</SelectTrigger>', '<Select>\n  <SelectTrigger/>\n</Select>');

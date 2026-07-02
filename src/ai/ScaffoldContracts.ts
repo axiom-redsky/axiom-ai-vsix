@@ -271,6 +271,24 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `\`const form = useForm<TFormData>({ resolver: zodResolver(schema), defaultValues });\`. 간단하면 \`FormField\`의 \`rules\`도 가능합니다.\n` +
       `- 제출·수정은 \`useApi\`(@axiom/hooks) mutation과 연결: \`form.handleSubmit((d) => mutate(d, { onSuccess, onError }))\`. ⛔ \`useMutation\` 직접 사용 금지.`,
   },
+  {
+    id: 'handler-extraction',
+    // ⚠ 이 카드는 scaffold 전용이 아니라 **일반 React 컨벤션**(핸들러 구조 보존)이다 — 사용자 요청으로 추가.
+    // 규칙은 애매하지 않다: **현재 코드의 연결 구조가 결정**한다. 신규 연결 때만 방식 선택.
+    // ⚠ 한계: 명명 핸들러 본문 수정 케이스는 그 함수 선언이 편집 영역(region) 안에 있어야 모델이 고칠 수 있다
+    // → locate가 onXxx={식별자} 선언부를 region에 포함/재타겟해야 완전 동작(별도 작업).
+    title: '이벤트 핸들러 연결 (기존 구조 보존 — 일반 React)',
+    applies: ({ query }) =>
+      /클릭\s*(시|하면|할\s*때|되면)|눌렀?을\s*때|누르면|버튼\s*(클릭|누|동작)|이벤트|핸들러|handler|onclick|onchange|onsubmit|on[a-z]+\s*=|함수\s*(로\s*)?(연결|분리|추출|빼)|콜백|callback/i.test(query),
+    card:
+      `- 이벤트 핸들러(\`onClick\`/\`onChange\`/\`onSubmit\` 등)의 동작을 바꿀 때는 ` +
+      `**현재 코드의 연결 구조를 그대로 유지**하고 그 안에서 동작만 수정하세요:\n` +
+      `  · 이미 **명명 함수**가 연결돼 있으면(\`onClick={handleXxx}\`) → 그 **함수 본문을 수정**하고 바인딩은 그대로 두세요. ` +
+      `⛔ \`onClick={() => …}\` 인라인으로 갈아끼워 기존 함수를 무력화하지 마세요.\n` +
+      `  · 이미 **인라인**이면(\`onClick={() => …}\`) → 그 **인라인을 그대로 수정**하세요(불필요하게 함수로 빼지 말 것).\n` +
+      `- 핸들러가 **없어서 새로 연결**할 때만 방식을 고르되 **명명 함수 분리를 우선**하세요(\`const handleXxx = () => { … };\` 후 \`onClick={handleXxx}\`). ` +
+      `단순 한 줄 동작은 인라인 화살표도 괜찮습니다.`,
+  },
 ];
 
 /** 주어진 컨텍스트에 발동하는 계약 카드들을 레지스트리 순서로 반환. */

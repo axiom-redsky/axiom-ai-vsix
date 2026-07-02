@@ -273,6 +273,7 @@ export class ScaffoldContextBuilder {
 - createBrowserRouter 사용 금지 → 항상 createHashRouter (createAppRouter() 경유)
 - useQuery/useMutation 직접 사용 금지 → 항상 @axiom/hooks의 useApi 사용
 - **기존 코드 보존(중요)**: 새 \`useApi\`나 import를 추가할 때 ① 이미 있는 import를 다시 추가하지 말 것(중복), ② 기존 훅의 구조분해 필드(\`isPending\`, \`error\`, \`refetch\` 등)를 **이름 바꾸지 말 것**. 충돌이 걱정되면 **새로 추가하는 훅의 필드만** 고유 이름으로 alias한다(예: \`const { data: departments, isPending: isDepartmentsPending, error: departmentsError } = useApi(...)\`). 기존 훅과 그 사용처는 건드리지 않는다.
+- **이벤트 핸들러 구조 보존(중요)**: \`onClick\`/\`onChange\`/\`onSubmit\` 등의 동작을 바꿀 때는 **현재 코드의 연결 구조를 유지**하고 그 안에서 동작만 수정한다. ① 이미 **명명 함수**가 연결돼 있으면(\`onClick={handleXxx}\`) 그 **함수 본문을 수정**하고 바인딩은 그대로 둔다 — ⛔ \`onClick={() => …}\` 인라인으로 갈아끼워 기존 함수를 삭제·무력화하지 말 것. ② 이미 **인라인**이면(\`onClick={() => …}\`) 인라인을 그대로 수정한다. ③ 핸들러가 **없어 새로 연결**할 때만 방식을 고르되 명명 함수 분리를 우선하고, 단순 한 줄 동작은 인라인 화살표도 허용한다.
 - **⚠️ React Rules of Hooks 절대 준수**: \`use\`로 시작하는 모든 훅(useApi, useState, useEffect, useMemo, useCallback, useRef, useParams 등)은 반드시 **React 함수 컴포넌트 본문 또는 커스텀 훅(\`use*\`) 함수 본문의 최상위**에서만 호출. 다음 위치에서 호출 절대 금지: ① 모듈 최상위(import 아래·\`export default function\` 위), ② 조건문/반복문/일반 \`if·for·try\` 블록 안, ③ 일반 함수(컴포넌트가 아닌 \`calculateXxx\`, \`formatXxx\` 등 유틸 함수)나 콜백 안, ④ class 컴포넌트 안. 새 \`useApi\` 호출을 추가할 때는 반드시 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 위에 위치시킬 것.
 - 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
 - scaffold의 package.json에 없는 라이브러리 제안 금지
@@ -738,7 +739,7 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 - **히스토리 교체**: \`$router.replace('/path')\`
 
 > ⚠️ \`useNavigate()\` 및 \`react-router\` 훅 사용 **절대 금지**. 항상 \`$router\`를 사용한다.
-> onClick은 인라인 화살표 함수로 작성. 별도 핸들러 함수 선언 불필요.`
+> 위 이동처럼 **단순 한 줄 동작**은 onClick 인라인 화살표로 충분하다(별도 핸들러 함수 선언 불필요). 단, **기존에 명명 핸들러가 연결돼 있으면** 위 '이벤트 핸들러 구조 보존' 규칙을 따라 그 함수 본문을 수정한다.`
       : '';
 
     // 데이터 필터링·검색 요청 + 현재 파일이 이미 useApi(params)로 서버 조회 중일 때만 노출한다.

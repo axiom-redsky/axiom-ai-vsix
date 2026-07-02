@@ -81,6 +81,8 @@ export type RegionDeclineUx = 'reask-ambiguous' | 'inform-absent' | 'full';
 const ADD_INTENT_RE = /추가|만들|생성|넣어|새로|add|create/i;
 export function classifyRegionDecline(query: string, source: string, gate: string): RegionDeclineUx {
   if (gate === 'ambiguous') return 'reask-ambiguous';
+  // 핸들러 본문이 region 밖 — 되물음/부재안내가 아니라 항상 full 폴백(파일 전체에서 함수 본문 수정).
+  if (gate === 'handler-body') return 'full';
   const tags = impliedControlTags(query);
   const namedButAbsent = tags.length > 0 && tags.every((t) => countTag(source, t) === 0);
   if (namedButAbsent && !ADD_INTENT_RE.test(query)) return 'inform-absent';

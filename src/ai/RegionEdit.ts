@@ -94,7 +94,7 @@ function decomposeDomainCompounds(tokens: string[]): string[] {
 
 export interface RegionSafety {
   ok: boolean;
-  gate: 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed' | 'cross-cutting' | 'ambiguous' | 'ok';
+  gate: 'anchor-missing' | 'anchor-comment' | 'anchor-import' | 'snap-failed' | 'cross-cutting' | 'handler-body' | 'ambiguous' | 'ok';
   reason: string;
 }
 
@@ -503,6 +503,49 @@ function selectReachableTypes(typeSecs: { name: string; body: string }[], seedTe
 }
 
 /**
+ * 이벤트 핸들러 "동작 변경"인데 그 대상이 **명명 함수**(`onClick={handleXxx}`)이고 그 함수 선언이
+ * 편집 영역(region) **밖**(보통 return 이전 컴포넌트 본문)에 있는지 판정한다.
+ * 이 경우 region(=JSX 요소)만으로는 handler 본문을 고칠 수 없다 — 모델은 바인딩을 인라인 화살표로
+ * 갈아끼우는 파손(기존 함수 무력화)밖에 못 한다(실측: "클릭 시 alert" → 기존 handleRegisterClick 삭제·인라인화).
+ * 이때 full 폴백해 파일 전체에서 함수 본문을 수정하게 한다(cross-cutting과 동일 원리 — 편집 대상이 region 밖).
+ *  - 이벤트-동작 의도가 아니면(버튼 텍스트/색 변경 등) 미발동 — 그건 region이 처리.
+ *  - region이 인라인 핸들러(`{() => …}`)이거나, 함수 선언이 region 안이거나, 파일에서 선언을 못 찾으면
+ *    (다른 파일 import 등) 미발동(종전 동작 유지 — 오발 시에도 비용은 full 폴백뿐, 정확성 손실 없음).
+ */
+function detectHandlerBodyOutsideRegion(
+  query: string,
+  source: string,
+  startLine: number,
+  endLine: number,
+): { ident: string; declLine: number } | null {
+  if (!/클릭|누르면|누를|onclick|onchange|onsubmit|onblur|onfocus|이벤트|핸들러|handler|콜백|callback/i.test(query)) {
+    return null;
+  }
+  const lines = source.split('\n');
+  const region = lines.slice(startLine - 1, endLine).join('\n');
+  // region의 on*={식별자} — 인라인(`{() =>`·`{(e) =>`·`{async`)은 제외, 맨 식별자 참조만.
+  const refRe = /\bon[A-Z][A-Za-z]*\s*=\s*\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
+  const idents = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = refRe.exec(region))) idents.add(m[1]);
+  if (idents.size === 0) return null;
+  for (const ident of idents) {
+    const esc = ident.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // const/let/var/function handleX (export 접두 허용).
+    const declRe = new RegExp(`^\\s*(?:export\\s+)?(?:async\\s+)?(?:const|let|var|function)\\s+${esc}\\b`);
+    for (let i = 0; i < lines.length; i++) {
+      if (declRe.test(lines[i])) {
+        const declLine = i + 1;
+        // 선언이 region 안이면 모델이 직접 고칠 수 있으니 미발동.
+        if (declLine >= startLine && declLine <= endLine) return null;
+        return { ident, declLine };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * 질문 토큰으로 편집 영역을 찾고(grep→스냅), 의존성 헤더를 추출하고, splice 안전성을 판정한다.
  *
  * ① grep — 잡음 토큰 제거 후, 토큰 매칭 점수가 가장 높은 라인을 편집 중심으로 잡는다.
@@ -792,6 +835,8 @@ export function locateEditRegion(
   // 모호(ambiguous)를 먼저 본다 — 무앵커 모호(diffuseControl)는 anchor-import/snap-failed/anchor-missing
   // 보다 정확한 진단이라 그 게이트들을 가린다(full 떨굼 대신 되물음). generic-tie 는 snap 통과 케이스라 순서 무관.
   const hitLine = (lines[bestLine - 1] ?? '').trim();
+  // 이벤트 핸들러 동작 변경 대상이 region 밖 명명 함수인지(forcedRegion=모델 명시 선택이면 존중, 미판정).
+  const handlerBodyTarget = snap && !forcedRegion ? detectHandlerBodyOutsideRegion(query, source, startLine, endLine) : null;
   let safety: RegionSafety;
   if (isAmbiguous) {
     safety = { ok: false, gate: 'ambiguous', reason: ambigReason };
@@ -803,6 +848,8 @@ export function locateEditRegion(
     safety = { ok: false, gate: 'anchor-import', reason: `최고 매칭(${bestLine}줄)이 import 라인 — 편집 영역으로 부적합.` };
   } else if (!snap) {
     safety = { ok: false, gate: 'snap-failed', reason: `완결 JSX 요소 스냅 실패 → ±윈도우(${startLine}~${endLine})는 균형 블록이 아님. 모델 재작성 splice 시 구조 파손 위험.` };
+  } else if (handlerBodyTarget) {
+    safety = { ok: false, gate: 'handler-body', reason: `이벤트 핸들러 동작 변경 대상이 명명 함수 '${handlerBodyTarget.ident}'(${handlerBodyTarget.declLine}줄)이나 편집 영역(${startLine}~${endLine}) 밖 — region(JSX 요소)만으론 함수 본문을 못 고침(바인딩 인라인 교체로 기존 함수 무력화 위험) → full 폴백.` };
   } else if (isCrossCutting(query, firstJsxTag(region), region) && !hasServerParamsFilter) {
     // 다중지점(필터/정렬/연동) — 편집의도 + region 루트가 큰 컨테이너 + 지목 컨트롤이 region 밖.
     // **서버 params 필터가 가능하면(B+C 경로)** 통과시킨다: 인벤토리로 기존 컨트롤 재생성을 막고,
