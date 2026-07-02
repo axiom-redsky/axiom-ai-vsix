@@ -7,7 +7,7 @@
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
-import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
+import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/ScaffoldContracts';
 import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/ComponentPropsIndex';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
 import { crossFileSuppressionReason } from '../src/ai/CrossFileTargeting';
@@ -609,6 +609,27 @@ console.log('\nScaffoldContracts — 계약 카드 트리거 주입:');
   // 반례: 파일에 없는 이름 + 실제 API 적용 의도는 종전대로 발동(회귀 방지).
   check('list-table: 로컬에 없는 이름 + api 적용 → 발동 유지',
     ids({ deps: '', region: '<table><tbody/></table>', query: "직원 목록 테이블에 '/api/employees' 적용해줘" }).includes('list-table-binding'));
+
+  // ── 로컬 데이터 렌더: 괄호 없는 자연어 지목("getProd 결과 배열")도 잡아야 한다 ──────────
+  // 실측 2026-07-03: "getProd 결과 배열을 화면에 테이블로 그려줘" 가 referencesLocalDataSource의 "X()"/"X함수"
+  // 패턴에만 걸려 미발동 → local-data-render 카드 안 뜸 → requiresPatchMode 미적용 → structural 선택 → 표 누락.
+  {
+    const ctx = {
+      deps: 'const getProd = () => [{ id: 1, name: "노트북" }];',
+      region: '<div/>',
+      query: 'getProd 결과 배열을 화면에 테이블로 그려줘',
+    };
+    check('local-data-render: "getProd 결과 배열"(괄호 없음) → 카드 발동', ids(ctx).includes('local-data-render'));
+    check('local-data-render: 같은 케이스 list-table-binding 양보(비발동)', !ids(ctx).includes('list-table-binding'));
+    check('local-data-render: requiresPatchMode → structural 제거', contractsRequirePatchMode(ctx) === true);
+    check('local-data-render 카드: 기존 함수 .map() 렌더 지시 포함', buildContractSection(ctx).includes('.map()'));
+  }
+  // getter형 이름(getXxx)은 "결과/배열" 없이 언급만 해도 로컬 출처로 인식.
+  check('local-data-render: getter 이름 단독 언급 → 발동',
+    ids({ deps: 'const getProd = () => [];', region: '<div/>', query: 'getProd 를 테이블로 그려줘' }).includes('local-data-render'));
+  // 반례: 파일에 없는 getter형 이름은 로컬 출처 아님 → local-data-render 비발동(과발동 방지).
+  check('local-data-render: 파일에 없는 이름 → 비발동',
+    !ids({ deps: 'const getArr = () => [];', region: '<div/>', query: 'getUsers 결과를 테이블로 그려줘' }).includes('local-data-render'));
 
   // SmartTable 명시 → smart-table-binding 발동 + SmartTable 골격 포함, list-table는 양보(비발동)
   {

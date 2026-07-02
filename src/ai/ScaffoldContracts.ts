@@ -73,12 +73,20 @@ function wantsSmartTable(query: string): boolean {
  * (안 그러면 모델이 존재하지 않는 `/api/…`와 `useApi`를 지어낸다 — 실측 버그).
  */
 function referencesLocalDataSource(query: string, code: string): boolean {
-  // "X함수" / "X()" 형태로 쿼리가 지목한 식별자를 뽑아, 그것이 파일에 선언돼 있으면 로컬 출처로 본다.
-  const ids = [...query.matchAll(/([A-Za-z_$][\w$]*)\s*(?:함수|\(\s*\))/g)].map((m) => m[1]);
-  return ids.some(
+  // 쿼리가 지목한 식별자를 뽑아, 그것이 파일에 선언돼 있으면 로컬 출처로 본다.
+  const ids = new Set<string>();
+  // ① "X함수" / "X()" 명시 지목
+  for (const m of query.matchAll(/([A-Za-z_$][\w$]*)\s*(?:함수|\(\s*\))/g)) ids.add(m[1]);
+  // ② "X 결과/배열/데이터/목록/리스트/값" — 괄호 없이 X를 데이터로 지목하는 자연어
+  //    (실측 2026-07-03: "getProd 결과 배열을 테이블로" 가 ①에 안 걸려 카드 미발동 → structural 선택 → 표 누락).
+  for (const m of query.matchAll(/([A-Za-z_$][\w$]*)\s*(?:결과|배열|데이터|목록|리스트|값)/g)) ids.add(m[1]);
+  // ③ getter/fetch 형태(getXxx·fetchXxx 등, scaffold 로컬 데이터 관례)는 괄호 없이 언급해도 로컬 출처로 본다.
+  for (const m of query.matchAll(/\b((?:get|fetch|load|select|find|list|make|build)[A-Z][\w$]*)\b/g)) ids.add(m[1]);
+  return [...ids].some(
     (id) =>
-      new RegExp(`\\b(?:const|let|var|function)\\s+${id}\\b`).test(code) ||
-      new RegExp(`\\b${id}\\s*=[^=]`).test(code),
+      id.length >= 3 && // 너무 짧은 토큰(id 등) 오탐 방지
+      (new RegExp(`\\b(?:const|let|var|function)\\s+${id}\\b`).test(code) ||
+        new RegExp(`\\b${id}\\s*=[^=]`).test(code)),
   );
 }
 
