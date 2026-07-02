@@ -108,6 +108,55 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `- ⛔ \`useNavigate()\`·\`useHistory()\` 등 react-router 훅 사용 금지.`,
   },
   {
+    id: 'global-ui-alerts',
+    title: '알림·확인 다이얼로그 (전역 $ui)',
+    // region/deps에 window.alert(confirm)·$ui가 있거나, 요청이 알림/확인 다이얼로그를 언급하면 발동.
+    // 모달/팝업(Dialog 컴포넌트)은 별개라 트리거에서 제외 — alert/confirm 의미만 좁혀 잡는다.
+    applies: ({ deps, region, query }) =>
+      /window\s*\.\s*(alert|confirm)\s*\(/i.test(region) ||
+      /window\s*\.\s*(alert|confirm)\s*\(/i.test(deps) ||
+      /\$ui\b/.test(region) ||
+      /\balert\b|\bconfirm\b|얼럿|컨펌|알림\s*창|알림\s*팝업|경고\s*창|확인\s*창|확인\s*팝업|메시지\s*박스/i.test(query),
+    card:
+      `- 알림·확인은 브라우저 기본이 아니라 전역 \`$ui\`로 합니다(import 불필요): ` +
+      `\`await $ui.alert('메시지')\` · \`const ok = await $ui.confirm('메시지')\`(확인=\`true\`).\n` +
+      `- ⛔ \`window.alert()\`/\`window.confirm()\`/전역 \`alert()\`/\`confirm()\` 사용 금지 — ` +
+      `\`$ui\`는 디자인토큰·다크모드가 적용된 non-blocking 다이얼로그이며 \`Promise\`로 결과를 받습니다.\n` +
+      `- 타입 지정 시 아이콘·색상·기본제목 자동: \`$ui.alert('저장됐습니다', { type: 'success' })\`(success|info|warning|error). ` +
+      `토스트처럼 자동 닫힘: \`{ autoDismiss: 1500 }\`.`,
+  },
+  {
+    id: 'global-util',
+    title: '공통 포맷·변환 유틸 (전역 $util)',
+    // region/deps에 $util이 있거나, 요청이 포맷/변환류(금액·날짜·마스킹·그룹핑 등)를 언급하면 발동.
+    // bare "숫자/날짜"만으로는 발동 안 함(남발 방지) — 포맷/변환 동사와 결합될 때만.
+    applies: ({ deps, region, query }) =>
+      /\$util\b/.test(region) ||
+      /\$util\b/.test(deps) ||
+      /포맷|format|금액|통화|currency|천\s*단위|콤마|comma|쉼표|마스킹|\bmask|퍼센트|percent|한글\s*금액|축약|자리수|소수점|날짜\s*(포맷|형식|변환|계산)|숫자\s*(포맷|형식|변환)|그룹\s*핑|groupby|합계|sumby|중복\s*제거|정렬\s*(해|하)|영업일/i.test(query),
+    card:
+      `- 숫자·날짜·문자열·금융·객체·배열 가공은 전역 \`$util\`로 합니다(import 불필요): ` +
+      `\`$util.number.comma(1234567)\`("1,234,567") · \`$util.number.currency(v)\`("…원") · \`$util.date.format(d, 'YYYY-MM-DD')\` · ` +
+      `\`$util.string.mask(v, 3, 7)\` · \`$util.array.groupBy(rows, 'type')\` 등.\n` +
+      `- ⛔ 수동 포맷(\`toLocaleString\`·정규식 콤마·\`Date\` 직접 슬라이싱 등)이나 \`import { numberUtil } …\` 직접 임포트 대신 전역 \`$util.*\`를 쓰세요.\n` +
+      `- 네임스페이스 6종: \`number\`·\`date\`·\`string\`·\`finance\`·\`object\`·\`array\`.`,
+  },
+  {
+    id: 'class-merge-cn',
+    title: 'className 병합 (cn)',
+    // 조건부/동적/문자열결합 className이나 병합 의도일 때만 발동 — 정적 className엔 발동 안 함(거의 모든 JSX 남발 방지).
+    applies: ({ region, query }) =>
+      /\bcn\s*\(/.test(region) ||
+      /className\s*=\s*\{\s*`[^`]*\$\{/.test(region) || // 템플릿리터럴 동적 className
+      /className\s*=\s*\{[^}]*(\?|&&|\+)[^}]*\}/.test(region) || // 조건부/문자열결합 className
+      /조건부\s*(클래스|class|스타일)|(클래스|classname)\s*병합|동적\s*(클래스|스타일)|tailwind\s*충돌|\bcn\s*\(/i.test(query),
+    card:
+      `- 조건부·동적·외부주입(className prop) 클래스를 합칠 때는 \`cn()\`을 쓰세요: ` +
+      `\`import { cn } from '@/shared/utils/cn';\` → \`className={cn('rounded border', disabled && 'opacity-50', className)}\`.\n` +
+      `- ⛔ 템플릿리터럴/문자열 \`+\`로 클래스를 손수 잇지 마세요 — \`cn()\`은 \`clsx\`+\`tailwind-merge\`로 ` +
+      `Tailwind 충돌(\`px-2\`↔\`px-4\`)을 마지막 값으로 정리합니다(정적 문자열만이면 그대로 두어도 됩니다).`,
+  },
+  {
     id: 'type-naming',
     title: 'TypeScript 타입 네이밍·위치',
     // 선언 형태(type Foo / interface Foo)나 타입·스펙 언급 시 발동. JSX의 type="text" 속성엔 오발동 안 함.
@@ -206,6 +255,21 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `- ⚠ 기존 컬럼(헤더·셀 구성)은 유지하고 \`.map\` 대상만 하드코딩 배열 → \`xxxItems\`로 바꾸세요. ` +
       `로딩/에러 표시가 필요하면 \`isPending\`·\`error\`를 쓰되, 안 쓸 거면 구조분해에서 빼세요(미사용 선언은 거부됨).` +
       SCHEMA_CONFIRM_GATE,
+  },
+  {
+    id: 'form-validation',
+    title: '폼 구성·검증 (react-hook-form + zod)',
+    // region에 폼 훅/리졸버가 있거나, 요청이 "폼/양식/form" + "검증/유효성/제출"을 함께 언급하면 발동.
+    // bare "form"만으로는 발동 안 함(남발 방지).
+    applies: ({ region, query }) =>
+      /\buseForm\b|zodResolver|@hookform\/resolvers|z\.object\b/.test(region) ||
+      (/폼|양식|\bform\b/i.test(query) &&
+        /검증|유효성|validation|필수|required|스키마|schema|제출|submit|저장|등록/i.test(query)),
+    card:
+      `- 폼은 \`react-hook-form\`(\`useForm\`) + shadcn \`Form\`(\`@axiom/components/ui\`의 \`Form\`/\`FormField\`/\`FormItem\`/\`FormLabel\`/\`FormControl\`/\`FormMessage\`)으로 구성합니다.\n` +
+      `- 검증은 \`zod\` 스키마 + \`zodResolver\`(\`@hookform/resolvers/zod\`): ` +
+      `\`const form = useForm<TFormData>({ resolver: zodResolver(schema), defaultValues });\`. 간단하면 \`FormField\`의 \`rules\`도 가능합니다.\n` +
+      `- 제출·수정은 \`useApi\`(@axiom/hooks) mutation과 연결: \`form.handleSubmit((d) => mutate(d, { onSuccess, onError }))\`. ⛔ \`useMutation\` 직접 사용 금지.`,
   },
 ];
 
