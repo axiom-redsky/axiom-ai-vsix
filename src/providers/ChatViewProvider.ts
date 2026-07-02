@@ -44,7 +44,7 @@ import {
   type MdSection,
 } from '../ai/SectionExtractor';
 import { PageCreationDetector } from '../ai/PageCreationDetector';
-import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind } from '../ai/IntentClassifier';
+import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind, type IntentContext } from '../ai/IntentClassifier';
 import { FALLBACK_HINT } from '../ai/OfflineKnowledgeRetriever';
 import { OfflineResponder } from '../ai/OfflineResponder';
 import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/OfflineTransplant';
@@ -52,7 +52,7 @@ import { IntentExampleStore } from '../ai/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../ai/OfflineIntentResolver';
 import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from '../ai/JsonTypeGenerator';
-import { fillSlots } from '../ai/IntentSignals';
+import { fillSlots, classifyOfflineIntent } from '../ai/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
@@ -1420,6 +1420,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         !qnaGated &&
         (classifierSaysModify ||
           this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? ''));
+
+      // [S1 비파괴 측정 — 라우팅 통합 준비] 라우팅은 **바꾸지 않고**, 단일 라우터 후보 effectiveIntent
+      // (분류기 확신 시 그 결과, null/other면 정규식 통합 폴백 classifyOfflineIntent)를 계산해 기존 게이트
+      // (qnaGated·isFileCtx) 판정과 **어디서 갈라지는지** 출력 채널에만 기록한다. 어느 결정자가 실사용에서
+      // 얼마나 충돌하는지 실측 → 다음 단계(S2~) 우선순위 데이터. (AXIOM_INTENT_ROUTING_REDESIGN.md §4)
+      this._logIntentDivergence(text, intent, qnaGated, isFileCtx, editorCtx);
 
       // 온라인 지식 가이드 — Q&A(조회·설명)로 게이팅된 요청은, 로컬 검색기가 정밀 매칭 문서를
       // **확신**할 때 그 knowledge 문서 전문을 오프라인과 동일하게 렌더하고 LLM 합성을 건너뛴다.
@@ -5927,6 +5933,50 @@ export default routes;`;
    * region disambiguation과 같은 경량·제약 호출이라 약한 모델도 안정적이다.
    * 모델 부재·타임아웃·파싱 실패 시 null을 돌려 호출부가 기존 정규식으로 폴백하게 한다(회귀 0).
    */
+  /**
+   * [S1 비파괴 측정 — 라우팅 통합 준비] 단일 라우터 후보 `effectiveIntent`(분류기 확신 시 그 결과,
+   * null/other면 정규식 통합 폴백 `classifyOfflineIntent`)와 **현행 게이트 판정**(qnaGated·isFileCtx)의
+   * 불일치를 출력 채널에만 기록한다. **라우팅은 바꾸지 않는다** — 어느 결정자가 실사용에서 얼마나
+   * 충돌하는지 실측해 다음 단계(S2~)의 우선순위를 정하기 위함. (AXIOM_INTENT_ROUTING_REDESIGN.md §4)
+   */
+  private _logIntentDivergence(
+    query: string,
+    classifierIntent: IntentResult | null,
+    qnaGated: boolean,
+    isFileCtx: boolean,
+    editorCtx: EditorContext,
+  ): void {
+    try {
+      const ctx: IntentContext = {
+        currentFile:
+          editorCtx.filePath ??
+          (vscode.window.activeTextEditor
+            ? this._toWorkspaceRel(vscode.window.activeTextEditor.document.fileName)
+            : null),
+        hasSelection: !!editorCtx.selection,
+        domains: this._scanWorkspaceDomains(),
+      };
+      const offline = classifyOfflineIntent(query, ctx);
+      // 분류기가 확신(null도 'other'도 아님)이면 그 결과, 아니면 정규식 통합 폴백이 effectiveIntent.
+      const classifierConfident = classifierIntent !== null && classifierIntent.intent !== 'other';
+      const eff = classifierConfident ? (classifierIntent as IntentResult) : offline;
+      // effectiveIntent를 현행 두 게이트 축과 같은 의미로 환산해 비교한다.
+      const effQnaGated = eff.intent === 'qna' || eff.intent === 'smalltalk';
+      const effFileCtx = eff.intent === 'modify_file';
+      const mism: string[] = [];
+      if (effQnaGated !== qnaGated) mism.push(`qnaGated(현행=${qnaGated}↔eff=${effQnaGated})`);
+      if (effFileCtx !== isFileCtx) mism.push(`isFileCtx(현행=${isFileCtx}↔eff=${effFileCtx})`);
+      const tag = mism.length ? `⚠ 불일치[${mism.join(', ')}]` : '✅ 일치';
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI][S1 라우팅측정] ${tag} · effective=${eff.intent}(src=${classifierConfident ? 'classifier' : 'regex'})` +
+          ` · classifier=${classifierIntent ? classifierIntent.intent : 'null'} · offline=${offline.intent}(${offline.strength})` +
+          ` · query="${query.slice(0, 60)}"`,
+      );
+    } catch (err) {
+      this._corpusOutputChannel.appendLine(`[Axiom AI][S1 라우팅측정] 측정 실패(무시): ${(err as Error).message}`);
+    }
+  }
+
   private async _classifyIntent(query: string): Promise<IntentResult | null> {
     const config = ExtensionConfig.getEffectiveLlmConfig();
     const editorRel = vscode.window.activeTextEditor
