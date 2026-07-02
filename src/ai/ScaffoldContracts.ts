@@ -60,6 +60,22 @@ function wantsSmartTable(query: string): boolean {
 }
 
 /**
+ * 요청이 **이미 파일에 존재하는 로컬 데이터 출처**(함수·상수)를 데이터로 지목하는지.
+ * 예: "getArr함수 결과를 테이블로", "getArr() 결과를 …". 이런 요청은 API를 새로 만드는 게 아니라
+ * 기존 로컬 데이터를 렌더하는 것이므로 list-table-binding(list API 적용) 카드를 양보시킨다
+ * (안 그러면 모델이 존재하지 않는 `/api/…`와 `useApi`를 지어낸다 — 실측 버그).
+ */
+function referencesLocalDataSource(query: string, code: string): boolean {
+  // "X함수" / "X()" 형태로 쿼리가 지목한 식별자를 뽑아, 그것이 파일에 선언돼 있으면 로컬 출처로 본다.
+  const ids = [...query.matchAll(/([A-Za-z_$][\w$]*)\s*(?:함수|\(\s*\))/g)].map((m) => m[1]);
+  return ids.some(
+    (id) =>
+      new RegExp(`\\b(?:const|let|var|function)\\s+${id}\\b`).test(code) ||
+      new RegExp(`\\b${id}\\s*=[^=]`).test(code),
+  );
+}
+
+/**
  * 응답 스키마 확인 게이트 — 테이블/그리드 바인딩 카드에 공통으로 덧붙인다.
  * 응답 필드 구성이 참조 스펙·열린 파일 어디에도 없으면 추측 코드를 짓는 대신 **한 번 되묻게** 한다.
  * "모를 때만 묻기"(스키마가 이미 있으면 되묻지 않음)로 불필요한 마찰을 막고, 막다른 질문이 아니라
@@ -233,10 +249,13 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
     // 약한 모델이 useApi 훅만 선언하고 ① 응답 타입 선언과 ② 테이블 JSX 재작성을 빠뜨려(실측: region 편집
     // 없음 → 미사용 선언 거부 / TXxxResponse 미선언 → 의존성 거부) dead-end 나던 것을, 3부품 골격으로 낮춘다.
     // ⚠ SmartTable을 명시한 요청은 smart-table-binding 카드가 담당하므로 여기선 양보한다(모순 지침 방지).
-    applies: ({ region, query }) =>
+    applies: ({ region, query, deps }) =>
       !wantsSmartTable(query) &&
+      // 이미 있는 로컬 함수/상수를 데이터로 지목한 요청("getArr 결과를 테이블로")은 API 적용이 아니다 → 양보.
+      !referencesLocalDataSource(query, `${deps}\n${region}`) &&
+      // ⚠ "보여"(렌더 동사)는 API 적용 신호가 아니다 — 순수 로컬 렌더 요청까지 끌어와 useApi를 지어내던 오발동 원인이라 제외.
       ((/(테이블|목록|리스트|그리드|table|list|grid|행\b|로우|rows?)/i.test(query) &&
-        /(api|적용|연동|바인딩|불러|가져|조회|채워|매핑|연결|붙여|보여)/i.test(query)) ||
+        /(api|적용|연동|바인딩|불러|가져|조회|채워|매핑|연결|붙여)/i.test(query)) ||
       (/<(table|tbody|thead|Table)\b/i.test(region) && /(api|목록|데이터|적용|불러|조회|연동)/i.test(query))),
     card:
       `- 테이블/목록에 list API를 적용할 때는 **아래 3부품을 모두** 출력하세요 — 훅만 넣고 멈추지 말고 ` +

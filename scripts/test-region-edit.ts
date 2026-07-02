@@ -589,6 +589,27 @@ console.log('\nScaffoldContracts — 계약 카드 트리거 주입:');
   check('list-table: 무관 쿼리 → 비발동',
     !ids({ deps: '', region: '<div/>', query: '글자색 변경' }).includes('list-table-binding'));
 
+  // ── 로컬 데이터 렌더 요청은 API 카드를 발동시키면 안 된다(useApi 환각 방지) ──────────
+  // "보여"(렌더 동사)만으로는 발동 안 함 — 순수 로컬 렌더 요청.
+  check('list-table: "테이블로 보여줘"(API 동사 없음) → 비발동',
+    !ids({ deps: '', region: '<div/>', query: '이 배열을 테이블로 화면에 보여줘' }).includes('list-table-binding'));
+  // 요청이 지목한 함수/상수가 파일에 이미 선언돼 있으면(로컬 출처) API 동사가 있어도 양보.
+  check('list-table: 로컬 함수(getArr) 지목 → 비발동',
+    !ids({
+      deps: 'const getArr = () => { return [{ id: 1 }]; };',
+      region: '<div/>',
+      query: '현재 화면에서 getArr함수 결과를 테이블로 화면에 보여줘',
+    }).includes('list-table-binding'));
+  check('list-table: 로컬 함수 지목 + "적용"이어도 → 비발동',
+    !ids({
+      deps: 'const getArr = () => [];',
+      region: '<table><tbody/></table>',
+      query: 'getArr() 결과를 테이블에 적용해줘',
+    }).includes('list-table-binding'));
+  // 반례: 파일에 없는 이름 + 실제 API 적용 의도는 종전대로 발동(회귀 방지).
+  check('list-table: 로컬에 없는 이름 + api 적용 → 발동 유지',
+    ids({ deps: '', region: '<table><tbody/></table>', query: "직원 목록 테이블에 '/api/employees' 적용해줘" }).includes('list-table-binding'));
+
   // SmartTable 명시 → smart-table-binding 발동 + SmartTable 골격 포함, list-table는 양보(비발동)
   {
     const ctx = { deps: '', region: '<table><tbody>{rows.map(r=>(<tr/>))}</tbody></table>', query: "'/api/employees' 데이터를 SmartTable로 직원 테이블에 적용해줘" };
