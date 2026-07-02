@@ -1323,6 +1323,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       intent = await this._classifyIntent(text);
       this._postStep('의도 분석');
       if (intent) {
+        // 온라인 create_page 충돌 안전 가드 — 오프라인 resolveOfflineIntent의 create→modify 가드와 동일 철학.
+        // LLM이 create_page라 답해도, (a) 결정론 PageCreationDetector가 페이지/화면 키워드를 전혀 못 보고
+        // (b) 현재 편집 가능한 파일이 열려 있으면, "getArr 함수를 하나 만들어"류를 '만들'만 보고 페이지 생성으로
+        // 오분류한 것으로 판단해 **현재 파일 수정으로 되돌린다**. 회귀 방지: '페이지/화면/XxxPage' 신호가 있으면
+        // regex도 isPageCreation=true라 가드가 발동하지 않아 정상 생성이 유지된다(두 분류기의 불일치일 때만 개입).
+        if (intent.intent === 'create_page' && !this._pageCreationDetector.detect(text).isPageCreation) {
+          const openFile = this._editorCollector.collect(overrideSelection).filePath;
+          if (openFile) {
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] create_page 가드 발동: 페이지/화면 신호 없음 + 열린 파일(${openFile}) → modify_file로 보정`,
+            );
+            intent = { ...intent, intent: 'modify_file', targetFile: intent.targetFile ?? 'current' };
+          }
+        }
         this._post({ type: 'token', content: `\n> ${formatIntentForChat(intent)}\n` });
         if (intent.intent === 'create_page') {
           // 분류기 pageName은 방어적으로 정규화(소문자·확장자 등) — 인식 못 하면 null로 되묻기.

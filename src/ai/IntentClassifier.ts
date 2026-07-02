@@ -76,8 +76,12 @@ export function buildIntentPrompt(query: string, ctx: IntentContext): string {
     `"domain": string|null, "contentSource": string|null, "targetFile": "current"|string|null, ` +
     `"targetComponent": string|null}\n\n` +
     `## 필드 규칙\n` +
-    `- intent: create_page=새 페이지/화면 생성, modify_file=기존(보통 현재) 파일 수정, ` +
+    `- intent: create_page=**새 페이지/화면/라우트 파일**을 통째로 새로 만드는 것, ` +
+    `modify_file=기존(보통 현재 열린) 파일에 코드를 추가·수정하는 것, ` +
     `qna=조회·설명 질문, smalltalk=인사·잡담, other=불명확.\n` +
+    `  ⚠ **'만들다/추가하다'가 있어도 대상이 페이지/화면이 아니면 create_page가 아닙니다.** ` +
+    `함수·변수·state·핸들러·배열·객체·타입·버튼 등 **코드 요소를 "만들/추가"**하라는 요청은 modify_file입니다 ` +
+    `(특히 파일이 열려 있으면 현재 파일 수정). create_page는 화면 한 벌(페이지/라우트)을 새로 만들 때로 한정하세요.\n` +
     `- pageName: **새로 만들** 페이지의 PascalCase 이름. create_page가 아니면 null. ` +
     `요청에 적힌 파일경로 안의 이름(.tsx 등)은 "출처"이지 "만들 이름"이 아니므로 pageName에 넣지 마세요.\n` +
     `- domain: 명시된 대상 도메인. 후보: [${domainList}]. 불명확하면 null.\n` +
@@ -92,6 +96,8 @@ export function buildIntentPrompt(query: string, ctx: IntentContext): string {
     `{"intent":"create_page","pageName":null,"domain":null,"contentSource":null,"targetFile":null,"targetComponent":null}\n` +
     `요청: "CatalogListPage 를 catalog 도메인에 만들어줘"\n` +
     `{"intent":"create_page","pageName":"CatalogListPage","domain":"catalog","contentSource":null,"targetFile":null,"targetComponent":null}\n` +
+    `요청: "getArr 함수를 하나 만들고 상품 배열을 return하게 처리해줘" (열린 파일 있음 → 그 파일에 함수 추가)\n` +
+    `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":null,"targetFile":"current","targetComponent":null}\n` +
     `요청: "현재 화면 jsx를 src/publishing/inventory/pages/StockPage.tsx 내용으로 넣어줘"\n` +
     `{"intent":"modify_file","pageName":null,"domain":null,"contentSource":"src/publishing/inventory/pages/StockPage.tsx","targetFile":"current","targetComponent":null}\n` +
     `요청: "이 화면이 쓰는 StatusBadge 컴포넌트를 수정해줘"\n` +

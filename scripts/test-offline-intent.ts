@@ -12,7 +12,8 @@ import { OfflineResponder } from '../src/ai/OfflineResponder';
 import { IntentExampleStore } from '../src/ai/IntentExampleStore';
 import { IntentEmbeddingClassifier, type ClassifyResult } from '../src/ai/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../src/ai/OfflineIntentResolver';
-import type { IntentContext } from '../src/ai/IntentClassifier';
+import { buildIntentPrompt, type IntentContext } from '../src/ai/IntentClassifier';
+import { PageCreationDetector } from '../src/ai/PageCreationDetector';
 
 /**
  * 결정론적 가짜 임베딩 — 해싱 bag-of-words(어휘 겹침 기반 코사인).
@@ -96,6 +97,30 @@ check('"회원가입 방법 페이지 만들어줘" → create_page',
 // 수정 동사가 잡담/질문보다 우선
 check('"버튼 색 바꿔줘"(현재파일) → modify_file',
   classifyOfflineIntent('버튼 색 바꿔줘', withFile('src/domains/main/pages/MainPage.tsx')).intent === 'modify_file');
+
+// ─── 코드 요소 "만들기"는 페이지 생성이 아니다(온라인 create_page 오분류 버그 대응) ───────────
+// 버그: LLM 분류기가 "getArr 함수를 하나 만들고…"를 '만들'만 보고 create_page로 오분류 → 영문명 되묻기 루프.
+// (a) 결정론 PageCreationDetector = 온라인 충돌 안전 가드의 결정론 arm — 페이지/화면 신호 없으면 false.
+{
+  const pcd = new PageCreationDetector();
+  const q = '현재 페이지에 getArr 함수를 하나 만들고 직원 정보를 보여주는 객체를 담고있는 배열을 return하게 처리해줘';
+  check('가드 arm: "getArr 함수 만들기" → PageCreationDetector 비발동(false)', !pcd.detect(q).isPageCreation);
+  check('가드 arm: 페이지/화면 명시("상품 목록 화면 만들어줘") → 여전히 발동(true)',
+    pcd.detect('상품 목록 화면 만들어줘').isPageCreation);
+  check('가드 arm: "XxxPage 만들어줘" → 여전히 발동(true)', pcd.detect('LoginPage 만들어줘').isPageCreation);
+  // (b) 오프라인 경로는 이미 올바름(회귀 가드) — '만들'은 편집/생성 동사라 파일 열림 시 modify_file.
+  check('오프라인: "getArr 함수 만들기"(현재파일) → modify_file',
+    classifyOfflineIntent(q, withFile('src/domains/employee/pages/EmployeeListPage.tsx')).intent === 'modify_file');
+}
+
+// 온라인 분류 프롬프트(buildIntentPrompt)가 코드-요소 만들기=modify 지침·예시를 담는지(프롬프트 회귀 가드).
+{
+  const p = buildIntentPrompt('getArr 함수를 하나 만들어줘', withFile('src/domains/employee/pages/EmployeeListPage.tsx'));
+  check('buildIntentPrompt: "코드 요소를 만들/추가" = modify 지침 포함',
+    p.includes('코드 요소를') && p.includes('페이지/화면이 아니면 create_page가 아'));
+  check('buildIntentPrompt: getArr 함수 예시(modify_file) 포함',
+    p.includes('getArr 함수를 하나 만들고') && p.includes('그 파일에 함수 추가'));
+}
 
 // 경로 추출 유틸
 check('extractFilePathRef — 선행 슬래시 제거',
