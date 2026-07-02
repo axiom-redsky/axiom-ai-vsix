@@ -4035,6 +4035,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           // 결정론적 import 정리 — 약한 모델이 patch로 이미 존재하는 import를 또 추가하는 흔한 실수
           // (예: useApi import 중복)를 제거한다. structural의 import 병합과 동일 취지를 patch 결과에도 적용.
           if (/\.(tsx|ts|jsx|js)$/.test(action.filePath)) {
+            // 서브경로 UI import(@axiom/components/ui/table 등)를 단일경로로 정규화(dedupe 전)
+            const uiNorm = this._fileCreator.normalizeUiImportPaths(mp.text);
+            if (uiNorm.changed > 0) {
+              mp.text = uiNorm.text;
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] 🔧 UI import 경로 정규화 ${uiNorm.changed}건 → @axiom/components/ui (${action.filePath})`,
+              );
+            }
             const dedup = this._fileCreator.dedupeImportLines(mp.text);
             if (dedup.removed > 0) {
               mp.text = dedup.text;
@@ -4107,6 +4115,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // import를 전체 파일에 또 써넣으면(실측: `import { Button } …` 2줄) 그대로 미리보기·적용됐다. 여기서
         // 제거해 중복 import 계열을 경로 무관하게 닫는다(케이스별 대응이 아니라 길목 불변식).
         if (/\.(tsx|ts|jsx|js)$/.test(action.filePath) && action.generatedCode) {
+          // 서브경로 UI import 정규화(dedupe 전) — 전 모드 공통 길목
+          const uiNorm = this._fileCreator.normalizeUiImportPaths(action.generatedCode);
+          if (uiNorm.changed > 0) {
+            action.generatedCode = uiNorm.text;
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] 🔧 UI import 경로 정규화 ${uiNorm.changed}건 → @axiom/components/ui (${action.filePath}, mode=${action.mode ?? 'full'})`,
+            );
+          }
           const dedup = this._fileCreator.dedupeImportLines(action.generatedCode);
           if (dedup.removed > 0) {
             action.generatedCode = dedup.text;

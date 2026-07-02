@@ -157,5 +157,28 @@ import { Card } from '@axiom/components/ui';`;
   check('dedup: 서로 다른 named import는 보존', fc.dedupeImportLines(distinct).removed === 0);
 }
 
+// ─── normalizeUiImportPaths: 서브경로 @axiom/components/ui/xxx → 단일경로 ──────────────
+{
+  const fc = new FileCreatorService();
+  const sub = `import { Table, TableBody, TableCell } from '@axiom/components/ui/table';`;
+  const n1 = fc.normalizeUiImportPaths(sub);
+  check('uiNorm: /table 서브경로를 단일경로로 교정', n1.changed === 1);
+  check('uiNorm: 결과가 @axiom/components/ui 단일경로', n1.text.includes("from '@axiom/components/ui';"));
+  check('uiNorm: 서브경로 흔적 없음', !n1.text.includes('components/ui/table'));
+
+  // 여러 줄에 걸친 import·다중 서브경로도 각각 교정.
+  const multi = `import {\n  Table,\n  TableRow,\n} from "@axiom/components/ui/table";\nimport { Dialog } from '@axiom/components/ui/dialog';`;
+  const n2 = fc.normalizeUiImportPaths(multi);
+  check('uiNorm: 멀티라인+다중 서브경로 2건 교정', n2.changed === 2);
+
+  // 이미 단일경로면 손대지 않음(무변경).
+  const ok = `import { Button } from '@axiom/components/ui';`;
+  check('uiNorm: 이미 단일경로는 무변경', fc.normalizeUiImportPaths(ok).changed === 0);
+
+  // @axiom/hooks 등 다른 모듈은 건드리지 않음.
+  const hooks = `import { useApi } from '@axiom/hooks';`;
+  check('uiNorm: 타 모듈(@axiom/hooks)은 불변', fc.normalizeUiImportPaths(hooks).changed === 0);
+}
+
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

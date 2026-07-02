@@ -91,6 +91,21 @@ const SCHEMA_CONFIRM_GATE =
   `  · 단, 응답 스키마가 **이미 컨텍스트(참조 스펙/열린 파일의 타입)에 있으면 되묻지 말고** 바로 위 골격대로 적용하세요(불필요한 되묻기 금지).`;
 
 /**
+ * 테이블 렌더 분기 지시 — "기존 테이블 있으면 수정 / 없으면 생성". 목록/테이블 바인딩 카드에 공통으로 덧붙인다.
+ * 왜: 종전 카드는 "<region>의 기존 테이블 재작성"만 가르쳐, 파일에 테이블이 **없을 때** 모델이 훅·타입만
+ * 선언하고 JSX 렌더를 빠뜨렸다(실측 2026-07-02: "…API로 불러와서 테이블로 보여줘" → 배관만 깔고 표 없음).
+ * 두 갈래를 명시해 "선언만 하고 끝"을 막는다.
+ */
+const TABLE_RENDER_BRANCH =
+  `\n- **⚠ JSX 렌더는 반드시 포함**(선언만 하고 끝내면 화면에 아무것도 안 나와 무효):\n` +
+  `  · **이미 \`<table>\`/\`<Table>\`이 있으면** → 그 \`tbody\`의 \`.map()\` 대상만 이 목록으로 **교체**(헤더·컬럼 구조는 그대로).\n` +
+  `  · **테이블이 없으면** → 컴포넌트 \`return\`의 적절한 위치에 scaffold \`<Table>\`로 **새 테이블을 만들어 삽입**하고 그 안에서 \`.map()\`으로 렌더. ` +
+  `Table 컴포넌트는 **단일 경로**에서: \`import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@axiom/components/ui';\` ` +
+  `(⛔ \`@axiom/components/ui/table\` 같은 서브경로 금지). 예:\n` +
+  `\`<Table><TableHeader><TableRow><TableHead>이름</TableHead>…</TableRow></TableHeader>` +
+  `<TableBody>{items.map((row) => (<TableRow key={row.id}><TableCell>{row.name}</TableCell>…</TableRow>))}</TableBody></Table>\``;
+
+/**
  * 카드 레지스트리. 배열 순서 = 프롬프트 출력 순서(결정론).
  * 새 scaffold 가이드 항목은 여기에 카드 하나를 추가하면 자동으로 트리거 주입 대상이 된다.
  */
@@ -268,10 +283,9 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `\`const { data: xxxResponse } = useApi<TXxxResponse>(XXX_ENDPOINT);\`\n` +
       `\`const xxxItems = xxxResponse?.data ?? [];\`\n` +
       `  2) import는 useApi만: \`<import module="@axiom/hooks" named="useApi" />\`\n` +
-      `  3) \`<region>\`의 테이블 본문을 하드코딩 배열 대신 **그 목록을 \`.map()\`** 으로 재작성하세요 ` +
-      `(영역 최상위 태그·컬럼 구조는 그대로, **데이터 출처만** API 목록으로 교체):\n` +
-      `\`{xxxItems.map((row) => (<tr key={row.id}>…<td>{row.필드명}</td>…</tr>))}\`\n` +
-      `- ⚠ 기존 컬럼(헤더·셀 구성)은 유지하고 \`.map\` 대상만 하드코딩 배열 → \`xxxItems\`로 바꾸세요. ` +
+      `  3) 데이터를 화면 테이블로 렌더 — \`xxxItems\`를 \`.map()\`으로:` +
+      TABLE_RENDER_BRANCH +
+      `\n- ⚠ 기존 테이블을 교체할 땐 컬럼(헤더·셀 구성)은 유지하고 \`.map\` 대상만 하드코딩 배열 → \`xxxItems\`로 바꾸세요. ` +
       `로딩/에러 표시가 필요하면 \`isPending\`·\`error\`를 쓰되, 안 쓸 거면 구조분해에서 빼세요(미사용 선언은 거부됨).` +
       SCHEMA_CONFIRM_GATE,
   },
@@ -291,8 +305,8 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `- ⛔ **절대 금지**: 새 \`useApi\` 호출·새 \`/api/…\` 엔드포인트·\`@axiom/hooks\` import·응답 타입(\`TXxxResponse\`) 추가. ` +
       `파일명이 \`XxxListPage\`(예: EmployeeListPage)라도 **API를 만들지 마세요** — 데이터는 이미 파일 안 함수/상수에 있습니다.\n` +
       `- ✅ **해야 할 것**: 쿼리가 지목한 기존 함수·상수(예: \`getArr()\`)를 그대로 호출해 \`.map()\`으로 렌더하세요 ` +
-      `(기존 데이터의 **실제 필드만** 사용, 없는 필드 추측 금지):\n` +
-      `\`{getArr().map((row) => (<tr key={row.id}><td>{row.필드명}</td>…</tr>))}\``,
+      `(기존 데이터의 **실제 필드만** 사용, 없는 필드 추측 금지).` +
+      TABLE_RENDER_BRANCH,
   },
   {
     id: 'form-validation',

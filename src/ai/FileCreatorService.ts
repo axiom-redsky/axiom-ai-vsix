@@ -224,6 +224,27 @@ export class FileCreatorService {
    * 완전히 동일한** 라인의 2번째 이후만 제거한다. side-effect import(`import './x'`)·여러 줄 import는
    * 패턴이 매칭되지 않아 손대지 않는다(오제거 방지).
    */
+  /**
+   * scaffold 단일 UI 경로 강제 — `@axiom/components/ui/<서브경로>` import를 `@axiom/components/ui`로 정규화한다.
+   *
+   * 왜: scaffold는 모든 UI 컴포넌트를 **단일 경로** `@axiom/components/ui`에서 named import 하는 게 규칙인데,
+   * 약한 모델이 shadcn 관습(`@/components/ui/table`)을 흉내내 `@axiom/components/ui/table` 같은 **서브경로**를
+   * 지어낸다(실측 2026-07-02: Table import). knowledge 문서는 올바른 단일경로를 가르치므로 이건 모델의 순수
+   * 환각 → 프롬프트 설득보다 결정론적 정규화가 견고하다(길목 불변식). dedupe 직전에 돌려 정규화 후 완전중복은
+   * dedupe가 마저 접는다.
+   */
+  normalizeUiImportPaths(text: string): { text: string; changed: number } {
+    let changed = 0;
+    const out = text.replace(
+      /(\bfrom\s*['"])@axiom\/components\/ui\/[^'"]+(['"])/g,
+      (_m, pre: string, post: string) => {
+        changed++;
+        return `${pre}@axiom/components/ui${post}`;
+      },
+    );
+    return { text: changed > 0 ? out : text, changed };
+  }
+
   dedupeImportLines(text: string): { text: string; removed: number } {
     const hasCRLF = text.includes('\r\n');
     const norm = hasCRLF ? text.replace(/\r\n/g, '\n') : text;
