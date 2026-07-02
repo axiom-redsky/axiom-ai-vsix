@@ -1405,7 +1405,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 못 잡아 isFileCtx=true로 새어, 설명만 한 모델 응답을 수정 코드로 래핑해 "원본과 동일한 no-op diff"를
       // 띄우던 근본 원인. forceQnA를 isFileCtx와 buildSystemPrompt 양쪽에 흘려 프롬프트·후처리를 일치시킨다.
       const forceQnA = intent?.intent === 'qna' || intent?.intent === 'smalltalk';
-      const qnaGated = this._scaffoldBuilder.isQnAGated(text, forceQnA);
+      // forceQnA의 대칭 — 모델이 '수정/생성'(액션)으로 확정했으면 정규식 Q&A 신호("보여줘"·"목록" 등)에
+      // 눌려 지식 가이드로 새지 않게 게이팅을 끈다. (예: "getArr 결과를 테이블로 화면에 보여줘"가
+      // modify_file로 분류됐는데도 qnaGated=true가 되어 파일 수정 대신 use-api 문서를 렌더하던 버그.)
+      const forceModify = intent?.intent === 'modify_file' || intent?.intent === 'create_page';
+      const qnaGated = this._scaffoldBuilder.isQnAGated(text, forceQnA, forceModify);
       // 모델 의도 분류기가 'modify_file'로 **확정**했으면 그 판정을 존중해 파일 수정 컨텍스트로 본다.
       // 종전엔 isFileCtx를 정규식(isFileModificationContext) + 열린 파일 경로로만 판정해서, 채팅 패널에
       // 포커스가 있어 activeTextEditor가 비면(리로드 직후 등) filePath가 없어 정규식이 false → 모델이
@@ -1533,7 +1537,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
       }
 
-      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text, forceQnA);
+      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text, forceQnA, forceModify);
       const rawBreakdown = this._scaffoldBuilder.lastBreakdown();
       // SDD는 fileSection에 append되므로 fileChars에서 분리해 별도 표기
       const breakdown = {

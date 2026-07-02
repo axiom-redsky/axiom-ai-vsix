@@ -301,7 +301,12 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 해시 기반 라우팅 (createHashRouter), 도메인 기반 아키텍처 (core/domains/shared)${this._libraryVersions ? `\n\n## 설치된 라이브러리 버전\n${this._libraryVersions}` : ''}`;
   }
 
-  async buildSystemPrompt(ctx: EditorContext, userQuery: string, forceQnA = false): Promise<string> {
+  async buildSystemPrompt(
+    ctx: EditorContext,
+    userQuery: string,
+    forceQnA = false,
+    forceModify = false,
+  ): Promise<string> {
     const ragDir = this._getRagDir();
     const diet = ExtensionConfig.getPromptDietConfig();
 
@@ -439,7 +444,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     // 결정론적으로 준다. 선택 편집·full 경로는 region 경로와 달리 buildContractSection을 안 쓰고 RAG 운에
     // 기대므로, "기존 SmartTable에 excel(exportable) 추가" 요청이 prop 존재를 못 봐 "변경 없음"으로 끝났다
     // (실측). 편집 의도일 때만(Q&A 게이팅 시 제외) 선택 텍스트(없으면 파일 본문)에서 감지해 주입한다.
-    const editComponentProps = this.isQnAGated(userQuery, forceQnA)
+    const editComponentProps = this.isQnAGated(userQuery, forceQnA, forceModify)
       ? ''
       : buildComponentPropsSectionForRegion(ctx.selection?.text || ctx.selectedText || fileContent);
 
@@ -476,7 +481,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     // 대화 게이팅(프롬프트 다이어트): 조회·설명형 질문이나 인사·잡담이면 파일이 열려 있어도 시나리오 C로
     // 가지 않고 출력 모드·생성 지시문을 통째로 생략한다. 의도 분류를 파일 열림 기반 시나리오 추론보다
     // 우선시킨다. 판정은 isQnAGated 단일 진실원을 사용해 후처리부(ChatViewProvider)와 항상 일치시킨다.
-    if (this.isQnAGated(userQuery, forceQnA)) {
+    if (this.isQnAGated(userQuery, forceQnA, forceModify)) {
       const qnaRules = this._buildCoreRules({
         includeNavigation: this._hasNavigationIntent(userQuery),
         includeFileScope: false,
@@ -993,10 +998,16 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
    *   정규식 신호가 자연어 꼬리를 못 따라가는 케이스("원인을 찾아줘"처럼 ?·신호어 없는 질문)를
    *   **모델의 의미 분류가 정규식보다 우선**하도록 덮어쓴다. (정규식은 모델 부재·null 폴백용.)
    *   단 diet.qnaGating 자체가 꺼져 있으면(사용자가 명시적으로 비활성) 종전대로 게이팅 안 함.
+   * @param forceModify 모델 의도 분류기가 'modify_file'/'create_page'(=액션)로 확정한 경우 true.
+   *   forceQnA와 **대칭**. 종전엔 모델이 수정으로 확정해도 정규식 Q&A 신호("보여줘"·"목록" 등)가
+   *   이를 눌러 게이팅 ON → 지식 가이드로 새는 비대칭 버그가 있었다(예: "getArr 결과를 테이블로
+   *   화면에 보여줘"). 모델이 액션으로 확신하면 정규식 Q&A 신호를 무시하고 게이팅하지 않는다(모델 우선).
    */
-  isQnAGated(userQuery: string, forceQnA = false): boolean {
+  isQnAGated(userQuery: string, forceQnA = false, forceModify = false): boolean {
     const diet = ExtensionConfig.getPromptDietConfig();
     if (!diet.qnaGating) return false;
+    // 모델이 '수정/생성'(액션)으로 확정 → 정규식 Q&A 신호를 무시하고 게이팅하지 않는다(모델 우선).
+    if (forceModify) return false;
     if (forceQnA) return true;
     if (this._isExplicitEditOrCreate(userQuery)) return false;
     return this._isQnAQuery(userQuery) || this._isSmalltalk(userQuery);
