@@ -97,6 +97,7 @@ const DEFAULT_ADVANCED: NonNullable<AxiomSettings['advanced']> = {
   multiPatchGroundedRetry: true,
   multiPatchFuzzyLocateThreshold: 0.6,
   multiPatchRippleGuard: true,
+  multiPatchAutoFullFallback: true,
   lineEditEnabled: true,
   lineEditRequireAnchor: true,
   lineEditAnchorSearchRadius: 3,

@@ -70,6 +70,7 @@ export interface AxiomSettings {
     multiPatchGroundedRetry: boolean;
     multiPatchFuzzyLocateThreshold: number;
     multiPatchRippleGuard: boolean;
+    multiPatchAutoFullFallback: boolean;
     // 라인 편집
     lineEditEnabled: boolean;
     lineEditRequireAnchor: boolean;

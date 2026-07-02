@@ -26,6 +26,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'promptDiet.adaptiveBudget.targetRatio', 'promptDiet.adaptiveBudget.charsPerToken',
   'multiPatch.enabled', 'multiPatch.maxPatches', 'multiPatch.minContextLines',
   'multiPatch.groundedRetry', 'multiPatch.fuzzyLocateThreshold', 'multiPatch.rippleGuard',
+  'multiPatch.autoFullFallback',
   'lineEdit.enabled', 'lineEdit.requireAnchor', 'lineEdit.anchorSearchRadius',
   'llm.qnaAntiRepeat.enabled', 'llm.qnaAntiRepeat.repeatPenalty',
   'llm.qnaAntiRepeat.frequencyPenalty', 'llm.qnaAntiRepeat.presencePenalty',
@@ -70,6 +71,7 @@ export interface MultiPatchConfig {
   groundedRetry: boolean;
   fuzzyLocateThreshold: number;
   rippleGuard: boolean;
+  autoFullFallback: boolean;
 }
 
 export interface LineEditConfig {
@@ -293,6 +295,7 @@ export class ExtensionConfig {
       groundedRetry:        ExtensionConfig._resolve<boolean>('multiPatch.groundedRetry',        AI_DEFAULTS.multiPatch.groundedRetry),
       fuzzyLocateThreshold: ExtensionConfig._resolve<number>('multiPatch.fuzzyLocateThreshold',  AI_DEFAULTS.multiPatch.fuzzyLocateThreshold),
       rippleGuard:          ExtensionConfig._resolve<boolean>('multiPatch.rippleGuard',          AI_DEFAULTS.multiPatch.rippleGuard),
+      autoFullFallback:     ExtensionConfig._resolve<boolean>('multiPatch.autoFullFallback',     AI_DEFAULTS.multiPatch.autoFullFallback),
     };
   }
 
@@ -525,6 +528,7 @@ export class ExtensionConfig {
       multiPatchGroundedRetry:      mp.groundedRetry,
       multiPatchFuzzyLocateThreshold: mp.fuzzyLocateThreshold,
       multiPatchRippleGuard:        mp.rippleGuard,
+      multiPatchAutoFullFallback:   mp.autoFullFallback,
       lineEditEnabled:              le.enabled,
       lineEditRequireAnchor:        le.requireAnchor,
       lineEditAnchorSearchRadius:   le.anchorSearchRadius,

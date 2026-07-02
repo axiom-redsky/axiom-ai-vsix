@@ -197,6 +197,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         ['multiPatchGroundedRetry',      'multiPatch.groundedRetry'],
         ['multiPatchFuzzyLocateThreshold', 'multiPatch.fuzzyLocateThreshold'],
         ['multiPatchRippleGuard',        'multiPatch.rippleGuard'],
+        ['multiPatchAutoFullFallback',   'multiPatch.autoFullFallback'],
         ['lineEditEnabled',              'lineEdit.enabled'],
         ['lineEditRequireAnchor',        'lineEdit.requireAnchor'],
         ['lineEditAnchorSearchRadius',   'lineEdit.anchorSearchRadius'],

@@ -138,6 +138,14 @@ export const AI_DEFAULTS = {
      * false면 종전처럼 선택 밖 변경을 무조건 거부한다. rename 추출 실패 시에도 거부(무회귀).
      */
     rippleGuard: true,
+    /**
+     * auto full fallback — patch가 grounded 재시도로도 못 풀리는 사유(overlap, 위치 grounding
+     * 불가 등)로 좌초하려 할 때, 수동 "Full로 재시도" 버튼을 기다리지 말고 **full 재생성을 1회
+     * 자동 수행**한다. fragile patch 조각매칭은 overlap·매칭실패 시 구조적으로 dead-end로 떨어지지만
+     * full 재생성은 그 실패가 없다(=늘 되는 이유). 무한 루프 방지: 정확히 1회(groundedRetryDone).
+     * false면 종전처럼 수동 버튼(_reportPatchFailure)만 띄운다(토큰 절약 우선 사이트용).
+     */
+    autoFullFallback: true,
   },
   /**
    * 라인 앵커(diff) 출력 모드 기본값. 바뀐 줄만 라인번호로 지정해 출력 토큰을 줄인다.

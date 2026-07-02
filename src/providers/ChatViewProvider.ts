@@ -3837,6 +3837,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
               }
             }
+            // grounded 재시도로 못 푼 사유(overlap·grounding 불가 등)로 좌초 직전 — 수동 버튼을
+            // 기다리지 말고 full 재생성 1회 자동 폴백(구조적으로 overlap·매칭실패가 없음). 실패 시 수동 카드로.
+            if (await this._tryAutoFullFallback(action.filePath, groundedRetryDone)) {
+              break;
+            }
             const failedSearches = mp.results
               .filter((r) => !r.success)
               .map((r) => {
@@ -4309,6 +4314,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               this._corpusOutputChannel.appendLine(
                 `[Axiom AI] ⚠️ multi-patch 실패 (${action.filePath}): ${failureSummary}`,
               );
+              // router가 아닌 일반 파일은 full 재생성 1회 자동 폴백(메인 경로와 동일 원칙).
+              // router는 _retryForAxiomAction이 page 템플릿을 가정하므로 자동 폴백에서 제외하고 종전대로.
+              if (
+                action.templateType !== 'router' &&
+                (await this._tryAutoFullFallback(action.filePath, groundedRetryDone))
+              ) {
+                break;
+              }
               const failedSearches = mp.results
                 .filter((r) => !r.success)
                 .map((r) => {
@@ -4440,6 +4453,38 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     this._post({ type: 'done' });
     this._postStatus(config.model);
+  }
+
+  /**
+   * patch가 grounded 재시도로도 못 풀리는 사유(겹침 overlap, 위치 grounding 불가, react 규칙 외 실패 등)로
+   * dead-end에 이르려 할 때 — 사용자의 수동 "Full로 재시도" 버튼을 기다리지 않고 **full 재생성을 1회 자동
+   * 수행**한다. `_handlePatchRetryFull`(수동 버튼)이 하던 일을 자동으로 당겨오는 것.
+   *
+   * 왜(핵심): fragile patch 조각매칭은 overlap·매칭실패 시 **구조적으로** 반쪽 상태에 좌초하지만, full
+   * 재생성은 overlap·매칭실패가 없다("Full로 재시도"가 늘 성공하는 이유). 수동 버튼은 토큰 절약이 목적이었으나
+   * 약한 모델·비대 프롬프트 환경에선 dead-end 빈도가 높아, 자동 1회 폴백이 두더지잡기를 종결한다.
+   * 의존성 dead-end(3660~)가 이미 같은 "수동버튼→자동 1회" 전환을 적용한 것과 동일한 원칙.
+   *
+   * 무한 루프 방지(정확히 1회):
+   *  - 이미 grounded/full 재시도를 한 패스면(groundedRetryDone) 즉시 false → 수동 버튼으로.
+   *  - full 재시도 결과는 _handleAxiomAction(groundedRetryDone=true)로 처리되므로, 그 결과가 또 patch로
+   *    실패해도 다시 자동 full로 들어오지 않는다.
+   *  - autoFullFallback 설정 off면 false(토큰 절약 우선 사이트는 수동 버튼 유지).
+   *
+   * @returns true = 자동 full 재시도를 시작·처리함(호출부는 dead-end UI 생략) / false = 수동 폴백으로.
+   */
+  private async _tryAutoFullFallback(filePath: string, groundedRetryDone: boolean): Promise<boolean> {
+    if (groundedRetryDone) return false;
+    if (!ExtensionConfig.getMultiPatchConfig().autoFullFallback) return false;
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🔄 patch 매칭 실패 → full 재생성 1회 자동 폴백 (${filePath})`,
+    );
+    const config = ExtensionConfig.getEffectiveLlmConfig();
+    const resp = await this._retryForAxiomAction(filePath, config, { forceFull: true });
+    if (!resp) return false;
+    // groundedRetryDone=true → 자동 full 결과가 또 patch로 실패해도 다시 자동 full로 재진입하지 않음(1회).
+    await this._handleAxiomAction(resp, false, true);
+    return true;
   }
 
   /**
