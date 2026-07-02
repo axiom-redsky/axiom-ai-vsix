@@ -5024,7 +5024,8 @@ ${currentFileBlock}${contractBlock}
 위 대화의 원래 요청을 반영해, **위 현재 파일 전체를 기준으로** 변경분을 적용한 전체 파일 내용을 출력하세요(부가 설명 없이 블록만).
 
 - 기존 코드는 실제 현재 파일 내용만 근거로 하고, 원본에 없던 import·훅·변수를 **임의로 지어내지 마세요**.
-- 단, 위 **scaffold 계약(useApi 등)** 을 지키기 위해 필요한 표준 훅·import·타입은 새로 추가해야 합니다 — 데이터 조회는 반드시 \`useApi\`(@axiom/hooks)로 하고, 생짜 \`fetch\`/\`axios\`/\`useQuery\`/\`useState\`+\`useEffect\` 미러링으로 되돌아가지 마세요:
+- **데이터 출처 우선순위**: 화면에 표시할 목록/데이터는 **이미 이 파일에 있는 데이터 출처**(\`getArr()\`·\`getProd()\` 같은 함수·상수·하드코딩 배열)가 있으면 **그것을 그대로 사용**하세요 — 예: "getProd 결과를 테이블로 표현" → 새 API가 아니라 기존 \`getProd()\`를 \`.map()\`으로 렌더. 사용자가 "API/엔드포인트로 **불러와·조회·연동**"을 **명시하지 않는 한** 새 \`useApi\`나 \`/api/…\` 엔드포인트를 **지어내지 마세요**(엉뚱한 엔티티·엔드포인트 환각의 주원인).
+- 데이터가 파일에 없고 사용자가 실제로 API 조회를 원할 때만 \`useApi\`(@axiom/hooks)로 가져오고, 그때도 생짜 \`fetch\`/\`axios\`/\`useQuery\`/\`useState\`+\`useEffect\` 미러링은 쓰지 마세요:
 
 ${fullActionBlock}`;
     } else if (mp.enabled) {
