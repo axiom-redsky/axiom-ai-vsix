@@ -4102,6 +4102,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           }
         }
 
+        // 결정론적 import 중복 제거 — **모든 편집 모드 공통 길목**(full/structural/lines. patch는 위 4038에서
+        // 이미 처리되나 여기서도 idempotent). 종전엔 patch 경로에만 배선돼, 약한 모델이 full 모드로 이미 존재하는
+        // import를 전체 파일에 또 써넣으면(실측: `import { Button } …` 2줄) 그대로 미리보기·적용됐다. 여기서
+        // 제거해 중복 import 계열을 경로 무관하게 닫는다(케이스별 대응이 아니라 길목 불변식).
+        if (/\.(tsx|ts|jsx|js)$/.test(action.filePath) && action.generatedCode) {
+          const dedup = this._fileCreator.dedupeImportLines(action.generatedCode);
+          if (dedup.removed > 0) {
+            action.generatedCode = dedup.text;
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] 🔧 중복 import ${dedup.removed}줄 제거 (${action.filePath}, mode=${action.mode ?? 'full'})`,
+            );
+            this._post({
+              type: 'token',
+              content: `\n\n> 🔧 이미 존재하는 import ${dedup.removed}줄을 자동 제거했습니다(중복 방지).\n`,
+            });
+          }
+        }
+
         // 중복 선언 가드 — 적용하면 컴파일이 깨지는 출력을 적용 직전에 차단한다.
         // 약한 모델이 full·region 재작성에서 기존 const(예: `const departments = …`)를 state로 바꾸며
         // 원본을 안 지워 같은 스코프에 같은 이름을 2번 선언하는 실패(실측)를 막는다. "applied != correct"

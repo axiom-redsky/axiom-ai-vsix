@@ -131,5 +131,31 @@ const {
   check('다중 줄 구조분해 중복은 dup-게이트가 못 잡음(탐지기가 방어) — 문서화', newD.length === 0);
 }
 
+// ─── dedupeImportLines: 중복 import 결정론 제거(모든 편집 모드 공통 길목) ───────────────
+{
+  const fc = new FileCreatorService();
+  // 실측 버그: full 모드가 이미 있는 `import { Button }`을 또 써넣음.
+  const dup = `import type React from 'react';
+import { Button } from '@axiom/components/ui';
+import { Button } from '@axiom/components/ui';
+
+export default function P(): React.ReactNode { return <Button/>; }`;
+  const r1 = fc.dedupeImportLines(dup);
+  check('dedup: 정확히 동일한 import 1줄 제거', r1.removed === 1);
+  check('dedup: 결과에 Button import 1줄만 남음',
+    (r1.text.match(/import \{ Button \} from '@axiom\/components\/ui';/g) ?? []).length === 1);
+  check('dedup: React import는 보존', r1.text.includes("import type React from 'react';"));
+
+  // 따옴표·여백 정규화 후 동일하면 제거(작은따옴표↔큰따옴표, 공백 차이).
+  const dupNorm = `import { useApi } from '@axiom/hooks';
+import { useApi }  from "@axiom/hooks";`;
+  check('dedup: 따옴표/공백만 다른 중복도 제거', fc.dedupeImportLines(dupNorm).removed === 1);
+
+  // 서로 다른 import는 건드리지 않음(오제거 방지).
+  const distinct = `import { Button } from '@axiom/components/ui';
+import { Card } from '@axiom/components/ui';`;
+  check('dedup: 서로 다른 named import는 보존', fc.dedupeImportLines(distinct).removed === 0);
+}
+
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
