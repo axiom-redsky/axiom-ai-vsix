@@ -36,12 +36,12 @@ $env:AXIOM_API_KEY="<익스텐션에 넣은 키>"; npm run eval:intent-live
 현재 baseline: **45/45 (100%)**. 새 라우팅 버그를 발견하면 `eval-intent-live.ts`의 `CASES`에 한 줄 추가해 회귀로 고정.
 
 ### 다음 할 일 (집에서, 우선순위 순)
-1. **Phase 2 — 편집품질 라이브 eval (최우선).** 분류는 끝났고(100%) 남은 결함은 전부 **편집 산출·적용** 레이어다. `live-model-client`를 재사용해 새 하니스(`scripts/eval-edit-live.ts` 제안):
-   - 입력: 픽스처 파일(예: 빈 EmployeeListPage.tsx, getArr 있는 버전) + 요청 + 실제 `buildContractSection`(계약카드, 순수) + coreRules 스냅샷.
-   - 실 모델 호출 → 응답 파싱(기존 파서 재사용) → **실제 apply primitives**(`FileCreatorService.computeMultiPatch`/`dedupeImportLines`, `applyStructuralEdit`)로 적용.
-   - **자동 판정**: ⓐ로컬 데이터인데 `/api/`·`useApi` 환각? ⓑ중복 import 생겼나? ⓒpatch가 매칭됐나? ⓓ원본에 없는 심볼을 `<search>`에 넣었나(파일 그라운딩)? ⓔprose-only(action 블록 누락)?
-   - 시드 케이스 = 오늘 실패 3건: "getArr 결과를 테이블로 보여줘"(useApi 환각 X 확인), "alert 버튼 넣어줘"(중복 import X·파일 그라운딩), "이 배열을 테이블로"(로컬 렌더).
-   - ⚠ 난관: `buildSystemPrompt`는 vscode 결합 → 전체 재현 대신 **순수 조각(buildContractSection)+coreRules 스냅샷**으로 근사하거나, vscode 스텁+픽스처 워크스페이스로 `ScaffoldContextBuilder`를 돌리는 길 검토.
+1. **Phase 2 — 편집품질 라이브 eval — ✅ 하니스 구축완료(2026-07-02 집), 실모델 튜닝만 남음.**
+   - 구축: `scripts/eval-edit-live.ts`(하니스) + `scripts/eval-edit-corpus.ts`(픽스처 3종 + **coreRules 스냅샷** + 케이스) + `scripts/run-eval-edit-live.mjs`(esbuild+vscode스텁, **CJS 번들** — typescript가 require 써서 ESM은 깨짐) + npm `eval:edit-live`.
+   - 근사 결정: vscode 결합 회피는 문서 §44 권고대로 **CORE_RULES_SNAPSHOT(동결 사본) + 순수 buildContractSection + 편집포맷 지침**. (전체 `buildSystemPrompt` 재현 대신.) 스냅샷 드리프트 신호 = `CORE_RULES_SYNC_HINT`("데이터 출처 우선순위").
+   - 자동 판정 5종 배선 완료: ⓐapi환각(로컬데이터인데 useApi/`/api/`) ⓑ중복import(dedupeImportLines.removed>0) ⓒ매칭실패(computeMultiPatch.text===null) ⓓ비그라운딩(`<search>`가 원본에 없음) ⓔ설명만(action블록/payload 없음). 파서는 ChatViewProvider 3265-3380 순수 복제.
+   - **셀프테스트 5/5 통과**(`npm run eval:edit-live -- --selftest`, 모델 불필요 — 파서·apply·판정 결정론 검증). tsc·앱typecheck 회귀 0.
+   - **⏭ 남은 일(집, 실모델):** `$env:AXIOM_API_KEY="…"; npm run eval:edit-live` 로 3 시드 케이스를 실 qwen3-coder로 돌려 결함 분포 측정 → 새면 프롬프트/계약카드/coreRules 보강 → 회귀로 고정. (반복측정 `AXIOM_EVAL_REPEAT=3`, 임계게이트 `AXIOM_EVAL_MIN_CLEAN`.) 필요 시 픽스처를 실 EmployeeListPage.tsx로 확장하고 `applyStructuralEdit`(auto-import) 판정 추가.
 2. **B안 S2~S5 (라우팅 단일화).** 분류기 100% 확증됐으니 안전. S2 qna/scenario 종속화 → S3 단일 switch(`isFileCtx` 불리언조합 제거) → S4 충돌안전(되묻기) → S5 정규식 정리. 각 단계 `eval:intent-live`+`test:region-edit`+`test:offline-intent` 회귀 0 후 승격. (상세 §4)
 3. **S1 실사용 로그 수집.** `[Axiom AI][S1 라우팅측정]` 출력채널 라인에서 `⚠ 불일치` 패턴 모으기 → S2 우선순위 보강.
 
@@ -52,6 +52,8 @@ npm run test:region-edit      # 224/0 (list-table 로컬출처 4건 포함)
 npm run test:react-rules      # 18/0 (dedupeImportLines 5건 포함)
 npm run test:offline-intent   # 66/0
 npm run eval:intent-live      # 45/45 (실 모델, env 키 필요)
+npm run eval:edit-live -- --selftest   # 5/5 (판정 로직 결정론 검증, 모델 불필요)
+npm run eval:edit-live        # Phase 2 편집품질 (실 모델, env 키 필요 — 집에서 튜닝)
 npm run compile
 ```
 
