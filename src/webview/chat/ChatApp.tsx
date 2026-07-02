@@ -7,7 +7,7 @@ import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, pinQuestionTop, attachReference, attachText, consumeAttach } = useChat();
+  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach } = useChat();
   const [prefillText, setPrefillText] = useState('');
 
   const totalChars = useMemo(
@@ -90,6 +90,7 @@ export function ChatApp(): React.ReactElement {
         usage={usage}
         breakdown={breakdown}
         offline={isOffline}
+        localKnowledge={isLocalKnowledge}
       />
     </div>
   );

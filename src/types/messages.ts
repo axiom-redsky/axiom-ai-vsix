@@ -186,7 +186,10 @@ export type HostToWebviewMessage =
   | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string }
   // outputReserve = 이 턴 요청에 실은 max_tokens(출력 자리). 토큰 메터 분모는 contextWindow가 아니라
   // (contextWindow − outputReserve) = "모델이 답할 자리를 남긴 실사용 가능 입력 예산"이어야 한다.
-  | { type: 'contextInfo'; systemPromptChars: number; breakdown?: ContextBreakdown; contextWindow: number; outputReserve?: number; offline?: boolean }
+  // localKnowledge=true: 서버는 온라인이지만 이 턴은 로컬 지식 문서를 결정론적으로 전문 렌더해
+  // LLM을 호출하지 않은 "토큰 미사용" 턴(온라인 지식 가이드). offline과 동일하게 메터를 비활성화하되
+  // 라벨은 "오프라인"이 아니라 "로컬 지식"으로 표기해 연결 상태 오해를 막는다.
+  | { type: 'contextInfo'; systemPromptChars: number; breakdown?: ContextBreakdown; contextWindow: number; outputReserve?: number; offline?: boolean; localKnowledge?: boolean }
   // 이번 턴은 "정독용"(scaffold 지식·가이드 전문 렌더)임을 알린다 — webview는 답변 바닥을 쫓지 않고
   // 이번 질문을 뷰포트 맨 위에 고정해 위→아래로 읽게 한다. 온라인/오프라인 무관하며 토큰 메터와 별개다.
   | { type: 'pinQuestion' }

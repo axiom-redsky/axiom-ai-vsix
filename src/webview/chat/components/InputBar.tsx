@@ -33,9 +33,11 @@ interface Props {
   breakdown?: ContextBreakdown | null;
   /** 직전 턴이 오프라인(로컬 RAG)이면 토큰 메터를 "오프라인 · 토큰 미사용"으로 표시한다. */
   offline?: boolean;
+  /** offline 중에서도 "온라인 지식 가이드"(서버 온라인·LLM 미호출)면 라벨을 "로컬 지식"으로 구분한다. */
+  localKnowledge?: boolean;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge }: Props): React.ReactElement {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
@@ -268,14 +270,22 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
       <div className="input-bar__footer">
         <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈 · /명령어</p>
         {contextTotalChars !== undefined && offline && (
-          // 오프라인 턴 — 로컬 지식(RAG)으로 답하므로 LLM 컨텍스트 윈도우를 소비하지 않는다.
+          // 오프라인/로컬 지식 턴 — 로컬 문서로 답하므로 LLM 컨텍스트 윈도우를 소비하지 않는다.
           // 누적 추정 토큰을 보여주면 실재하지 않는 예산처럼 오해를 줘서, 막대를 비활성 상태로
           // 두고 라벨만 표시한다. 온라인 복귀 시 다음 contextInfo/usage가 라이브 메터를 복원한다.
-          <div className="input-bar__context-meter input-bar__context-meter--offline" title="오프라인 모드 — 로컬 지식으로 답변하며 LLM 토큰을 사용하지 않습니다.">
+          // localKnowledge=true면 서버는 온라인(연결 정상)이므로 "오프라인"이 아니라 "로컬 지식"으로 표기.
+          <div
+            className="input-bar__context-meter input-bar__context-meter--offline"
+            title={localKnowledge
+              ? '로컬 지식 응답 — 저장된 문서를 그대로 표시하며 LLM 토큰을 사용하지 않습니다. (서버 연결은 정상)'
+              : '오프라인 모드 — 로컬 지식으로 답변하며 LLM 토큰을 사용하지 않습니다.'}
+          >
             <div className="input-bar__context-bar">
               <div className="input-bar__context-fill" data-level="offline" style={{ width: '100%' }} />
             </div>
-            <span className="input-bar__context-label">⚠️ 오프라인 · 토큰 미사용</span>
+            <span className="input-bar__context-label">
+              {localKnowledge ? '📚 로컬 지식 · 토큰 미사용' : '⚠️ 오프라인 · 토큰 미사용'}
+            </span>
           </div>
         )}
         {contextTotalChars !== undefined && !offline && (() => {

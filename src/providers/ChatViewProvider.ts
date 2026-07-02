@@ -1802,6 +1802,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 문서가 약하고, (컴포넌트 지목 + 옵션 질문)도 아니면 종전대로 LLM에 맡긴다(확신 게이트 유지).
     if (docsWeak && !(componentRef && asksOptions)) return false;
 
+    // 이 턴은 LLM을 호출하지 않는 결정론 렌더 — 토큰 메터를 "로컬 지식 · 토큰 미사용"으로 전환해
+    // 화면에 쌓인 문서 전량을 토큰으로 오추정하며 막대가 오르는 오해를 막는다.
+    this._postLocalKnowledgeTurn();
     // 정독용 턴 — webview가 답변 바닥이 아니라 이번 질문을 뷰포트 상단에 고정하게 한다(위→아래로 정독).
     this._post({ type: 'pinQuestion' });
     const banner =
@@ -6000,6 +6003,25 @@ export default routes;`;
       contextWindow: ExtensionConfig.getEffectiveLlmConfig().contextWindow,
       outputReserve: ExtensionConfig.getEffectiveLlmConfig().maxTokens,
       offline: true,
+    });
+  }
+
+  /**
+   * 온라인 지식 가이드 턴(서버는 온라인이나 로컬 문서를 결정론적으로 전문 렌더 → LLM 미호출)의
+   * 토큰 메터 처리. 이 턴은 실제 서버 토큰을 쓰지 않고, 화면에 표시된 문서 전문도 히스토리엔
+   * placeholder만 들어가 다음 턴 컨텍스트로 안 실린다. 그런데 메터의 문자 수 추정은 화면에 쌓인
+   * 문서 전량을 세어 막대가 잘못 차오른다("오프라인인데 토큰이 오른다"의 실체). offline과 동일하게
+   * 메터를 비활성화하되 localKnowledge로 라벨만 "로컬 지식 · 토큰 미사용"으로 구분해, 서버가
+   * 죽었다는 오해를 주지 않는다. 다음 실제 온라인 턴의 contextInfo/usage가 라이브 메터를 복원한다.
+   */
+  private _postLocalKnowledgeTurn(): void {
+    this._post({
+      type: 'contextInfo',
+      systemPromptChars: 0,
+      contextWindow: ExtensionConfig.getEffectiveLlmConfig().contextWindow,
+      outputReserve: ExtensionConfig.getEffectiveLlmConfig().maxTokens,
+      offline: true,
+      localKnowledge: true,
     });
   }
 
