@@ -59,23 +59,57 @@ export class EditorContextCollector {
       if (fromOverride) return fromOverride;
     }
 
-    // 채팅 웹뷰에 포커스가 가면 activeTextEditor가 undefined가 되므로 마지막 유효한 에디터를 사용.
-    // 그마저 없으면(익스텐션 리로드 직후 편집기를 한 번도 포커스하지 않은 경우 등) — 화면에 **떠 있는**
-    // 텍스트 편집기를 쓴다. 이게 없으면 "현재 파일 없음"으로 판정돼 수정 요청이 생성/덮어쓰기로 새므로,
-    // 코드 파일(.ts/.tsx/.js/.jsx)을 우선해 폴백한다. (Output/diff 등 비파일 편집기는 제외 목적)
-    let editor = vscode.window.activeTextEditor ?? this._lastEditor;
+    // "지금 앞에 열려 있는 페이지"를 최대한 확실하게 고른다. 우선순위:
+    //  1) activeTextEditor — 편집기에 실제 포커스가 있을 때(선택 영역까지 유효).
+    //  2) 활성 탭(tabGroups.activeTabGroup.activeTab) — 터미널·채팅 웹뷰·출력 패널에 포커스가 가서
+    //     activeTextEditor가 비어도, 편집기 영역에 **떠 있는** 파일 탭은 그대로 유지된다. 이게 사용자가
+    //     말하는 "현재 화면"의 가장 신뢰할 수 있는 신호다. (_lastEditor는 마지막으로 '포커스'한 편집기라,
+    //     다른 파일을 잠깐 눌렀다 터미널로 이동하면 엉뚱한 파일을 가리켜 간헐적 오탐의 원인이 됐다.)
+    //  3) _lastEditor — 위가 전부 실패할 때의 최후 편집기.
+    //  4) 화면에 떠 있는 코드/파일 편집기(비파일 편집기는 제외 목적으로 .ts/.tsx/.js/.jsx 우선).
+    let editor = vscode.window.activeTextEditor;
     if (!editor) {
-      const visible = vscode.window.visibleTextEditors;
+      const tabDoc = this._activeTabDoc();
+      const visibleForTab = tabDoc
+        ? vscode.window.visibleTextEditors.find((e) => e.document === tabDoc)
+        : undefined;
+      if (tabDoc && !visibleForTab) {
+        // 활성 탭 문서는 있으나 대응하는 보이는 편집기가 없음(희귀) → 문서만으로 구성(선택 영역 없음).
+        this._lastEditor = undefined; // 활성 탭이 진실 — 낡은 _lastEditor로 다음 폴백이 새지 않게.
+        return this._buildContext(tabDoc, undefined);
+      }
       editor =
-        visible.find((e) => /\.(tsx?|jsx?)$/.test(e.document.fileName)) ??
-        visible.find((e) => e.document.uri.scheme === 'file');
+        visibleForTab ??
+        this._lastEditor ??
+        vscode.window.visibleTextEditors.find((e) => /\.(tsx?|jsx?)$/.test(e.document.fileName)) ??
+        vscode.window.visibleTextEditors.find((e) => e.document.uri.scheme === 'file');
       if (editor) this._lastEditor = editor;
     }
     if (!editor) return { available: false };
 
-    const doc = editor.document;
-    const rawSelected = doc.getText(editor.selection);
-    const selectedText = rawSelected.trim();
+    return this._buildContext(editor.document, editor);
+  }
+
+  /**
+   * 편집기 영역에서 현재 앞에 떠 있는(활성 탭) 파일 문서를 반환한다. 터미널·채팅 웹뷰·출력 패널 등에
+   * 포커스가 가서 activeTextEditor가 비어도 활성 탭은 그대로 유지되므로, "지금 보고 있는 페이지"를 가장
+   * 확실히 알려준다. 파일 탭이 아니거나(설정·diff·미리보기 등) 아직 문서가 열려 있지 않으면 undefined.
+   */
+  private _activeTabDoc(): vscode.TextDocument | undefined {
+    try {
+      const input = vscode.window.tabGroups.activeTabGroup?.activeTab?.input;
+      if (!(input instanceof vscode.TabInputText)) return undefined;
+      if (input.uri.scheme !== 'file') return undefined;
+      return vscode.workspace.textDocuments.find(
+        (d) => d.uri.toString() === input.uri.toString(),
+      );
+    } catch {
+      return undefined; // tabGroups 미지원 구버전 등 — 상위 폴백으로.
+    }
+  }
+
+  /** 문서(+선택 편집기)로부터 EditorContext를 구성한다. editor가 없으면 선택 영역 없이 내용만 담는다. */
+  private _buildContext(doc: vscode.TextDocument, editor?: vscode.TextEditor): EditorContext {
     const totalLines = doc.lineCount;
     const capLine = Math.min(totalLines, this.maxLines);
 
@@ -87,24 +121,30 @@ export class EditorContextCollector {
     }
 
     let selection: SelectionRange | undefined;
-    if (!editor.selection.isEmpty && selectedText) {
-      const selStart0 = editor.selection.start.line;
-      const selEnd0 = editor.selection.end.line;
-      const ctxStart0 = Math.max(0, selStart0 - SELECTION_CONTEXT_PADDING);
-      const ctxEnd0 = Math.min(totalLines - 1, selEnd0 + SELECTION_CONTEXT_PADDING);
-      const contextWindow = doc.getText(
-        new vscode.Range(ctxStart0, 0, ctxEnd0, doc.lineAt(ctxEnd0).text.length),
-      );
-      selection = {
-        startLine: selStart0 + 1,
-        endLine: selEnd0 + 1,
-        startCharacter: editor.selection.start.character,
-        endCharacter: editor.selection.end.character,
-        text: rawSelected,
-        contextWindow,
-        contextStartLine: ctxStart0 + 1,
-        contextEndLine: ctxEnd0 + 1,
-      };
+    let selectedText: string | undefined;
+    if (editor && !editor.selection.isEmpty) {
+      const rawSelected = doc.getText(editor.selection);
+      const trimmed = rawSelected.trim();
+      if (trimmed) {
+        const selStart0 = editor.selection.start.line;
+        const selEnd0 = editor.selection.end.line;
+        const ctxStart0 = Math.max(0, selStart0 - SELECTION_CONTEXT_PADDING);
+        const ctxEnd0 = Math.min(totalLines - 1, selEnd0 + SELECTION_CONTEXT_PADDING);
+        const contextWindow = doc.getText(
+          new vscode.Range(ctxStart0, 0, ctxEnd0, doc.lineAt(ctxEnd0).text.length),
+        );
+        selectedText = trimmed;
+        selection = {
+          startLine: selStart0 + 1,
+          endLine: selEnd0 + 1,
+          startCharacter: editor.selection.start.character,
+          endCharacter: editor.selection.end.character,
+          text: rawSelected,
+          contextWindow,
+          contextStartLine: ctxStart0 + 1,
+          contextEndLine: ctxEnd0 + 1,
+        };
+      }
     }
 
     return {
@@ -113,7 +153,7 @@ export class EditorContextCollector {
       absoluteFilePath: doc.uri.fsPath,
       language: doc.languageId,
       content,
-      selectedText: selectedText || undefined,
+      selectedText,
       selection,
       isTruncated: totalLines > this.maxLines,
     };
