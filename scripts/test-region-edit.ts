@@ -614,6 +614,26 @@ console.log('\nScaffoldContracts — 계약 카드 트리거 주입:');
   check('smart-table: "데이터 테이블" 시 list-table는 양보',
     !ids({ deps: '', region: '<table/>', query: '데이터 테이블로 직원 목록 만들어줘' }).includes('list-table-binding'));
 
+  // 버튼 카드(button-component): 생성 선호 + 교체 레시피(import + JSX 태그교체 둘 다)
+  {
+    // 생성 의도: "버튼 넣어줘" → 카드 발동 + <Button> 선호 본문
+    const gen = { deps: '', region: '<div className="p-6"/>', query: "div 아래 'alert' 버튼을 하나 넣어줘" };
+    check('button: "버튼 넣어줘" → 카드 발동', ids(gen).includes('button-component'));
+    check('button 카드: <Button> 선호 + import 지시 포함',
+      buildContractSection(gen).includes('<Button>') && buildContractSection(gen).includes("import { Button } from '@axiom/components/ui'"));
+    // 교체 의도: "Button 컴포넌트로 변경" → 발동 + JSX 태그 교체 강제 본문
+    const swap = { deps: '', region: '<button onClick={fn} className="bg-blue-500">Alert 표시</button>', query: 'Alert 표시 버튼을 Button 컴포넌트로 변경해줘' };
+    check('button: "Button 컴포넌트로 변경" → 카드 발동', ids(swap).includes('button-component'));
+    check('button 카드: JSX 태그 자체 교체 지시 포함', buildContractSection(swap).includes('JSX 태그 자체 교체'));
+    check('button 카드: import만 추가 금지 경고 포함', buildContractSection(swap).includes('import만 추가하고'));
+    // region에 소문자 raw <button 만 있어도(쿼리에 버튼 언급 없어도) 발동
+    check('button: region raw <button> → 발동',
+      ids({ deps: '', region: '<button type="button">저장</button>', query: '이 부분 수정' }).includes('button-component'));
+    // ⚠ 대문자 <Button (이미 정상)만 있고 버튼 언급 없으면 오발동 안 함(케이스 민감)
+    check('button: <Button>(정상) + 무관 쿼리 → 비발동',
+      !ids({ deps: '', region: '<Button variant="outline">저장</Button>', query: '글자색 변경' }).includes('button-component'));
+  }
+
   // 아무 카드도 발동 안 하면 섹션 자체가 빈 문자열
   check('무관 컨텍스트 → 계약 섹션 없음', buildContractSection({ deps: '', region: '<div/>', query: '글자색 변경' }) === '');
 

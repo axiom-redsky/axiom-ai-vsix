@@ -272,6 +272,34 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
       `- 제출·수정은 \`useApi\`(@axiom/hooks) mutation과 연결: \`form.handleSubmit((d) => mutate(d, { onSuccess, onError }))\`. ⛔ \`useMutation\` 직접 사용 금지.`,
   },
   {
+    id: 'button-component',
+    // ⚠ 이 카드는 scaffold 오버라이드 규칙이다: scaffold는 raw `<button>` 대신 `<Button>`(@axiom/components/ui)을
+    // 표준으로 제공한다($ui.alert가 window.alert를 대체하는 것과 같은 관계). 두 가지 실패를 겨냥한다:
+    //  ① 생성: "버튼 넣어줘"에 raw `<button>`을 만드는 것(실측) → `<Button>` 선호로 교정.
+    //  ② 교체: "이 버튼을 Button 컴포넌트로 변경"에 import만 추가하고 JSX `<button>`을 안 바꾸는 half-edit
+    //     (실측 — date-picker와 동종의 다부품 코디네이트 실패) → import + JSX 태그교체 둘 다 강제.
+    // 트리거: 편집 영역에 **소문자** raw `<button`이 있으면(대문자 `<Button`은 이미 정상이라 제외 — 케이스 민감,
+    // `i` 플래그 금지), 또는 요청이 버튼 생성/교체/컴포넌트화를 언급하면 발동.
+    title: '버튼은 <Button> 컴포넌트 (@axiom/components/ui)',
+    applies: ({ region, deps, query }) =>
+      /<button[\s/>]/.test(region) ||
+      /<button[\s/>]/.test(deps) ||
+      (/버튼|\bbutton\b/i.test(query) &&
+        /넣|추가|만들|생성|변경|바꾸|바꿔|교체|전환|컴포넌트|component|add|create|switch|change|replace/i.test(query)),
+    card:
+      `- 버튼은 raw \`<button>\` 대신 scaffold의 \`<Button>\`(@axiom/components/ui)을 사용하세요 — ` +
+      `디자인토큰·다크모드·포커스링이 적용된 표준 버튼입니다. import: \`import { Button } from '@axiom/components/ui';\`\n` +
+      `  · variant: \`default\`(주요) | \`secondary\` | \`outline\` | \`ghost\` | \`destructive\`(삭제·위험) | \`link\`, ` +
+      `size: \`sm\` | \`lg\` | \`icon\`. \`onClick\`·\`type\`·\`disabled\` 등 표준 \`<button>\` 속성을 그대로 받습니다.\n` +
+      `- ⛔ 기존 \`<button>\`을 \`<Button>\`으로 **변경**할 때는 반드시 **아래 둘을 함께** 출력하세요 ` +
+      `(하나라도 빠지면 화면이 바뀌지 않습니다):\n` +
+      `  1) import 추가: \`import { Button } from '@axiom/components/ui';\`\n` +
+      `  2) **JSX 태그 자체 교체**: \`<button …>…</button>\` → \`<Button …>…</Button>\` (여는·닫는 태그 모두). ` +
+      `기존 \`onClick\`·이벤트·자식(children)은 그대로 유지하고, Tailwind 색/모양 className(\`bg-blue-500 text-white rounded\` 등)은 ` +
+      `가능하면 \`variant\`로 대체하세요(대응이 불명확하면 className 유지).\n` +
+      `  · ⚠ **import만 추가하고 JSX의 \`<button>\`을 그대로 두지 마세요** — import는 실제로 \`<Button>\`이 쓰일 때만 의미가 있습니다.`,
+  },
+  {
     id: 'handler-extraction',
     // ⚠ 이 카드는 scaffold 전용이 아니라 **일반 React 컨벤션**(핸들러 구조 보존)이다 — 사용자 요청으로 추가.
     // 규칙은 애매하지 않다: **현재 코드의 연결 구조가 결정**한다. 신규 연결 때만 방식 선택.

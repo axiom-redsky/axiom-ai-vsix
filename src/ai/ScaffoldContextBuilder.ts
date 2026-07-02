@@ -11,6 +11,7 @@ import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
 import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
 import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
+import { buildContractSection } from './ScaffoldContracts';
 import type { IntentResult } from './IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {
@@ -276,6 +277,7 @@ export class ScaffoldContextBuilder {
 - **이벤트 핸들러 구조 보존(중요)**: \`onClick\`/\`onChange\`/\`onSubmit\` 등의 동작을 바꿀 때는 **현재 코드의 연결 구조를 유지**하고 그 안에서 동작만 수정한다. ① 이미 **명명 함수**가 연결돼 있으면(\`onClick={handleXxx}\`) 그 **함수 본문을 수정**하고 바인딩은 그대로 둔다 — ⛔ \`onClick={() => …}\` 인라인으로 갈아끼워 기존 함수를 삭제·무력화하지 말 것. ② 이미 **인라인**이면(\`onClick={() => …}\`) 인라인을 그대로 수정한다. ③ 핸들러가 **없어 새로 연결**할 때만 방식을 고르되 명명 함수 분리를 우선하고, 단순 한 줄 동작은 인라인 화살표도 허용한다.
 - **⚠️ React Rules of Hooks 절대 준수**: \`use\`로 시작하는 모든 훅(useApi, useState, useEffect, useMemo, useCallback, useRef, useParams 등)은 반드시 **React 함수 컴포넌트 본문 또는 커스텀 훅(\`use*\`) 함수 본문의 최상위**에서만 호출. 다음 위치에서 호출 절대 금지: ① 모듈 최상위(import 아래·\`export default function\` 위), ② 조건문/반복문/일반 \`if·for·try\` 블록 안, ③ 일반 함수(컴포넌트가 아닌 \`calculateXxx\`, \`formatXxx\` 등 유틸 함수)나 콜백 안, ④ class 컴포넌트 안. 새 \`useApi\` 호출을 추가할 때는 반드시 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 위에 위치시킬 것.
 - 상대경로 임포트 금지 → UI 컴포넌트는 반드시 @axiom/components/ui 단일 경로에서 named import 사용 (예: import { Button, Input, Card, CardHeader, CardTitle, CardContent, CardDescription, Label } from '@axiom/components/ui'; — @/components/ui/button 등 개별 파일 경로 절대 금지), 훅은 반드시 @axiom/hooks (예: import { useApi } from '@axiom/hooks'), 내부 타입·유틸은 @/ 앨리어스 사용 (@/hooks/useApi 형식 절대 금지)
+- **버튼은 \`<Button>\` (@axiom/components/ui)**: 새 버튼을 만들 때 raw \`<button>\` 대신 scaffold의 \`<Button>\`을 사용한다(variant/size로 스타일; 예: \`<Button variant="outline" onClick={…}>취소</Button>\`). 단, 이미 있는 raw \`<button>\`은 사용자가 변경을 요청할 때만 \`<Button>\`으로 교체하고, 그때는 import 추가와 JSX 태그 교체를 **함께** 한다(import만 추가하고 태그를 안 바꾸면 무효).
 - scaffold의 package.json에 없는 라이브러리 제안 금지
 - 코드 주석은 한국어로 작성${navRules}${fileScopeRule}
 ${routerImportRule}
@@ -499,13 +501,22 @@ ${scaffoldSection}${fileSection}${referencedSection}`;
 
     // 시나리오 C: 현재 열린 파일 수정 — A/B 예시 없이 C 전용 프롬프트 사용
     if (domainCtx.isCurrentFileContext) {
+      // scaffold 계약 카드(트리거 기반) 주입 — region 경로는 buildContractSection으로 계약을 가르치지만
+      // 선택/현재파일(scenario C) 경로는 종전 RAG 운에만 의존해, "버튼은 <Button>"·"useApi 계약" 같은
+      // scaffold 오버라이드가 모델에 안 닿았다(실측: raw <button> 생성, Button 교체 시 import만 추가).
+      // 파일 본문(deps)+선택 텍스트(region)+요청(query)으로 관련 카드만 결정론적으로 끼운다(무관하면 빈 문자열).
+      const contractSection = buildContractSection({
+        deps: fileContent,
+        region: ctx.selection?.text || ctx.selectedText || '',
+        query: userQuery,
+      });
       const cPrompt = this._buildScenarioCPrompt(
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
         linesAllowed, lineEditCfg.requireAnchor, !!ctx.selection,
         referencedSection, ExtensionConfig.isScenarioCCompactModes(),
-        ExtensionConfig.isPatchFirstEditEnabled(),
+        ExtensionConfig.isPatchFirstEditEnabled(), contractSection,
       );
-      // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 합산)
+      // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 + 계약 카드 합산)
       this._lastBreakdown.rulesChars = Math.max(
         0,
         cPrompt.length - fileSection.length - scaffoldSection.length - domainSection.length - referencedSection.length,
@@ -613,6 +624,7 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     referencedSection = '',
     compactModes = false,
     patchFirst = false,
+    contractSection = '',
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
@@ -757,7 +769,7 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 
     return `${coreRules}
 
-## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
+${contractSection}## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
 현재 열린 파일에 코드 추가/수정 요청입니다. 아래 규칙을 반드시 따르세요:
 
 ${compact
