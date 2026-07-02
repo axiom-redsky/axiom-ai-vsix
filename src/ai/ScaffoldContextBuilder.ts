@@ -451,69 +451,103 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
       }
     }
 
-    const selectionSection = ctx.selection
-      ? (() => {
-          // contextWindow에 라인 번호를 부여한다 — 모델이 "라인 349"를 코드 안의 정확한
-          // 위치로 매핑할 수 있게 함. qwen-class 약한 모델은 줄 세기를 못해서 같은 토큰이
-          // 여러 곳에 있을 때 잘못된 위치를 고르기 쉬움.
-          const windowLines = ctx.selection!.contextWindow.split('\n');
-          const startLineNo = ctx.selection!.contextStartLine;
-          const selStart = ctx.selection!.startLine;
-          const selEnd = ctx.selection!.endLine;
-          const maxWidth = String(startLineNo + windowLines.length - 1).length;
-          const numbered = windowLines
-            .map((line, i) => {
-              const lineNo = startLineNo + i;
-              const marker = lineNo >= selStart && lineNo <= selEnd ? ' ← 선택됨' : '';
-              return `${String(lineNo).padStart(maxWidth, ' ')}| ${line}${marker}`;
-            })
-            .join('\n');
-          return [
-            '',
-            `### 🎯 선택 영역 (라인 ${selStart}~${selEnd})`,
-            '선택된 텍스트:',
-            '```',
-            ctx.selection!.text,
-            '```',
-            '',
-            `**선택 영역 주변 코드 (라인 ${ctx.selection!.contextStartLine}~${ctx.selection!.contextEndLine}, ` +
-              '실제 파일 원본 / 각 줄 앞에 라인 번호 부여):**',
-            '```',
-            numbered,
-            '```',
-            '',
-            '⚠️ **수정 범위 규칙 — 위반 시 거부됨**:',
-            `1. 수정 대상은 라인 **${selStart}~${selEnd}** 안의 토큰 정확히 1곳뿐. 같은 변수명/표현식이 다른 라인(예: 위 코드의 다른 \`← 선택됨\` 표시 없는 라인)에 또 있어도 **절대 건드리지 마세요**.`,
-            `2. \`<search>\`/\`<replace>\`는 라인 ${selStart}~${selEnd}만 포함. 양쪽 1줄 정도까지 맥락으로 확장 허용.`,
-            '3. `<search>` 코드는 위 코드 블록에서 그대로 복사하되 **앞의 `NNN| ` 라인 번호 prefix는 절대 포함하지 마세요**. 라인 번호는 위치 파악용일 뿐 실제 파일 내용이 아닙니다.',
-            '4. **선택 영역 밖에 새로 추가**할 코드(import, `useApi` 등 훅 호출, state 선언, 타입 선언)는 `<patch>`로 만들지 마세요 — 그 위치는 파일이 커서 잘려 안 보이므로 `<search>`가 매칭되지 않습니다. 대신 **조각만** 내면 위치는 확장이 알아서 끼웁니다(같은 `<axiom-action>` 안에 `<patch>`와 함께 출력):',
-            "   - 훅/state: `<hook>const { data: departments } = useApi<TDepartment[]>('/api/departments');</hook>`",
-            '   - import: `<import module="@axiom/hooks" named="useApi" />`',
-            '   - 타입: `<hook>` 안에 `type TDepartment = { ... }` 선언을 함께 넣으면 확장이 모듈 스코프로 올립니다.',
-            '5. **선택 밖 소비처는 출력하지 마세요.** 선택 영역에서 필드/식별자를 rename하면(예: `name`→`employee_name`), 컴포넌트 본문의 소비처(`member.name`→`member.employee_name` 등)는 **확장이 자동으로 반영**합니다. 소비처 JSX/로직을 추측해 `<patch>`로 내지 마세요(추측한 코드는 실제 파일과 달라 매칭 실패합니다).',
-            '',
-            `**예시**: 위 코드에 \`u.end_date\`가 라인 ${selStart}과 다른 라인 두 곳에 있어도, \`← 선택됨\` 표시가 있는 **라인 ${selStart}만** 변경하세요.`,
-          ].join('\n');
-        })()
-      : ctx.selectedText
-        ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
-        : '';
-
     // 라인 앵커(lines) 모드용: 파일이 슬라이싱되지 않은(라인번호가 실제와 1:1로 맞는) 경우에만
     // 본문에 `NNN| ` prefix를 부여한다. 슬라이싱되면 번호가 어긋나므로 부여하지 않는다.
+    // (선택 영역 섹션이 이 값으로 중복 window 생략 여부를 정하므로 selectionSection보다 먼저 계산한다.)
     const lineEditCfg = ExtensionConfig.getLineEditConfig();
     const fileIsSliced = sliceNotice.length > 0;
     const linesAllowed =
       ctx.available && lineEditCfg.enabled && !fileIsSliced && ctx.content !== undefined;
+
+    // 선택 밖 추가·rename 처리 지시(양 경로 공통) — 파일 커서 잘린 위치는 <patch> 대신 조각으로.
+    const selectionEditRules = [
+      '4. **선택 영역 밖에 새로 추가**할 코드(import, `useApi` 등 훅 호출, state 선언, 타입 선언)는 `<patch>`로 만들지 마세요 — 그 위치는 `<search>`가 매칭되지 않을 수 있습니다. 대신 **조각만** 내면 위치는 확장이 알아서 끼웁니다(같은 `<axiom-action>` 안에 `<patch>`와 함께 출력):',
+      "   - 훅/state: `<hook>const { data: departments } = useApi<TDepartment[]>('/api/departments');</hook>`",
+      '   - import: `<import module="@axiom/hooks" named="useApi" />`',
+      '   - 타입: `<hook>` 안에 `type TDepartment = { ... }` 선언을 함께 넣으면 확장이 모듈 스코프로 올립니다.',
+      '5. **선택 밖 소비처는 출력하지 마세요.** 선택 영역에서 필드/식별자를 rename하면(예: `name`→`employee_name`), 컴포넌트 본문의 소비처(`member.name`→`member.employee_name` 등)는 **확장이 자동으로 반영**합니다. 소비처 JSX/로직을 추측해 `<patch>`로 내지 마세요(추측한 코드는 실제 파일과 달라 매칭 실패합니다).',
+    ];
+
+    const selectionSection = ctx.selection
+      ? linesAllowed
+        // 파일 전체가 아래 본문에 라인번호 + `← 선택` 마커로 그대로 보이므로, 주변 코드를 **또** 복제하지
+        // 않는다(중복 제거 = 토큰 절감 + 약한 모델이 같은 코드 여러 표현에 혼란스러워하는 것 방지).
+        ? (() => {
+            const selStart = ctx.selection!.startLine;
+            const selEnd = ctx.selection!.endLine;
+            return [
+              '',
+              `### 🎯 선택 영역 = 아래 "현재 파일" 본문의 라인 ${selStart}~${selEnd} (\`← 선택\` 표시된 줄)`,
+              '선택된 텍스트:',
+              '```',
+              ctx.selection!.text,
+              '```',
+              '',
+              '⚠️ **수정 범위 규칙 — 위반 시 거부됨**:',
+              `1. 수정 대상은 라인 **${selStart}~${selEnd}**(\`← 선택\`) 안의 토큰 정확히 1곳뿐. 같은 변수명/표현식이 표시 없는 다른 라인에 또 있어도 **절대 건드리지 마세요**.`,
+              `2. \`<search>\`/\`<replace>\`는 라인 ${selStart}~${selEnd}만 포함(양쪽 1줄 맥락 확장 허용). \`<search>\`는 아래 본문에서 그대로 복사하되 앞의 \`NNN| \` 라인 번호 prefix·\`← 선택\` 표시는 **절대 포함하지 마세요**.`,
+              ...selectionEditRules,
+            ].join('\n');
+          })()
+        // 파일이 슬라이싱된 경우: 본문 라인번호가 없으므로 선택 주변 코드를 라인번호와 함께 별도 제시한다.
+        : (() => {
+            const windowLines = ctx.selection!.contextWindow.split('\n');
+            const startLineNo = ctx.selection!.contextStartLine;
+            const selStart = ctx.selection!.startLine;
+            const selEnd = ctx.selection!.endLine;
+            const maxWidth = String(startLineNo + windowLines.length - 1).length;
+            const numbered = windowLines
+              .map((line, i) => {
+                const lineNo = startLineNo + i;
+                const marker = lineNo >= selStart && lineNo <= selEnd ? ' ← 선택됨' : '';
+                return `${String(lineNo).padStart(maxWidth, ' ')}| ${line}${marker}`;
+              })
+              .join('\n');
+            return [
+              '',
+              `### 🎯 선택 영역 (라인 ${selStart}~${selEnd})`,
+              '선택된 텍스트:',
+              '```',
+              ctx.selection!.text,
+              '```',
+              '',
+              `**선택 영역 주변 코드 (라인 ${ctx.selection!.contextStartLine}~${ctx.selection!.contextEndLine}, ` +
+                '실제 파일 원본 / 각 줄 앞에 라인 번호 부여):**',
+              '```',
+              numbered,
+              '```',
+              '',
+              '⚠️ **수정 범위 규칙 — 위반 시 거부됨**:',
+              `1. 수정 대상은 라인 **${selStart}~${selEnd}** 안의 토큰 정확히 1곳뿐. 같은 변수명/표현식이 다른 라인(예: 위 코드의 다른 \`← 선택됨\` 표시 없는 라인)에 또 있어도 **절대 건드리지 마세요**.`,
+              `2. \`<search>\`/\`<replace>\`는 라인 ${selStart}~${selEnd}만 포함. 양쪽 1줄 정도까지 맥락으로 확장 허용.`,
+              '3. `<search>` 코드는 위 코드 블록에서 그대로 복사하되 **앞의 `NNN| ` 라인 번호 prefix는 절대 포함하지 마세요**. 라인 번호는 위치 파악용일 뿐 실제 파일 내용이 아닙니다.',
+              ...selectionEditRules,
+              '',
+              `**예시**: 위 코드에 \`u.end_date\`가 라인 ${selStart}과 다른 라인 두 곳에 있어도, \`← 선택됨\` 표시가 있는 **라인 ${selStart}만** 변경하세요.`,
+            ].join('\n');
+          })()
+      : ctx.selectedText
+        ? `\n### 선택된 텍스트\n\`\`\`\n${ctx.selectedText}\n\`\`\``
+        : '';
 
     let fileBody = fileContent;
     let lineNumberNotice = '';
     if (linesAllowed) {
       const fl = fileContent.split('\n');
       const width = String(fl.length).length;
-      fileBody = fl.map((l, i) => `${String(i + 1).padStart(width, ' ')}| ${l}`).join('\n');
+      // 선택 영역이 있으면 해당 줄에 `← 선택` 마커를 인라인으로 붙인다. 선택 섹션이 주변 코드를 별도로
+      // 복제하지 않고 이 본문을 가리키므로(중복 제거), 여기서 선택 위치를 시각적으로 표시해 준다.
+      const sel = ctx.selection;
+      fileBody = fl
+        .map((l, i) => {
+          const lineNo = i + 1;
+          const marker = sel && lineNo >= sel.startLine && lineNo <= sel.endLine ? '  ← 선택' : '';
+          return `${String(lineNo).padStart(width, ' ')}| ${l}${marker}`;
+        })
+        .join('\n');
       lineNumberNotice =
-        '> 각 줄 앞 `NNN| `는 **위치 파악용 라인 번호**입니다 — 실제 파일 내용이 아니므로 출력(<edit>·코드)에 절대 포함하지 마세요.';
+        '> 각 줄 앞 `NNN| `는 **위치 파악용 라인 번호**입니다 — 실제 파일 내용이 아니므로 출력(<edit>·코드)에 절대 포함하지 마세요.' +
+        (ctx.selection ? ' `← 선택` 표시도 위치 표식일 뿐이니 출력에 넣지 마세요.' : '');
     }
 
     // 존재 기반 컴포넌트 prop 주입 — 선택/파일에 있는 scaffold 컴포넌트(<SmartTable/> 등)의 고유 prop을
