@@ -280,6 +280,11 @@
           "default": true,
           "description": "열린 파일 수정(시나리오 C)에서 규칙·가이드(coreRules)를 의도 기반으로 게이팅합니다. 순수 가드레일(import 경로·React Rules of Hooks·Button 컴포넌트·기존 코드/핸들러 보존 등 약한 모델이 질문에 없어도 어기는 규칙)은 항상 주입하고, 상황용 규칙(데이터 출처 우선순위·useApi·TypeScript 타입 네이밍·컴포넌트 선언 순서·router 생성)은 요청 의도(데이터/타입/훅/라우터 키워드나 현재 파일의 useApi 사용)와 관련될 때만 주입합니다. 무관 지시문은 토큰을 늘릴 뿐 아니라 약한 모델의 품질을 떨어뜨리므로 제거가 곧 정확도 개선입니다. 끄면 종전처럼 coreRules 전체를 항상 주입합니다. 기본 켜짐."
         },
+        "axiom-ai.scenarioC.ultraCompactModes": {
+          "type": "boolean",
+          "default": false,
+          "description": "단순 in-place 편집(선택 영역 없음·테이블/목록 렌더 아님)에서 출력 모드 지시를 초압축합니다(레버 B). 켜면 structural·patch를 concrete하되 한 예시씩 축약하고, coreRules의 Rules of Hooks와 중복되는 '훅 삽입 위치 규칙' 블록·lines 모드·장황한 모드 선택 설명을 생략해 약 2.9K자를 절감합니다. 편집 전략 메뉴를 바꾸는 변경이라 약한 모델에서 회귀 위험이 있어 기본 꺼짐 — 실모델로 before/after 품질을 검증한 뒤 켜세요. 선택 영역·렌더 카드 활성 케이스에는 적용되지 않고 종전 상세 지시가 유지됩니다."
+        },
         "axiom-ai.promptDiet.qnaGating": {
           "type": "boolean",
           "default": true,

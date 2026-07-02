@@ -20,7 +20,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'experimental.regionEdit', 'experimental.intentClassifier', 'experimental.pageCreationLlmMode',
   'experimental.onlineKnowledgeAnswer', 'experimental.regionVerify', 'experimental.anchorFirstEdit',
   'experimental.patchFirstEdit', 'experimental.composeBinding',
-  'scenarioC.compactModes', 'scenarioC.gateCoreRulesByIntent',
+  'scenarioC.compactModes', 'scenarioC.gateCoreRulesByIntent', 'scenarioC.ultraCompactModes',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
   'promptDiet.adaptiveBudget.targetRatio', 'promptDiet.adaptiveBudget.charsPerToken',
@@ -326,6 +326,14 @@ export class ExtensionConfig {
    */
   static isGateCoreRulesByIntent(): boolean {
     return ExtensionConfig._resolve<boolean>('scenarioC.gateCoreRulesByIntent', AI_DEFAULTS.scenarioC.gateCoreRulesByIntent);
+  }
+
+  /**
+   * 시나리오 C 단순 편집에서 출력 모드 지시를 초압축할지(레버 B). 기본 off — 약한 모델 회귀 위험이 있어
+   * 사이트에서 실모델 before/after 검증 후 on. 선택 영역·렌더 카드 활성 케이스엔 미적용(상세 지시 유지).
+   */
+  static isScenarioCUltraCompactModes(): boolean {
+    return ExtensionConfig._resolve<boolean>('scenarioC.ultraCompactModes', AI_DEFAULTS.scenarioC.ultraCompactModes);
   }
 
   /**

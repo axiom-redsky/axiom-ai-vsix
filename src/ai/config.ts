@@ -200,6 +200,15 @@ export const AI_DEFAULTS = {
      * 시나리오 C(열린 파일 수정)에만 적용한다. false면 종전처럼 coreRules 전체를 항상 주입한다.
      */
     gateCoreRulesByIntent: true,
+    /**
+     * 레버 B — 단순 in-place 편집(선택 영역 없음·테이블/목록 렌더 아님)에서 출력 모드 지시를 **초압축**한다.
+     * 종전엔 structural/patch(/lines) 블록을 각각 장황한 예시와 함께 내고, coreRules의 Rules of Hooks와
+     * 중복되는 '훅 삽입 위치 규칙' 블록까지 항상 붙여 ~3.6K자를 썼다. ultra=on이면 structural·patch를
+     * concrete하되 **한 예시씩 축약**하고, 중복 훅블록·lines·장황한 모드선택 설명을 생략한다(~2.9K자 절감).
+     * 편집 전략 메뉴를 바꾸는 변경이라 약한 모델 회귀 위험이 있어 **기본 off** — 사이트에서 실모델
+     * before/after 검증 후 on. 선택 영역·렌더 카드 활성 케이스는 종전 상세 지시를 유지(ultra 미적용).
+     */
+    ultraCompactModes: false,
   },
   /**
    * 디버그용 기본값.

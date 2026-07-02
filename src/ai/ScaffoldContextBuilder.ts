@@ -613,6 +613,7 @@ ${scaffoldSection}${fileSection}${referencedSection}`;
         linesAllowed, lineEditCfg.requireAnchor, !!ctx.selection,
         referencedSection, ExtensionConfig.isScenarioCCompactModes(),
         ExtensionConfig.isPatchFirstEditEnabled(), contractSection, requiresRender,
+        ExtensionConfig.isScenarioCUltraCompactModes(),
       );
       // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 + 계약 카드 합산)
       this._lastBreakdown.rulesChars = Math.max(
@@ -724,6 +725,7 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     patchFirst = false,
     contractSection = '',
     requiresRender = false,
+    ultraCompactModes = false,
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
@@ -741,6 +743,11 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     // dropPatch(compact)와 상충하므로 patchFirst가 우선(lines를 빼면 patch는 유일 국소수단이라 유지).
     const dropLines = patchFirst && linesAllowed && !hasSelection;
     const dropPatch = compact && linesAllowed && !dropLines;
+
+    // 레버 B(초압축): 단순 in-place 편집에서만 — 선택 영역·렌더 카드 활성 케이스는 별도 상세 지시가 필요해 제외.
+    // structural(추가)+patch(수정)를 한 예시씩 축약하고, coreRules와 중복되는 훅 위치 블록·lines·장황한 모드
+    // 선택 설명을 생략한다. 약한 모델 회귀 위험 때문에 토글 기본 off(사이트 실측 후 on).
+    const ultra = ultraCompactModes && !hasSelection && !requiresRender;
 
     const mp = ExtensionConfig.getMultiPatchConfig();
 
@@ -872,22 +879,39 @@ react-app-scaffold의 화면 이동은 전역 \`$router\` 객체를 사용한다
 - ⛔ 요청이 '필터'면 **상단 필터 영역만** 건드리세요. 테이블 행(row)마다 새 입력 컴포넌트(\`<Select>\` 등)를 만들지 마세요.`
       : '';
 
-    return `${coreRules}
+    // 출력 모드 지시 섹션. ultra(레버 B)면 훅 위치 중복 블록·lines·장황한 모드선택 설명을 생략하고
+    // structural·patch를 한 예시씩 축약한다. Rules of Hooks는 coreRules(항상 주입)에 이미 있어 중복 제거.
+    const fullModeBlock = `**full 모드** — 전체 파일 재작성이 필요할 때만:
 
-${contractSection}## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
-현재 열린 파일에 코드 추가/수정 요청입니다. 아래 규칙을 반드시 따르세요:
+<axiom-action>
+{"action":"updateFile","mode":"full","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+\`\`\`tsx
+// 기존 코드를 유지하면서 요청된 변경사항이 반영된 전체 파일 내용
+\`\`\`
+</axiom-action>`;
 
-${compact
-  ? `1. **⚠️ axiom-action 블록을 먼저 출력**하세요. 설명을 길게 쓰다 블록을 빠뜨리면 아무것도 적용되지 않습니다 — 블록이 가장 중요합니다.
-2. 블록 뒤에 변경 요약을 **1~2줄로만 짧게** 덧붙이세요 (길게 쓰지 말 것).
-3. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
-4. 아래 출력 모드 중 하나를 선택하고, JSON 메타데이터와 코드/edit 블록을 분리하세요`
-  : `1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
-2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
-3. 수정 범위에 따라 아래 출력 모드 중 하나를 선택하세요 (출력은 작을수록 좋습니다)
-4. JSON 메타데이터와 코드/edit 블록을 분리하여 작성하세요`}
+    const modeSection = ultra
+      ? `### 출력 모드 (아래 중 하나만 골라 블록을 먼저 출력)
+- **structural** = 훅·import **추가**(위치를 찾지 말고 추가할 조각만 — 확장이 컴포넌트 본문 올바른 위치에 삽입).
+- **patch** = 기존 코드 **수정**. 그 외 파일 절반 이상 재작성이 꼭 필요할 때만 **full**.
 
-### ⚠️ 훅(useApi 등) 삽입 위치 규칙 — 위반 시 런타임 즉시 크래시
+**structural** — \`<hook>\`에 추가할 훅/타입 줄, \`<import>\`로 import(이미 있으면 자동 무시):
+<axiom-action>
+{"action":"updateFile","mode":"structural","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<hook>
+const { data, isPending } = useApi<TRes>('/api/endpoint');
+</hook>
+<import module="@axiom/hooks" named="useApi" />
+</axiom-action>
+
+**patch** — \`<search>\`에는 원본 파일에 **지금 존재하는** 코드를 그대로 복사(전후 ${mp.minContextLines}줄, 원본에 없는 코드 금지), \`<replace>\`에 변경된 코드. 여러 곳이면 \`<patch>\` N개(범위 겹침 금지):
+<axiom-action>
+{"action":"updateFile","mode":"patch","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
+<patch><search>원본에 있는 기존 코드</search><replace>변경된 코드</replace></patch>
+</axiom-action>
+
+**full** — 파일 절반 이상 재작성일 때만: \`mode:"full"\` + \`\`\`tsx 전체 파일 \`\`\`.`
+      : `### ⚠️ 훅(useApi 등) 삽입 위치 규칙 — 위반 시 런타임 즉시 크래시
 새로운 \`useApi\` / \`useState\` / \`useEffect\` 등 \`use*\` 훅 호출을 추가할 때:
 - **반드시** 기존 \`export default function ComponentName(): React.ReactNode { ... }\` 블록 **안쪽**, 다른 훅 선언 옆, \`return\` 문 **위**에 위치시킬 것
 - **절대 금지 위치**: ① 파일 상단 import 아래, ② \`type\` / \`interface\` / 상수 선언 옆, ③ \`calculateXxx\`, \`formatXxx\` 같은 일반 유틸 함수 안, ④ \`if·for·try\` 블록 안
@@ -903,14 +927,24 @@ ${modeSelectionRules}
 
 ${structuralModeBlock ? `${structuralModeBlock}\n` : ''}${linesAllowed && !hasSelection && !dropLines ? `${lineModeBlock}\n\n` : ''}${dropPatch ? '' : patchModeBlock}
 
-**full 모드** — 전체 파일 재작성이 필요할 때만:
+${fullModeBlock}`;
 
-<axiom-action>
-{"action":"updateFile","mode":"full","templateType":"${templateType}","domain":"${domainCtx.domainName ?? ''}","filePath":"${filePath}"}
-\`\`\`tsx
-// 기존 코드를 유지하면서 요청된 변경사항이 반영된 전체 파일 내용
-\`\`\`
-</axiom-action>
+    return `${coreRules}
+
+${contractSection}## ⚠️ 현재 작업: 열린 파일 코드 수정 (시나리오 C)
+현재 열린 파일에 코드 추가/수정 요청입니다. 아래 규칙을 반드시 따르세요:
+
+${compact
+  ? `1. **⚠️ axiom-action 블록을 먼저 출력**하세요. 설명을 길게 쓰다 블록을 빠뜨리면 아무것도 적용되지 않습니다 — 블록이 가장 중요합니다.
+2. 블록 뒤에 변경 요약을 **1~2줄로만 짧게** 덧붙이세요 (길게 쓰지 말 것).
+3. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
+4. 아래 출력 모드 중 하나를 선택하고, JSON 메타데이터와 코드/edit 블록을 분리하세요`
+  : `1. 설명 텍스트를 먼저 작성한 후, **응답 마지막에 반드시 axiom-action 블록을 출력**하세요
+2. 라우터 파일(router/index.tsx) 수정 불필요 — axiom-action 블록은 **1개만** 생성
+3. 수정 범위에 따라 아래 출력 모드 중 하나를 선택하세요 (출력은 작을수록 좋습니다)
+4. JSON 메타데이터와 코드/edit 블록을 분리하여 작성하세요`}
+
+${modeSection}
 ${navigationHint}${filterHint}
 
 ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
