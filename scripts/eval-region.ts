@@ -13,10 +13,12 @@
  * 실행: npm run eval:region  (node scripts/run-eval-region.mjs)
  */
 import { locateEditRegion } from '../src/ai/RegionEdit';
+import { buildHybridPrompt } from '../src/ai/RegionEditService';
+import { estimateTokens as estTokens, inputBudget, budgetUsagePct } from '../src/ai/promptBudget';
 import { CASES, FIXTURES, type EvalCase } from './eval-region-corpus';
 
-/** 거친 토큰 추정 — 정확한 토크나이저 없이 chars/4(영문 기준 통상치). 상대비교용. */
-const estTokens = (s: string): number => Math.ceil(s.length / 4);
+/** 입력 예산(기본 32768 창 − 8192 출력예약 = 24576 입력토큰). estTokens는 보수적 chars/3(promptBudget). */
+const BUDGET = inputBudget();
 
 interface Row {
   c: EvalCase;
@@ -24,8 +26,13 @@ interface Row {
   eligible: boolean;
   regression: boolean;
   fileTok: number;
-  /** region 모드 입력(depsHeader+region) 토큰. 폴백이면 null. */
+  /** region 모드 입력(depsHeader+region)만의 토큰 — 종전 save% 계산용(불완전). 폴백이면 null. */
   sentTok: number | null;
+  /**
+   * **실제 조립된 프롬프트** 토큰(system=buildHybridPrompt 전문 + query). depsHeader+region만 세던
+   * 종전 계측이 놓친 정적 규칙·계약카드·컴포넌트 prop표·인벤토리·backing까지 포함한 진짜 페이로드. 폴백이면 null.
+   */
+  promptTok: number | null;
   regionLines: number;
 }
 
@@ -47,6 +54,14 @@ function run(): void {
     const regression = gateMiss || eligMiss;
     const fileTok = estTokens(src);
     const sentTok = eligible ? estTokens(`${r.depsHeader}\n${r.region}`) : null;
+    // 실제 모델에 가는 프롬프트를 그대로 조립해 잰다(계약카드·prop표·규칙 포함). referencedSpec은 eval에 없음.
+    let promptTok: number | null = null;
+    if (eligible) {
+      const system = buildHybridPrompt(
+        r.depsHeader, r.region, r.startLine, r.endLine, undefined, r.backingDecls, c.query, r.controlInventory,
+      );
+      promptTok = estTokens(system) + estTokens(c.query);
+    }
     rows.push({
       c,
       gate: r.safety.gate,
@@ -54,6 +69,7 @@ function run(): void {
       regression,
       fileTok,
       sentTok,
+      promptTok,
       regionLines: eligible ? r.endLine - r.startLine + 1 : 0,
     });
   }
@@ -61,15 +77,19 @@ function run(): void {
   // ── 케이스별 표 ──────────────────────────────────────────────────────
   console.log('region/hybrid 측정 — 케이스별:\n');
   const pad = (s: string, n: number): string => (s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length));
-  console.log(`  ${pad('id', 16)} ${pad('gate', 15)} ${pad('elig', 5)} ${pad('save%', 6)} ${pad('exp', 14)} note`);
-  console.log(`  ${'-'.repeat(74)}`);
+  console.log(`  분모(입력예산): ${BUDGET.usableInput.toLocaleString()}토큰 = 창 ${BUDGET.contextWindow.toLocaleString()} − 출력예약 ${BUDGET.outputReserve.toLocaleString()}  ·  bud% 100 초과 = 예산 초과(⚠)\n`);
+  console.log(`  ${pad('id', 16)} ${pad('gate', 15)} ${pad('elig', 5)} ${pad('save%', 6)} ${pad('promptTok', 10)} ${pad('bud%', 6)} ${pad('exp', 14)} note`);
+  console.log(`  ${'-'.repeat(92)}`);
   for (const row of rows) {
     const save = row.sentTok !== null ? `${Math.round((1 - row.sentTok / row.fileTok) * 100)}%` : '—';
+    const ptok = row.promptTok !== null ? row.promptTok.toLocaleString() : '—';
+    const bud = row.promptTok !== null ? `${budgetUsagePct(row.promptTok, BUDGET)}%` : '—';
+    const overBudget = row.promptTok !== null && budgetUsagePct(row.promptTok, BUDGET) > 100;
     const exp = row.c.expectGate ?? (row.c.expectEligible !== undefined ? `elig=${row.c.expectEligible}` : '(측정)');
-    const mark = row.regression ? '❌' : row.eligible ? '✅' : '·';
+    const mark = row.regression ? '❌' : overBudget ? '⚠' : row.eligible ? '✅' : '·';
     console.log(
       `  ${mark} ${pad(row.c.id, 14)} ${pad(row.gate, 15)} ${pad(row.eligible ? 'yes' : 'no', 5)} ` +
-        `${pad(save, 6)} ${pad(exp, 14)} ${row.c.note ?? ''}`,
+        `${pad(save, 6)} ${pad(ptok, 10)} ${pad(bud, 6)} ${pad(exp, 14)} ${row.c.note ?? ''}`,
     );
   }
 
@@ -91,13 +111,24 @@ function run(): void {
     ? Math.round(eligibleRows.reduce((a, r) => a + r.regionLines, 0) / eligibleRows.length)
     : 0;
 
+  // 실제 프롬프트 토큰 — 예산(24,576) 대비 어디쯤 쌓이는지. 종전 save%는 deps+region만 세 이 값을 못 봤다.
+  const promptToks = eligibleRows.map((r) => r.promptTok).filter((t): t is number => t !== null);
+  const meanPromptTok = promptToks.length ? Math.round(promptToks.reduce((a, b) => a + b, 0) / promptToks.length) : 0;
+  const maxPromptTok = promptToks.length ? Math.max(...promptToks) : 0;
+  const overBudgetCount = promptToks.filter((t) => t > BUDGET.usableInput).length;
+
   console.log('\n집계:');
   console.log(`  • region 적용률(eligibility): ${eligRate}% (${eligibleRows.length}/${total})`);
   console.log(
     `  • 게이트 분포: ${[...gateDist.entries()].sort((a, b) => b[1] - a[1]).map(([g, n]) => `${g}=${n}`).join(', ')}`,
   );
-  console.log(`  • 평균 토큰 절감률(region 케이스): ${meanSave}%`);
+  console.log(`  • 평균 토큰 절감률(region 케이스, deps+region만): ${meanSave}%`);
   console.log(`  • 평균 region 크기: ${meanRegionLines}줄`);
+  console.log(
+    `  • 실제 프롬프트 토큰(system 전문+query): 평균 ${meanPromptTok.toLocaleString()} · 최대 ${maxPromptTok.toLocaleString()} ` +
+      `(예산 ${BUDGET.usableInput.toLocaleString()}의 평균 ${budgetUsagePct(meanPromptTok, BUDGET)}% · 최대 ${budgetUsagePct(maxPromptTok, BUDGET)}%)`,
+  );
+  console.log(`  • ⚠ 예산 초과 케이스: ${overBudgetCount}/${eligibleRows.length}`);
   if (skipped.length) {
     console.log(`  • skip(로컬 픽스처 없음): ${skipped.length}개 — ${skipped.join(', ')}`);
   }

@@ -18,10 +18,22 @@
 import { generateLargeFile, type SectionManifest } from './synth-large-file';
 import { analyzeInputQuality } from '../src/ai/RegionInputQuality';
 import { locateEditRegion } from '../src/ai/RegionEdit';
-import { classifyRegionDecline } from '../src/ai/RegionEditService';
+import { classifyRegionDecline, buildHybridPrompt } from '../src/ai/RegionEditService';
+import { estimateTokens, inputBudget, budgetUsagePct } from '../src/ai/promptBudget';
 
 const { source, manifest, lineCount } = generateLargeFile();
 const sourceLines = source.split('\n');
+/** 입력 예산(기본 32768 창 − 8192 출력예약 = 24576 입력토큰). god component 프롬프트가 이 대비 어디쯤인지 본다. */
+const BUDGET = inputBudget();
+
+/** locate 결과로 **실제 조립 프롬프트**(system 전문 + query)의 토큰을 잰다. 게이트 폴백이면 계측 불가라 null. */
+function promptTokensFor(loc: ReturnType<typeof locateEditRegion>, query: string): number | null {
+  if (!loc.safety.ok) return null;
+  const system = buildHybridPrompt(
+    loc.depsHeader, loc.region, loc.startLine, loc.endLine, undefined, loc.backingDecls, query, loc.controlInventory,
+  );
+  return estimateTokens(system) + estimateTokens(query);
+}
 
 /** 착지 줄(region 중앙)이 속한 섹션을 manifest 에서 찾는다. 없으면 null(섹션 밖). */
 function sectionAt(line: number): SectionManifest | null {
@@ -44,6 +56,8 @@ interface RunResult {
   keepRatio: number;
   shippedTypes: number;
   sourceTypes: number;
+  /** 실제 조립 프롬프트 토큰(system 전문+query). 게이트 폴백이면 null. */
+  promptTok: number | null;
 }
 
 function run(query: string, intended: SectionManifest): RunResult {
@@ -70,6 +84,7 @@ function run(query: string, intended: SectionManifest): RunResult {
     keepRatio: rep.depsRelevance.keepRatio,
     shippedTypes: rep.depsRelevance.shippedTypeCount,
     sourceTypes: rep.depsRelevance.sourceTypeCount,
+    promptTok: promptTokensFor(loc, query),
   };
 }
 
@@ -103,6 +118,10 @@ for (const suite of SUITES) {
     keepSum += r.keepRatio;
   }
   const n = results.length;
+  const ptoks = results.map((r) => r.promptTok).filter((t): t is number => t !== null);
+  const meanPtok = ptoks.length ? Math.round(ptoks.reduce((a, b) => a + b, 0) / ptoks.length) : 0;
+  const maxPtok = ptoks.length ? Math.max(...ptoks) : 0;
+  const overBudget = ptoks.filter((t) => t > BUDGET.usableInput).length;
   console.log('='.repeat(96));
   console.log(`■ ③ 섹션 라우팅 — "${suite.label}" 쿼리 × 전 ${n}개 섹션`);
   console.log(
@@ -112,6 +131,11 @@ for (const suite of SUITES) {
   console.log(
     `  ① 평균 다이어트비 ${(dietSum / n).toFixed(3)}  · 평균 depsHeader ${Math.round(depsCharSum / n).toLocaleString()}자  ` +
       `· 평균 타입출하 ${(100 * keepSum / n).toFixed(1)}% (${results[0].shippedTypes}/${results[0].sourceTypes} 타입)`,
+  );
+  console.log(
+    `  💰 실제 프롬프트 토큰(region 케이스 ${ptoks.length}건): 평균 ${meanPtok.toLocaleString()} · 최대 ${maxPtok.toLocaleString()} ` +
+      `— 예산 ${BUDGET.usableInput.toLocaleString()}의 평균 ${budgetUsagePct(meanPtok, BUDGET)}% · 최대 ${budgetUsagePct(maxPtok, BUDGET)}%` +
+      `${overBudget > 0 ? `  ⚠ 예산초과 ${overBudget}건` : ''}`,
   );
   // 처음 6개 섹션 상세 — 무엇이 어디로 착지했는지 눈으로 확인
   console.log('  ' + '-'.repeat(92));
@@ -178,6 +202,19 @@ console.log('■ ① depsHeader 폭주 — 대표 쿼리 1건 분해');
     `  타입 출하 ${(100 * D.keepRatio).toFixed(1)}% — type/interface ${D.shippedTypeCount}/${D.sourceTypeCount}개만 헤더에 실림 ` +
       `(${D.shippedTypeChars.toLocaleString()}/${D.sourceTypeChars.toLocaleString()}자) → 나머지 가지치기됨`,
   );
+  // ⚠ 위 leanness(totalInputChars)는 region+deps+backing만 센다. 실제 프롬프트엔 정적 규칙·계약카드·prop표가
+  //   더 붙는다 — 그 진짜 합을 예산에 대조한다(32k 피벗의 핵심 숫자).
+  const loc = locateEditRegion(source, q);
+  const ptok = promptTokensFor(loc, q);
+  if (ptok !== null) {
+    console.log(
+      `  💰 실제 프롬프트 ${ptok.toLocaleString()}토큰 = 예산 ${BUDGET.usableInput.toLocaleString()}의 ${budgetUsagePct(ptok, BUDGET)}%` +
+        `${ptok > BUDGET.usableInput ? '  ⚠ 예산 초과 — 앞잘림/응답잘림 위험' : ''}  ` +
+        `(leanness ${L.totalInputChars.toLocaleString()}자 → region+deps+backing만; 나머지 규칙·카드가 추가분)`,
+    );
+  } else {
+    console.log(`  💰 실제 프롬프트: 게이트 폴백(${loc.safety.gate})이라 region 프롬프트 미조립 — full 경로가 전체 파일 전송`);
+  }
 }
 console.log();
 console.log();

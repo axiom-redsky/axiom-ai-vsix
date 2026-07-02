@@ -16,6 +16,7 @@ import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './Re
 import { impliedControlTags, countTag } from './RegionIntent';
 import { buildContractSection, componentReplacementTargets } from './ScaffoldContracts';
 import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
+import { estimateTokens, inputBudget, budgetUsagePct } from './promptBudget';
 import {
   applyStructuralEdit,
   applyReplaceBlocks,
@@ -512,6 +513,10 @@ export async function runHybridRegionEdit(
 
   // 2) 모델 호출 (영역 + 의존성 헤더만)
   const system = buildHybridPrompt(loc.depsHeader, loc.region, loc.startLine, loc.endLine, referencedSpec, loc.backingDecls, query, loc.controlInventory, anchorFirst);
+  // 계측(측정 전용 — 어떤 편집 동작도 바꾸지 않는다). 실제 조립 프롬프트가 기본 입력예산 대비 어디쯤 쌓이는지
+  // 진단 로그에 남긴다. 예산 초과(⚠)는 num_ctx 앞잘림/응답잘림 위험 신호 — 32k 피벗의 가지치기 판단 근거.
+  const promptTok = estimateTokens(system) + estimateTokens(query);
+  const budgetNote = ` / 📏 프롬프트 ≈${promptTok.toLocaleString()}토큰(기본예산 ${inputBudget().usableInput.toLocaleString()}의 ${budgetUsagePct(promptTok)}%${promptTok > inputBudget().usableInput ? ' ⚠초과' : ''})`;
   let modelOut: string;
   try {
     modelOut = await callModel(system, query);
@@ -810,6 +815,6 @@ export async function runHybridRegionEdit(
   return {
     status: 'applied',
     finalText: composed,
-    diagnostics: `[regionEdit] 적용: ${changes.join(' / ')}${correctionNote}${verifyNote}`,
+    diagnostics: `[regionEdit] 적용: ${changes.join(' / ')}${correctionNote}${verifyNote}${budgetNote}`,
   };
 }
