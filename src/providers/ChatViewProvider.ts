@@ -4095,6 +4095,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
               this._corpusOutputChannel.appendLine(
                 `[Axiom AI] ❌ 중복 선언 발생 거부 (${action.filePath}): ${newDupes.join(', ')} — patch 가 기존 식별자를 재선언(교체 아님)`,
               );
+              // 통째 재선언(patch가 기존 const를 또 만듦)은 full 재생성으로 구조적으로 해소된다 —
+              // full은 파일 전체를 한 벌로 내므로 같은 이름이 2번 나올 수 없다. 수동 카드 대신 자동 1회 폴백.
+              if (await this._tryAutoFullFallback(action.filePath, groundedRetryDone)) {
+                break;
+              }
               this._post({
                 type: 'token',
                 content:
