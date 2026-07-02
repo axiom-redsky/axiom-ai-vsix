@@ -151,6 +151,9 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
   {
     id: 'global-ui-alerts',
     title: '알림·확인 다이얼로그 (전역 $ui)',
+    // $ui.alert는 거의 항상 onClick 등 JSX 바인딩과 함께 온다 → structural(선언만)은 핸들러만 깔고 버튼을 못 엮음
+    // (실측 2026-07-02: "alert 버튼 넣어줘" → handleAlert 선언만, <button> 없음). patch로 강제.
+    requiresPatchMode: true,
     // region/deps에 window.alert(confirm)·$ui가 있거나, 요청이 알림/확인 다이얼로그를 언급하면 발동.
     // 모달/팝업(Dialog 컴포넌트)은 별개라 트리거에서 제외 — alert/confirm 의미만 좁혀 잡는다.
     applies: ({ deps, region, query }) =>
@@ -338,6 +341,8 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
   },
   {
     id: 'button-component',
+    // 버튼 생성/교체는 JSX 편집이라 structural(선언만)로는 불가 → patch 강제(실측: structural이 버튼을 안 그림).
+    requiresPatchMode: true,
     // ⚠ 이 카드는 scaffold 오버라이드 규칙이다: scaffold는 raw `<button>` 대신 `<Button>`(@axiom/components/ui)을
     // 표준으로 제공한다($ui.alert가 window.alert를 대체하는 것과 같은 관계). 두 가지 실패를 겨냥한다:
     //  ① 생성: "버튼 넣어줘"에 raw `<button>`을 만드는 것(실측) → `<Button>` 선호로 교정.

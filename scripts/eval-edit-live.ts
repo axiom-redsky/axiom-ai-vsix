@@ -171,7 +171,7 @@ interface Outcome {
 }
 
 function emptyFlags(): Record<JudgeFlag, boolean> {
-  return { apiHallucination: false, dupImport: false, patchUnmatched: false, ungrounded: false, proseOnly: false, renderMissing: false, duplicateTable: false, preservationBroken: false };
+  return { apiHallucination: false, dupImport: false, patchUnmatched: false, ungrounded: false, proseOnly: false, renderMissing: false, duplicateTable: false, preservationBroken: false, globalImport: false, buttonMissing: false };
 }
 
 /** 모델 응답 텍스트 하나를 판정한다(모델 호출과 분리 — 셀프테스트가 canned 응답을 주입할 수 있게). */
@@ -249,6 +249,23 @@ function judgeResponse(c: EditCase, responseText: string, ms: number): Outcome {
     }
   }
 
+  // ⓘ 전역 import 환각: $ui/$util/$router는 전역이라 import 불필요한데 모델이 import를 지어냄.
+  // 탐지는 프로덕션과 동일한 line-based stripGlobalImports 로직 재사용(정규식 멀티라인 오매칭 방지).
+  // (라이브는 이걸로 실제 제거하지만, 하니스는 모델 raw 결함을 드러내려고 탐지만 하고 제거는 안 한다.)
+  if (fc.stripGlobalImports(applied).removed > 0) {
+    flags.globalImport = true;
+    note += ' · 전역import환각($ui/$util/$router)';
+  }
+
+  // ⓙ 버튼 미렌더: "버튼 넣어줘"인데 <button>/<Button> JSX가 늘지 않음(핸들러만 선언 / no-op).
+  if (c.expectsButtonRender) {
+    const btnCount = (s: string): number => (s.match(/<(button|Button)\b/g) ?? []).length;
+    if (!didApply || btnCount(applied) <= btnCount(c.fixture)) {
+      flags.buttonMissing = true;
+      note += !didApply ? ' · 버튼미렌더(no-op)' : ` · 버튼미렌더(${btnCount(c.fixture)}→${btnCount(applied)})`;
+    }
+  }
+
   const parses = didApply ? parseOk(applied) : null;
   return { flags, applied: didApply, parses, note, raw: responseText, ms };
 }
@@ -273,6 +290,8 @@ const FLAG_LABEL: Record<JudgeFlag, string> = {
   renderMissing: 'ⓕ렌더누락',
   duplicateTable: 'ⓖ중복테이블',
   preservationBroken: 'ⓗ보존위반',
+  globalImport: 'ⓘ전역import',
+  buttonMissing: 'ⓙ버튼미렌더',
 };
 
 /**
@@ -446,7 +465,7 @@ async function main(): Promise<void> {
   }
 
   // 플래그별 발생 카운트(분모=repeat*케이스), 케이스별 결과 누적
-  const flagTotals: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0, duplicateTable: 0, preservationBroken: 0 };
+  const flagTotals: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0, duplicateTable: 0, preservationBroken: 0, globalImport: 0, buttonMissing: 0 };
   let totalRuns = 0;
   let cleanRuns = 0; // 아무 결함 플래그도 없고 실제 적용된 실행
   const focusRegressions: string[] = [];
@@ -457,7 +476,7 @@ async function main(): Promise<void> {
   const rawLimit = process.env.AXIOM_EVAL_RAW ? 100_000 : 200; // AXIOM_EVAL_RAW=1이면 전체 원문
 
   for (const c of cases) {
-    const flagHits: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0, duplicateTable: 0, preservationBroken: 0 };
+    const flagHits: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0, duplicateTable: 0, preservationBroken: 0, globalImport: 0, buttonMissing: 0 };
     let cleanForCase = 0;
     let lastNote = '';
     let lastRaw: string | undefined;

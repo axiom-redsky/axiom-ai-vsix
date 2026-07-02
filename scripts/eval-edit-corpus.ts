@@ -96,6 +96,11 @@ export interface EditCase {
    */
   expectsTableRender?: boolean;
   /**
+   * 결과에 **버튼 JSX**(<button>/<Button>)가 새로 생겨야 하는 요청인가("버튼 넣어줘"). true면 판정 ⓙ(버튼 미렌더)
+   * 활성 — 핸들러만 선언하고 버튼을 안 그리면(실측: structural이 JSX 못 만듦) 결함.
+   */
+  expectsButtonRender?: boolean;
+  /**
    * 결과에 **반드시 그대로 남아 있어야 하는 토큰**(기존 명명 핸들러·훅 필드명 등). 하나라도 사라지면 판정
    * ⓗ(보존 위반) — 약한 모델이 기존 코드를 덮어쓰거나 이름 바꾸는 계열(메모리: 이벤트 핸들러 구조 보존,
    * 기존 훅 필드 이름 변경 금지)을 자동 감지.
@@ -114,7 +119,9 @@ export type JudgeFlag =
   | 'proseOnly' // ⓔ action 블록 없이 설명만
   | 'renderMissing' // ⓕ 데이터만 선언하고 테이블 JSX 렌더 누락(또는 no-op)
   | 'duplicateTable' // ⓖ 기존 테이블이 있는데 수정 않고 새 테이블을 또 만듦
-  | 'preservationBroken'; // ⓗ 보존해야 할 기존 토큰(핸들러·훅 필드)이 사라짐
+  | 'preservationBroken' // ⓗ 보존해야 할 기존 토큰(핸들러·훅 필드)이 사라짐
+  | 'globalImport' // ⓘ 전역 객체($ui/$util/$router)를 import(불필요·환각)
+  | 'buttonMissing'; // ⓙ 버튼 요청인데 <button>/<Button> JSX가 안 늘어남(핸들러만 선언)
 
 // ── 픽스처 1: getArr 로컬 데이터(useApi 없음) ────────────────────────────────
 // 오늘 실패 재현: "getArr 결과를 테이블로 보여줘" → 새 /api/·useApi를 환각하면 안 됨.
@@ -321,7 +328,18 @@ export const EDIT_CASES: EditCase[] = [
     filePath: 'src/domains/main/pages/DashboardPage.tsx',
     query: 'alert을 띄우는 버튼 하나 넣어줘',
     localData: false,
-    focus: ['dupImport', 'ungrounded', 'proseOnly'],
+    expectsButtonRender: true,
+    focus: ['dupImport', 'ungrounded', 'proseOnly', 'globalImport', 'buttonMissing'],
+  },
+  {
+    id: 'emp-alert-button',
+    name: 'EmployeeListPage alert 버튼(라이브 재현) → $ui import X · <button> 렌더',
+    fixture: FIX_EMP_GETARR,
+    filePath: 'src/domains/employee/pages/EmployeeListPage.tsx',
+    query: 'alert 띄워주는 버튼 하나만 화면에 넣어줘',
+    localData: false,
+    expectsButtonRender: true,
+    focus: ['globalImport', 'buttonMissing', 'proseOnly'],
   },
   {
     id: 'array-to-table',

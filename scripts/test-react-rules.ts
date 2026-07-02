@@ -180,5 +180,29 @@ import { Card } from '@axiom/components/ui';`;
   check('uiNorm: 타 모듈(@axiom/hooks)은 불변', fc.normalizeUiImportPaths(hooks).changed === 0);
 }
 
+// ─── stripGlobalImports: 전역($ui/$util/$router) 환각 import 제거 ──────────────────────
+{
+  const fc = new FileCreatorService();
+  // 실측 버그: 모델이 $ui를 import로 지어냄(전역이라 import 불필요).
+  const g1 = fc.stripGlobalImports(`import { $ui } from '@axiom/hooks';`);
+  check('glob: 전역만 있는 import 라인 삭제', g1.removed === 1 && !g1.text.includes('$ui'));
+
+  // named 목록에 전역이 섞이면 전역만 제거하고 나머지는 보존.
+  const g2 = fc.stripGlobalImports(`import { useApi, $ui } from '@axiom/hooks';`);
+  check('glob: 섞인 named에서 전역만 제거', g2.removed === 1 && g2.text.includes('useApi') && !g2.text.includes('$ui'));
+
+  // default 형태도 제거.
+  const g3 = fc.stripGlobalImports(`import $router from '@axiom/router';`);
+  check('glob: default 전역 import 삭제', g3.removed === 1 && g3.text.trim() === '');
+
+  // 전역이 아닌 정상 import는 불변.
+  const g4 = fc.stripGlobalImports(`import { Button } from '@axiom/components/ui';`);
+  check('glob: 정상 import는 불변', g4.removed === 0);
+
+  // 코드 본문의 $ui 사용($ui.alert)은 import가 아니므로 건드리지 않음.
+  const g5 = fc.stripGlobalImports(`const f = () => $ui.alert('x');`);
+  check('glob: 본문 $ui 사용은 불변', g5.removed === 0 && g5.text.includes('$ui.alert'));
+}
+
 console.log(`\n결과: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

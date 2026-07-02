@@ -245,6 +245,43 @@ export class FileCreatorService {
     return { text: changed > 0 ? out : text, changed };
   }
 
+  /**
+   * 전역 객체($ui·$util·$router) import 제거 — 이들은 scaffold가 전역으로 주입하므로 **import 없이 바로 사용**한다.
+   *
+   * 왜: 약한 모델이 규칙("$ui는 import 불필요")을 무시하고 `import { $ui } from '@axiom/hooks'` 같은 환각 import를
+   * 지어낸다(실측 2026-07-02: "alert 버튼 넣어줘"). 존재하지 않는 export라 빌드가 깨진다. 프롬프트 설득이 안 먹혀
+   * 결정론으로 제거한다(길목 불변식). named 목록에 전역만 있으면 라인 삭제, 섞여 있으면 전역 이름만 제거.
+   */
+  stripGlobalImports(text: string): { text: string; removed: number } {
+    const GLOBALS = new Set(['$ui', '$util', '$router']);
+    const hasCRLF = text.includes('\r\n');
+    const norm = hasCRLF ? text.replace(/\r\n/g, '\n') : text;
+    const lines = norm.split('\n');
+    const out: string[] = [];
+    let removed = 0;
+    for (const line of lines) {
+      // named import: import { $ui, X } from '...'
+      const named = line.match(/^(\s*import\s*\{)([^}]*)(\}\s*from\s*['"][^'"]+['"]\s*;?\s*)$/);
+      if (named) {
+        const names = named[2].split(',').map((s) => s.trim()).filter(Boolean);
+        const kept = names.filter((n) => !GLOBALS.has(n.replace(/\s+as\s+[\s\S]*/, '').trim()));
+        if (kept.length === 0) { removed++; continue; } // 전부 전역 → 라인 제거
+        if (kept.length < names.length) { removed++; out.push(`${named[1]} ${kept.join(', ')} ${named[3]}`); continue; }
+        out.push(line);
+        continue;
+      }
+      // default/namespace import: import $ui from '...' / import * as $util from '...'
+      if (/^\s*import\s+(?:\*\s+as\s+)?(\$ui|\$util|\$router)\s+from\s+['"][^'"]+['"]\s*;?\s*$/.test(line)) {
+        removed++;
+        continue;
+      }
+      out.push(line);
+    }
+    if (removed === 0) return { text, removed: 0 };
+    const joined = out.join('\n');
+    return { text: hasCRLF ? joined.replace(/\n/g, '\r\n') : joined, removed };
+  }
+
   dedupeImportLines(text: string): { text: string; removed: number } {
     const hasCRLF = text.includes('\r\n');
     const norm = hasCRLF ? text.replace(/\r\n/g, '\n') : text;

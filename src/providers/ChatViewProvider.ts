@@ -4058,6 +4058,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 `[Axiom AI] 🔧 UI import 경로 정규화 ${uiNorm.changed}건 → @axiom/components/ui (${action.filePath})`,
               );
             }
+            // 전역($ui/$util/$router) 환각 import 제거
+            const glob = this._fileCreator.stripGlobalImports(mp.text);
+            if (glob.removed > 0) {
+              mp.text = glob.text;
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] 🔧 전역 객체 import ${glob.removed}건 제거($ui/$util/$router는 import 불필요) (${action.filePath})`,
+              );
+            }
             const dedup = this._fileCreator.dedupeImportLines(mp.text);
             if (dedup.removed > 0) {
               mp.text = dedup.text;
@@ -4136,6 +4144,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             action.generatedCode = uiNorm.text;
             this._corpusOutputChannel.appendLine(
               `[Axiom AI] 🔧 UI import 경로 정규화 ${uiNorm.changed}건 → @axiom/components/ui (${action.filePath}, mode=${action.mode ?? 'full'})`,
+            );
+          }
+          // 전역($ui/$util/$router) 환각 import 제거
+          const glob = this._fileCreator.stripGlobalImports(action.generatedCode);
+          if (glob.removed > 0) {
+            action.generatedCode = glob.text;
+            this._corpusOutputChannel.appendLine(
+              `[Axiom AI] 🔧 전역 객체 import ${glob.removed}건 제거($ui/$util/$router는 import 불필요) (${action.filePath}, mode=${action.mode ?? 'full'})`,
             );
           }
           const dedup = this._fileCreator.dedupeImportLines(action.generatedCode);
