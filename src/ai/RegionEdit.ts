@@ -668,6 +668,27 @@ export function locateEditRegion(
     }
   }
 
+  // ②.85 컨트롤 요소 앵커 — 쿼리가 컨트롤 유형(버튼/입력/셀렉트 등)을 지목했고 그 요소가 파일에 **하나뿐**
+  //      이면, 토큰 점수(핸들러 이름 handleAlert·문자열 '버튼이…'에 우연히 걸린 곳)를 제치고 그 실제 요소로
+  //      스냅한다. "alert 버튼의 className 빼줘"의 'alert'가 핸들러·문자열에 매칭돼 실제 <button> 대신 그리로
+  //      스냅돼 snap-failed→"Button 없음" 오안내로 끝나던 문제(실측). HTML intrinsic 소문자(<button>)와
+  //      컴포넌트 대문자(<Button>·shadcn)를 모두 인식한다. 둘 이상이면 어느 것인지 모호하므로 손대지 않고
+  //      기존 scoring/diffuse 판정에 위임한다(오발 방지). !chosen일 때만 — locate가 이미 실패한 경우의 구제.
+  if (!chosen) {
+    for (const tag of impliedControlTags(query)) {
+      const openRe = new RegExp(`<${tag}(?![A-Za-z0-9])`, 'i'); // intrinsic 소문자·컴포넌트 대문자 모두
+      const occ: number[] = [];
+      for (let i = 0; i < lines.length; i++) if (openRe.test(lines[i])) occ.push(i);
+      if (occ.length !== 1) continue; // 0개(없음)·다수(모호) → 손대지 않고 기존 판정에 위임
+      const s = snapBlockFrom(lines, occ[0]); // self-closing·한 줄·여러 줄 모두, 부모 climb 없이 그 요소만
+      if (s) {
+        chosen = { line: occ[0] + 1, score: MIN_REGION_SCORE, hit: [tag.toLowerCase()] };
+        chosenSnap = s;
+        break;
+      }
+    }
+  }
+
   // ②.9 테이블 의도 교정 — 모든 라우팅 경로 뒤. 표가 여럿이라 ②.5(유일 표)가 못 잡았고, chosen이
   //     **표가 아닌** 요소에 스냅됐을 때(새 컬럼명 "연락처"가 같은 섹션 상세 카드에 우연 매칭 / 섹션
   //     랜드마크가 Card로 스냅). 그 앵커가 속한 섹션의 <table>로 교정한다 — 컬럼 추가의 편집 단위는 표다.
@@ -791,7 +812,8 @@ export function locateEditRegion(
   const impliedTags = noStrongAnchor ? impliedControlTags(query) : [];
   const controlOccurrences: number[] = [];
   for (const tag of impliedTags) {
-    const re = new RegExp(`<${tag}(?![A-Za-z0-9])`);
+    // 대소문자 무시 — intrinsic 소문자(<button>)와 컴포넌트 대문자(<Button>) 양쪽을 센다(countTag와 동일 정책).
+    const re = new RegExp(`<${tag}(?![A-Za-z0-9])`, 'i');
     for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) controlOccurrences.push(i + 1);
   }
   const controlSpread = controlOccurrences.length > 1 ? Math.max(...controlOccurrences) - Math.min(...controlOccurrences) : 0;

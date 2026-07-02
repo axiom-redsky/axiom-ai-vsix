@@ -34,9 +34,17 @@ export function firstJsxTag(s: string): string | null {
   return s.match(/<([A-Za-z][A-Za-z0-9]*)/)?.[1] ?? null;
 }
 
-/** `<Tag`의 출현 횟수(접두 충돌 방지: `<Select`가 `<SelectTrigger`에 안 걸리게 뒤 글자 금지). */
+/**
+ * `<Tag`의 출현 횟수(접두 충돌 방지: `<Select`가 `<SelectTrigger`에 안 걸리게 뒤 글자 금지).
+ *
+ * 대소문자 무시(`i`) — 컨트롤은 HTML intrinsic 소문자(`<button>`·`<input>`·`<select>`·`<textarea>`)나
+ * 컴포넌트 대문자(shadcn `<Button>` 등) 둘 다로 쓰인다. 손으로 짠 페이지·스텁은 소문자를 쓰므로
+ * 대소문자를 구분하면(`<Button`만 인식) 실재하는 컨트롤을 "없음"으로 오판한다(실측: `<button>` →
+ * "Button 컨트롤이 없음"). `impliedControlTags`가 주는 태그(Button/Input/Select…)에만 쓰이므로
+ * 컨테이너(table vs Table 등) 오매칭 우려는 없다. 경계(`(?![A-Za-z0-9])`)는 유지된다.
+ */
 export function countTag(haystack: string, tag: string): number {
-  const re = new RegExp(`<${tag}(?![A-Za-z0-9])`, 'g');
+  const re = new RegExp(`<${tag}(?![A-Za-z0-9])`, 'gi');
   return (haystack.match(re) ?? []).length;
 }
 

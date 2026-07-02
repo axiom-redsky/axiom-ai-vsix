@@ -5,7 +5,7 @@
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
-import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets } from '../src/ai/ScaffoldContracts';
 import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/ComponentPropsIndex';
@@ -117,6 +117,46 @@ console.log('locateEditRegion — Fix 1 (완결 컨트롤 스냅) + 안전 게�
   // 동작이 아닌 텍스트 변경은 오발 안 함(region이 처리) — 같은 소스, 다른 의도
   const r2 = locateEditRegion(HSRC, '신규 등록 버튼 텍스트를 "직원 추가"로 바꿔줘');
   check('handler-body 오발 없음: 버튼 텍스트 변경은 region 유지(ok)', r2.safety.gate !== 'handler-body', `gate=${r2.safety.gate}`);
+}
+
+// T7: 컨트롤 요소 앵커 — 소문자 intrinsic <button> + "alert 버튼" 의도. 'alert'가 handleAlert·문자열에
+//     매칭돼 실제 버튼 대신 그리로 스냅→snap-failed→"Button 없음" 오안내로 끝나던 실측 버그.
+//     ②.85 컨트롤 앵커(유일 컨트롤 스냅) + countTag 대소문자 무시로 해소.
+{
+  const BSRC = [
+    "import type React from 'react';",
+    '',
+    'export default function EmployeeListPage(): React.ReactNode {',
+    '  const handleAlert = async () => {',
+    "    await $ui.alert('버튼이 클릭되었습니다!', { type: 'info' });",
+    '  };',
+    '  return (',
+    '    <div className="p-6 space-y-4">',
+    '      <h1 className="text-2xl font-bold">Employee List</h1>',
+    '      <p className="text-muted-foreground">이 페이지의 내용을 작성하세요.</p>',
+    '      <button',
+    '        className="btn btn-primary"',
+    '        onClick={handleAlert}',
+    '      >',
+    '        클릭',
+    '      </button>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(BSRC, 'alert 버튼의 className을 빼줘');
+  const regionText = r.region ?? '';
+  check(
+    'control-anchor: 소문자 <button> 유일 → 버튼 요소로 스냅(ok, snap-failed 아님)',
+    r.safety.ok && /<button\b/.test(regionText) && !/\$ui\.alert/.test(regionText),
+    `gate=${r.safety.gate}, region=${JSON.stringify(regionText.slice(0, 40))}`,
+  );
+  // classifyRegionDecline: 소문자 <button>이 존재하면 "대상 없음(inform-absent)"으로 오분류하지 않는다.
+  check(
+    'classifyRegionDecline: 소문자 <button> 있으면 inform-absent 아님(대소문자 무시)',
+    classifyRegionDecline('alert 버튼의 className을 빼줘', BSRC, 'snap-failed') !== 'inform-absent',
+    `ux=${classifyRegionDecline('alert 버튼의 className을 빼줘', BSRC, 'snap-failed')}`,
+  );
 }
 
 console.log('\ncheckRegionRootTag — Fix 2 (영역-밖 재작성 거부):');
