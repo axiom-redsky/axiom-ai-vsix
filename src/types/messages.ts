@@ -166,6 +166,8 @@ export type HostToWebviewMessage =
   | { type: 'done' }
   | { type: 'error'; message: string }
   | { type: 'status'; text: string }
+  // 처리 단계(마일스톤) — "생각 중" 인디케이터에 체크리스트처럼 누적 표시된다(status 한 줄과 별개 채널).
+  | { type: 'progress'; label: string }
   | { type: 'selectionContext'; filePath: string; startLine: number; endLine: number; selectedText: string }
   | { type: 'referenceAttached'; text: string }
   | { type: 'fileCreated'; filePath: string }

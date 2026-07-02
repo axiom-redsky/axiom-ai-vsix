@@ -9,6 +9,8 @@ interface Props {
   isStreaming: boolean;
   isWaiting: boolean;
   status?: string;
+  /** 처리 단계(마일스톤) 누적 — 첫 토큰이 오기 전 "생각 중" 인디케이터에 체크리스트로 표시한다. */
+  progressSteps?: string[];
   /**
    * 정독용 턴 여부 — scaffold 지식·가이드 전문 렌더(온라인/오프라인 무관). true면 답변 바닥을
    * 쫓지 않고 이번 질문을 뷰포트 맨 위에 정렬해 위→아래로 차근차근 읽게 한다.
@@ -20,7 +22,7 @@ interface Props {
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, status, pinQuestionTop, onConfirm, onPatchRecovery }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -102,10 +104,22 @@ export function MessageList({ messages, isStreaming, isWaiting, status, pinQuest
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">
-          <ThinkingIcon size={32} />
-          <span className="typing-indicator__status">
-            {(isWaiting && status) ? status : '생각하는 중…'}
-          </span>
+          {isWaiting && progressSteps && progressSteps.length > 0 && (
+            <ul className="progress-steps">
+              {progressSteps.map((step, i) => (
+                <li key={i} className="progress-steps__item">
+                  <span className="progress-steps__check" aria-hidden="true">✓</span>
+                  <span className="progress-steps__label">{step}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="typing-indicator__active">
+            <ThinkingIcon size={32} />
+            <span className="typing-indicator__status">
+              {(isWaiting && status) ? status : '생각하는 중…'}
+            </span>
+          </div>
         </div>
       )}
       <div ref={bottomRef} />

@@ -1277,6 +1277,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (ExtensionConfig.isIntentClassifierEnabled()) {
       this._postStatus('의도 분석 중…');
       intent = await this._classifyIntent(text);
+      this._postStep('의도 분석');
       if (intent) {
         this._post({ type: 'token', content: `\n> ${formatIntentForChat(intent)}\n` });
         if (intent.intent === 'create_page') {
@@ -1320,6 +1321,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     const config = ExtensionConfig.getEffectiveLlmConfig();
     this._postStatus('컨텍스트 분석 중…');
+    this._postStep('컨텍스트 분석');
 
     let mainTimedOut = false;
 
@@ -1382,6 +1384,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         editorCtx = resolved.editorCtx;
+        if (editorCtx.filePath) {
+          this._postStep(`대상 파일 — ${editorCtx.filePath.split(/[\\/]/).pop()}`);
+        }
 
         // 내용 이식(content port): 분류기가 "다른 .tsx 파일 내용을 현재 파일에 통째로 적용"으로 확정하면
         // 영역편집/모델 모드선택에 맡기지 않고 전용 경로로 처리한다. 통째 이식 의도가 부분 삽입(structural)
@@ -1510,6 +1515,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       let wasFallback = false;
       let fallbackReason: string | null = null;
 
+      this._postStep('AI 응답 생성');
       this._postStatus(`${config.model} 연결 중…`);
 
       let elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -5969,6 +5975,16 @@ export default routes;`;
 
   private _postStatus(text: string): void {
     this._post({ type: 'status', text });
+  }
+
+  /**
+   * 처리 단계(마일스톤)를 "생각 중" 인디케이터에 체크리스트처럼 누적 표시한다. 하단 상태 한 줄
+   * (_postStatus)이 매번 덮어써지는 것과 달리, 이 스텝들은 쌓여서 "지금까지 무엇을 했는지"를 보여준다
+   * (Claude Code 식 진행 표시). 표시 전용 독립 채널이라 상태 바·타이머·토큰 메터에 영향 없음(회귀 0).
+   * webview는 새 턴 시작 시 스텝을 비우고, 첫 토큰/완료/오류에서 정리한다.
+   */
+  private _postStep(label: string): void {
+    this._post({ type: 'progress', label });
   }
 
   /**

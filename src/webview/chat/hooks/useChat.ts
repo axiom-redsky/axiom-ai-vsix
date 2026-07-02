@@ -41,6 +41,9 @@ export interface Message {
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<string>('연결 중…');
+  // 처리 단계(마일스톤) 누적 — "생각 중" 인디케이터에 체크리스트로 표시한다(status 한 줄과 별개).
+  // 새 턴 시작 시 비우고, 첫 토큰/완료/오류에서 정리한다(스트리밍이 시작되면 답변 자체가 피드백).
+  const [progressSteps, setProgressSteps] = useState<string[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
@@ -75,6 +78,7 @@ export function useChat() {
             streamingIdRef.current = id;
             setIsWaiting(false);
             setIsStreaming(true);
+            setProgressSteps([]);
             setMessages((prev) => [
               ...prev,
               { id, role: 'assistant', content: msg.content, isStreaming: true },
@@ -90,6 +94,7 @@ export function useChat() {
         case 'done': {
           const id = streamingIdRef.current;
           setIsWaiting(false);
+          setProgressSteps([]);
           if (id) {
             setMessages((prev) =>
               prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),
@@ -102,6 +107,7 @@ export function useChat() {
         case 'error': {
           const id = streamingIdRef.current;
           setIsWaiting(false);
+          setProgressSteps([]);
           setMessages((prev) => {
             if (id) {
               return prev.map((m) =>
@@ -126,6 +132,10 @@ export function useChat() {
         }
         case 'status':
           setStatus(msg.text);
+          break;
+        case 'progress':
+          // 연속 중복 라벨은 무시하고 새 마일스톤만 누적한다.
+          setProgressSteps((prev) => (prev[prev.length - 1] === msg.label ? prev : [...prev, msg.label]));
           break;
         case 'referenceAttached':
           // 같은 파일을 연속 첨부해도 effect가 다시 돌도록 매번 새 문자열로 set한다.
@@ -259,6 +269,7 @@ export function useChat() {
       if (!text.trim() || isStreaming || isWaiting) return;
       // 새 턴 시작 — 정독 고정 해제(이번 턴이 지식·가이드면 host가 pinQuestion으로 다시 켠다).
       setPinQuestionTop(false);
+      setProgressSteps([]);
       setMessages((prev) => [
         ...prev,
         { id: Date.now().toString(), role: 'user', content: text },
@@ -282,6 +293,7 @@ export function useChat() {
     streamingIdRef.current = null;
     setIsStreaming(false);
     setIsWaiting(false);
+    setProgressSteps([]);
     setSystemPromptChars(0);
     setBreakdown(null);
     setUsage(null);
@@ -328,7 +340,7 @@ export function useChat() {
   const consumeAttach = useCallback(() => setAttachText(''), []);
 
   return {
-    messages, status, isStreaming, isWaiting,
+    messages, status, progressSteps, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
     selectionContext, dismissSelection,
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, pinQuestionTop,
