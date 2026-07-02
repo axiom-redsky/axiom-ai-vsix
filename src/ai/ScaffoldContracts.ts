@@ -41,6 +41,13 @@ export interface IScaffoldContract {
    * region 프롬프트의 "최상위 태그 유지" 지침을 교체 허용으로 바꾼다. 일반 카드는 미설정(루트 변경 금지 유지).
    */
   replacesRegionRootWith?: string;
+  /**
+   * 이 카드가 **JSX 렌더(테이블/목록 생성·수정)** 를 요구하면 true. 설정 시 편집 모드 메뉴에서 structural을
+   * 제거한다 — structural은 `<hook>`(선언)만 삽입하고 `return` 안 JSX를 못 만들어, 약한 모델이 structural을
+   * 고르면 "데이터만 페치하고 표는 안 그림"으로 끝난다(실측 2026-07-02: mode:structural → JSX 누락).
+   * patch/lines만 남겨 JSX 렌더가 가능한 경로로 강제한다(카드 문구 설득이 안 먹혀 메뉴에서 제거).
+   */
+  requiresPatchMode?: boolean;
 }
 
 /** `\bword\b` 매칭(정규식 메타 이스케이프). */
@@ -231,6 +238,7 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
     title: 'SmartTable에 list API 적용 — 타입+훅+컬럼DSL+SmartTable 재작성 (레시피)',
     // 이 레시피는 영역의 <table>(또는 컨테이너 내용)을 <SmartTable/>로 통째 교체한다 → 루트태그 변경이 정상.
     replacesRegionRootWith: 'SmartTable',
+    requiresPatchMode: true, // <SmartTable/> JSX 렌더 필요 → structural 금지
     // 요청이 SmartTable(선언형 고수준 그리드)을 명시적으로 지목하면 발동.
     // region 경로는 knowledge/components/SmartTable.md 를 주입하지 않으므로(토큰 절약), 이 카드가
     // SmartTable 계약(defineColumns + <SmartTable data=… columns=…/>)을 가르친다. 미지정 시(=순수 table)는
@@ -263,6 +271,7 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
   {
     id: 'list-table-binding',
     title: '목록 테이블에 list API 적용 — 타입+훅+테이블 재작성 (레시피)',
+    requiresPatchMode: true, // 테이블 JSX 렌더 필요 → structural 금지
     // "테이블/목록에 …api 적용" 의도이거나, 편집 영역에 테이블 마크업이 있고 요청이 데이터/적용을 언급하면 발동.
     // 약한 모델이 useApi 훅만 선언하고 ① 응답 타입 선언과 ② 테이블 JSX 재작성을 빠뜨려(실측: region 편집
     // 없음 → 미사용 선언 거부 / TXxxResponse 미선언 → 의존성 거부) dead-end 나던 것을, 3부품 골격으로 낮춘다.
@@ -295,6 +304,7 @@ export const SCAFFOLD_CONTRACTS: IScaffoldContract[] = [
   {
     id: 'local-data-render',
     title: '로컬 데이터 렌더 — 이미 파일에 있는 함수·상수를 화면에 표시 (API 아님)',
+    requiresPatchMode: true, // 테이블/목록 JSX 렌더 필요 → structural 금지
     // list-table-binding이 referencesLocalDataSource로 "양보"하는 바로 그 조건에서 발동하는 **긍정 카드**.
     // 억제만 하면 "새 API 만들지 마"라는 부정 지시만 남는데, 그건 파일명 prior를 못 이긴다 —
     // 실측 2026-07-02: EmployeeListPage의 로컬 `getArr()`를 "테이블로 보여줘"인데도 모델이
@@ -394,6 +404,14 @@ export function componentReplacementTargets(ctx: IContractContext): string[] {
   return selectScaffoldContracts(ctx)
     .map((c) => c.replacesRegionRootWith)
     .filter((t): t is string => typeof t === 'string' && t.length > 0);
+}
+
+/**
+ * 이 컨텍스트에서 발동한 카드 중 하나라도 JSX 렌더(테이블/목록)를 요구하면 true.
+ * true면 편집 모드 메뉴에서 structural을 빼야 한다(structural은 JSX를 못 만들어 "페치만 하고 표 누락"이 됨).
+ */
+export function contractsRequirePatchMode(ctx: IContractContext): boolean {
+  return selectScaffoldContracts(ctx).some((c) => c.requiresPatchMode === true);
 }
 
 /**

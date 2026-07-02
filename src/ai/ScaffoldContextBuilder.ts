@@ -11,7 +11,7 @@ import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
 import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
 import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
-import { buildContractSection } from './ScaffoldContracts';
+import { buildContractSection, contractsRequirePatchMode } from './ScaffoldContracts';
 import type { IntentResult } from './IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {
@@ -511,16 +511,19 @@ ${scaffoldSection}${fileSection}${referencedSection}`;
       // 선택/현재파일(scenario C) 경로는 종전 RAG 운에만 의존해, "버튼은 <Button>"·"useApi 계약" 같은
       // scaffold 오버라이드가 모델에 안 닿았다(실측: raw <button> 생성, Button 교체 시 import만 추가).
       // 파일 본문(deps)+선택 텍스트(region)+요청(query)으로 관련 카드만 결정론적으로 끼운다(무관하면 빈 문자열).
-      const contractSection = buildContractSection({
+      const contractCtx = {
         deps: fileContent,
         region: ctx.selection?.text || ctx.selectedText || '',
         query: userQuery,
-      });
+      };
+      const contractSection = buildContractSection(contractCtx);
+      // 렌더(테이블/목록) 카드가 활성이면 structural 모드를 메뉴에서 제거(structural은 JSX를 못 만듦).
+      const requiresRender = contractsRequirePatchMode(contractCtx);
       const cPrompt = this._buildScenarioCPrompt(
         coreRules, domainCtx, userQuery, domainSection, scaffoldSection, fileSection,
         linesAllowed, lineEditCfg.requireAnchor, !!ctx.selection,
         referencedSection, ExtensionConfig.isScenarioCCompactModes(),
-        ExtensionConfig.isPatchFirstEditEnabled(), contractSection,
+        ExtensionConfig.isPatchFirstEditEnabled(), contractSection, requiresRender,
       );
       // rulesChars = 전체 - 다른 섹션 (rules + 시나리오 가이드 + 계약 카드 합산)
       this._lastBreakdown.rulesChars = Math.max(
@@ -631,6 +634,7 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     compactModes = false,
     patchFirst = false,
     contractSection = '',
+    requiresRender = false,
   ): string {
     const filePath = domainCtx.domainName
       ? `src/domains/${domainCtx.domainName}/pages/[ComponentName].tsx`
@@ -688,7 +692,11 @@ ${domainSection}${scaffoldSection}${fileSection}${referencedSection}`;
     // 선택 영역이 있으면 structural 모드를 아예 제시하지 않는다.
     // structural은 삽입 위치를 구조 앵커로만 결정해 선택 영역을 무시하며, 선택한 JSX 내부
     // 바인딩 교체 같은 국소 수정을 표현할 수 없다(서버측 가드도 이 응답을 거부함).
-    const structuralModeBlock = hasSelection
+    // requiresRender(테이블/목록 렌더 카드 활성)도 마찬가지로 structural을 제거한다 — structural은 <hook>
+    // (선언)만 삽입하고 return 안 JSX를 못 만들어, 약한 모델이 고르면 "데이터 페치만 하고 표 누락"이 된다
+    // (실측 2026-07-02: mode:structural → 테이블 안 그려짐). 카드 문구 설득이 안 먹혀 메뉴에서 제거한다.
+    const suppressStructural = hasSelection || requiresRender;
+    const structuralModeBlock = suppressStructural
       ? ''
       : `**structural 모드 (훅·import 추가 시 최우선 권장)** — 위치를 직접 찾지 마세요. "추가할 코드"만 출력하면 확장이 컴포넌트 본문의 정확한 위치(기존 훅 다음, return 위)에 결정론적으로 삽입합니다. \`<search>\`·라인 번호·전체 파일이 전혀 필요 없습니다.
 - useApi/useState/useEffect 등 **훅 추가**, **import 추가**는 이 모드를 쓰세요.
@@ -710,6 +718,8 @@ const { data, isPending, error } = useApi<TResponse>('/api/endpoint');
     // — 선택 영역 수정은 patch(`<search>`/`<replace>`)로만 정확히 표현·검증되기 때문이다.
     const modeSelectionRules = hasSelection
       ? `> - **patch 모드 (선택 영역 수정 시 필수)**: 위 "🎯 선택 영역"에 표시된 코드를 \`<search>\`/\`<replace>\`로 직접 고치세요. ⛔ **\`<hook>\`(structural)·\`<edit>\`(lines) 모드 절대 금지** — structural은 선택 영역을 무시하고 엉뚱한 위치(컴포넌트 위·훅 다음)에 삽입되어, 정작 선택한 코드는 그대로 남습니다.`
+      : requiresRender
+      ? `> - **patch 모드 (JSX 렌더 필수)**: 이 요청은 테이블/목록을 **화면에 그려야** 합니다. ⛔ **\`<hook>\`(structural) 모드 절대 금지** — structural은 선언(훅·타입)만 삽입하고 \`return\` 안 JSX를 못 만들어 표가 안 그려집니다. import·훅·타입 추가와 **테이블 JSX 삽입을 모두 \`<patch>\`로** 함께 내세요.`
       : `> - **structural 모드 (훅·import 추가 시 최우선)**: useApi 등 \`use*\` 훅 추가나 import 추가는 structural 모드로. 위치를 찾지 말고 추가할 조각만 출력하세요.${
           dropLines
             ? `
