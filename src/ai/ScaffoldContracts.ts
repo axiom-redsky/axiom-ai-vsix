@@ -97,7 +97,10 @@ const SCHEMA_CONFIRM_GATE =
  * 두 갈래를 명시해 "선언만 하고 끝"을 막는다.
  */
 const TABLE_RENDER_BRANCH =
-  `\n- **⚠ JSX 렌더는 반드시 포함**(선언만 하고 끝내면 화면에 아무것도 안 나와 무효):\n` +
+  `\n- **⚠ 출력 모드는 반드시 \`patch\`**: 이 작업은 **JSX 테이블 렌더**가 필요합니다. axiom-action을 \`"mode":"patch"\`로 내세요. ` +
+  `⛔ \`structural\` 모드 금지 — structural은 컴포넌트 본문에 선언(훅·타입·import)만 삽입하고 **\`return\` 안 JSX를 만들지 못해** 표가 안 그려집니다. ` +
+  `patch로 ① 필요한 import·훅·타입 추가와 ② 테이블 JSX 삽입을 **한 응답에 함께** 내세요.\n` +
+  `- **⚠ JSX 렌더는 반드시 포함**(선언만 하고 끝내면 화면에 아무것도 안 나와 무효):\n` +
   `  · **이미 \`<table>\`/\`<Table>\`이 있으면** → 그 \`tbody\`의 \`.map()\` 대상만 이 목록으로 **교체**(헤더·컬럼 구조는 그대로).\n` +
   `  · **테이블이 없으면** → 컴포넌트 \`return\`의 적절한 위치에 scaffold \`<Table>\`로 **새 테이블을 만들어 삽입**하고 그 안에서 \`.map()\`으로 렌더. ` +
   `Table 컴포넌트는 **단일 경로**에서: \`import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@axiom/components/ui';\` ` +
