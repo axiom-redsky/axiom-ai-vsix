@@ -4828,7 +4828,11 @@ type ${typeNames[0]} = { /* 스펙 필드 */ };
     // 유실됐다(약한 모델이 useApi 대신 생짜 fetch로 회귀하던 근본 원인). 폴백에도 관련 계약 카드를
     // 결정론적으로 재주입해 scaffold 규칙(useApi 필수 등)을 다시 가르친다. 트리거 미발동이면 빈 문자열.
     let contractBlock = '';
-    if (forceFull && filePath) {
+    // grounded 재시도는 실제 텍스트를 직접 주입하므로 제외하고, 그 외 모든 재시도(forceFull·보강·patch)에
+    // 현재 파일 전체를 다시 주입한다. 재시도는 system prompt(파일 fileSection 포함)를 재전송하지 않고 _history만
+    // 보내므로(4958~), currentFileBlock이 없으면 모델이 파일을 전혀 못 봐 파일명만으로 내용을 환각한다
+    // (실측: 빈 EmployeeListPage.tsx에 useState/Employee/employeeService import를 지어내 <search> 매칭 실패).
+    if (!groundedPatches && filePath) {
       const { originalContent } = await this._fileCreator.readFileContent({
         action: 'updateFile', templateType: 'page', domain: domain ?? '', componentName: '', filePath,
       });
@@ -4910,8 +4914,8 @@ ${currentFileBlock}${contractBlock}
 ${fullActionBlock}`;
     } else if (mp.enabled) {
       retryMsg = `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
-
-⚠️ **\`<search>\` 규칙: 반드시 원본 파일에 지금 존재하는 코드만. 아직 없는 코드를 \`<search>\`에 넣으면 매칭 실패.**
+${currentFileBlock}${contractBlock}
+⚠️ **\`<search>\` 규칙: 반드시 위 '현재 파일의 실제 전체 내용'에 지금 존재하는 코드만 그대로 복사. 원본에 없는 import·훅·변수를 지어내면 매칭 실패.**
 - import 추가: \`<search>기존 import 줄</search><replace>기존 import 줄\\n새 import 줄</replace>\`
 - state/hook 추가: \`<search>기존 훅 선언 줄</search><replace>기존 훅 선언 줄\\n새 훅 선언 줄</replace>\`
 
@@ -4934,6 +4938,8 @@ ${fullActionBlock}`;
 </axiom-action>`;
     } else {
       retryMsg = `위 응답의 수정 내용을 아래 형식 중 하나로만 출력하세요(부가 설명 없이 블록만).
+${currentFileBlock}${contractBlock}
+⚠️ \`<search>\`에는 위 '현재 파일의 실제 전체 내용'에 존재하는 코드만 그대로 복사하세요(원본에 없는 코드 지어내기 금지).
 
 연속된 한 블록만 바뀌면:
 <axiom-action>
