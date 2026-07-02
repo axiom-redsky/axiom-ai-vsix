@@ -157,7 +157,7 @@ interface Outcome {
 }
 
 function emptyFlags(): Record<JudgeFlag, boolean> {
-  return { apiHallucination: false, dupImport: false, patchUnmatched: false, ungrounded: false, proseOnly: false };
+  return { apiHallucination: false, dupImport: false, patchUnmatched: false, ungrounded: false, proseOnly: false, renderMissing: false };
 }
 
 /** 모델 응답 텍스트 하나를 판정한다(모델 호출과 분리 — 셀프테스트가 canned 응답을 주입할 수 있게). */
@@ -206,6 +206,18 @@ function judgeResponse(c: EditCase, responseText: string, ms: number): Outcome {
   applied = dedup.text;
 
   const didApply = normEol(applied) !== normEol(c.fixture);
+
+  // ⓕ 렌더 누락: "테이블로 보여줘"인데 결과에 테이블 map 렌더가 없음(데이터만 선언 / no-op).
+  // 판정: 테이블 태그(<table>/<Table>/<tr>/<TableRow>) + .map( 이 둘 다 있어야 "표를 그렸다"로 본다.
+  if (c.expectsTableRender) {
+    const hasTableTag = /<(table|Table|tr|TableRow)\b/.test(applied);
+    const hasMap = /\.map\s*\(/.test(applied);
+    if (!didApply || !hasTableTag || !hasMap) {
+      flags.renderMissing = true;
+      note += !didApply ? ' · 렌더누락(no-op)' : ` · 렌더누락(table=${hasTableTag} map=${hasMap})`;
+    }
+  }
+
   const parses = didApply ? parseOk(applied) : null;
   return { flags, applied: didApply, parses, note, raw: responseText, ms };
 }
@@ -225,6 +237,7 @@ const FLAG_LABEL: Record<JudgeFlag, string> = {
   patchUnmatched: 'ⓒ매칭실패',
   ungrounded: 'ⓓ비그라운딩',
   proseOnly: 'ⓔ설명만',
+  renderMissing: 'ⓕ렌더누락',
 };
 
 /**
@@ -280,6 +293,26 @@ function selftest(): void {
       response: 'getArr 함수 결과를 테이블로 표시하려면 map을 사용하면 됩니다. 예시는 다음과 같습니다...',
       expect: { proseOnly: true },
       expectApplied: false,
+    },
+    {
+      // 라이브 재현: API 명시 케이스가 useApi 배관만 깔고 테이블 JSX를 안 그림(structural/patch no-op).
+      name: 'BAD: 렌더 누락(데이터만 선언, 테이블 JSX 없음)',
+      c: EDIT_CASES.find((c) => c.id === 'emp-api-to-table')!,
+      response:
+        '<axiom-action>\n{"actionType":"modify","filePath":"x"}\n' +
+        "<patch>\n<search>\n\treturn (\n</search>\n" +
+        "<replace>\n\tconst { data: res } = useApi<{ data: { id: number }[] }>('/api/employees');\n\tconst employees = res?.data ?? [];\n\treturn (\n</replace>\n</patch>\n</axiom-action>",
+      expect: { renderMissing: true },
+    },
+    {
+      // GOOD 대조: API 배관 + 실제 테이블 렌더까지 → 렌더 누락 아님.
+      name: 'GOOD: API 배관 + 테이블 렌더(렌더 누락 아님)',
+      c: EDIT_CASES.find((c) => c.id === 'emp-api-to-table')!,
+      response:
+        '<axiom-action>\n{"actionType":"modify","filePath":"x"}\n' +
+        "<patch>\n<search>\n\t\t\t<p className=\"text-muted-foreground\">이 페이지의 내용을 작성하세요.</p>\n</search>\n" +
+        '<replace>\n\t\t\t<Table><TableBody>{employees.map((e) => (<TableRow key={e.id}><TableCell>{e.name}</TableCell></TableRow>))}</TableBody></Table>\n</replace>\n</patch>\n</axiom-action>',
+      expect: { renderMissing: false },
     },
   ];
 
@@ -347,13 +380,13 @@ async function main(): Promise<void> {
   }
 
   // 플래그별 발생 카운트(분모=repeat*케이스), 케이스별 결과 누적
-  const flagTotals: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0 };
+  const flagTotals: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0 };
   let totalRuns = 0;
   let cleanRuns = 0; // 아무 결함 플래그도 없고 실제 적용된 실행
   const focusRegressions: string[] = [];
 
   for (const c of EDIT_CASES) {
-    const flagHits: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0 };
+    const flagHits: Record<JudgeFlag, number> = { apiHallucination: 0, dupImport: 0, patchUnmatched: 0, ungrounded: 0, proseOnly: 0, renderMissing: 0 };
     let cleanForCase = 0;
     let lastNote = '';
     let lastRaw: string | undefined;

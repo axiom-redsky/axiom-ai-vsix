@@ -88,6 +88,11 @@ export interface EditCase {
    * true면 판정 ⓐ(api 환각) 활성.
    */
   localData: boolean;
+  /**
+   * 결과에 **테이블 JSX 렌더**가 있어야 하는 요청인가("…테이블로 보여줘"). true면 판정 ⓕ(렌더 누락) 활성 —
+   * 데이터만 선언하고 표를 안 그리면(실측: structural이 JSX 못 만듦 / patch no-op) 결함.
+   */
+  expectsTableRender?: boolean;
   /** 이 케이스가 특히 노리는 판정 플래그(리포트 강조용). */
   focus: JudgeFlag[];
 }
@@ -98,7 +103,8 @@ export type JudgeFlag =
   | 'dupImport' // ⓑ 중복 import 생성(dedupe가 제거함)
   | 'patchUnmatched' // ⓒ patch가 원본에 매칭 안 됨(atomic 실패)
   | 'ungrounded' // ⓓ 원본에 없는 심볼을 <search>에 넣음
-  | 'proseOnly'; // ⓔ action 블록 없이 설명만
+  | 'proseOnly' // ⓔ action 블록 없이 설명만
+  | 'renderMissing'; // ⓕ 데이터만 선언하고 테이블 JSX 렌더 누락(또는 no-op)
 
 // ── 픽스처 1: getArr 로컬 데이터(useApi 없음) ────────────────────────────────
 // 오늘 실패 재현: "getArr 결과를 테이블로 보여줘" → 새 /api/·useApi를 환각하면 안 됨.
@@ -197,7 +203,18 @@ export const EDIT_CASES: EditCase[] = [
     filePath: 'src/domains/employee/pages/EmployeeListPage.tsx',
     query: '현재 화면에서 getArr 함수 결과를 테이블로 화면에 보여줘',
     localData: true,
-    focus: ['apiHallucination', 'ungrounded', 'proseOnly'],
+    expectsTableRender: true,
+    focus: ['apiHallucination', 'ungrounded', 'proseOnly', 'renderMissing'],
+  },
+  {
+    id: 'emp-api-to-table',
+    name: 'EmployeeListPage API 명시 → useApi 배관 + 테이블 렌더(라이브 ⓕ 재현 · no-op/렌더누락)',
+    fixture: FIX_EMP_GETARR,
+    filePath: 'src/domains/employee/pages/EmployeeListPage.tsx',
+    query: '직원 목록을 /api/employees API로 불러와서 테이블로 보여줘',
+    localData: false, // API 명시 → useApi 정상(카드 과교정 없음 대조군)
+    expectsTableRender: true,
+    focus: ['renderMissing', 'proseOnly'],
   },
   {
     id: 'getarr-to-table',
@@ -206,7 +223,8 @@ export const EDIT_CASES: EditCase[] = [
     filePath: 'src/domains/product/pages/ProductListPage.tsx',
     query: '현재 화면에서 getArr 함수 결과를 테이블로 화면에 보여줘',
     localData: true,
-    focus: ['apiHallucination', 'ungrounded', 'proseOnly'],
+    expectsTableRender: true,
+    focus: ['apiHallucination', 'ungrounded', 'proseOnly', 'renderMissing'],
   },
   {
     id: 'alert-button',
@@ -224,6 +242,7 @@ export const EDIT_CASES: EditCase[] = [
     filePath: 'src/domains/main/pages/DeptListPage.tsx',
     query: '이 배열을 테이블로 화면에 보여줘',
     localData: true,
-    focus: ['apiHallucination', 'patchUnmatched', 'proseOnly'],
+    expectsTableRender: true,
+    focus: ['apiHallucination', 'patchUnmatched', 'proseOnly', 'renderMissing'],
   },
 ];
