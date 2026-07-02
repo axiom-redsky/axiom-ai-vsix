@@ -11,7 +11,7 @@ import { extractRelevantTsSlice } from './CodeSectionExtractor';
 import { tokenizeQuery } from './SectionExtractor';
 import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
 import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
-import { buildContractSection, contractsRequirePatchMode } from './ScaffoldContracts';
+import { buildContractSection, contractsRequirePatchMode, selectScaffoldContracts } from './ScaffoldContracts';
 import type { IntentResult } from './IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {
@@ -313,7 +313,23 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 
     // 적응형 RAG 예산: 규칙·가이드 + 현재 파일이 이미 크면 RAG 상한을 남은 컨텍스트에 비례해 줄인다.
     // 컨텍스트 윈도우가 넉넉하면(예: 32K) 사실상 charBudget 그대로다(축소는 소형 윈도우 모델 보호용).
-    const budgetOverride = this._computeRagBudget(diet, ctx);
+    let budgetOverride = this._computeRagBudget(diet, ctx);
+
+    // 계약카드 발동 시 RAG 축소 — 편집 요청에 규범적 계약카드(버튼/알림/테이블/useApi 등)가 발동하면 그 카드가
+    // 이미 패턴을 가르치므로 RAG는 대부분 중복이다. 예산을 capChars로 캡해 경량화한다(Q&A는 제외 — 설명형은
+    // RAG 지식이 실제로 필요). contractRag.enabled=false면 종전 동작(무회귀).
+    const cr = diet.contractRag;
+    if (cr.enabled && !this.isQnAGated(userQuery, forceQnA, forceModify)) {
+      const contractCtx = {
+        deps: ctx.content ?? '',
+        region: ctx.selection?.text || ctx.selectedText || '',
+        query: userQuery,
+      };
+      if (selectScaffoldContracts(contractCtx).length > 0) {
+        const base = budgetOverride ?? ExtensionConfig.getRagConfig().charBudget;
+        budgetOverride = Math.min(base, cr.capChars);
+      }
+    }
 
     let scaffoldSection = '';
     this._lastScaffoldSources = [];

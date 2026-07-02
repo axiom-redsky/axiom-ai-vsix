@@ -57,6 +57,10 @@ export interface PromptDietConfig {
     targetRatio: number;
     charsPerToken: number;
   };
+  contractRag: {
+    enabled: boolean;
+    capChars: number;
+  };
 }
 
 export interface MultiPatchConfig {
@@ -267,6 +271,10 @@ export class ExtensionConfig {
         floorChars:    ExtensionConfig._resolve<number>('promptDiet.adaptiveBudget.floorChars',     ab.floorChars),
         targetRatio:   ExtensionConfig._resolve<number>('promptDiet.adaptiveBudget.targetRatio',    ab.targetRatio),
         charsPerToken: ExtensionConfig._resolve<number>('promptDiet.adaptiveBudget.charsPerToken',  ab.charsPerToken),
+      },
+      contractRag: {
+        enabled:  ExtensionConfig._resolve<boolean>('promptDiet.contractRag.enabled',  AI_DEFAULTS.promptDiet.contractRag.enabled),
+        capChars: ExtensionConfig._resolve<number>('promptDiet.contractRag.capChars', AI_DEFAULTS.promptDiet.contractRag.capChars),
       },
     };
   }
