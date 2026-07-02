@@ -166,7 +166,39 @@ export default function DeptListPage(): React.ReactNode {
 }
 `;
 
+// ── 픽스처 4: EmployeeListPage + 로컬 getArr(employee 배열) — 라이브 재현 ──────
+// 2026-07-02 라이브에서 실제로 ⓐ가 터진 픽스처. 파일명(EmployeeListPage)+employee 데이터가
+// "→ /api/employees" prior를 강하게 자극한다. products 픽스처(FIX_GETARR)는 이 prior가 약해
+// 재현이 덜 되므로, 라이브와 동일 조건으로 employee 버전을 별도로 둔다.
+const FIX_EMP_GETARR = `import type React from 'react';
+
+export default function EmployeeListPage(): React.ReactNode {
+	// 직원 배열을 반환하는 로컬 함수 — 데이터 출처(파일 내부, API 아님)
+	const getArr = () => [
+		{ id: 1, name: '홍길동', department: '개발팀', position: '소프트웨어 엔지니어' },
+		{ id: 2, name: '김철수', department: '영업팀', position: '영업 담당' },
+		{ id: 3, name: '이영희', department: '기획팀', position: '서비스 기획자' },
+	];
+
+	return (
+		<div className="p-6 space-y-4">
+			<h1 className="text-2xl font-bold">Employee List</h1>
+			<p className="text-muted-foreground">이 페이지의 내용을 작성하세요.</p>
+		</div>
+	);
+}
+`;
+
 export const EDIT_CASES: EditCase[] = [
+  {
+    id: 'emp-getarr-to-table',
+    name: 'EmployeeListPage getArr → 로컬 렌더(라이브 ⓐ 재현 · useApi/api 환각 X)',
+    fixture: FIX_EMP_GETARR,
+    filePath: 'src/domains/employee/pages/EmployeeListPage.tsx',
+    query: '현재 화면에서 getArr 함수 결과를 테이블로 화면에 보여줘',
+    localData: true,
+    focus: ['apiHallucination', 'ungrounded', 'proseOnly'],
+  },
   {
     id: 'getarr-to-table',
     name: 'getArr 결과를 테이블로 → 로컬 렌더(useApi 환각 X)',
