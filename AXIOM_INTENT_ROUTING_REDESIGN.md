@@ -244,8 +244,22 @@ buildSystemPrompt의 시나리오 결정(⑤)도 `effectiveIntent`를 받아 mod
   회귀. 그 오프라인 단일화는 **S1 실측 divergence 데이터 확보 후 S5**로 이관(플랜 시퀀싱과 일치).
   회귀: typecheck·compile·region-edit 230/0·offline-intent 66/0·react-rules 39/0·line-edits 15/0·
   api-binding 69/0·eval:region 85%(회귀 0).
-- **S4. 충돌 안전 강화**: modify인데 대상 파일 불명확/도메인 밖이면 _resolveTargetFile 되묻기로. 하드 게이트 제거.
-- **S5. 정규식 정리**: S1~S4 후 죽은 정규식 게이트(직접 소비처 사라진 것) 삭제. classifyOfflineIntent 단일화.
+- **S4. 충돌 안전 강화 — ✅ 사실상 충족(2026-07-03 검토)**: 핵심 기제("실행부 되묻기")는 이미
+  `_resolveTargetFile`에 구현돼 있음 — cross-file 재타겟(분류기 `targetComponent` 1순위, :778) → 모호 시
+  `_askTargetFile` QuickPick 되묻기(:796,:813). "하드 게이트 제거"도 이미 완료(project_cross_file_retarget:
+  사용자가 shared 하드차단 거부 → PathGuard 전부 제거). **유일한 잔여분="모델↔정규식 불일치 시 되묻기"인데
+  이건 S1의 `⚠ 불일치`가 실제로 잘못된 파일을 고르는 케이스에만 의미** → 데이터 게이트(S5와 동일). 지금
+  speculative하게 되묻기를 추가하면 "명시했는데 또 묻는" friction(사용자가 도메인 되묻기에서 지적한 그것)을
+  재생산하므로 **의도적으로 보류**. measure-then-build.
+- **S5. 정규식 정리 — ⏸ 데이터 게이트(미착수)**: ④ isFileModificationContext → classifyOfflineIntent 오프라인
+  단일화 + 죽은 정규식 게이트 삭제. **S1 출력채널의 `⚠ 불일치` 샘플이 필요** — 2026-07-03 실사용 케이스는
+  전부 `✅ 일치`라 divergence 0건. 실사용하며 불일치 로그가 쌓이면 그 실제 케이스가 가리키는 교체만 정밀
+  수행(오프라인 회귀 0 유지). 데이터 없이는 착수 금지(불변식 #1 위반 위험).
+
+> **트랙 현황(2026-07-03 마감):** S1✅·S2✅·S3(부분)✅·S4(사실상)✅ 모두 커밋(main 826fb3e/577f1be).
+> **지금 안전하게 만들 수 있는 코드 작업은 소진.** 남은 S3-잔여(④교체)·S4-잔여(불일치 되묻기)·S5는 전부
+> **S1 divergence 로그 축적을 기다리는 상태**(speculative 금지). 다음 세션 진입점 = 출력채널 `[Axiom AI][S1
+> 라우팅측정]`에서 `⚠ 불일치` 수집 → 그 케이스 기반으로 재개.
 
 ⚠️ **프롬프트 효과(시나리오 C/A·B 전환)는 오프라인 eval로 측정 불가** → 실 qwen3-coder 라이브 검증 필수
 (편집 재설계 문서 원칙 #1과 동일).
