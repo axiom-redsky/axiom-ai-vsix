@@ -120,7 +120,8 @@ $env:AXIOM_API_KEY="<익스텐션에 넣은 키>"; npm run eval:intent-live
    - 자동 판정 5종 배선 완료: ⓐapi환각(로컬데이터인데 useApi/`/api/`) ⓑ중복import(dedupeImportLines.removed>0) ⓒ매칭실패(computeMultiPatch.text===null) ⓓ비그라운딩(`<search>`가 원본에 없음) ⓔ설명만(action블록/payload 없음). 파서는 ChatViewProvider 3265-3380 순수 복제.
    - **셀프테스트 5/5 통과**(`npm run eval:edit-live -- --selftest`, 모델 불필요 — 파서·apply·판정 결정론 검증). tsc·앱typecheck 회귀 0.
    - **⏭ 남은 일(집, 실모델):** `$env:AXIOM_API_KEY="…"; npm run eval:edit-live` 로 3 시드 케이스를 실 qwen3-coder로 돌려 결함 분포 측정 → 새면 프롬프트/계약카드/coreRules 보강 → 회귀로 고정. (반복측정 `AXIOM_EVAL_REPEAT=3`, 임계게이트 `AXIOM_EVAL_MIN_CLEAN`.) 필요 시 픽스처를 실 EmployeeListPage.tsx로 확장하고 `applyStructuralEdit`(auto-import) 판정 추가.
-2. **B안 S2~S5 (라우팅 단일화).** 분류기 100% 확증됐으니 안전. S2 qna/scenario 종속화 → S3 단일 switch(`isFileCtx` 불리언조합 제거) → S4 충돌안전(되묻기) → S5 정규식 정리. 각 단계 `eval:intent-live`+`test:region-edit`+`test:offline-intent` 회귀 0 후 승격. (상세 §4)
+2. **B안 S2~S5 (라우팅 단일화).** 분류기 100% 확증됐으니 안전. **S2 ✅완료(2026-07-03, ⑤ 시나리오 종속화 — §4 참조)** → S3 단일 switch(`isFileCtx` 불리언조합 제거) → S4 충돌안전(되묻기) → S5 정규식 정리. 각 단계 `eval:intent-live`+`test:region-edit`+`test:offline-intent` 회귀 0 후 승격. (상세 §4)
+   - **S2 라이브 검증 항목(회사/집, 실 qwen):** 분류기 on 상태에서 publishing/shared 파일을 열고 "이 파일 수정해줘"류 요청 → 종전엔 A/B(생성) 프롬프트가 나가던 것이 이제 시나리오 C(수정)로 나오는지 확인. 도메인 파일(src/domains/*)은 종전과 동일해야 함(회귀 체크).
 3. **S1 실사용 로그 수집.** `[Axiom AI][S1 라우팅측정]` 출력채널 라인에서 `⚠ 불일치` 패턴 모으기 → S2 우선순위 보강.
 
 ### 검증 명령 (현재 전부 green)
@@ -224,10 +225,25 @@ buildSystemPrompt의 시나리오 결정(⑤)도 `effectiveIntent`를 받아 mod
   (qnaGated·isFileCtx)와의 불일치를 출력 채널 `[Axiom AI][S1 라우팅측정]` 라인으로 기록. **라우팅 미변경.**
   → 실사용 로그에서 `⚠ 불일치` 빈도/패턴 수집 = S2 우선순위 데이터. tsc·compile·test:offline-intent 66/0·
   test:region-edit 220/0 회귀 0.
-- **S2. qna/scenario 종속화**: ③⑤가 `effectiveIntent`를 존중하게(모델 확신 시 우선). forceQnA/forceModify를
-  임시 파라미터에서 "effectiveIntent 소비"로 승격. buildSystemPrompt 시나리오 결정도 여기 연결.
-- **S3. 단일 switch**: `isFileCtx` 불리언 조합을 `effectiveIntent.intent` switch로 교체. 지식가이드 분기도
-  `intent==='qna'`일 때만. ④ isFileModificationContext 독립 호출 제거.
+- **S2. qna/scenario 종속화 — ✅ 구현완료(2026-07-03)**: ③(isQnAGated)은 07-02에 forceQnA/forceModify로
+  이미 종속화됨. 이번에 **⑤(시나리오 C vs A·B 결정)** 종속화 완료. 종전 `buildSystemPrompt`는 순수
+  경로/도메인 기반(`domainCtx.isCurrentFileContext`)으로만 시나리오 C를 골라, 모델이 modify로 확신해도
+  열린 파일이 도메인 밖(publishing/shared)이면 A/B(생성) 프롬프트를 줘 "수정인데 새 파일 만들라" 모순이
+  났다. 수정: `forceModify && ctx.available`이면 `domainCtx.isCurrentFileContext`를 결정 **전에** true로
+  올려 domainSection·분기가 일관되게 C로 흐르게 함(쿼리 도메인 때문에 A/B 라우터 섹션이 섞이는 것도 차단).
+  플래그 `scenarioC.scenarioByEffectiveIntent`(기본 on) — **분류기 off/null이면 forceModify는 항상 false라
+  발동 안 함 → 회귀 0**(불변식 #1이 분류기 게이트로 자동 충족). 회귀: typecheck·compile·test:region-edit
+  230/0·test:offline-intent 66/0·test:react-rules 39/0·test:line-edits 15/0·test:api-binding 69/0·
+  eval:region 85%(회귀 0). ⚠️ **프롬프트 시나리오 전환 효과는 실 qwen 라이브 검증 필요**(집/회사).
+- **S3. 단일 라우터 변수 — ✅ 부분완료(2026-07-03, 행위 보존)**: `_handleMessage`의 파생 수프
+  (`!qnaGated && (classifierSaysModify || regexModify)`)를 단일 `route`('qna'|'modify'|'passthrough')로
+  수렴시키고, `qnaGated`/`isFileCtx`를 그 route의 alias로 도출했다(소비처 7곳 무변경, 회귀 0). 이제 라우팅
+  결정자가 하나의 변수 → S4 되묻기 분기의 seam. **불변식 #1 준수를 위해 ④ isFileModificationContext →
+  classifyOfflineIntent 교체는 이 단계에서 하지 않음** — 둘은 오프라인에서 갈라지므로(경로 신호 vs 쿼리
+  동사 신호; 예 "도메인 파일 열림 + '직원 목록'" → 현행 modify vs offline other) 교체 시 분류기 off에서
+  회귀. 그 오프라인 단일화는 **S1 실측 divergence 데이터 확보 후 S5**로 이관(플랜 시퀀싱과 일치).
+  회귀: typecheck·compile·region-edit 230/0·offline-intent 66/0·react-rules 39/0·line-edits 15/0·
+  api-binding 69/0·eval:region 85%(회귀 0).
 - **S4. 충돌 안전 강화**: modify인데 대상 파일 불명확/도메인 밖이면 _resolveTargetFile 되묻기로. 하드 게이트 제거.
 - **S5. 정규식 정리**: S1~S4 후 죽은 정규식 게이트(직접 소비처 사라진 것) 삭제. classifyOfflineIntent 단일화.
 

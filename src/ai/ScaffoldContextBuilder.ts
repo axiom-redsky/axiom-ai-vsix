@@ -572,6 +572,25 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
       : '';
 
     const domainCtx = this._getDomainContext(userQuery, ctx.filePath ?? '');
+
+    // [S2 라우팅 단일화] 시나리오 결정(⑤)이 effectiveIntent를 존중 — 종전엔 순수 경로/도메인 기반
+    // (domainCtx.isCurrentFileContext)이라, 모델이 modify_file로 확신해도 열린 파일이 도메인 밖
+    // (publishing/shared)이면 A/B(생성) 프롬프트를 줘 "수정인데 새 파일 만들라" 모순이 났다
+    // (project_modify_to_create_leak). 모델이 수정으로 확정(forceModify)했고 현재 파일이 열려 있으면
+    // 경로와 무관하게 시나리오 C로 고정한다. isCurrentFileContext를 여기서 올려 domainSection·분기가
+    // 모두 일관되게 C로 흐르게 한다(그러지 않으면 쿼리에서 뽑힌 도메인 때문에 A/B 라우터 섹션이 섞임).
+    // 분류기 off/null이면 forceModify는 항상 false이므로 발동하지 않아 종전과 100% 동일하다(불변식 #1).
+    // create_page는 _handleMessage에서 이미 페이지 생성으로 라우팅돼 여기 도달하지 않으므로
+    // forceModify는 사실상 modify_file 확정과 같다.
+    if (
+      forceModify &&
+      ctx.available &&
+      !domainCtx.isCurrentFileContext &&
+      ExtensionConfig.isScenarioByEffectiveIntentEnabled()
+    ) {
+      domainCtx.isCurrentFileContext = true;
+    }
+
     const domainSection = this._buildDomainSection(domainCtx, userQuery);
 
     // 쿼리에 명시된 참조 파일(예: /plan/api-spec.md)을 읽어 주입한다.
@@ -616,6 +635,7 @@ ${scaffoldSection}${fileSection}${referencedSection}`;
     const coreRules = this._buildCoreRules({ includeNavigation: true, includeFileScope: true });
 
     // 시나리오 C: 현재 열린 파일 수정 — A/B 예시 없이 C 전용 프롬프트 사용
+    // (isCurrentFileContext는 위에서 S2 forceModify 종속화로 이미 보정됨)
     if (domainCtx.isCurrentFileContext) {
       // scaffold 계약 카드(트리거 기반) 주입 — region 경로는 buildContractSection으로 계약을 가르치지만
       // 선택/현재파일(scenario C) 경로는 종전 RAG 운에만 의존해, "버튼은 <Button>"·"useApi 계약" 같은

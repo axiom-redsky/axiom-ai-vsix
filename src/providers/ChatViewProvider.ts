@@ -1409,17 +1409,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 눌려 지식 가이드로 새지 않게 게이팅을 끈다. (예: "getArr 결과를 테이블로 화면에 보여줘"가
       // modify_file로 분류됐는데도 qnaGated=true가 되어 파일 수정 대신 use-api 문서를 렌더하던 버그.)
       const forceModify = intent?.intent === 'modify_file' || intent?.intent === 'create_page';
-      const qnaGated = this._scaffoldBuilder.isQnAGated(text, forceQnA, forceModify);
       // 모델 의도 분류기가 'modify_file'로 **확정**했으면 그 판정을 존중해 파일 수정 컨텍스트로 본다.
       // 종전엔 isFileCtx를 정규식(isFileModificationContext) + 열린 파일 경로로만 판정해서, 채팅 패널에
       // 포커스가 있어 activeTextEditor가 비면(리로드 직후 등) filePath가 없어 정규식이 false → 모델이
       // 옳게 잡은 '수정' 의도가 버려지고 **생성(createFile) 경로로 새어 기존 파일을 덮어쓰려던** 사고가 났다.
       // 파일 확정은 아래 _resolveTargetFile이 담당한다(파일 있으면 진행, 없으면 생성이 아니라 되묻기).
       const classifierSaysModify = intent?.intent === 'modify_file';
-      const isFileCtx =
-        !qnaGated &&
-        (classifierSaysModify ||
-          this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? ''));
+
+      // [S3 단일 라우터] 라우팅 결정을 하나의 `route` 변수로 수렴시킨다. 종전엔 qnaGated·isFileCtx를 각각
+      // 독립 파생(§3 원칙 1의 "불리언 수프")했으나, 이제 두 게이트를 단일 route에서 alias로 도출한다.
+      // route는 분류기 확신(forceQnA/forceModify/classifierSaysModify)을 반영하되, 오프라인(분류기 off)에선
+      // 종전 게이트와 **바이트 동일하게** 계산돼 회귀 0(불변식 #1). 이후 분기(S4 충돌안전 되묻기 등)는
+      // 개별 불리언이 아니라 이 route 하나만 소비해 결정자를 단일화한다. ④ isFileModificationContext를
+      // classifyOfflineIntent로 대체하는 오프라인 단일화는 S1 실측 divergence 확보 후 S5에서 수행한다.
+      const route: 'qna' | 'modify' | 'passthrough' =
+        this._scaffoldBuilder.isQnAGated(text, forceQnA, forceModify)
+          ? 'qna'
+          : classifierSaysModify ||
+              this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '')
+            ? 'modify'
+            : 'passthrough';
+      // 소비처 alias — 종전 이름·의미 유지(회귀 0). 두 게이트가 단일 route에서 흐른다.
+      const qnaGated = route === 'qna';
+      const isFileCtx = route === 'modify';
 
       // [S1 비파괴 측정 — 라우팅 통합 준비] 라우팅은 **바꾸지 않고**, 단일 라우터 후보 effectiveIntent
       // (분류기 확신 시 그 결과, null/other면 정규식 통합 폴백 classifyOfflineIntent)를 계산해 기존 게이트

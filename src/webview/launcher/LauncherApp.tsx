@@ -681,7 +681,7 @@ function SettingsTab({
             checked={project.intentClassifier}
             onChange={(e) => onProjectChange('intentClassifier', e.target.checked)}
           />
-          <span>의도 분류기 — experimental.intentClassifier</span>
+          <span>의도 분류기 (라우팅 핵심 · 기본 켜짐 권장) — experimental.intentClassifier</span>
         </label>
 
         <label className="settings__toggle">

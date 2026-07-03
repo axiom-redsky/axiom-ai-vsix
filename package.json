@@ -247,7 +247,7 @@
         "axiom-ai.experimental.intentClassifier": {
           "type": "boolean",
           "default": true,
-          "description": "[실험] 의도 분류기. 메시지를 정규식으로 분기하기 전에 모델에게 '이게 무슨 요청인지'(생성/수정/질문/잡담)를 먼저 물어 분류·슬롯 추출을 위임하고, 그 결과를 채팅에 한 줄로 표시합니다. 파싱 실패·모델 미응답 시 기존 정규식 방식으로 자동 폴백하므로 회귀 위험이 없습니다. 수정 요청 속 참조 파일명을 새 페이지명으로 오인하는 등 앞단 오분류를 줄입니다. 폐쇄망 점진 도입용, 기본 꺼짐."
+          "description": "의도 분류기(라우팅 핵심). 메시지를 정규식으로 분기하기 전에 모델에게 '이게 무슨 요청인지'(생성/수정/질문/잡담)를 먼저 물어 분류·슬롯 추출을 위임하고, 그 결과를 채팅에 한 줄로 표시합니다. 이 판정이 이후 라우팅(시나리오 C/A·B 결정, Q&A 게이팅, 대상 파일 확정)의 단일 진실원 역할을 합니다. 파싱 실패·모델 미응답 시 기존 정규식 방식으로 자동 폴백하므로 회귀 위험이 없습니다(끄면 전 구간 정규식 폴백으로 동작). 수정 요청 속 참조 파일명을 새 페이지명으로 오인하는 등 앞단 오분류를 줄입니다. 실 qwen3-coder 검증 완료(canonical 45/45). 기본 켜짐 — 특별한 이유가 없으면 켠 채로 두세요."
         },
         "axiom-ai.experimental.pageCreationLlmMode": {
           "type": "boolean",
@@ -284,6 +284,11 @@
           "type": "boolean",
           "default": false,
           "description": "단순 in-place 편집(선택 영역 없음·테이블/목록 렌더 아님)에서 출력 모드 지시를 초압축합니다(레버 B). 켜면 structural·patch를 concrete하되 한 예시씩 축약하고, coreRules의 Rules of Hooks와 중복되는 '훅 삽입 위치 규칙' 블록·lines 모드·장황한 모드 선택 설명을 생략해 약 2.9K자를 절감합니다. 편집 전략 메뉴를 바꾸는 변경이라 약한 모델에서 회귀 위험이 있어 기본 꺼짐 — 실모델로 before/after 품질을 검증한 뒤 켜세요. 선택 영역·렌더 카드 활성 케이스에는 적용되지 않고 종전 상세 지시가 유지됩니다."
+        },
+        "axiom-ai.scenarioC.scenarioByEffectiveIntent": {
+          "type": "boolean",
+          "default": true,
+          "description": "시나리오(현재 파일 수정 C vs 새 파일 생성 A·B) 결정을 모델 의도 분류기(experimental.intentClassifier)의 확신에 종속시킵니다. 켜면 분류기가 '수정(modify_file)'으로 확정하고 편집 가능한 파일이 열려 있을 때, 그 파일이 도메인 폴더(src/domains/*) 밖(publishing·shared 등)이라도 경로 기반 추측 대신 시나리오 C(현재 파일 수정) 프롬프트를 줍니다. 종전에는 도메인 밖 파일이면 '수정 의도'인데도 A/B(생성) 프롬프트가 나가 '수정인데 새 파일을 만들라'는 모순 응답이 발생했습니다. 의도 분류기가 꺼져 있거나 분류에 실패하면 효과가 없어 종전과 100% 동일합니다. 기본 켜짐."
         },
         "axiom-ai.promptDiet.qnaGating": {
           "type": "boolean",

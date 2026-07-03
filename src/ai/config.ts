@@ -209,6 +209,15 @@ export const AI_DEFAULTS = {
      * before/after 검증 후 on. 선택 영역·렌더 카드 활성 케이스는 종전 상세 지시를 유지(ultra 미적용).
      */
     ultraCompactModes: false,
+    /**
+     * [S2 라우팅 단일화] 시나리오(C vs A·B) 결정을 **모델 의도 분류기의 확신**에 종속시킨다. 종전엔
+     * buildSystemPrompt가 순수 경로/도메인 기반(domainCtx.isCurrentFileContext)으로만 C를 골라, 모델이
+     * modify_file로 확신해도 열린 파일이 도메인 밖(publishing/shared)이면 A/B(생성) 프롬프트를 줘
+     * "수정인데 새 파일 만들라"는 모순이 났다(project_modify_to_create_leak). on이면 분류기가 수정으로
+     * 확정(forceModify)했고 현재 파일이 열려 있을 때 경로와 무관하게 시나리오 C로 고정한다.
+     * **분류기 off/null이면 forceModify는 항상 false → 종전과 100% 동일**(불변식 #1). 기본 on.
+     */
+    scenarioByEffectiveIntent: true,
   },
   /**
    * 디버그용 기본값.

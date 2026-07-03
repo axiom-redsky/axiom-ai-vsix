@@ -21,6 +21,7 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'experimental.onlineKnowledgeAnswer', 'experimental.regionVerify', 'experimental.anchorFirstEdit',
   'experimental.patchFirstEdit', 'experimental.composeBinding',
   'scenarioC.compactModes', 'scenarioC.gateCoreRulesByIntent', 'scenarioC.ultraCompactModes',
+  'scenarioC.scenarioByEffectiveIntent',
   'promptDiet.qnaGating',
   'promptDiet.adaptiveBudget.enabled', 'promptDiet.adaptiveBudget.floorChars',
   'promptDiet.adaptiveBudget.targetRatio', 'promptDiet.adaptiveBudget.charsPerToken',
@@ -334,6 +335,15 @@ export class ExtensionConfig {
    */
   static isScenarioCUltraCompactModes(): boolean {
     return ExtensionConfig._resolve<boolean>('scenarioC.ultraCompactModes', AI_DEFAULTS.scenarioC.ultraCompactModes);
+  }
+
+  /**
+   * [S2] 시나리오(C vs A·B) 결정을 모델 의도 분류기의 확신에 종속시킬지 여부. on이면 분류기가 수정
+   * (modify_file)으로 확정하고 현재 파일이 열려 있을 때, 열린 파일이 도메인 밖(publishing/shared)이라도
+   * 경로 기반 추측 대신 시나리오 C(현재 파일 수정)로 고정한다. 분류기 off/null이면 효과 없음(회귀 0). 기본 on.
+   */
+  static isScenarioByEffectiveIntentEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('scenarioC.scenarioByEffectiveIntent', AI_DEFAULTS.scenarioC.scenarioByEffectiveIntent);
   }
 
   /**
