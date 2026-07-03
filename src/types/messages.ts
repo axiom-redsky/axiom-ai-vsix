@@ -108,6 +108,8 @@ export interface PageCreationState {
   resolvedDomain: string | null;
   /** 동일 페이지 파일이 이미 존재해 덮어쓰기/다른이름/취소 응답 대기 중 여부 (충돌 안전망) */
   waitingForCollision?: boolean;
+  /** 쿼리에 도메인이 명시된 경우("example 도메인에") 그 값. 이름 되묻기 라운드트립을 넘겨 유지한다. */
+  explicitDomain?: string | null;
 }
 
 // /spec wizard 상태 머신 (ChatViewProvider 내부 + 웹뷰 상태 표시용)

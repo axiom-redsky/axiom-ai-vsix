@@ -5328,6 +5328,10 @@ import 변경 또는 2곳 이상 수정이면:
   private async _startPageCreation(pageName: string | null, originalText: string): Promise<void> {
     this._history.push({ role: 'user', content: originalText });
 
+    // 사용자가 쿼리에서 도메인을 **명시**했는지("example 도메인에") 결정론적으로 추출한다. 명시했으면
+    // 에디터 경로 추측·확인 되묻기를 건너뛰고 그 도메인으로 바로 진행한다(충돌 안전망은 유지).
+    const explicitDomain = this._extractExplicitDomainMention(originalText);
+
     // 페이지명을 추출하지 못했으면(순수 한국어 이름) 영문 PascalCase 이름을 먼저 되묻는다.
     if (!pageName) {
       this._pageCreationState = {
@@ -5336,6 +5340,7 @@ import 변경 또는 2곳 이상 수정이면:
         waitingForName: true,
         waitingForDomain: false,
         resolvedDomain: null,
+        explicitDomain, // 이름 되묻기 라운드트립을 넘겨 유지
       };
       this._post({
         type: 'token',
@@ -5347,13 +5352,36 @@ import 변경 또는 2곳 이상 수정이면:
       return;
     }
 
-    await this._promptForDomain(pageName);
+    await this._promptForDomain(pageName, explicitDomain);
   }
 
   /**
-   * 페이지명이 확정된 뒤 대상 도메인을 결정한다(에디터 감지 → 단일/복수 도메인 선택).
+   * 쿼리에서 도메인을 **명시적으로 지목**한 경우만 그 도메인명을 추출한다("example 도메인에"·"order 업무"·
+   * "user domain"). PascalCase 페이지명 추론(ProductListPage→product)은 **배제**한다 — 이 값은 "확인
+   * 되묻기 생략" 게이트라, 사용자가 도메인을 진짜로 말했을 때만 확실히 반응해야 과다추출로 엉뚱한 도메인에
+   * 조용히 생성되는 사고를 막는다. 없으면 null(종전 에디터 감지·되묻기 흐름 유지).
    */
-  private async _promptForDomain(pageName: string): Promise<void> {
+  private _extractExplicitDomainMention(text: string): string | null {
+    const m = text.match(/([A-Za-z][A-Za-z0-9-]*)\s*(?:도메인|domain|업무)/i);
+    return m ? m[1].toLowerCase() : null;
+  }
+
+  /**
+   * 페이지명이 확정된 뒤 대상 도메인을 결정한다. 쿼리에 도메인이 명시됐으면 그대로 진행하고,
+   * 아니면 에디터 감지 → 단일/복수 도메인 선택 되묻기로 폴백한다.
+   */
+  private async _promptForDomain(pageName: string, explicitDomain: string | null = null): Promise<void> {
+    // 0. 쿼리에 도메인이 명시됐으면("example 도메인에") 확인 되묻기 없이 바로 생성으로 진행한다.
+    // 사용자가 이미 도메인을 말했는데 다시 "맞나요?"를 묻는 건 스마트하지 않다(분류기도 이 슬롯을 맞힌다).
+    // 파괴 방지 충돌 안전망(_maybeGenerateOrAskCollision: 파일 존재 시 되묻기)은 그대로 통과한다.
+    if (explicitDomain) {
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] 페이지 생성 도메인 — 쿼리 명시 "${explicitDomain}" 사용(에디터 감지·확인 되묻기 생략)`,
+      );
+      await this._maybeGenerateOrAskCollision(pageName, explicitDomain);
+      return;
+    }
+
     // 1. 현재 에디터 파일 경로에서 도메인 자동 감지
     const editorDomain = this._detectDomainFromEditor();
 
@@ -5453,7 +5481,7 @@ import 변경 또는 2곳 이상 수정이면:
       pageName,
       waitingForName: false,
     };
-    await this._promptForDomain(pageName);
+    await this._promptForDomain(pageName, this._pageCreationState.explicitDomain ?? null);
   }
 
   /**
