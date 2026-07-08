@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="810" fill="#FFFFFF"/>
+
+  <!-- 헤더 -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="26" font-weight="bold" fill="#FFFFFF">2</text>
+  <text x="106" y="54" font-size="28" font-weight="bold" fill="#1F3864">위치 탐색 확대경 — "토큰 점수화"의 실제 동작</text>
+  <text x="106" y="86" font-size="15" fill="#595959">예제 요청 "부서 콤보박스를 수정해줘"가 토큰화 → 줄별 점수화 → JSX 블록 스냅을 통과하는 과정</text>
+
+  <!-- 관계 배지 -->
+  <rect x="1040" y="26" width="350" height="60" rx="8" fill="#FFF9EC" stroke="#C55A11" stroke-width="1.5"/>
+  <text x="1215" y="51" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">🔍 01-결정론.svg 흐름도의</text>
+  <text x="1215" y="73" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">①·② 단계를 확대한 상세도</text>
+
+  <line x1="50" y1="116" x2="1390" y2="116" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- STEP 1: 토큰화 -->
+  <rect x="50" y="150" width="420" height="285" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="75" y="188" font-size="16.5" font-weight="bold" fill="#1F3864">STEP 1 — 토큰화 (단어로 쪼개기)</text>
+  <text x="75" y="214" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/RegionEdit.ts</text>
+  <text x="75" y="238" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">tokenizeQuery() + bridgeQueryTokens() L57</text>
+  <rect x="75" y="256" width="370" height="40" rx="6" fill="#FFFFFF" stroke="#D9E2F3"/>
+  <text x="260" y="282" text-anchor="middle" font-size="14" fill="#333333">"부서 콤보박스를 수정해줘"</text>
+  <line x1="260" y1="296" x2="260" y2="318" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+  <rect x="110" y="326" width="110" height="36" rx="18" fill="#1F3864"/>
+  <text x="165" y="350" text-anchor="middle" font-size="14" font-weight="bold" fill="#FFFFFF">부서</text>
+  <rect x="240" y="326" width="150" height="36" rx="18" fill="#1F3864"/>
+  <text x="315" y="350" text-anchor="middle" font-size="14" font-weight="bold" fill="#FFFFFF">콤보박스</text>
+  <text x="75" y="394" font-size="12" fill="#595959">+ 복합어 어근 분해·한→영 컴포넌트명 브리지:</text>
+  <text x="75" y="416" font-family="Consolas, monospace" font-size="11" fill="#2E5395">decomposeDomainCompounds() L82</text>
+
+  <line x1="470" y1="292" x2="513" y2="292" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 2: 줄별 점수화 -->
+  <rect x="520" y="150" width="420" height="285" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="545" y="188" font-size="16.5" font-weight="bold" fill="#1F3864">STEP 2 — 줄별 점수화</text>
+  <text x="545" y="214" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">locateEditRegion()  L556</text>
+  <rect x="540" y="232" width="380" height="152" rx="8" fill="#1E2430"/>
+  <text x="558" y="262" font-family="Consolas, monospace" font-size="12.5" fill="#D8DEE9">12│ const [dept, setDept]…<tspan fill="#8FAADC">  → 1점</tspan></text>
+  <text x="558" y="296" font-family="Consolas, monospace" font-size="12.5" fill="#FFFFFF" font-weight="bold">42│ &lt;Select label="부서"…&gt;<tspan fill="#E8A87C"> → 2점 ★</tspan></text>
+  <text x="558" y="330" font-family="Consolas, monospace" font-size="12.5" fill="#D8DEE9">87│ // 부서 목록 주석<tspan fill="#8FAADC">       → 1점</tspan></text>
+  <text x="558" y="362" font-family="Consolas, monospace" font-size="11.5" fill="#7FB77E">// 토큰 포함 개수 = 점수, 최고점이 승자</text>
+  <text x="545" y="414" font-size="12" fill="#595959">동점이면 위쪽·JSX 우선 — 주석·상수 줄 오탐은 앵커 보정으로 배제</text>
+
+  <line x1="940" y1="292" x2="983" y2="292" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 3: 블록 스냅 -->
+  <rect x="990" y="150" width="400" height="285" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="1015" y="188" font-size="16.5" font-weight="bold" fill="#1F3864">STEP 3 — JSX 블록 경계 스냅</text>
+  <text x="1015" y="214" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">snapToElement()  L230</text>
+  <rect x="1010" y="232" width="360" height="130" rx="8" fill="#1E2430"/>
+  <rect x="1010" y="240" width="7" height="114" fill="#7FB77E"/>
+  <text x="1032" y="264" font-family="Consolas, monospace" font-size="12.5" fill="#7FB77E" font-weight="bold">42│ &lt;Select label="부서"…&gt;</text>
+  <text x="1032" y="296" font-family="Consolas, monospace" font-size="12" fill="#8C96A8">    …(중간 36줄 — 옵션·핸들러)…</text>
+  <text x="1032" y="328" font-family="Consolas, monospace" font-size="12.5" fill="#7FB77E" font-weight="bold">78│ &lt;/Select&gt;</text>
+  <text x="1015" y="386" font-size="12" fill="#595959">최고점 줄에서 태그 짝을 맞춰 위·아래로 확장:</text>
+  <rect x="1010" y="396" width="360" height="32" rx="6" fill="#EAF4EB" stroke="#2E7D32"/>
+  <text x="1190" y="417" text-anchor="middle" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E7D32">LocatedRegion { start: 42, end: 78 }</text>
+
+  <!-- 실제 코드 패널 -->
+  <rect x="50" y="465" width="650" height="185" rx="10" fill="#1E2430"/>
+  <text x="75" y="495" font-family="Consolas, monospace" font-size="13" fill="#7FB77E">// src/ai/RegionEdit.ts : L580 — 점수화 루프 (실제 코드)</text>
+  <text x="75" y="524" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">for (let i = 0; i &lt; lines.length; i++) {</text>
+  <text x="75" y="551" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">  const hit = dedupeSubstrings(tokens.filter((t) =&gt; low.includes(t)));</text>
+  <text x="75" y="578" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">  if (hit.length &gt; 0) scored.push({ line: i + 1, score: hit.length, hit });</text>
+  <text x="75" y="605" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">}</text>
+  <text x="75" y="632" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">scored.sort((a, b) =&gt; b.score - a.score || a.line - b.line);</text>
+
+  <!-- 결과 분기 -->
+  <rect x="740" y="465" width="650" height="72" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <rect x="1272" y="477" width="100" height="26" rx="13" fill="#2E7D32"/>
+  <text x="1322" y="495" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#FFFFFF">모델 호출 없음</text>
+  <text x="768" y="494" font-size="14" font-weight="bold" fill="#2E7D32">후보가 1곳으로 확정 (대부분의 경우)</text>
+  <text x="768" y="520" font-size="12.5" fill="#333333">sLLM에게 묻지 않고 → 흐름도 ③ 계약 주입 단계로 바로 진행 (01-결정론.svg)</text>
+
+  <rect x="740" y="552" width="650" height="118" rx="10" fill="#FDF0E7" stroke="#C55A11" stroke-width="2"/>
+  <rect x="1272" y="564" width="100" height="26" rx="13" fill="#C55A11"/>
+  <text x="1322" y="582" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#FFFFFF">sLLM 호출</text>
+  <text x="768" y="582" font-size="14" font-weight="bold" fill="#C55A11">비슷한 후보가 여러 곳 (모호) — 여기서만 sLLM에게 객관식 질문</text>
+  <text x="768" y="610" font-size="12.5" fill="#333333">① Axiom이 번호 목록 작성: RegionCandidate[] L146 → buildDisambiguationPrompt() L174 로 문제지 생성·전송</text>
+  <text x="768" y="634" font-size="12.5" fill="#333333">② sLLM은 번호만 답변("2") → parseDisambiguationPick() L188이 검증 후 해당 영역으로 재타겟</text>
+  <text x="768" y="658" font-size="12" fill="#8C8C8C">답이 0·범위 밖이면 사용자에게 되묻기 — 상세 흐름은 05-객관식선택.svg</text>
+
+  <!-- 실체 확인 푸터 -->
+  <rect x="50" y="686" width="1340" height="96" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="78" y="714" font-size="15" font-weight="bold" fill="#2E7D32">실체 확인</text>
+  <text x="78" y="738" font-size="13" fill="#333333">· 함수 전부 src/ai/RegionEdit.ts 실존: bridgeQueryTokens L57 · decomposeDomainCompounds L82 · locateEditRegion L556 · snapToElement L230 · RegionCandidate L146</text>
+  <text x="78" y="762" font-size="13" fill="#333333">· 위치 정확도 전용 계기판 npm run eval:region — 모델 없이 실행, 적용률 33%→84% 개선 이력 (측정 가능한 실체)</text>
+</svg>

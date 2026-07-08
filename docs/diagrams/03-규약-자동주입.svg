@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="810" fill="#FFFFFF"/>
+
+  <!-- 헤더 -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="26" font-weight="bold" fill="#FFFFFF">3</text>
+  <text x="106" y="54" font-size="28" font-weight="bold" fill="#1F3864">계약 주입 확대경 — 사용법 "정답지"가 첨부되는 과정</text>
+  <text x="106" y="86" font-size="15" fill="#595959">예제: 코드에 useApi(scaffold 내장 기능)가 있으면 → 'use-api' 규약 카드가 자동으로 프롬프트에 실린다</text>
+
+  <!-- 관계 배지 -->
+  <rect x="1040" y="26" width="350" height="60" rx="8" fill="#FFF9EC" stroke="#C55A11" stroke-width="1.5"/>
+  <text x="1215" y="51" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">🔍 01-결정론.svg 흐름도의</text>
+  <text x="1215" y="73" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">③ 단계를 확대한 상세도</text>
+
+  <line x1="50" y1="116" x2="1390" y2="116" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- STEP 0: 입력 -->
+  <rect x="50" y="150" width="310" height="230" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="2"/>
+  <rect x="272" y="160" width="78" height="26" rx="13" fill="#A6A6A6"/>
+  <text x="311" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">입력</text>
+  <text x="72" y="198" font-size="16" font-weight="bold" fill="#333333">편집 컨텍스트</text>
+  <text x="72" y="234" font-family="Consolas, monospace" font-size="13" font-weight="bold" fill="#595959">{ deps, region, query }</text>
+  <text x="72" y="266" font-size="12.5" fill="#595959">· region — 편집 영역 코드</text>
+  <text x="72" y="290" font-size="12.5" fill="#595959">· deps — 영역이 참조하는 의존부</text>
+  <text x="72" y="314" font-size="12.5" fill="#595959">· query — 사용자 요청문</text>
+  <line x1="360" y1="265" x2="388" y2="265" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 1: 트리거 탐지 -->
+  <rect x="395" y="150" width="310" height="230" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="617" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
+  <text x="656" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
+  <text x="417" y="198" font-size="16" font-weight="bold" fill="#1F3864">STEP 1 — 트리거 탐지</text>
+  <text x="417" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/ScaffoldContracts.ts</text>
+  <text x="417" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">applies(ctx) — 카드 11종 각각 판정</text>
+  <rect x="417" y="266" width="266" height="70" rx="6" fill="#FFFFFF" stroke="#D9E2F3"/>
+  <text x="550" y="294" text-anchor="middle" font-size="12.5" fill="#333333">region에 useApi 발견</text>
+  <text x="550" y="320" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#2E5395">→ 'use-api' 카드 발동</text>
+  <text x="417" y="362" font-size="11.5" fill="#8C8C8C">정규식·단어 매칭 — 임베딩 검색 아님</text>
+  <line x1="705" y1="265" x2="733" y2="265" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 2: 카드 선별·조립 -->
+  <rect x="740" y="150" width="310" height="230" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="962" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
+  <text x="1001" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
+  <text x="762" y="198" font-size="16" font-weight="bold" fill="#1F3864">STEP 2 — 카드 선별·조립</text>
+  <text x="762" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/ScaffoldContracts.ts</text>
+  <text x="762" y="248" font-family="Consolas, monospace" font-size="12" font-weight="bold" fill="#2E5395">selectScaffoldContracts() L401</text>
+  <text x="762" y="272" font-family="Consolas, monospace" font-size="12" font-weight="bold" fill="#2E5395">buildContractSection() L434</text>
+  <text x="762" y="302" font-size="12.5" fill="#595959">발동한 카드만 모아 마크다운 섹션</text>
+  <text x="762" y="326" font-size="12.5" fill="#595959">"## react-app-scaffold 계약</text>
+  <text x="762" y="350" font-size="12.5" fill="#595959">(반드시 준수)" 를 생성</text>
+  <line x1="1050" y1="265" x2="1078" y2="265" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 3: 프롬프트 첨부 -->
+  <rect x="1085" y="150" width="305" height="230" rx="10" fill="#FDF0E7" stroke="#C55A11" stroke-width="2"/>
+  <rect x="1277" y="160" width="100" height="26" rx="13" fill="#C55A11"/>
+  <text x="1327" y="178" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#FFFFFF">sLLM에게 전달</text>
+  <text x="1107" y="198" font-size="16" font-weight="bold" fill="#C55A11">STEP 3 — 프롬프트에 첨부</text>
+  <text x="1107" y="234" font-size="12.5" fill="#595959">STEP 2의 계약 섹션이 조각 생성</text>
+  <text x="1107" y="258" font-size="12.5" fill="#595959">프롬프트 안에 포함되어 전송된다</text>
+  <text x="1107" y="282" font-size="12" fill="#8C8C8C">(실제 호출은 01 흐름도의 ④ 단계)</text>
+  <text x="1107" y="322" font-size="12.5" font-weight="bold" fill="#C55A11">여기까지 모델 호출 0회 —</text>
+  <text x="1107" y="346" font-size="12.5" font-weight="bold" fill="#C55A11">모델은 정답지를 받기만 한다</text>
+
+  <!-- 실제 코드 패널 -->
+  <rect x="50" y="410" width="650" height="180" rx="10" fill="#1E2430"/>
+  <text x="75" y="440" font-family="Consolas, monospace" font-size="13" fill="#7FB77E">// src/ai/ScaffoldContracts.ts : L131 — 'use-api' 카드 (11종 중 하나, 실제 코드)</text>
+  <text x="75" y="470" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">applies: ({ deps, region, query }) =&gt;      <tspan fill="#7FB77E">// ← 결정론 트리거</tspan></text>
+  <text x="75" y="496" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">  hasWord(deps, 'useApi') || hasWord(region, 'useApi') ||</text>
+  <text x="75" y="522" font-family="Consolas, monospace" font-size="13" fill="#D8DEE9">  /api|조회|불러|가져|fetch|파라미터|목록|데이터/i.test(query),</text>
+  <text x="75" y="548" font-family="Consolas, monospace" font-size="13" fill="#E8A87C">card: `- ⛔ refetch()는 인자를 받지 않습니다 …`  <tspan fill="#7FB77E">// ← 정답 규약</tspan></text>
+
+  <!-- RAG 대비 -->
+  <rect x="740" y="410" width="650" height="180" rx="10" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="2"/>
+  <text x="768" y="440" font-size="15" font-weight="bold" fill="#1F3864">RAG와 무엇이 다른가 — "붙여 보내는 건 같다, 고르는 방식이 다르다"</text>
+  <text x="768" y="470" font-size="12.5"><tspan font-weight="bold" fill="#595959">공통점:</tspan><tspan fill="#595959"> 참고자료를 프롬프트에 포함해 LLM에 전송 (마지막 단계는 동일)</tspan></text>
+  <text x="768" y="497" font-size="12.5"><tspan font-weight="bold" fill="#B02B2B">RAG:</tspan><tspan fill="#595959"> 무엇을 붙일지 유사도 점수(0.83…)로 선택 — 빠지거나 무관 문서가 낌</tspan></text>
+  <text x="768" y="524" font-size="12.5"><tspan font-weight="bold" fill="#2E7D32">본 발명:</tspan><tspan fill="#595959"> 조건 판정(참/거짓)으로 선택 — useApi 있으면 100%, 없으면 0%</tspan></text>
+  <text x="768" y="551" font-size="12.5" fill="#595959">카드 내용은 검색되는 게 아니라 확장 코드에 내장(하드코딩) — 뒤질 저장소가 없음</text>
+  <text x="768" y="578" font-size="12.5" font-weight="bold" fill="#2E7D32">→ "탐지 → 정확 계약 주입" = 청구항 후보 B의 구체적 기술 구성</text>
+
+  <!-- 요약 배너 -->
+  <rect x="50" y="614" width="1340" height="52" rx="10" fill="#1F3864"/>
+  <text x="720" y="647" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#FFFFFF">탐지 → 선별 → 조립 → 첨부까지 전부 결정론 — sLLM은 "정답지가 붙은 문제지"를 받아서 풀기만 한다</text>
+
+  <!-- 실체 확인 푸터 -->
+  <rect x="50" y="686" width="1340" height="96" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="78" y="714" font-size="15" font-weight="bold" fill="#2E7D32">실체 확인</text>
+  <text x="78" y="738" font-size="13" fill="#333333">· 카드 11종 실존: use-api · router · $ui(알림) · $util · form · smart-table-binding · date-picker · button-component 등 — SCAFFOLD_CONTRACTS (ScaffoldContracts.ts L130)</text>
+  <text x="78" y="762" font-size="13" fill="#333333">· 라이브 실측: 실제 sLLM(qwen3-coder)이 date-picker 카드 골격으로 4부품(import+state+ref+JSX) 완비 편집 성공 이력</text>
+</svg>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="810" fill="#FFFFFF"/>
+  <!-- 헤더 -->
+  <circle cx="62" cy="62" r="28" fill="#1F3864"/>
+  <text x="62" y="72" text-anchor="middle" font-size="28" font-weight="bold" fill="#FFFFFF">5</text>
+  <text x="110" y="58" font-size="30" font-weight="bold" fill="#1F3864">객관식 선택 — 모델은 번호만 답한다</text>
+  <text x="110" y="92" font-size="16" fill="#595959">편집 후보가 여러 곳일 때: 후보 목록 작성은 프로그램(결정론), 선택(이해력)만 모델 — 숫자 하나라 틀릴 방법이 거의 없다</text>
+  <line x1="50" y1="118" x2="1390" y2="118" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- 흐름 상단 -->
+  <rect x="50" y="155" width="300" height="120" rx="10" fill="#F2F6FC" stroke="#8FAADC" stroke-width="2"/>
+  <text x="200" y="190" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#1F3864">① 후보 여러 개 발견</text>
+  <rect x="70" y="206" width="260" height="28" rx="5" fill="#EAF0FA"/>
+  <text x="200" y="225" text-anchor="middle" font-family="Consolas, monospace" font-size="12" fill="#1F3864" font-weight="bold">RegionCandidate[]  RegionEdit.ts L146</text>
+  <text x="200" y="258" text-anchor="middle" font-size="12.5" fill="#595959">locateEditRegion이 모호 판정</text>
+  <line x1="350" y1="215" x2="400" y2="215" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <rect x="405" y="155" width="320" height="120" rx="10" fill="#F2F6FC" stroke="#8FAADC" stroke-width="2"/>
+  <text x="565" y="190" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#1F3864">② 객관식 문제지 작성 (프로그램)</text>
+  <rect x="425" y="206" width="280" height="28" rx="5" fill="#EAF0FA"/>
+  <text x="565" y="225" text-anchor="middle" font-family="Consolas, monospace" font-size="11.5" fill="#1F3864" font-weight="bold">buildDisambiguationPrompt() L174</text>
+  <text x="565" y="258" text-anchor="middle" font-family="Consolas, monospace" font-size="11.5" fill="#595959">RegionEditService.ts</text>
+  <line x1="725" y1="215" x2="775" y2="215" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <rect x="780" y="155" width="240" height="120" rx="10" fill="#FDF0E7" stroke="#C55A11" stroke-width="2"/>
+  <text x="900" y="195" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#C55A11">③ sLLM 답변</text>
+  <rect x="850" y="212" width="100" height="40" rx="6" fill="#FFFFFF" stroke="#C55A11"/>
+  <text x="900" y="239" text-anchor="middle" font-family="Consolas, monospace" font-size="18" font-weight="bold" fill="#C55A11">"2"</text>
+  <line x1="1020" y1="215" x2="1070" y2="215" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <rect x="1075" y="155" width="315" height="120" rx="10" fill="#F2F6FC" stroke="#8FAADC" stroke-width="2"/>
+  <text x="1232" y="190" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#1F3864">④ 파싱·검증 후 재타겟</text>
+  <rect x="1095" y="206" width="275" height="28" rx="5" fill="#EAF0FA"/>
+  <text x="1232" y="225" text-anchor="middle" font-family="Consolas, monospace" font-size="11.5" fill="#1F3864" font-weight="bold">parseDisambiguationPick() L188</text>
+  <text x="1232" y="258" text-anchor="middle" font-size="12.5" fill="#595959">forcedRegion으로 편집 진행</text>
+
+  <!-- 실제 프롬프트 패널 -->
+  <rect x="50" y="320" width="650" height="290" rx="10" fill="#1E2430"/>
+  <text x="80" y="355" font-family="Consolas, monospace" font-size="14" fill="#7FB77E">// L174가 실제로 만드는 프롬프트 (모델에게 이대로 전송)</text>
+  <text x="80" y="390" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">사용자 코드 편집 요청: "입력 폼을 수정해줘"</text>
+  <text x="80" y="424" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">아래는 그 요청이 가리킬 수 있는 편집 영역 후보입니다.</text>
+  <text x="80" y="452" font-family="Consolas, monospace" font-size="14" fill="#E8A87C">**사용자가 의도한 영역의 번호 하나만** 답하세요.</text>
+  <text x="80" y="480" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">애매하거나 후보에 없으면 0을 답하세요. 설명 없이 숫자만.</text>
+  <text x="80" y="516" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">1) 사원 등록 폼 (42줄)</text>
+  <text x="80" y="544" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">2) 검색 조건 폼 (87줄)</text>
+  <text x="80" y="572" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">3) 부서 이동 폼 (140줄)</text>
+  <text x="80" y="600" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">답(번호만):</text>
+
+  <!-- 파싱 코드 패널 -->
+  <rect x="740" y="320" width="650" height="180" rx="10" fill="#1E2430"/>
+  <text x="770" y="355" font-family="Consolas, monospace" font-size="14" fill="#7FB77E">// RegionEditService.ts : L188 — 답 파싱 (실제 코드)</text>
+  <text x="770" y="387" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">const m = output.match(/\d+/);          <tspan fill="#7FB77E">// 첫 정수만</tspan></text>
+  <text x="770" y="415" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">if (!m) return null;</text>
+  <text x="770" y="443" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">const n = parseInt(m[0], 10);</text>
+  <text x="770" y="471" font-family="Consolas, monospace" font-size="14" fill="#D8DEE9">if (n &lt; 1 || n &gt; candidates.length) return null;  <tspan fill="#7FB77E">// 범위 밖 → 불확실</tspan></text>
+
+  <!-- 안전장치 -->
+  <rect x="740" y="520" width="650" height="90" rx="10" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="2"/>
+  <text x="770" y="552" font-size="14.5" font-weight="bold" fill="#1F3864">안전장치: 모델이 0 · 범위 밖 · 무응답이면 → null</text>
+  <text x="770" y="580" font-size="13.5" fill="#595959">→ 마음대로 진행하지 않고 사용자에게 "어느 구역인지 콕 집어 달라"고 되묻는다 (ChatViewProvider.ts L3116)</text>
+
+  <!-- 실체 확인 푸터 -->
+  <rect x="50" y="650" width="1340" height="110" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="80" y="686" font-size="16" font-weight="bold" fill="#2E7D32">실체 확인</text>
+  <text x="80" y="714" font-size="14" fill="#333333">· buildDisambiguationPrompt (L174) · parseDisambiguationPick (L188) — RegionEditService.ts 실존 · 파이프라인 배선: ChatViewProvider.ts L3104 (runHybridRegionEdit 호출)</text>
+  <text x="80" y="740" font-size="14" fill="#333333">· 전용 평가 스크립트 scripts/eval-disambig.ts 존재 — 객관식 선택 품질을 별도 측정</text>
+</svg>

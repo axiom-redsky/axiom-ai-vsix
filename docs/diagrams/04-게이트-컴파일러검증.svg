@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+    <marker id="arRed" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#B02B2B"/>
+    </marker>
+    <marker id="arGreen" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2E7D32"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="810" fill="#FFFFFF"/>
+  <!-- 헤더 -->
+  <circle cx="62" cy="62" r="28" fill="#1F3864"/>
+  <text x="62" y="72" text-anchor="middle" font-size="28" font-weight="bold" fill="#FFFFFF">4</text>
+  <text x="110" y="58" font-size="30" font-weight="bold" fill="#1F3864">게이트 · 컴파일러 검증 — 불합격품은 파일에 절대 안 들어간다</text>
+  <text x="110" y="92" font-size="16" fill="#595959">모델 출력을 검사관 2명이 순서대로 검사: ① 규칙 게이트(즉시) → ② TypeScript 컴파일러 진단(적용 직전)</text>
+  <line x1="50" y1="118" x2="1390" y2="118" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- 모델 출력 -->
+  <rect x="50" y="150" width="230" height="100" rx="10" fill="#FDF0E7" stroke="#C55A11" stroke-width="2"/>
+  <text x="165" y="190" text-anchor="middle" font-size="16" font-weight="bold" fill="#C55A11">sLLM 출력</text>
+  <text x="165" y="218" text-anchor="middle" font-size="13" fill="#595959">(코드 조각 — 신뢰 안 함)</text>
+  <line x1="280" y1="200" x2="330" y2="200" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- 검사관 1: 규칙 게이트 -->
+  <rect x="335" y="150" width="500" height="330" rx="10" fill="#FFFFFF" stroke="#8FAADC" stroke-width="2"/>
+  <rect x="335" y="150" width="500" height="46" rx="10" fill="#2E5395"/>
+  <rect x="335" y="172" width="500" height="24" fill="#2E5395"/>
+  <text x="585" y="181" text-anchor="middle" font-size="16" font-weight="bold" fill="#FFFFFF">검사관① 규칙 게이트 — runHybridRegionEdit() L471</text>
+  <text x="360" y="228" font-family="Consolas, monospace" font-size="13" fill="#595959">src/ai/RegionEditService.ts — 실제 거부 사유 코드(reason):</text>
+  <rect x="360" y="244" width="220" height="30" rx="5" fill="#FBEDEC"/><text x="372" y="264" font-family="Consolas, monospace" font-size="12.5" fill="#B02B2B">root-tag-mismatch  L580</text>
+  <rect x="595" y="244" width="220" height="30" rx="5" fill="#FBEDEC"/><text x="607" y="264" font-family="Consolas, monospace" font-size="12.5" fill="#B02B2B">refetch-params  L596</text>
+  <rect x="360" y="282" width="220" height="30" rx="5" fill="#FBEDEC"/><text x="372" y="302" font-family="Consolas, monospace" font-size="12.5" fill="#B02B2B">region-content-loss  L624</text>
+  <rect x="595" y="282" width="220" height="30" rx="5" fill="#FBEDEC"/><text x="607" y="302" font-family="Consolas, monospace" font-size="12.5" fill="#B02B2B">unresolved-deps  L711</text>
+  <rect x="360" y="320" width="220" height="30" rx="5" fill="#FBEDEC"/><text x="372" y="340" font-family="Consolas, monospace" font-size="12.5" fill="#B02B2B">dead-binding  L751</text>
+  <rect x="595" y="320" width="220" height="30" rx="5" fill="#FBEDEC"/><text x="607" y="340" font-family="Consolas, monospace" font-size="12.5" fill="#B02B2B">duplicate-decl  L766</text>
+  <text x="360" y="384" font-size="13.5" fill="#595959">뜻: 루트 태그 무단 교체 / 기존 코드 삭제 / 미해소 참조 /</text>
+  <text x="360" y="408" font-size="13.5" fill="#595959">죽은 바인딩 / 중복 선언 … 하나라도 걸리면 그 자리에서 거부</text>
+  <text x="360" y="450" font-size="13.5" font-weight="bold" fill="#1F3864">게이트 함수 예: checkRegionRootTag() — RegionEdit.ts L927</text>
+
+  <!-- 불합격 경로 -->
+  <line x1="585" y1="480" x2="585" y2="530" stroke="#B02B2B" stroke-width="3" marker-end="url(#arRed)"/>
+  <rect x="435" y="535" width="300" height="70" rx="10" fill="#FBEDEC" stroke="#B02B2B" stroke-width="2"/>
+  <text x="585" y="565" text-anchor="middle" font-size="14" font-weight="bold" fill="#B02B2B">불합격 → 적용 거부</text>
+  <text x="585" y="590" text-anchor="middle" font-size="12.5" fill="#595959">안전 폴백 / 재시도 (원본 무손상)</text>
+
+  <line x1="835" y1="300" x2="885" y2="300" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- 검사관 2: 컴파일러 -->
+  <rect x="890" y="150" width="500" height="330" rx="10" fill="#FFFFFF" stroke="#8FAADC" stroke-width="2"/>
+  <rect x="890" y="150" width="500" height="46" rx="10" fill="#2E5395"/>
+  <rect x="890" y="172" width="500" height="24" fill="#2E5395"/>
+  <text x="1140" y="181" text-anchor="middle" font-size="16" font-weight="bold" fill="#FFFFFF">검사관② 컴파일러 — _verifyTextByDiagnostics() L3198</text>
+  <text x="915" y="226" font-family="Consolas, monospace" font-size="13" fill="#595959">src/providers/ChatViewProvider.ts — 실제 코드:</text>
+  <rect x="912" y="240" width="456" height="150" rx="8" fill="#1E2430"/>
+  <text x="928" y="268" font-family="Consolas, monospace" font-size="12" fill="#7FB77E">// 임시 형제 파일로 TS 진단 (디스크 원본 무손상)</text>
+  <text x="928" y="294" font-family="Consolas, monospace" font-size="12" fill="#D8DEE9">tmpPath = path.join(dir,</text>
+  <text x="928" y="318" font-family="Consolas, monospace" font-size="12" fill="#D8DEE9">  `__axiom_verify_${process.pid}_${Date.now()}${ext}`);</text>
+  <text x="928" y="342" font-family="Consolas, monospace" font-size="12" fill="#D8DEE9">fs.writeFileSync(tmpPath, candidateText);</text>
+  <text x="928" y="366" font-family="Consolas, monospace" font-size="12" fill="#D8DEE9">vscode.languages.getDiagnostics(uri)  <tspan fill="#7FB77E">// 새 에러만</tspan></text>
+  <text x="915" y="420" font-size="13.5" fill="#595959">새 타입에러 발견 시 → 에러 메시지를 모델에 주고 1회 교정</text>
+  <text x="915" y="444" font-family="Consolas, monospace" font-size="12.5" fill="#1F3864">buildVerifyCorrectionPrompt() — RegionEditService.ts L147</text>
+  <text x="915" y="470" font-size="13" fill="#595959">진단 불가 시 fail-open(편집을 막지 않음) · 임시 파일 즉시 삭제</text>
+
+  <!-- 합격 경로 -->
+  <line x1="1140" y1="480" x2="1140" y2="530" stroke="#2E7D32" stroke-width="3" marker-end="url(#arGreen)"/>
+  <rect x="990" y="535" width="300" height="70" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="1140" y="565" text-anchor="middle" font-size="14" font-weight="bold" fill="#2E7D32">2중 검사 통과 → 파일에 적용</text>
+  <text x="1140" y="590" text-anchor="middle" font-size="12.5" fill="#595959">(사용자 확인 카드 + diff 표시 후)</text>
+
+  <!-- 실체 확인 푸터 -->
+  <rect x="50" y="650" width="1340" height="110" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="80" y="686" font-size="16" font-weight="bold" fill="#2E7D32">실체 확인</text>
+  <text x="80" y="714" font-size="14" fill="#333333">· 거부 사유 코드 6종은 RegionEditService.ts에서 grep 가능한 실제 문자열 (reason: 'root-tag-mismatch' 등) — 각 라인 번호 명기</text>
+  <text x="80" y="740" font-size="14" fill="#333333">· 컴파일러 검증 루프는 설정 플래그 experimental.regionVerify로 제어 — 임시 파일 방식이라 실행 중 앱(HMR)에 영향 없음</text>
+</svg>

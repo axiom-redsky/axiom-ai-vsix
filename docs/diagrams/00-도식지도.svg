@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+    <marker id="arN" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1F3864"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="810" fill="#FFFFFF"/>
+
+  <!-- 헤더 -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="24" font-weight="bold" fill="#FFFFFF">0</text>
+  <text x="106" y="54" font-size="28" font-weight="bold" fill="#1F3864">도식 지도 — 7개 다이어그램의 관계와 읽는 순서</text>
+  <text x="106" y="86" font-size="15" fill="#595959">01이 전체 조감도, 02·03·04·05는 특정 구간 확대경, 06은 03의 심화, 07은 01이 막힐 때의 병렬 경로(오프라인)</text>
+  <line x1="50" y1="112" x2="1390" y2="112" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- ═══ 01 전체 조감도 (미니 파이프라인) ═══ -->
+  <rect x="40" y="136" width="1360" height="160" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="64" y="166" font-size="15" font-weight="bold" fill="#1F3864">📄 01-결정론.svg — 전체 조감도 (8단계 파이프라인)</text>
+
+  <!-- 미니 스텝 -->
+  <rect x="60" y="184" width="150" height="90" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="135" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#333333">입력</text>
+  <text x="135" y="248" text-anchor="middle" font-size="10.5" fill="#8C8C8C">사용자 요청</text>
+  <line x1="211" y1="229" x2="224" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="227" y="184" width="150" height="90" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="302" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#1F3864">① 분해</text>
+  <text x="302" y="248" text-anchor="middle" font-size="10.5" fill="#7A8CA8">splitTsSections</text>
+  <line x1="378" y1="229" x2="391" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="394" y="184" width="150" height="90" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="469" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#1F3864">② 위치</text>
+  <text x="469" y="248" text-anchor="middle" font-size="10.5" fill="#7A8CA8">locateEditRegion</text>
+  <line x1="545" y1="229" x2="558" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="561" y="184" width="150" height="90" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="636" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#1F3864">③ 계약</text>
+  <text x="636" y="248" text-anchor="middle" font-size="10.5" fill="#7A8CA8">규약 카드 주입</text>
+  <line x1="712" y1="229" x2="725" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="728" y="184" width="150" height="90" rx="8" fill="#FDF0E7" stroke="#C55A11" stroke-width="2"/>
+  <text x="803" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">④ sLLM</text>
+  <text x="803" y="248" text-anchor="middle" font-size="10.5" fill="#C55A11">조각 생성 (유일한 확률)</text>
+  <line x1="879" y1="229" x2="892" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="895" y="184" width="150" height="90" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="970" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#1F3864">⑤ 게이트</text>
+  <text x="970" y="248" text-anchor="middle" font-size="10.5" fill="#7A8CA8">규칙 6종 검사</text>
+  <line x1="1046" y1="229" x2="1059" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="1062" y="184" width="150" height="90" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="1137" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#1F3864">⑥ 컴파일</text>
+  <text x="1137" y="248" text-anchor="middle" font-size="10.5" fill="#7A8CA8">TS 진단 검증</text>
+  <line x1="1213" y1="229" x2="1226" y2="229" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="1229" y="184" width="150" height="90" rx="8" fill="#EAF4EB" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="1304" y="222" text-anchor="middle" font-size="13" font-weight="bold" fill="#2E7D32">⑦ 적용</text>
+  <text x="1304" y="248" text-anchor="middle" font-size="10.5" fill="#5A8A62">병합·파일 반영</text>
+
+  <!-- ═══ 확대 구간 브래킷 ═══ -->
+  <!-- 02: ①② -->
+  <path d="M227,306 L227,316 L544,316 L544,306" fill="none" stroke="#2E5395" stroke-width="2"/>
+  <line x1="385" y1="316" x2="385" y2="392" stroke="#2E5395" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arN)"/>
+  <!-- 03: ③ -->
+  <path d="M561,306 L561,316 L711,316 L711,306" fill="none" stroke="#2E5395" stroke-width="2"/>
+  <line x1="636" y1="316" x2="636" y2="392" stroke="#2E5395" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arN)"/>
+  <!-- 04: ⑤⑥ -->
+  <path d="M895,306 L895,316 L1212,316 L1212,306" fill="none" stroke="#2E5395" stroke-width="2"/>
+  <line x1="1053" y1="316" x2="1053" y2="392" stroke="#2E5395" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arN)"/>
+
+  <!-- ═══ 확대경 카드 (2층) ═══ -->
+  <!-- 02 -->
+  <rect x="235" y="398" width="300" height="128" rx="10" fill="#FFFFFF" stroke="#2E5395" stroke-width="2"/>
+  <rect x="235" y="398" width="8" height="128" fill="#2E5395"/>
+  <rect x="259" y="412" width="36" height="26" rx="6" fill="#2E5395"/>
+  <text x="277" y="430" text-anchor="middle" font-size="13" font-weight="bold" fill="#FFFFFF">02</text>
+  <text x="307" y="430" font-size="13.5" font-weight="bold" fill="#1F3864">분해-위치결정.svg</text>
+  <text x="259" y="462" font-size="12" fill="#595959">①·② 확대 — 토큰 점수화와</text>
+  <text x="259" y="484" font-size="12" fill="#595959">JSX 블록 스냅을 예제로</text>
+  <text x="259" y="510" font-size="11.5" fill="#8C8C8C">하단에 확정/모호 분기 포함</text>
+
+  <!-- 03 -->
+  <rect x="486" y="398" width="300" height="128" rx="10" fill="#FFFFFF" stroke="#2E5395" stroke-width="2"/>
+  <rect x="486" y="398" width="8" height="128" fill="#2E5395"/>
+  <rect x="510" y="412" width="36" height="26" rx="6" fill="#2E5395"/>
+  <text x="528" y="430" text-anchor="middle" font-size="13" font-weight="bold" fill="#FFFFFF">03</text>
+  <text x="558" y="430" font-size="13.5" font-weight="bold" fill="#1F3864">규약-자동주입.svg</text>
+  <text x="510" y="462" font-size="12" fill="#595959">③ 확대 — 트리거 탐지 →</text>
+  <text x="510" y="484" font-size="12" fill="#595959">카드 선별 → 프롬프트 첨부</text>
+  <text x="510" y="510" font-size="11.5" fill="#8C8C8C">RAG와의 차이 대비표 포함</text>
+
+  <!-- 04 -->
+  <rect x="903" y="398" width="300" height="128" rx="10" fill="#FFFFFF" stroke="#2E5395" stroke-width="2"/>
+  <rect x="903" y="398" width="8" height="128" fill="#2E5395"/>
+  <rect x="927" y="412" width="36" height="26" rx="6" fill="#2E5395"/>
+  <text x="945" y="430" text-anchor="middle" font-size="13" font-weight="bold" fill="#FFFFFF">04</text>
+  <text x="975" y="430" font-size="13.5" font-weight="bold" fill="#1F3864">게이트-컴파일러검증.svg</text>
+  <text x="927" y="462" font-size="12" fill="#595959">⑤·⑥ 확대 — 거부 사유 6종,</text>
+  <text x="927" y="484" font-size="12" fill="#595959">임시파일 TS 진단, 1회 교정</text>
+  <text x="927" y="510" font-size="11.5" fill="#8C8C8C">불합격 → 거부·폴백 경로 포함</text>
+
+  <!-- ═══ 3층: 05, 06 ═══ -->
+  <!-- 02 → 05 연결 -->
+  <line x1="385" y1="526" x2="385" y2="592" stroke="#C55A11" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arN)"/>
+  <text x="400" y="566" font-size="11.5" font-weight="bold" fill="#C55A11">②에서 후보가 여럿(모호)일 때</text>
+  <!-- 03 → 06 연결 -->
+  <line x1="636" y1="526" x2="636" y2="592" stroke="#1F3864" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arN)"/>
+  <text x="651" y="566" font-size="11.5" font-weight="bold" fill="#1F3864">카드 1장의 심화</text>
+
+  <!-- 05 -->
+  <rect x="235" y="598" width="300" height="120" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="2"/>
+  <rect x="235" y="598" width="8" height="120" fill="#C55A11"/>
+  <rect x="259" y="612" width="36" height="26" rx="6" fill="#C55A11"/>
+  <text x="277" y="630" text-anchor="middle" font-size="13" font-weight="bold" fill="#FFFFFF">05</text>
+  <text x="307" y="630" font-size="13.5" font-weight="bold" fill="#C55A11">객관식선택.svg</text>
+  <text x="259" y="662" font-size="12" fill="#595959">02의 모호 분기 확대 — Axiom이</text>
+  <text x="259" y="684" font-size="12" fill="#595959">번호 목록 작성, sLLM은 번호만 답</text>
+  <text x="259" y="708" font-size="11.5" fill="#8C8C8C">0·범위 밖 → 사용자 되묻기</text>
+
+  <!-- 06 -->
+  <rect x="486" y="598" width="300" height="120" rx="10" fill="#FFFFFF" stroke="#1F3864" stroke-width="2"/>
+  <rect x="486" y="598" width="8" height="120" fill="#1F3864"/>
+  <rect x="510" y="612" width="36" height="26" rx="6" fill="#1F3864"/>
+  <text x="528" y="630" text-anchor="middle" font-size="13" font-weight="bold" fill="#FFFFFF">06</text>
+  <text x="558" y="630" font-size="13.5" font-weight="bold" fill="#1F3864">계약카드-생애주기.svg</text>
+  <text x="510" y="662" font-size="12" fill="#595959">03의 심화 — 카드 1장이 지시·검증·</text>
+  <text x="510" y="684" font-size="12" fill="#595959">제어 3갈래 + 4개 경로를 관장</text>
+  <text x="510" y="708" font-size="11.5" fill="#8C8C8C">공통 진실원(SSoT) 구조</text>
+
+  <!-- 07: 병렬 경로 -->
+  <text x="752" y="588" font-size="11.5" font-weight="bold" fill="#C55A11">01이 막힐 때(서버 다운) 병렬 모드</text>
+  <rect x="737" y="598" width="300" height="120" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="2"/>
+  <rect x="737" y="598" width="8" height="120" fill="#C55A11"/>
+  <rect x="761" y="612" width="36" height="26" rx="6" fill="#C55A11"/>
+  <text x="779" y="630" text-anchor="middle" font-size="13" font-weight="bold" fill="#FFFFFF">07</text>
+  <text x="809" y="630" font-size="13.5" font-weight="bold" fill="#C55A11">오프라인응답.svg</text>
+  <text x="761" y="662" font-size="12" fill="#595959">01의 병렬 경로 — sLLM 미연결 시</text>
+  <text x="761" y="684" font-size="12" fill="#595959">모델 없이 지식응답 + 실패 포집</text>
+  <text x="761" y="708" font-size="11.5" fill="#8C8C8C">청구항 후보 E · 모델 호출 0회</text>
+
+  <!-- 읽는 순서 안내 (우측 하단 활용) -->
+  <rect x="1058" y="598" width="332" height="120" rx="10" fill="#F2F6FC" stroke="#8FAADC" stroke-width="2"/>
+  <text x="1082" y="630" font-size="14" font-weight="bold" fill="#1F3864">발표 활용 — 읽는 순서</text>
+  <text x="1082" y="660" font-size="12" fill="#595959">① 01로 전체 흐름 설명</text>
+  <text x="1082" y="684" font-size="12" fill="#595959">② 질문 나온 단계의 확대경 02~05</text>
+  <text x="1082" y="708" font-size="12" fill="#595959">③ 심화 06 · 오프라인 07</text>
+
+  <!-- 푸터 -->
+  <rect x="50" y="742" width="1340" height="44" rx="10" fill="#1F3864"/>
+  <text x="720" y="770" text-anchor="middle" font-size="14.5" font-weight="bold" fill="#FFFFFF">모든 도식의 파일·함수·라인 번호는 실제 저장소 코드에서 추출 — 7장 전체가 하나의 실체 증명 세트다</text>
+</svg>

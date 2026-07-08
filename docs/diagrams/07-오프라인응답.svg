@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="810" fill="#FFFFFF"/>
+
+  <!-- 헤더 -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="26" font-weight="bold" fill="#FFFFFF">7</text>
+  <text x="106" y="54" font-size="28" font-weight="bold" fill="#1F3864">오프라인 응답 — 모델이 꺼져 있어도 어시스턴트는 동작한다</text>
+  <text x="106" y="86" font-size="15" fill="#595959">청구항 후보 E: sLLM 미연결을 장애가 아니라 정상 동작 모드로 전환 + 실패 사례는 로컬에만 포집 (네트워크 0)</text>
+
+  <!-- 관계 배지 -->
+  <rect x="1040" y="26" width="350" height="60" rx="8" fill="#FFF9EC" stroke="#C55A11" stroke-width="1.5"/>
+  <text x="1215" y="51" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">🔗 01의 확대가 아닌 병렬 경로 —</text>
+  <text x="1215" y="73" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">서버가 죽으면 이 모드로 갈아탄다</text>
+
+  <line x1="50" y1="116" x2="1390" y2="116" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- STEP 1: 헬스체크 -->
+  <rect x="50" y="150" width="310" height="210" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="272" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
+  <text x="311" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
+  <text x="72" y="198" font-size="16" font-weight="bold" fill="#1F3864">① 사전 헬스체크</text>
+  <text x="72" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/providers/ChatViewProvider.ts</text>
+  <text x="72" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">checkHealth() + _healthCache L163</text>
+  <text x="72" y="278" font-size="12.5" fill="#595959">LLM 서버 가용성을 사전 판정</text>
+  <text x="72" y="300" font-size="12.5" fill="#595959">(10초 캐시) — 미가용이면 모델</text>
+  <text x="72" y="322" font-size="12.5" fill="#595959">경로 전체를 선차단</text>
+  <text x="72" y="346" font-size="12" font-weight="bold" fill="#2E5395">→ 무의미한 재시도 데드엔드 제거</text>
+  <line x1="360" y1="255" x2="388" y2="255" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 2: 의도 분류 -->
+  <rect x="395" y="150" width="310" height="210" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="617" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
+  <text x="656" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
+  <text x="417" y="198" font-size="16" font-weight="bold" fill="#1F3864">② 의도 분류 — 모델 없이</text>
+  <text x="417" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/IntentSignals.ts</text>
+  <text x="417" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">classifyOfflineIntent() L194</text>
+  <text x="417" y="278" font-size="12.5" fill="#595959">정규식·신호 기반으로 질문·</text>
+  <text x="417" y="300" font-size="12.5" fill="#595959">잡담·수정요청을 그룹핑</text>
+  <text x="417" y="322" font-size="12.5" fill="#595959">(IntentResult + 확신 강도)</text>
+  <line x1="705" y1="255" x2="733" y2="255" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 3: 의미검색 -->
+  <rect x="740" y="150" width="310" height="210" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="962" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
+  <text x="1001" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
+  <text x="762" y="198" font-size="16" font-weight="bold" fill="#1F3864">③ 로컬 지식 의미검색</text>
+  <text x="762" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/OfflineKnowledgeRetriever.ts</text>
+  <text x="762" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">OfflineKnowledgeRetriever L159</text>
+  <text x="762" y="278" font-size="12.5" fill="#595959">로컬 지식문서(knowledge/*.md)를</text>
+  <text x="762" y="300" font-size="12.5" fill="#595959">의미+키워드 하이브리드 랭킹 —</text>
+  <text x="762" y="322" font-size="12.5" fill="#595959">온라인 검색기와 분리된 전용 설계</text>
+  <line x1="1050" y1="255" x2="1078" y2="255" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+
+  <!-- STEP 4: 카드 렌더 + 확신 게이트 -->
+  <rect x="1085" y="150" width="305" height="210" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <rect x="1267" y="160" width="110" height="26" rx="13" fill="#2E7D32"/>
+  <text x="1322" y="178" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#FFFFFF">모델 호출 0회</text>
+  <text x="1107" y="198" font-size="16" font-weight="bold" fill="#2E7D32">④ 카드 렌더+확신 게이트</text>
+  <text x="1107" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/OfflineResponder.ts</text>
+  <text x="1107" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E7D32">respond() L80</text>
+  <text x="1107" y="278" font-size="12.5" fill="#595959">매칭 문서를 종류별 카드로 렌더</text>
+  <text x="1107" y="300" font-size="12.5" fill="#595959">확신 없으면 폴백 안내(FALLBACK_HINT)</text>
+  <text x="1107" y="322" font-size="12.5" fill="#595959">규약 카드(06 도식)도 재사용 — L102</text>
+
+  <!-- 경로 전체 무모델 강조 -->
+  <text x="720" y="390" text-anchor="middle" font-size="14" font-weight="bold" fill="#2E7D32">↑ 이 경로 전체에서 sLLM 호출 0회 — Scaffold 사용 가이드를 모델 없이 채팅창에 제공한다</text>
+
+  <!-- 실패 포집 밴드 -->
+  <rect x="50" y="412" width="1340" height="182" rx="10" fill="#FBFCFE" stroke="#8FAADC" stroke-width="2"/>
+  <text x="78" y="444" font-size="15" font-weight="bold" fill="#1F3864">＋ 실패 포집 — 개선 플라이휠의 연료 (텔레메트리 아님)</text>
+  <text x="560" y="444" font-family="Consolas, monospace" font-size="11.5" fill="#7A8CA8">src/ai/RegionCaptureRecorder.ts · 배선: _captureRegionCase (ChatViewProvider.ts L1016)</text>
+
+  <rect x="78" y="462" width="410" height="112" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
+  <text x="100" y="492" font-size="13.5" font-weight="bold" fill="#1F3864">① 포집 여부 판정</text>
+  <text x="100" y="516" font-family="Consolas, monospace" font-size="11.5" fill="#2E5395">shouldCapture() L131</text>
+  <text x="100" y="540" font-size="12" fill="#595959">기본 OFF — 설정으로 옵트인해야 동작.</text>
+  <text x="100" y="560" font-size="12" fill="#595959">실패(fallback·error) 사례만 대상</text>
+
+  <rect x="515" y="462" width="410" height="112" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
+  <text x="537" y="492" font-size="13.5" font-weight="bold" fill="#1F3864">② 민감정보 익명화 3단계</text>
+  <text x="537" y="516" font-family="Consolas, monospace" font-size="11.5" fill="#2E5395">CaptureRedaction L21 · skeletonizeSource() L83</text>
+  <text x="537" y="540" font-size="12" fill="#595959">full / skeleton / meta 선택 —</text>
+  <text x="537" y="560" font-size="12" fill="#595959">코드 원문을 제거한 뼈대만 남길 수 있음</text>
+
+  <rect x="952" y="462" width="410" height="112" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
+  <text x="974" y="492" font-size="13.5" font-weight="bold" fill="#1F3864">③ 로컬 JSONL 저장</text>
+  <text x="974" y="516" font-family="Consolas, monospace" font-size="11.5" fill="#2E5395">serializeCaptureLine() L123</text>
+  <text x="974" y="540" font-size="12" fill="#595959">파일로만 기록 — 네트워크 전송 0.</text>
+  <text x="974" y="560" font-size="12" fill="#595959">포집 ≠ 반출 (반출은 별도 수동 절차)</text>
+
+  <!-- 요약 배너 -->
+  <rect x="50" y="616" width="1340" height="54" rx="10" fill="#1F3864"/>
+  <text x="720" y="650" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#FFFFFF">sLLM 미연결은 장애가 아니라 정상 동작 모드 — 온라인(01 파이프라인) ↔ 오프라인(이 경로)의 무중단 전환이 종속항 핵심</text>
+
+  <!-- 실체 확인 푸터 -->
+  <rect x="50" y="686" width="1340" height="96" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="78" y="714" font-size="15" font-weight="bold" fill="#2E7D32">실체 확인</text>
+  <text x="78" y="738" font-size="13" fill="#333333">· 전부 실존: checkHealth·_healthCache (ChatViewProvider.ts L163) · classifyOfflineIntent (IntentSignals.ts L194) · OfflineKnowledgeRetriever (L159) · OfflineResponder.respond (L80) · RegionCaptureRecorder.ts</text>
+  <text x="78" y="762" font-size="13" fill="#333333">· 자동 테스트: test:offline-intent (66건) · test:knowledge-routing · test:region-capture (16건) — 포집 기본 OFF · 네트워크 0 (폐쇄망 안전 설계)</text>
+</svg>
