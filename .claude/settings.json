@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(pip show python-pptx)",
+      "Bash(mkdir -p /c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad/pptx)",
+      "Read(//c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad/**)",
+      "Bash(unzip -o -q \"/c/redsky/work/vscode-extension/axiom-ai-vsix/docs/Axiom-AI-특허출원-미팅자료.pptx\" -d extracted)",
+      "Bash(ls extracted/ppt/slides/)",
+      "Bash(SCRATCH=\"/c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad\" *)",
+      "Read(//c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad/pptx/extracted/**)"
+    ]
+  }
+}
