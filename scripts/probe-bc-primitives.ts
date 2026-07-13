@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { extractControlInventory } from '../src/ai/decompose/RegionIntent';
-import { applyReplaceBlocks } from '../src/ai/StructuralAnchor';
+import { applyReplaceBlocks } from '../src/ai/apply/StructuralAnchor';
 
 const source = fs.readFileSync(path.resolve(process.cwd(), 'scripts', 'eval-fixtures', 'EmployeeListPage.tsx'), 'utf-8');
 let ok = true;

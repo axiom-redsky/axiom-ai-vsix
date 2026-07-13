@@ -6,7 +6,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeAnchors, applyStructuralEdit, type StructuralEdit } from '../src/ai/StructuralAnchor';
+import { computeAnchors, applyStructuralEdit, type StructuralEdit } from '../src/ai/apply/StructuralAnchor';
 
 const PROJECT = 'C:/redsky/work/react/peoplify_react/react-app-peoplify';
 const EXAMPLE = path.join(PROJECT, 'src/domains/example');

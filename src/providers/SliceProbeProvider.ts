@@ -11,7 +11,7 @@ import {
   matchedApiPaths,
   formatExactPathDirective,
 } from '../ai/decompose/SectionExtractor';
-import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
+import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/apply/StructuralAnchor';
 import { locateEditRegion, firstJsxTag } from '../ai/locate/RegionEdit';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import { LlmService } from '../ai/LlmService';

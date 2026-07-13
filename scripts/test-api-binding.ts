@@ -18,7 +18,7 @@ import {
   removeTableColumns,
 } from '../src/ai/ApiBindingRecipe';
 import { extractApiPaths } from '../src/ai/decompose/SectionExtractor';
-import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
+import { applyStructuralEdit } from '../src/ai/apply/StructuralAnchor';
 
 let pass = 0;
 let fail = 0;

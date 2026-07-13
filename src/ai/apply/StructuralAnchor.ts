@@ -9,7 +9,7 @@
  * 외부 의존성(타입스크립트 컴파일러 등) 없이 splitTsSections + 중괄호 깊이 추적만 사용한다.
  * (폐쇄망 환경 의존성 0 유지)
  */
-import { splitTsSections, countDelimiters, stripTrailingLineComment, type CodeSection } from './decompose/CodeSectionExtractor';
+import { splitTsSections, countDelimiters, stripTrailingLineComment, type CodeSection } from '../decompose/CodeSectionExtractor';
 
 /**
  * 훅 호출 패턴: useApi / useState / useEffect ...

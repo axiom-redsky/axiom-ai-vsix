@@ -15,7 +15,7 @@
  * 괄호 없는 return 등 비표준 형태면 null/ok=false 를 돌려 호출부가 일반 오프라인 응답으로 폴백한다.
  */
 import { splitTsSections } from './decompose/CodeSectionExtractor';
-import { findUnresolvedJsxComponents } from './StructuralAnchor';
+import { findUnresolvedJsxComponents } from './apply/StructuralAnchor';
 
 /** 컴포넌트 메인 `return ( … )` 블록의 안쪽 JSX(라인 단위 splice 단위). */
 export interface ReturnJsxBlock {

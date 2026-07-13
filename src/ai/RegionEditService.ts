@@ -28,7 +28,7 @@ import {
   type StructuralEdit,
   type ImportRequest,
   type ReplaceBlock,
-} from './StructuralAnchor';
+} from './apply/StructuralAnchor';
 
 export interface RegionEditOutcome {
   /** 'applied': finalText 사용 / 'fallback': 기존 full 경로로 / 'error': 모델 호출 실패 */

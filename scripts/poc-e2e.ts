@@ -7,7 +7,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { applyStructuralEdit, type ImportRequest, type StructuralEdit } from '../src/ai/StructuralAnchor';
+import { applyStructuralEdit, type ImportRequest, type StructuralEdit } from '../src/ai/apply/StructuralAnchor';
 
 const EXAMPLE = 'C:/redsky/work/react/peoplify_react/react-app-peoplify/src/domains/example';
 

@@ -22,7 +22,7 @@
 import { generateTypeFromJson } from './JsonTypeGenerator';
 import { splitIntoSections, containsExactApiPath } from './decompose/SectionExtractor';
 import { splitTsSections } from './decompose/CodeSectionExtractor';
-import type { ImportRequest } from './StructuralAnchor';
+import type { ImportRequest } from './apply/StructuralAnchor';
 
 /** 테이블 한 컬럼 — 헤더 라벨과 그 셀이 읽는 행 필드(없으면 null: 액션 버튼 등). */
 export interface ITableColumn {

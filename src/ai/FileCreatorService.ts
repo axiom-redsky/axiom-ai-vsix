@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { splitTsSections } from './decompose/CodeSectionExtractor';
-import type { StructuralEdit } from './StructuralAnchor';
+import type { StructuralEdit } from './apply/StructuralAnchor';
 
 /**
  * 한 응답 안에 들어가는 patch 단위. 모델이 출력한 `<patch><search>...</search><replace>...</replace></patch>`

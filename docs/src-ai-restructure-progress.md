@@ -4,6 +4,12 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 >
 > 최종 갱신: 2026-07-13
+>
+> **▶ 재개 지점: 6단계 pipeline/ 이관부터.** 1~5단계(intent·decompose·locate·contracts·apply) 완료.
+> 5단계는 리로드 실사용 확인 후 커밋 필요할 수 있음(§4 표의 미커밋 표시 확인).
+> 6·7단계는 사전 조사까지 완료 — 각 체크리스트의 소비자 지도를 그대로 쓰면 되고,
+> 절차는 §6 공통 절차, 함정은 §3 원칙 참고. 게이트 통과 기준: 이전 단계들과 동일
+> (tsc 0 · compile OK · 해당 테스트 전부 green · eval 베이스라인 회귀 0).
 
 ---
 
@@ -64,8 +70,8 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 | 2 | **decompose/ 이관** (6파일 + 소비자 20곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
 | 3 | **locate/ 이관** (RegionEdit 1파일 + 소비자 11곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
 | 4 | **contracts/ 이관** (3파일+generated/ + 소비자 8곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 5 | apply/ 이관 | ⬜ 다음 차례 |
-| 6 | pipeline/ 이관 | ⬜ |
+| 5 | **apply/ 이관** (2파일 + 소비자 12곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
+| 6 | pipeline/ 이관 | ⬜ 다음 차례 |
 | 7 | retrieval/ 이관 | ⬜ |
 | 8 | (2단계) 거대 파일 분할 — ScaffoldContextBuilder(분해/설명서), StructuralAnchor(게이트/적용), RegionEdit(locate 속 checkRegionRootTag→apply) | ⬜ 전 폴더 이관 후 |
 
@@ -146,31 +152,58 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] contracts/README 갱신 → 이 문서 갱신
 - [ ] 리로드 실사용 확인 → 커밋
 
-### ⬜ 5단계 — apply/
+### 🔶 5단계 — apply/ (작업 완료, 리로드 확인·커밋 대기)
 
-- [ ] 소비자 전수 조사: StructuralAnchor, DiffUtil
-- [ ] `git mv` → src/ai/apply/ (91KB 통째 이동 — 분할은 8단계)
-- [ ] import 경로 수정
-- [ ] 게이트: tsc → compile → `test:region-edit` → `test:line-edits` → `test:react-rules` → `test:patch-grounded` → `eval:e2e`
-- [ ] apply/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+- [x] 소비자 전수 조사: StructuralAnchor, DiffUtil — src 6곳(ChatViewProvider·SliceProbeProvider·ApiBindingRecipe·FileCreatorService·OfflineTransplant·RegionEditService) + scripts 6곳(test-region-edit·test-react-rules·test-api-binding·poc-anchor·poc-e2e·probe-bc-primitives)
+- [x] `git mv` 2파일 → src/ai/apply/ (91KB 통째 이동 — 분할은 8단계)
+- [x] import 경로 수정 (상위 참조는 StructuralAnchor→`../decompose/CodeSectionExtractor` 1건뿐, DiffUtil 자립)
+- [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:line-edits 15/0 · test:react-rules 39/0 · test:patch-grounded 30/0 · test:api-binding 69/0 · eval:e2e **3단계 시점 출력과 diff 0** (기존 이슈 외 변화 없음)
+- [x] apply/README 갱신 → 이 문서 갱신
+- [ ] 리로드 실사용 확인 → 커밋
 
-### ⬜ 6단계 — pipeline/
+### ⬜ 6단계 — pipeline/ (2026-07-13 사전 조사 완료 — 아래 지도 그대로 사용 가능)
 
-- [ ] 소비자 전수 조사: RegionEditService, FileCreatorService, LlmService, RegionCaptureRecorder
-- [ ] LlmService 포함 여부 결정 (인프라 성격 — llm/ 별도 분리안과 비교, 결정을 README에 기록)
-- [ ] `git mv` → src/ai/pipeline/
-- [ ] import 경로 수정 (ChatViewProvider 등 providers 소비 다수 예상)
-- [ ] 게이트: tsc → compile → `test:region-edit` → `test:api-binding` → `test:region-capture` → `eval:e2e`
+- [x] 소비자 전수 조사 (2026-07-13 조사 결과):
+  - **src 5곳**: ChatViewProvider(4파일 전부 소비), ChatPanelProvider(LlmService),
+    SliceProbeProvider(LlmService), RegionIoProbeProvider(RegionEditService·LlmService),
+    **src/spec/SpecGenerator.ts**(LlmService — 처음 등장하는 영역, 경로 `../ai/LlmService`)
+  - **scripts 12곳**: test-region-edit, test-line-edits, test-react-rules, test-patch-grounded,
+    test-region-capture, eval-region, eval-e2e, eval-edit-live, eval-bigfile, eval-disambig,
+    probe-crosscut, probe-eval-real
+  - ⚠ 이 단계는 반대 방향 참조가 많음: 옮기는 파일(오케스트레이터)이 decompose/·locate/·contracts/·apply/를
+    다수 import → 이동 후 `'./X'`→`'../X'` 일괄 치환 필요 (tsc가 전수 검증)
+  - ⚠ LlmService가 `./FallbackStubService`(retrieval 후보) 참조 → 이동 후 `../FallbackStubService`,
+    7단계에서 `../retrieval/FallbackStubService`로 재수정됨 (두 번 손대는 게 정상)
+- [ ] LlmService 포함 여부 결정 — **권고: 일단 pipeline/에 포함**하고 README에 "추후 llm/ 분리 검토" 기록
+  (폴더 추가 논의로 이관을 막지 말 것, 나중에 이동 쉬움)
+- [ ] `git mv` 4파일 → src/ai/pipeline/
+- [ ] import 경로 수정 (소비자 17곳 + 옮긴 파일들의 안→밖 참조)
+- [ ] 게이트: tsc → compile → `test:region-edit` → `test:api-binding` → `test:region-capture` → `test:line-edits` → `test:patch-grounded` → `test:react-rules` → eval:e2e 출력 diff 비교(§주의: 기존 10건 불일치는 별도 이슈)
 - [ ] pipeline/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
 
-### ⬜ 7단계 — retrieval/
+### ⬜ 7단계 — retrieval/ (2026-07-13 사전 조사 완료 — 아래 지도 그대로 사용 가능)
 
-- [ ] 소비자 전수 조사: OfflineKnowledgeRetriever, KnowledgeDoc, RagRetriever, KeywordRetriever, HybridRagEngine, EmbeddingService, VectorMath, ExternalCorpusLoader, FileContextRetriever, OfflineResponder, OfflineTransplant, FallbackStubService
-- [ ] `git mv` → src/ai/retrieval/
-- [ ] ⚠ **intent/ 쪽 참조 재수정**: intent/IntentEmbeddingClassifier.ts·intent/IntentExampleStore.ts의 `../EmbeddingService`·`../VectorMath` → `../retrieval/...`
+- [x] 소비자 전수 조사 (2026-07-13 조사 결과): 12파일(OfflineKnowledgeRetriever, KnowledgeDoc, RagRetriever,
+  KeywordRetriever, HybridRagEngine, EmbeddingService, VectorMath, ExternalCorpusLoader,
+  FileContextRetriever, OfflineResponder, OfflineTransplant, FallbackStubService)은
+  **서로끼리 참조하는 닫힌 클러스터** — 내부 경로 무수정. 외부 소비자:
+  - **src/extension.ts** (처음 등장 — `./ai/EmbeddingService` initEmbeddingPipeline)
+  - ChatViewProvider (OfflineKnowledgeRetriever·OfflineResponder·OfflineTransplant)
+  - ScaffoldContextBuilder (HybridRagEngine·ExternalCorpusLoader·OfflineKnowledgeRetriever)
+  - LlmService (FallbackStubService — 6단계 후 위치 기준으로 수정)
+  - intent/ 2파일 (`../EmbeddingService`·`../VectorMath` → `../retrieval/...` 재수정)
+  - scripts 4곳: test-knowledge-routing, test-offline-answer, test-offline-intent, test-offline-transplant
+- [ ] `git mv` 12파일 → src/ai/retrieval/
+- [ ] ⚠ intent/ 쪽 재수정 + LlmService(당시 위치)의 FallbackStubService 경로 재수정
 - [ ] import 경로 수정 (나머지 소비자)
-- [ ] 게이트: tsc → compile → `test:knowledge-routing` → `test:offline-answer` → `test:offline-intent` → `test:offline-transplant`
+- [ ] 게이트: tsc → compile → `test:knowledge-routing` → `test:offline-answer` → `test:offline-intent` → `test:offline-transplant` → `test:region-edit`(ScaffoldContextBuilder 경유 회귀 확인)
 - [ ] retrieval/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+
+### 참고 — 6·7단계 후에도 src/ai/ 직하에 남는 파일 (미분류, 의도된 잔류)
+
+ScaffoldContextBuilder.ts(84KB, 분해+설명서 걸침 → 8단계 분할 대상), ApiBindingRecipe.ts(조립 층 —
+compose-binding 트랙), JsonTypeGenerator.ts, PackageVersionScanner.ts, config.ts, types.ts, templates/.
+이들의 소속은 8단계(분할) 시점 또는 필요해질 때 결정한다.
 
 ### ⬜ 8단계 — (2단계 작업) 거대 파일 분할 — 전 폴더 이관 완료 후 별도 계획 수립
 

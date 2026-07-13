@@ -8,7 +8,7 @@ import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
 import { restoreSlicedStubs, splitTsSections } from '../ai/decompose/CodeSectionExtractor';
-import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, ensureUiComponentImports, type ImportRequest } from '../ai/StructuralAnchor';
+import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, ensureUiComponentImports, type ImportRequest } from '../ai/apply/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/RegionCaptureRecorder';
 import { crossFileSuppressionReason } from '../ai/intent/CrossFileTargeting';
@@ -30,7 +30,7 @@ import {
   type IFieldRename,
 } from '../ai/ApiBindingRecipe';
 import { impliedControlTags } from '../ai/decompose/RegionIntent';
-import { computeDiffHunks } from '../ai/DiffUtil';
+import { computeDiffHunks } from '../ai/apply/DiffUtil';
 import {
   splitIntoSections,
   scoreSections,

@@ -9,8 +9,12 @@ sLLM 응답을 **검증(게이트)**하고, 통과한 조각을 대상 위치에
   파괴적 누락(태그·라인 급감), closer-dropped, tsc 검증-교정 루프(experimental.regionVerify)
 - 적용 예: import hoist, import provenance 교정, in-place 훅 파라미터 교체
 
-## 이관 후보 (현재 src/ai/ 직하)
+## 구성 파일 (2026-07-13 이관 완료)
 
-- `StructuralAnchor.ts` — applyStructuralEdit, 게이트 일체 (91KB, 장기적으로 게이트/적용 분할 검토)
-- `DiffUtil.ts` — diff 계산 유틸
-- RegionEdit.ts의 checkRegionRootTag — locate/에 섞여 있음 (2단계 이관 대상)
+- `StructuralAnchor.ts` — applyStructuralEdit, 게이트 일체 (91KB, 장기적으로 게이트/적용 분할 검토). 외부 참조: `../decompose/CodeSectionExtractor` 1건
+- `DiffUtil.ts` — diff 계산 유틸 (자립)
+
+## 아직 여기 없는 것 (2단계 이관 대상)
+
+- locate/RegionEdit.ts의 checkRegionRootTag — 게이트인데 locate/에 섞여 있음
+- StructuralAnchor 내부의 게이트/적용 분할 — 전 폴더 이관 후 별도 계획

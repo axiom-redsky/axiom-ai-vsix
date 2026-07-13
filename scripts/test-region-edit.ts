@@ -6,10 +6,10 @@
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/locate/RegionEdit';
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/RegionEditService';
-import type { ImportRequest } from '../src/ai/StructuralAnchor';
+import type { ImportRequest } from '../src/ai/apply/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/contracts/ScaffoldContracts';
 import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/contracts/ComponentPropsIndex';
-import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
+import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/apply/StructuralAnchor';
 import { crossFileSuppressionReason } from '../src/ai/intent/CrossFileTargeting';
 
 const SRC = [

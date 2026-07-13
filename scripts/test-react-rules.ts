@@ -7,7 +7,7 @@
  * 그 줄의 brace depth 가 0이 아니어서 종전 라인 단위 검사가 통째로 놓쳤다.
  */
 import { FileCreatorService } from '../src/ai/FileCreatorService';
-import { findDuplicateDeclarations, ensureUiComponentImports } from '../src/ai/StructuralAnchor';
+import { findDuplicateDeclarations, ensureUiComponentImports } from '../src/ai/apply/StructuralAnchor';
 
 let passed = 0;
 let failed = 0;
