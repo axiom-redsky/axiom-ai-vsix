@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { runHybridRegionEdit } from '../src/ai/RegionEditService';
-import { locateEditRegion } from '../src/ai/RegionEdit';
+import { locateEditRegion } from '../src/ai/locate/RegionEdit';
 
 const source = fs.readFileSync(path.resolve(process.cwd(), 'scripts', 'eval-fixtures', 'EmployeeListPage.tsx'), 'utf-8');
 const query = '부서·재직상태·투입상태 select로 아래 테이블을 필터링';

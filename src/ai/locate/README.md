@@ -9,7 +9,11 @@
 - 산출물: LocatedRegion (시작·끝 라인, 루트 태그, 후보 목록)
 - 모호하면 결정하지 않는다 — 후보를 모델 객관식(disambiguation)으로 위임
 
-## 이관 후보 (현재 src/ai/ 직하)
+## 구성 파일 (2026-07-13 이관 완료)
 
 - `RegionEdit.ts` — locateEditRegion, snapToElement, firstJsxTag (핵심 스냅 사다리)
-  - ⚠ checkRegionRootTag(게이트)도 같이 들어 있음 → 장기적으로 apply/로 분리 검토
+  - 외부 참조: `../decompose/` 3건 (CodeSectionExtractor, SectionExtractor, RegionIntent)
+
+## 아직 여기 없는 것 (2단계 이관 대상)
+
+- ⚠ RegionEdit.ts 안의 checkRegionRootTag는 **게이트**(sLLM 후 검증) → 장기적으로 apply/로 분리 검토

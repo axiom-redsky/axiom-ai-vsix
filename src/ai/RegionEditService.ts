@@ -12,7 +12,7 @@
  *  - 삽입 조각의 타입/훅이 최종 파일에서 해소 안 됨(의존성 폐쇄 실패) → fallback.
  *  즉 "조금이라도 의심스러우면 full" — 조용한 파일 파손을 만들지 않는다.
  */
-import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './RegionEdit';
+import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './locate/RegionEdit';
 import { impliedControlTags, countTag } from './decompose/RegionIntent';
 import { buildContractSection, componentReplacementTargets } from './ScaffoldContracts';
 import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';

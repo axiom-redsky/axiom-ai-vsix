@@ -4,7 +4,7 @@
  *  - 안전 게이트 4종: anchor-missing / anchor-comment / anchor-import / snap-failed + ok.
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
-import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/RegionEdit';
+import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/locate/RegionEdit';
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/ScaffoldContracts';

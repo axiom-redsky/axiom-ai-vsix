@@ -19,7 +19,7 @@
  *
  * 외부 의존성 0 — locateEditRegion + tokenizeQuery + 문자열 분석만.
  */
-import { locateEditRegion } from '../RegionEdit';
+import { locateEditRegion } from '../locate/RegionEdit';
 import { splitTsSections } from './CodeSectionExtractor';
 import { CONTAINER_TAGS, EDIT_INTENT_RE, countTag, firstJsxTag, impliedControlTags, mappedListVars } from './RegionIntent';
 

@@ -12,7 +12,7 @@ import {
   formatExactPathDirective,
 } from '../ai/decompose/SectionExtractor';
 import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
-import { locateEditRegion, firstJsxTag } from '../ai/RegionEdit';
+import { locateEditRegion, firstJsxTag } from '../ai/locate/RegionEdit';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import { LlmService } from '../ai/LlmService';
 import type { ChatMessage } from '../ai/types';

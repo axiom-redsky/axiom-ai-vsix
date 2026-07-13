@@ -13,7 +13,7 @@
 - `SectionExtractor.ts` — md·쿼리 섹션 분해, tokenizeQuery(복합 도메인어 어근 분해), API 경로 추출
 - `CodeSectionExtractor.ts` — TS 파일 섹션 분해(splitTsSections), 관련 슬라이스 추출
 - `FunctionSpotlight.ts` — 관련 함수만 조명
-- `RegionInputQuality.ts` — 분해 산출물(입력) 품질 측정 (⚠ 상위 `../RegionEdit` 참조 — locate/ 이관 시 경로 재수정 필요)
+- `RegionInputQuality.ts` — 분해 산출물(입력) 품질 측정 (외부 참조: `../locate/RegionEdit`)
 - `RegionIntent.ts` — 영역편집 쿼리 파싱·토큰화, 컨트롤 태그 함의
 - `EditorContextCollector.ts` — 에디터 상태(현재 파일·선택) 수집
 

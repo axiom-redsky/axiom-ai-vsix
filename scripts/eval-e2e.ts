@@ -27,7 +27,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
 import { runHybridRegionEdit } from '../src/ai/RegionEditService';
-import { locateEditRegion } from '../src/ai/RegionEdit';
+import { locateEditRegion } from '../src/ai/locate/RegionEdit';
 import { AI_DEFAULTS } from '../src/ai/config';
 import { CASES, FIXTURES, type EvalCase } from './eval-region-corpus';
 

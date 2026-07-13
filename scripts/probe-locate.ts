@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { tokenizeQuery } from '../src/ai/decompose/SectionExtractor';
-import { locateEditRegion, snapToElement, firstJsxTag } from '../src/ai/RegionEdit';
+import { locateEditRegion, snapToElement, firstJsxTag } from '../src/ai/locate/RegionEdit';
 
 interface LocateResult {
   lines: string[];

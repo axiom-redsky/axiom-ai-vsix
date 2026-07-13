@@ -62,8 +62,8 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 | 0 | 폴더 7개 생성 + 각 README.md + src/ai/README.md(전체 지도) | ✅ 완료 (2026-07-13) |
 | 1 | **intent/ 이관** (8파일 + 소비자 9곳) | ✅ 완료 (2026-07-13, **미커밋 — 실사용 확인 대기**) |
 | 2 | **decompose/ 이관** (6파일 + 소비자 20곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 3 | locate/ 이관 | ⬜ 다음 차례 |
-| 4 | contracts/ 이관 | ⬜ |
+| 3 | **locate/ 이관** (RegionEdit 1파일 + 소비자 11곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
+| 4 | contracts/ 이관 | ⬜ 다음 차례 |
 | 5 | apply/ 이관 | ⬜ |
 | 6 | pipeline/ 이관 | ⬜ |
 | 7 | retrieval/ 이관 | ⬜ |
@@ -121,14 +121,20 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] 이 문서 §4 표 + 이 체크리스트 갱신
 - [ ] 리로드 실사용 확인 → 커밋
 
-### ⬜ 3단계 — locate/
+### 🔶 3단계 — locate/ (작업 완료, 리로드 확인·커밋 대기)
 
-- [ ] 소비자 전수 조사: RegionEdit.ts (소비자 많음 — RegionEditService·scripts 다수 예상, 전수 필수)
-- [ ] `git mv` → src/ai/locate/
-- [ ] import 경로 수정 (⚠ decompose/RegionInputQuality.ts의 `../RegionEdit` → `../locate/RegionEdit` 재수정 포함)
-- [ ] 게이트: tsc → compile → `test:region-edit` → `eval:region` → `eval:e2e` (replay) → `test:line-edits`
-- [ ] locate/README 갱신 (checkRegionRootTag가 게이트인데 여기 섞여 있음을 "부채"로 유지)
-- [ ] 이 문서 갱신 → 리로드 확인 → 커밋
+- [x] 소비자 전수 조사: RegionEdit.ts — src 4곳(RegionEditService·RegionIoProbeProvider·SliceProbeProvider·decompose/RegionInputQuality) + scripts 7곳(test-region-edit·eval-region·eval-e2e·eval-bigfile·eval-disambig·probe-locate·probe-eval-real)
+- [x] `git mv` → src/ai/locate/
+- [x] import 경로 수정 (decompose/RegionInputQuality의 `../RegionEdit`→`../locate/RegionEdit` 재수정 포함, RegionEdit 자신의 `./decompose/`→`../decompose/` 3건)
+- [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:line-edits 15/0 · eval:region 회귀 없음 · eval:e2e **이동 전후 출력 diff 0** (동일)
+- [x] locate/README 갱신 (checkRegionRootTag는 "아직 여기 없는 것" 부채로 기록)
+- [x] 이 문서 갱신
+- [ ] 리로드 실사용 확인 → 커밋
+
+> ⚠ **별도 이슈 발견(이 트랙과 무관)**: eval:e2e가 이 PC의 로컬 녹화 기준으로 기존부터 10건 불일치
+> + cond-leave-date TSX 파싱 깨짐 상태. 이동 전후 diff 0으로 이번 작업 원인 아님을 확인함.
+> 원인 추정 = 오래된 로컬 녹화 vs 최근 코드 변경(다른 트랙)의 어긋남. 서버 연결 시
+> `eval:e2e:record` 재녹화 또는 기대값 재점검(`eval:e2e:bless`) 필요.
 
 ### ⬜ 4단계 — contracts/
 

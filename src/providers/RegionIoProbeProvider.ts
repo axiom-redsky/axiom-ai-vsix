@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { locateEditRegion } from '../ai/RegionEdit';
+import { locateEditRegion } from '../ai/locate/RegionEdit';
 import { buildHybridPrompt } from '../ai/RegionEditService';
 import { analyzeInputQuality } from '../ai/decompose/RegionInputQuality';
 import { splitIntoSections, scoreSections, selectByBudget, extractApiPaths, matchedApiPaths, formatExactPathDirective, tokenizeQuery } from '../ai/decompose/SectionExtractor';
