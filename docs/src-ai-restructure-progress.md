@@ -94,7 +94,85 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 ([AXIOM_INTENT_ROUTING_REDESIGN.md](../AXIOM_INTENT_ROUTING_REDESIGN.md), S2~)에서 단일 라우터로 추출한다.
 두 트랙을 섞지 말 것.
 
-## 5. 다음 작업 절차 (decompose/부터 반복 적용)
+## 5. 단계별 체크리스트
+
+> 작업 시 여기 체크박스를 직접 갱신하고 커밋한다. 이것이 PC 간 진행 상태의 진실이다.
+> 각 단계의 공통 절차는 §6 참고. 게이트 스크립트 이름은 package.json 기준 실재하는 것만 적었다.
+
+### ✅ 0단계 — 골격 (완료 2026-07-13)
+
+- [x] 폴더 7개 생성 + 각 README.md + src/ai/README.md 전체 지도
+- [x] 진행 문서(이 파일) 생성
+
+### ✅ 1단계 — intent/ (완료 2026-07-13, 커밋됨)
+
+- [x] 8파일 git mv + 소비자 9곳 경로 수정
+- [x] 게이트: tsc 0 · compile OK · test:offline-intent 66/0 · test:offline-answer 70/0 · test:region-edit 230/0
+- [x] intent/README "구성 파일"로 갱신
+- [x] 리로드 실사용 확인 후 커밋
+
+### ⬜ 2단계 — decompose/
+
+- [ ] 소비자 전수 조사: SectionExtractor, CodeSectionExtractor, FunctionSpotlight, RegionInputQuality, RegionIntent, EditorContextCollector (scripts/ 직접 import 여부 포함)
+- [ ] `git mv` 6파일 → src/ai/decompose/
+- [ ] import 경로 수정 (소비자 + 옮긴 파일의 상위 형제 참조 `./X`→`../X`)
+- [ ] 게이트: `tsc --noEmit` 0 → `npm run compile` → `test:region-edit` → `eval:region` (베이스라인 대비 회귀 0) → `eval:input`
+- [ ] decompose/README "구성 파일"로 갱신 (ScaffoldContextBuilder deps 추출부는 "아직 없는 것"에 유지)
+- [ ] 이 문서 §4 표 + 이 체크리스트 갱신
+- [ ] 리로드 실사용 확인 → 커밋
+
+### ⬜ 3단계 — locate/
+
+- [ ] 소비자 전수 조사: RegionEdit.ts (소비자 많음 — RegionEditService·scripts 다수 예상, 전수 필수)
+- [ ] `git mv` → src/ai/locate/
+- [ ] import 경로 수정
+- [ ] 게이트: tsc → compile → `test:region-edit` → `eval:region` → `eval:e2e` (replay) → `test:line-edits`
+- [ ] locate/README 갱신 (checkRegionRootTag가 게이트인데 여기 섞여 있음을 "부채"로 유지)
+- [ ] 이 문서 갱신 → 리로드 확인 → 커밋
+
+### ⬜ 4단계 — contracts/
+
+- [ ] 소비자 전수 조사: ScaffoldContracts, ComponentPropsIndex, promptBudget
+- [ ] **generated/ 폴더 이동 여부 결정**: `scripts/build-component-props.mjs`의 출력 경로 하드코딩 확인 후 함께 수정
+- [ ] `git mv` → src/ai/contracts/
+- [ ] import 경로 수정
+- [ ] 게이트: tsc → compile → `test:region-edit` → `test:api-binding` → `test:react-rules` → (generated 이동 시) `node scripts/build-component-props.mjs` 재실행이 새 경로에 쓰는지 확인
+- [ ] contracts/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+
+### ⬜ 5단계 — apply/
+
+- [ ] 소비자 전수 조사: StructuralAnchor, DiffUtil
+- [ ] `git mv` → src/ai/apply/ (91KB 통째 이동 — 분할은 8단계)
+- [ ] import 경로 수정
+- [ ] 게이트: tsc → compile → `test:region-edit` → `test:line-edits` → `test:react-rules` → `test:patch-grounded` → `eval:e2e`
+- [ ] apply/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+
+### ⬜ 6단계 — pipeline/
+
+- [ ] 소비자 전수 조사: RegionEditService, FileCreatorService, LlmService, RegionCaptureRecorder
+- [ ] LlmService 포함 여부 결정 (인프라 성격 — llm/ 별도 분리안과 비교, 결정을 README에 기록)
+- [ ] `git mv` → src/ai/pipeline/
+- [ ] import 경로 수정 (ChatViewProvider 등 providers 소비 다수 예상)
+- [ ] 게이트: tsc → compile → `test:region-edit` → `test:api-binding` → `test:region-capture` → `eval:e2e`
+- [ ] pipeline/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+
+### ⬜ 7단계 — retrieval/
+
+- [ ] 소비자 전수 조사: OfflineKnowledgeRetriever, KnowledgeDoc, RagRetriever, KeywordRetriever, HybridRagEngine, EmbeddingService, VectorMath, ExternalCorpusLoader, FileContextRetriever, OfflineResponder, OfflineTransplant, FallbackStubService
+- [ ] `git mv` → src/ai/retrieval/
+- [ ] ⚠ **intent/ 쪽 참조 재수정**: intent/IntentEmbeddingClassifier.ts·intent/IntentExampleStore.ts의 `../EmbeddingService`·`../VectorMath` → `../retrieval/...`
+- [ ] import 경로 수정 (나머지 소비자)
+- [ ] 게이트: tsc → compile → `test:knowledge-routing` → `test:offline-answer` → `test:offline-intent` → `test:offline-transplant`
+- [ ] retrieval/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+
+### ⬜ 8단계 — (2단계 작업) 거대 파일 분할 — 전 폴더 이관 완료 후 별도 계획 수립
+
+- [ ] ScaffoldContextBuilder: deps 추출부→decompose/, 프롬프트 조립·buildContractSection→contracts/
+- [ ] RegionEdit: checkRegionRootTag→apply/
+- [ ] StructuralAnchor: 게이트/적용 분리 검토
+- [ ] ChatViewProvider 인라인 라우팅 → intent/ 단일 라우터 (⚠ 이건 라우팅 재설계 트랙 S2~와 합류 — 별도 진행)
+
+## 6. 공통 작업 절차 (각 단계에서 반복 적용)
 
 각 폴더 이관은 아래 절차를 그대로 반복한다:
 
@@ -127,7 +205,7 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - **retrieval/**: EmbeddingService·VectorMath 이동 시 **intent/ 쪽 `../EmbeddingService` 참조가 다시 깨진다**
   (§4.1). intent/IntentEmbeddingClassifier.ts, intent/IntentExampleStore.ts 수정 필요.
 
-## 6. 관련 문서·메모리
+## 7. 관련 문서·메모리
 
 - 전체 지도: [src/ai/README.md](../src/ai/README.md) + 각 폴더 README.md
 - 흐름 도식: [docs/diagrams/](diagrams/) (00-도식지도 ~ 07-분해-로직)
