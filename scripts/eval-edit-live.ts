@@ -17,7 +17,7 @@
  * CORE_RULES_SNAPSHOT(동결 사본) + 순수 buildContractSection + 편집 포맷 지침으로 근사한다.
  */
 import * as ts from 'typescript';
-import { buildContractSection, contractsRequirePatchMode } from '../src/ai/ScaffoldContracts';
+import { buildContractSection, contractsRequirePatchMode } from '../src/ai/contracts/ScaffoldContracts';
 import { FileCreatorService } from '../src/ai/FileCreatorService';
 import { resolveModelConfig, callLlm } from './live-model-client';
 import {

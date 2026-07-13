@@ -14,7 +14,7 @@
  */
 import { locateEditRegion } from '../src/ai/locate/RegionEdit';
 import { buildHybridPrompt } from '../src/ai/RegionEditService';
-import { estimateTokens as estTokens, inputBudget, budgetUsagePct } from '../src/ai/promptBudget';
+import { estimateTokens as estTokens, inputBudget, budgetUsagePct } from '../src/ai/contracts/promptBudget';
 import { CASES, FIXTURES, type EvalCase } from './eval-region-corpus';
 
 /** 입력 예산(기본 32768 창 − 8192 출력예약 = 24576 입력토큰). estTokens는 보수적 chars/3(promptBudget). */

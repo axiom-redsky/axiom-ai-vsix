@@ -7,8 +7,8 @@
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/locate/RegionEdit';
 import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/RegionEditService';
 import type { ImportRequest } from '../src/ai/StructuralAnchor';
-import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/ScaffoldContracts';
-import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/ComponentPropsIndex';
+import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/contracts/ScaffoldContracts';
+import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/contracts/ComponentPropsIndex';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
 import { crossFileSuppressionReason } from '../src/ai/intent/CrossFileTargeting';
 

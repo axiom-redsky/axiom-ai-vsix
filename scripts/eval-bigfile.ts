@@ -19,7 +19,7 @@ import { generateLargeFile, type SectionManifest } from './synth-large-file';
 import { analyzeInputQuality } from '../src/ai/decompose/RegionInputQuality';
 import { locateEditRegion } from '../src/ai/locate/RegionEdit';
 import { classifyRegionDecline, buildHybridPrompt } from '../src/ai/RegionEditService';
-import { estimateTokens, inputBudget, budgetUsagePct } from '../src/ai/promptBudget';
+import { estimateTokens, inputBudget, budgetUsagePct } from '../src/ai/contracts/promptBudget';
 
 const { source, manifest, lineCount } = generateLargeFile();
 const sourceLines = source.split('\n');

@@ -10,8 +10,8 @@ import type { ContextBreakdown } from '../types/messages';
 import { extractRelevantTsSlice } from './decompose/CodeSectionExtractor';
 import { tokenizeQuery } from './decompose/SectionExtractor';
 import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
-import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
-import { buildContractSection, contractsRequirePatchMode, selectScaffoldContracts } from './ScaffoldContracts';
+import { buildComponentPropsSectionForRegion } from './contracts/ComponentPropsIndex';
+import { buildContractSection, contractsRequirePatchMode, selectScaffoldContracts } from './contracts/ScaffoldContracts';
 import type { IntentResult } from './intent/IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {

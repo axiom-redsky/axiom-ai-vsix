@@ -31,7 +31,7 @@ const SCAFFOLD =
   process.env.AXIOM_SCAFFOLD_SRC ||
   'C:/redsky/work/react/single_react_new_nicfirst/react-app-scaffold';
 
-const OUT_PATH = path.resolve(REPO_ROOT, 'src/ai/generated/componentPropsIndex.ts');
+const OUT_PATH = path.resolve(REPO_ROOT, 'src/ai/contracts/generated/componentPropsIndex.ts');
 
 /** scaffold 상대 대상 파일. 파일당 여러 컴포넌트를 export할 수 있다(Select/Card/…). */
 const TARGET_FILES = [

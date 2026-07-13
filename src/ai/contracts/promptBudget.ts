@@ -17,7 +17,7 @@
  * 컨텍스트 창은 입력+출력이 한 방을 나눠 쓴다(webview의 computeContextBudget과 동일한 원리). 분모는
  * 전체 창이 아니라 (contextWindow − 출력예약) = 모델이 답할 자리를 남긴 **실사용 입력 예산**이어야 한다.
  */
-import { AI_DEFAULTS } from './config';
+import { AI_DEFAULTS } from '../config';
 
 /** 토큰당 글자 수 — 혼합 한/영 보수적 추정(config와 동일 값). */
 export const CHARS_PER_TOKEN = AI_DEFAULTS.promptDiet.adaptiveBudget.charsPerToken;

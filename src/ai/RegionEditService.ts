@@ -14,9 +14,9 @@
  */
 import { locateEditRegion, checkRegionRootTag, type RegionCandidate } from './locate/RegionEdit';
 import { impliedControlTags, countTag } from './decompose/RegionIntent';
-import { buildContractSection, componentReplacementTargets } from './ScaffoldContracts';
-import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
-import { estimateTokens, inputBudget, budgetUsagePct } from './promptBudget';
+import { buildContractSection, componentReplacementTargets } from './contracts/ScaffoldContracts';
+import { buildComponentPropsSectionForRegion } from './contracts/ComponentPropsIndex';
+import { estimateTokens, inputBudget, budgetUsagePct } from './contracts/promptBudget';
 import {
   applyStructuralEdit,
   applyReplaceBlocks,

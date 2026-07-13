@@ -12,8 +12,8 @@ import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclaration
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/RegionCaptureRecorder';
 import { crossFileSuppressionReason } from '../ai/intent/CrossFileTargeting';
-import { buildContractSection } from '../ai/ScaffoldContracts';
-import { buildComponentOptionsReference, detectComponentsInText } from '../ai/ComponentPropsIndex';
+import { buildContractSection } from '../ai/contracts/ScaffoldContracts';
+import { buildComponentOptionsReference, detectComponentsInText } from '../ai/contracts/ComponentPropsIndex';
 import {
   findRowCollectionVar,
   findRowMapVar,

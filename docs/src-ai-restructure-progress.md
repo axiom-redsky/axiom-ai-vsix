@@ -63,8 +63,8 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 | 1 | **intent/ 이관** (8파일 + 소비자 9곳) | ✅ 완료 (2026-07-13, **미커밋 — 실사용 확인 대기**) |
 | 2 | **decompose/ 이관** (6파일 + 소비자 20곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
 | 3 | **locate/ 이관** (RegionEdit 1파일 + 소비자 11곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 4 | contracts/ 이관 | ⬜ 다음 차례 |
-| 5 | apply/ 이관 | ⬜ |
+| 4 | **contracts/ 이관** (3파일+generated/ + 소비자 8곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
+| 5 | apply/ 이관 | ⬜ 다음 차례 |
 | 6 | pipeline/ 이관 | ⬜ |
 | 7 | retrieval/ 이관 | ⬜ |
 | 8 | (2단계) 거대 파일 분할 — ScaffoldContextBuilder(분해/설명서), StructuralAnchor(게이트/적용), RegionEdit(locate 속 checkRegionRootTag→apply) | ⬜ 전 폴더 이관 후 |
@@ -136,14 +136,15 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 > 원인 추정 = 오래된 로컬 녹화 vs 최근 코드 변경(다른 트랙)의 어긋남. 서버 연결 시
 > `eval:e2e:record` 재녹화 또는 기대값 재점검(`eval:e2e:bless`) 필요.
 
-### ⬜ 4단계 — contracts/
+### 🔶 4단계 — contracts/ (작업 완료, 리로드 확인·커밋 대기)
 
-- [ ] 소비자 전수 조사: ScaffoldContracts, ComponentPropsIndex, promptBudget
-- [ ] **generated/ 폴더 이동 여부 결정**: `scripts/build-component-props.mjs`의 출력 경로 하드코딩 확인 후 함께 수정
-- [ ] `git mv` → src/ai/contracts/
-- [ ] import 경로 수정
-- [ ] 게이트: tsc → compile → `test:region-edit` → `test:api-binding` → `test:react-rules` → (generated 이동 시) `node scripts/build-component-props.mjs` 재실행이 새 경로에 쓰는지 확인
-- [ ] contracts/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+- [x] 소비자 전수 조사: ScaffoldContracts, ComponentPropsIndex, promptBudget — src 4곳(ChatViewProvider·OfflineResponder·RegionEditService·ScaffoldContextBuilder) + scripts 4곳(test-region-edit·eval-region·eval-bigfile·eval-edit-live)
+- [x] **generated/ 폴더 함께 이동 결정** (소비자가 ComponentPropsIndex뿐) → contracts/generated/, build-component-props.mjs OUT_PATH 수정
+- [x] `git mv` 3파일+generated/ → src/ai/contracts/
+- [x] import 경로 수정 (상위 참조는 promptBudget→`../config` 1건뿐)
+- [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:api-binding 69/0 · test:react-rules 39/0 · eval:region 회귀 없음 · **재생성 검증**: `node scripts/build-component-props.mjs` → 새 경로에 53컴포넌트·274prop 출력, 기존 파일과 diff 0
+- [x] contracts/README 갱신 → 이 문서 갱신
+- [ ] 리로드 실사용 확인 → 커밋
 
 ### ⬜ 5단계 — apply/
 

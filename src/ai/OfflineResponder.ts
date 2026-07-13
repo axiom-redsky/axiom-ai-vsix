@@ -15,7 +15,7 @@
 
 import type { IntentResult, IntentContext } from './intent/IntentClassifier';
 import { classifyOfflineIntent, stripFileRefs } from './intent/IntentSignals';
-import { buildContractSection } from './ScaffoldContracts';
+import { buildContractSection } from './contracts/ScaffoldContracts';
 import { FALLBACK_HINT } from './OfflineKnowledgeRetriever';
 
 /** OfflineResponder가 외부 자원에 접근하기 위한 주입 의존성. */
