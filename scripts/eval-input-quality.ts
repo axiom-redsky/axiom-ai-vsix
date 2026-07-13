@@ -12,7 +12,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { analyzeInputQuality, type FlagCode } from '../src/ai/RegionInputQuality';
+import { analyzeInputQuality, type FlagCode } from '../src/ai/decompose/RegionInputQuality';
 
 interface Case {
   no: number;

@@ -61,8 +61,8 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 |---|---|---|
 | 0 | 폴더 7개 생성 + 각 README.md + src/ai/README.md(전체 지도) | ✅ 완료 (2026-07-13) |
 | 1 | **intent/ 이관** (8파일 + 소비자 9곳) | ✅ 완료 (2026-07-13, **미커밋 — 실사용 확인 대기**) |
-| 2 | decompose/ 이관 | ⬜ 다음 차례 |
-| 3 | locate/ 이관 | ⬜ |
+| 2 | **decompose/ 이관** (6파일 + 소비자 20곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
+| 3 | locate/ 이관 | ⬜ 다음 차례 |
 | 4 | contracts/ 이관 | ⬜ |
 | 5 | apply/ 이관 | ⬜ |
 | 6 | pipeline/ 이관 | ⬜ |
@@ -111,21 +111,21 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] intent/README "구성 파일"로 갱신
 - [x] 리로드 실사용 확인 후 커밋
 
-### ⬜ 2단계 — decompose/
+### 🔶 2단계 — decompose/ (작업 완료, 리로드 확인·커밋 대기)
 
-- [ ] 소비자 전수 조사: SectionExtractor, CodeSectionExtractor, FunctionSpotlight, RegionInputQuality, RegionIntent, EditorContextCollector (scripts/ 직접 import 여부 포함)
-- [ ] `git mv` 6파일 → src/ai/decompose/
-- [ ] import 경로 수정 (소비자 + 옮긴 파일의 상위 형제 참조 `./X`→`../X`)
-- [ ] 게이트: `tsc --noEmit` 0 → `npm run compile` → `test:region-edit` → `eval:region` (베이스라인 대비 회귀 0) → `eval:input`
-- [ ] decompose/README "구성 파일"로 갱신 (ScaffoldContextBuilder deps 추출부는 "아직 없는 것"에 유지)
-- [ ] 이 문서 §4 표 + 이 체크리스트 갱신
+- [x] 소비자 전수 조사: SectionExtractor, CodeSectionExtractor, FunctionSpotlight, RegionInputQuality, RegionIntent, EditorContextCollector — providers 3곳(ChatViewProvider·RegionIoProbeProvider·SliceProbeProvider) + src/ai 형제 11곳 + scripts 6곳(eval-bigfile·eval-input-quality·probe-bc-primitives·probe-locate·probe-sliced-output·test-api-binding)
+- [x] `git mv` 6파일 → src/ai/decompose/
+- [x] import 경로 수정 (상위 형제 참조는 RegionInputQuality→`../RegionEdit` 1건뿐 — locate/ 이관 시 재수정 필요)
+- [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:api-binding 69/0 · test:offline-answer 70/0 · eval:region 85%(35/41) 회귀 없음 · eval:input 정상
+- [x] decompose/README "구성 파일"로 갱신
+- [x] 이 문서 §4 표 + 이 체크리스트 갱신
 - [ ] 리로드 실사용 확인 → 커밋
 
 ### ⬜ 3단계 — locate/
 
 - [ ] 소비자 전수 조사: RegionEdit.ts (소비자 많음 — RegionEditService·scripts 다수 예상, 전수 필수)
 - [ ] `git mv` → src/ai/locate/
-- [ ] import 경로 수정
+- [ ] import 경로 수정 (⚠ decompose/RegionInputQuality.ts의 `../RegionEdit` → `../locate/RegionEdit` 재수정 포함)
 - [ ] 게이트: tsc → compile → `test:region-edit` → `eval:region` → `eval:e2e` (replay) → `test:line-edits`
 - [ ] locate/README 갱신 (checkRegionRootTag가 게이트인데 여기 섞여 있음을 "부채"로 유지)
 - [ ] 이 문서 갱신 → 리로드 확인 → 커밋

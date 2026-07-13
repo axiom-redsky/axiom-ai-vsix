@@ -17,7 +17,7 @@ import {
   detectEnvelopeKey,
   removeTableColumns,
 } from '../src/ai/ApiBindingRecipe';
-import { extractApiPaths } from '../src/ai/SectionExtractor';
+import { extractApiPaths } from '../src/ai/decompose/SectionExtractor';
 import { applyStructuralEdit } from '../src/ai/StructuralAnchor';
 
 let pass = 0;

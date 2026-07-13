@@ -17,8 +17,8 @@
  * --max-tokens: 응답 토큰 상한(기본 2048)
  */
 import * as fs from 'fs';
-import { extractRelevantTsSlice } from '../src/ai/CodeSectionExtractor';
-import { tokenizeQuery } from '../src/ai/SectionExtractor';
+import { extractRelevantTsSlice } from '../src/ai/decompose/CodeSectionExtractor';
+import { tokenizeQuery } from '../src/ai/decompose/SectionExtractor';
 
 interface Args {
   file: string;

@@ -8,7 +8,7 @@ import {
   selectByBudget,
   tokenizeQuery,
   type MdSection,
-} from './SectionExtractor';
+} from './decompose/SectionExtractor';
 
 /** buildContext() 반환 타입 */
 export interface RagContext {

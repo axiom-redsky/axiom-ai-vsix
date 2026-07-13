@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { splitTsSections } from './CodeSectionExtractor';
+import { splitTsSections } from './decompose/CodeSectionExtractor';
 import type { StructuralEdit } from './StructuralAnchor';
 
 /**

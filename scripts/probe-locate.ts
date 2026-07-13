@@ -10,7 +10,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { tokenizeQuery } from '../src/ai/SectionExtractor';
+import { tokenizeQuery } from '../src/ai/decompose/SectionExtractor';
 import { locateEditRegion, snapToElement, firstJsxTag } from '../src/ai/RegionEdit';
 
 interface LocateResult {

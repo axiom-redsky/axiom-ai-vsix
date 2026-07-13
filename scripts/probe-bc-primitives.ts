@@ -1,7 +1,7 @@
 /** B+C 프리미티브 단독 검증 — extractControlInventory / applyReplaceBlocks. 모델 없음. */
 import * as fs from 'fs';
 import * as path from 'path';
-import { extractControlInventory } from '../src/ai/RegionIntent';
+import { extractControlInventory } from '../src/ai/decompose/RegionIntent';
 import { applyReplaceBlocks } from '../src/ai/StructuralAnchor';
 
 const source = fs.readFileSync(path.resolve(process.cwd(), 'scripts', 'eval-fixtures', 'EmployeeListPage.tsx'), 'utf-8');

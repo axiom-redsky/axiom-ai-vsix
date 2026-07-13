@@ -16,7 +16,7 @@
  * 실행: npm run eval:bigfile
  */
 import { generateLargeFile, type SectionManifest } from './synth-large-file';
-import { analyzeInputQuality } from '../src/ai/RegionInputQuality';
+import { analyzeInputQuality } from '../src/ai/decompose/RegionInputQuality';
 import { locateEditRegion } from '../src/ai/RegionEdit';
 import { classifyRegionDecline, buildHybridPrompt } from '../src/ai/RegionEditService';
 import { estimateTokens, inputBudget, budgetUsagePct } from '../src/ai/promptBudget';

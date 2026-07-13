@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadAndScoreSections, type MdSection } from './SectionExtractor';
+import { loadAndScoreSections, type MdSection } from './decompose/SectionExtractor';
 
 /**
  * 현재 편집 중인 파일의 경로와 내용을 분석해

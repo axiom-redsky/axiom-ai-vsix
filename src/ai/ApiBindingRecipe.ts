@@ -20,8 +20,8 @@
  * 제네릭은 **행 배열 타입**(`useApi<TEmployee[]>`)이고 컴포넌트는 `const items = data ?? []`로 쓴다.
  */
 import { generateTypeFromJson } from './JsonTypeGenerator';
-import { splitIntoSections, containsExactApiPath } from './SectionExtractor';
-import { splitTsSections } from './CodeSectionExtractor';
+import { splitIntoSections, containsExactApiPath } from './decompose/SectionExtractor';
+import { splitTsSections } from './decompose/CodeSectionExtractor';
 import type { ImportRequest } from './StructuralAnchor';
 
 /** 테이블 한 컬럼 — 헤더 라벨과 그 셀이 읽는 행 필드(없으면 null: 액션 버튼 등). */

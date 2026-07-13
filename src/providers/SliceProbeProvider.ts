@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { extractRelevantTsSlice, splitTsSections } from '../ai/CodeSectionExtractor';
+import { extractRelevantTsSlice, splitTsSections } from '../ai/decompose/CodeSectionExtractor';
 import {
   tokenizeQuery,
   splitIntoSections,
@@ -10,7 +10,7 @@ import {
   extractApiPaths,
   matchedApiPaths,
   formatExactPathDirective,
-} from '../ai/SectionExtractor';
+} from '../ai/decompose/SectionExtractor';
 import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/StructuralAnchor';
 import { locateEditRegion, firstJsxTag } from '../ai/RegionEdit';
 import { ExtensionConfig } from '../config/ExtensionConfig';

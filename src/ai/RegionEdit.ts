@@ -15,9 +15,9 @@
  *  - 모델이 영역 밖을 재작성하면(루트 태그 변화) splice가 프랑켄 머지를 만든다 →
  *    splice 전 root-tag 일치를 확인한다(Fix 2: checkRegionRootTag).
  */
-import { splitTsSections } from './CodeSectionExtractor';
-import { tokenizeQuery } from './SectionExtractor';
-import { isCrossCutting, extractControlInventory, EDIT_INTENT_RE, mappedListVars, impliedControlTags } from './RegionIntent';
+import { splitTsSections } from './decompose/CodeSectionExtractor';
+import { tokenizeQuery } from './decompose/SectionExtractor';
+import { isCrossCutting, extractControlInventory, EDIT_INTENT_RE, mappedListVars, impliedControlTags } from './decompose/RegionIntent';
 
 /** locate 잡음 토큰 — 'api'가 useApi에, '박스/사용/적용' 등이 엉뚱한 줄에 걸려 위치를 빗나가게 한다. */
 const LOCATE_STOP = new Set(['api', '박스', '사용', '적용', '현재', '화면', '해줘', '추가', 'box', '에서']);

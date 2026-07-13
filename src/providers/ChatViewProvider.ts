@@ -3,11 +3,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
 import { LlmService } from '../ai/LlmService';
-import { EditorContextCollector, type EditorContext } from '../ai/EditorContextCollector';
+import { EditorContextCollector, type EditorContext } from '../ai/decompose/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/FileCreatorService';
-import { restoreSlicedStubs, splitTsSections } from '../ai/CodeSectionExtractor';
+import { restoreSlicedStubs, splitTsSections } from '../ai/decompose/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, ensureUiComponentImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/RegionCaptureRecorder';
@@ -29,7 +29,7 @@ import {
   deriveRootName,
   type IFieldRename,
 } from '../ai/ApiBindingRecipe';
-import { impliedControlTags } from '../ai/RegionIntent';
+import { impliedControlTags } from '../ai/decompose/RegionIntent';
 import { computeDiffHunks } from '../ai/DiffUtil';
 import {
   splitIntoSections,
@@ -42,7 +42,7 @@ import {
   containsExactApiPath,
   formatExactPathDirective,
   type MdSection,
-} from '../ai/SectionExtractor';
+} from '../ai/decompose/SectionExtractor';
 import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind, type IntentContext } from '../ai/intent/IntentClassifier';
 import { FALLBACK_HINT } from '../ai/OfflineKnowledgeRetriever';
