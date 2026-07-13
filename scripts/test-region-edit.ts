@@ -10,7 +10,7 @@ import type { ImportRequest } from '../src/ai/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/ScaffoldContracts';
 import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/ComponentPropsIndex';
 import { findUnresolvedReferences, resolveKnownImports, applyStructuralEdit, applyReplaceBlocks } from '../src/ai/StructuralAnchor';
-import { crossFileSuppressionReason } from '../src/ai/CrossFileTargeting';
+import { crossFileSuppressionReason } from '../src/ai/intent/CrossFileTargeting';
 
 const SRC = [
   /*  1 */ "import { useState } from 'react';",

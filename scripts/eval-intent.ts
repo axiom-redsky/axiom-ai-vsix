@@ -15,10 +15,10 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { IntentExampleStore } from '../src/ai/IntentExampleStore';
-import { IntentEmbeddingClassifier } from '../src/ai/IntentEmbeddingClassifier';
-import { resolveOfflineIntent } from '../src/ai/OfflineIntentResolver';
-import type { IntentKind, IntentContext } from '../src/ai/IntentClassifier';
+import { IntentExampleStore } from '../src/ai/intent/IntentExampleStore';
+import { IntentEmbeddingClassifier } from '../src/ai/intent/IntentEmbeddingClassifier';
+import { resolveOfflineIntent } from '../src/ai/intent/OfflineIntentResolver';
+import type { IntentKind, IntentContext } from '../src/ai/intent/IntentClassifier';
 
 const THRESHOLDS = { enabled: true, minConfidence: 0.42, minMargin: 0.05 };
 

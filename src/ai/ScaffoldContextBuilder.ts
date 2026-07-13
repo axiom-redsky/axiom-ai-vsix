@@ -12,14 +12,14 @@ import { tokenizeQuery } from './SectionExtractor';
 import { OfflineKnowledgeRetriever } from './OfflineKnowledgeRetriever';
 import { buildComponentPropsSectionForRegion } from './ComponentPropsIndex';
 import { buildContractSection, contractsRequirePatchMode, selectScaffoldContracts } from './ScaffoldContracts';
-import type { IntentResult } from './IntentClassifier';
+import type { IntentResult } from './intent/IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
 import {
   isSmalltalk as signalIsSmalltalk,
   isQnAQuery as signalIsQnAQuery,
   isExplicitEditOrCreate as signalIsExplicitEditOrCreate,
   extractDomainFromQuery as signalExtractDomainFromQuery,
-} from './IntentSignals';
+} from './intent/IntentSignals';
 
 /** 코드 슬라이싱 적용 대상 언어 ID */
 const SLICEABLE_LANGUAGES = new Set(['typescript', 'typescriptreact', 'javascript', 'javascriptreact']);

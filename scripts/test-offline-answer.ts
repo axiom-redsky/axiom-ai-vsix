@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseKnowledgeDoc, splitFrontmatter, deriveKind } from '../src/ai/KnowledgeDoc';
 import { OfflineKnowledgeRetriever, hasShowCodeIntent, FALLBACK_HINT } from '../src/ai/OfflineKnowledgeRetriever';
-import type { IntentResult } from '../src/ai/IntentClassifier';
+import type { IntentResult } from '../src/ai/intent/IntentClassifier';
 
 let passed = 0;
 let failed = 0;

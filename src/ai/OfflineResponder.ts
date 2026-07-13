@@ -13,8 +13,8 @@
  * vscode/디스크 비의존 — 외부 자원은 모두 주입(IOfflineResponderDeps)으로 받아 테스트 가능.
  */
 
-import type { IntentResult, IntentContext } from './IntentClassifier';
-import { classifyOfflineIntent, stripFileRefs } from './IntentSignals';
+import type { IntentResult, IntentContext } from './intent/IntentClassifier';
+import { classifyOfflineIntent, stripFileRefs } from './intent/IntentSignals';
 import { buildContractSection } from './ScaffoldContracts';
 import { FALLBACK_HINT } from './OfflineKnowledgeRetriever';
 

@@ -7,13 +7,13 @@
  * 로컬 RAG 본문으로 응답하는지 검증한다.
  */
 import * as path from 'node:path';
-import { classifyOfflineIntent, extractFilePathRef, stripFileRefs, fillSlots } from '../src/ai/IntentSignals';
+import { classifyOfflineIntent, extractFilePathRef, stripFileRefs, fillSlots } from '../src/ai/intent/IntentSignals';
 import { OfflineResponder } from '../src/ai/OfflineResponder';
-import { IntentExampleStore } from '../src/ai/IntentExampleStore';
-import { IntentEmbeddingClassifier, type ClassifyResult } from '../src/ai/IntentEmbeddingClassifier';
-import { resolveOfflineIntent } from '../src/ai/OfflineIntentResolver';
-import { buildIntentPrompt, type IntentContext } from '../src/ai/IntentClassifier';
-import { PageCreationDetector } from '../src/ai/PageCreationDetector';
+import { IntentExampleStore } from '../src/ai/intent/IntentExampleStore';
+import { IntentEmbeddingClassifier, type ClassifyResult } from '../src/ai/intent/IntentEmbeddingClassifier';
+import { resolveOfflineIntent } from '../src/ai/intent/OfflineIntentResolver';
+import { buildIntentPrompt, type IntentContext } from '../src/ai/intent/IntentClassifier';
+import { PageCreationDetector } from '../src/ai/intent/PageCreationDetector';
 
 /**
  * 결정론적 가짜 임베딩 — 해싱 bag-of-words(어휘 겹침 기반 코사인).

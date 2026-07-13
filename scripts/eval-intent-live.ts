@@ -12,7 +12,7 @@
  * 여기 케이스는 **실제로 오분류됐던 요청**을 회귀로 고정한 것이다(세션 2026-07-02): "보여줘"가 지식가이드로
  * 새던 건, "함수 만들어"가 create_page로 새던 건 등. 새 버그를 발견하면 여기에 케이스를 추가한다.
  */
-import { buildIntentPrompt, parseIntent, type IntentKind, type IntentContext } from '../src/ai/IntentClassifier';
+import { buildIntentPrompt, parseIntent, type IntentKind, type IntentContext } from '../src/ai/intent/IntentClassifier';
 import { resolveModelConfig, callLlm } from './live-model-client';
 
 interface Case {

@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { embed as defaultEmbed } from './EmbeddingService';
+import { embed as defaultEmbed } from '../EmbeddingService';
 import type { IntentKind } from './IntentClassifier';
 
 export type EmbedFn = (text: string) => Promise<number[]>;

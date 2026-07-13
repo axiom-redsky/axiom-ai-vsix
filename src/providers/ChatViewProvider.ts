@@ -11,7 +11,7 @@ import { restoreSlicedStubs, splitTsSections } from '../ai/CodeSectionExtractor'
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, ensureUiComponentImports, type ImportRequest } from '../ai/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/RegionCaptureRecorder';
-import { crossFileSuppressionReason } from '../ai/CrossFileTargeting';
+import { crossFileSuppressionReason } from '../ai/intent/CrossFileTargeting';
 import { buildContractSection } from '../ai/ScaffoldContracts';
 import { buildComponentOptionsReference, detectComponentsInText } from '../ai/ComponentPropsIndex';
 import {
@@ -43,16 +43,16 @@ import {
   formatExactPathDirective,
   type MdSection,
 } from '../ai/SectionExtractor';
-import { PageCreationDetector } from '../ai/PageCreationDetector';
-import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind, type IntentContext } from '../ai/IntentClassifier';
+import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
+import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind, type IntentContext } from '../ai/intent/IntentClassifier';
 import { FALLBACK_HINT } from '../ai/OfflineKnowledgeRetriever';
 import { OfflineResponder } from '../ai/OfflineResponder';
 import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/OfflineTransplant';
-import { IntentExampleStore } from '../ai/IntentExampleStore';
-import { IntentEmbeddingClassifier } from '../ai/IntentEmbeddingClassifier';
-import { resolveOfflineIntent } from '../ai/OfflineIntentResolver';
+import { IntentExampleStore } from '../ai/intent/IntentExampleStore';
+import { IntentEmbeddingClassifier } from '../ai/intent/IntentEmbeddingClassifier';
+import { resolveOfflineIntent } from '../ai/intent/OfflineIntentResolver';
 import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from '../ai/JsonTypeGenerator';
-import { fillSlots, classifyOfflineIntent } from '../ai/IntentSignals';
+import { fillSlots, classifyOfflineIntent } from '../ai/intent/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, SpecWizardState, PageCreationState, DiffLine } from '../types/messages';
