@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 1620" font-family="'Malgun Gothic','Segoe UI',sans-serif">
+  <defs>
+    <marker id="ar--" markerWidth="12" markerHeight="12" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#5b6672"/>
+    </marker>
+    <style>
+      .title { font-size:27px; font-weight:700; fill:#141a22; }
+      .sub   { font-size:14px; fill:#4a5563; }
+      .cont  { fill:#ffffff; stroke:#d0d7de; stroke-width:1.5; }
+      .contHdr { font-size:17px; font-weight:700; fill:#141a22; }
+      .contNote { font-size:12.5px; fill:#5a6472; font-style:italic; }
+      .box   { stroke-width:1.3; rx:7; }
+      .det   { fill:#eef4ff; stroke:#5f86d0; }
+      .detHdr{ fill:#d7e4fb; stroke:#5f86d0; }
+      .model { fill:#f4ecfb; stroke:#a377d4; }
+      .gate  { fill:#fdf0e0; stroke:#d59a4e; }
+      .io    { fill:#eef1f4; stroke:#94a0ad; }
+      .t     { font-size:13px; fill:#1f2733; }
+      .tb    { font-size:13px; font-weight:700; fill:#141a22; }
+      .ts    { font-size:11.5px; fill:#55606d; }
+      .tag   { font-size:11.5px; fill:#3a72c4; font-weight:600; }
+      .tagM  { font-size:11.5px; fill:#8a52c0; font-weight:600; }
+      .flow  { stroke:#5b6672; stroke-width:2; fill:none; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1480" height="1620" fill="#f7f9fb"/>
+
+  <!-- Title -->
+  <text x="60" y="52" class="title">Axiom 편집 엔진 — 현행 &#8216;분해&#8217; 로직</text>
+  <text x="60" y="80" class="sub">원본 소스 + 프롬프트 &#8594; ① 쿼리 분해 &#8594; ② 위치 결정 &#8594; ③ 배경·의존성 분해 &#8594; ④ 게이트 &#8594; (설명서 삽입) &#8594; 단일 sLLM 콜</text>
+
+  <!-- Legend -->
+  <rect x="1094" y="30" width="346" height="86" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="1112" y="52" class="tb">범례</text>
+  <rect x="1112" y="60" width="18" height="14" class="box det"/>
+  <text x="1138" y="72" class="ts">결정론 (확장이 계산)</text>
+  <rect x="1112" y="82" width="18" height="14" class="box model"/>
+  <text x="1138" y="94" class="ts">모델 위임 (의미 판단)</text>
+  <rect x="1290" y="60" width="18" height="14" class="box gate"/>
+  <text x="1316" y="72" class="ts">게이트 / 폴백</text>
+
+  <!-- Inputs -->
+  <rect x="360" y="104" width="330" height="52" class="box io"/>
+  <text x="525" y="128" text-anchor="middle" class="tb">원본 소스 파일 (.tsx)</text>
+  <text x="525" y="146" text-anchor="middle" class="ts">컴포넌트 전체 · 훅 · 타입 · JSX</text>
+  <rect x="790" y="104" width="330" height="52" class="box io"/>
+  <text x="955" y="128" text-anchor="middle" class="tb">사용자 프롬프트 (query)</text>
+  <text x="955" y="146" text-anchor="middle" class="ts">자연어 편집 요청</text>
+  <path class="flow" marker-end="url(#ar--)" d="M525,156 L525,178 L740,178 L740,196"/>
+  <path class="flow" d="M955,156 L955,178 L740,178"/>
+
+  <!-- ① Query decomposition -->
+  <rect x="60" y="200" width="1360" height="150" class="cont"/>
+  <text x="84" y="230" class="contHdr">① 쿼리 분해 · Query Decomposition</text>
+  <text x="1396" y="230" text-anchor="end" class="contNote">자연어 질문을 매칭 가능한 토큰 집합으로</text>
+  <g>
+    <rect x="90" y="248" width="244" height="84" class="box det"/>
+    <text x="212" y="278" text-anchor="middle" class="tb">tokenizeQuery</text>
+    <text x="212" y="300" text-anchor="middle" class="ts">토큰화 +</text>
+    <text x="212" y="318" text-anchor="middle" class="ts">LOCATE_STOP 불용어 제거</text>
+
+    <rect x="354" y="248" width="244" height="84" class="box det"/>
+    <text x="476" y="272" text-anchor="middle" class="tb">decomposeDomainCompounds</text>
+    <text x="476" y="296" text-anchor="middle" class="ts">복합 도메인어 어근 분해</text>
+    <text x="476" y="314" text-anchor="middle" class="ts">&#8220;예산관리&#8221; &#8594; +&#8220;예산&#8221;</text>
+
+    <rect x="618" y="248" width="244" height="84" class="box det"/>
+    <text x="740" y="272" text-anchor="middle" class="tb">bridgeQueryTokens</text>
+    <text x="740" y="296" text-anchor="middle" class="ts">한글 구조어 &#8594; 영문</text>
+    <text x="740" y="314" text-anchor="middle" class="ts">컴포넌트 토큰 브리지</text>
+
+    <rect x="882" y="248" width="244" height="84" class="box det"/>
+    <text x="1004" y="272" text-anchor="middle" class="tb">dedupeSubstrings</text>
+    <text x="1004" y="296" text-anchor="middle" class="ts">부분일치 토큰 이중집계</text>
+    <text x="1004" y="314" text-anchor="middle" class="ts">제거</text>
+
+    <rect x="1146" y="248" width="250" height="84" class="box io"/>
+    <text x="1271" y="278" text-anchor="middle" class="tb">&#8594; 질문 토큰 집합</text>
+    <text x="1271" y="302" text-anchor="middle" class="ts">이후 grep 점수화의</text>
+    <text x="1271" y="320" text-anchor="middle" class="ts">기준 어휘</text>
+  </g>
+  <path class="flow" marker-end="url(#ar--)" d="M740,350 L740,372"/>
+
+  <!-- ② Location: snap ladder -->
+  <rect x="60" y="376" width="1360" height="418" class="cont"/>
+  <text x="84" y="406" class="contHdr">② 위치 결정 · Location — 스냅 사다리 (위 &#8594; 아래 순차, 앞 단계 실패 시에만 다음 시도)</text>
+  <text x="1396" y="406" text-anchor="end" class="contNote">결정론이 후보를 추리고, 최종 선택만 모델(객관식)에 위임</text>
+
+  <!-- rungs -->
+  <g>
+    <!-- rung template: box + step + tech -->
+    <rect x="90" y="422" width="1306" height="36" class="box det"/>
+    <text x="104" y="445" class="tb">①  grep — 모든 줄을 질문 토큰으로 점수화 &#8594; 후보 정렬</text>
+    <text x="1382" y="445" text-anchor="end" class="tag">부분일치 카운트 · score 내림차순 · MIN_REGION_SCORE=2</text>
+
+    <rect x="90" y="464" width="1306" height="36" class="box det"/>
+    <text x="104" y="487" class="tb">②  스냅-우선 채택 (score &#8805; 2)</text>
+    <text x="1382" y="487" text-anchor="end" class="tag">snapToElement — 완결 JSX 요소로 스냅(구조 안전)</text>
+
+    <rect x="90" y="506" width="1306" height="36" class="box det"/>
+    <text x="104" y="529" class="tb">②.5  구조 랜드마크 라우팅 — &#8220;테이블/컬럼&#8221; 의도 &amp; 파일에 표가 하나뿐</text>
+    <text x="1382" y="529" text-anchor="end" class="tag">locateSoleElement — 유일 &#60;table&#62;로 교정</text>
+
+    <rect x="90" y="548" width="1306" height="36" class="box det"/>
+    <text x="104" y="571" class="tb">②.7  앵커 품질 스코어링(B) — 화면 텍스트에 걸린 1토큰 앵커 인정</text>
+    <text x="1382" y="571" text-anchor="end" class="tag">isContentAnchor · 여러 요소로 흩어지면 모호 보존</text>
+
+    <rect x="90" y="590" width="1306" height="36" class="box det"/>
+    <text x="104" y="613" class="tb">②.8  섹션-주석 랜드마킹(E) — 사람이 쓴 &#123;/* 라벨 */&#125;이 질문어와 매칭</text>
+    <text x="1382" y="613" text-anchor="end" class="tag">주석 다음 여는 요소로 snapBlockFrom</text>
+
+    <rect x="90" y="632" width="1306" height="36" class="box det"/>
+    <text x="104" y="655" class="tb">②.85  유일 컨트롤 앵커 — 쿼리가 지목한 컨트롤이 파일에 하나뿐</text>
+    <text x="1382" y="655" text-anchor="end" class="tag">impliedControlTags (button/input/select…) 대소문자 무시</text>
+
+    <rect x="90" y="674" width="1306" height="36" class="box det"/>
+    <text x="104" y="697" class="tb">②.9  테이블 의도 교정 — 앵커가 표 밖 요소면 그 섹션의 표로 되돌림</text>
+    <text x="1382" y="697" text-anchor="end" class="tag">findTableInSection — 컬럼 추가의 편집 단위 = 표</text>
+
+    <rect x="90" y="716" width="1306" height="36" class="box model"/>
+    <text x="104" y="739" class="tb">forcedRegion  &#8592;  모델 객관식 disambiguation (후보 2개+ 일 때)</text>
+    <text x="1382" y="739" text-anchor="end" class="tagM">candidates(후보+필드라벨) 제시 &#8594; 모델이 번호 선택 &#8594; 재타겟</text>
+  </g>
+  <text x="740" y="778" text-anchor="middle" class="contNote">&#8594; region 스팬 &#123; startLine, endLine &#125; + region 텍스트(편집 대상 블록만)</text>
+  <path class="flow" marker-end="url(#ar--)" d="M740,794 L740,816"/>
+
+  <!-- ③ Context decomposition -->
+  <rect x="60" y="820" width="1360" height="308" class="cont"/>
+  <text x="84" y="850" class="contHdr">③ 배경·의존성 분해 · Context Decomposition — 설명서(헤더)에 넣을 &#8216;재료&#8217; 추출</text>
+  <text x="1396" y="850" text-anchor="end" class="contNote">편집 대상 밖은 &#8216;읽기 전용 맥락&#8217;으로 접어서만 전달</text>
+
+  <rect x="90" y="864" width="1306" height="38" class="box detHdr"/>
+  <text x="104" y="888" class="tb">splitTsSections — 소스를 top-level 선언 단위로 분할 (function / const / type / interface / import), 정규식 + 중괄호 깊이 추적(폐쇄망, 풀 파서 미사용)</text>
+
+  <!-- left column: grounding materials -->
+  <rect x="90" y="912" width="636" height="200" class="box det"/>
+  <text x="106" y="936" class="tb">추출 재료 (grounding)</text>
+  <rect x="106" y="946" width="604" height="46" rx="6" fill="#ffffff" stroke="#9fb8e3"/>
+  <text x="118" y="965" class="t">③.5  backingDecls — region이 <tspan class="tb">이름으로 참조하는</tspan> 모듈스코프 const만</text>
+  <text x="118" y="983" class="ts">기억 재구성으로 기존 옵션 흘리는 것 방지(faithful 수정)</text>
+  <rect x="106" y="1000" width="604" height="46" rx="6" fill="#ffffff" stroke="#9fb8e3"/>
+  <text x="118" y="1019" class="t"><tspan class="tb">훅 블록 추출</tspan> — 컴포넌트 return 전 훅 / state 원본</text>
+  <text x="118" y="1037" class="ts">새 코드가 기존 훅과 충돌·중복되지 않게</text>
+  <rect x="106" y="1054" width="604" height="46" rx="6" fill="#ffffff" stroke="#9fb8e3"/>
+  <text x="118" y="1073" class="t">③.7  controlInventory — region <tspan class="tb">밖</tspan> 기존 입력 컨트롤 목록</text>
+  <text x="118" y="1091" class="ts">모델이 이미 있는 컨트롤을 재생성(중복)하는 것 방지</text>
+
+  <!-- right column: depsHeader assembly with pruning branch -->
+  <rect x="760" y="912" width="636" height="200" class="box det"/>
+  <text x="776" y="936" class="tb">depsHeader 구성 — 크기에 따라 분기</text>
+  <rect x="776" y="946" width="604" height="42" rx="6" fill="#ffffff" stroke="#9fb8e3"/>
+  <text x="788" y="965" class="t"><tspan class="tb">얇은 헤더</tspan> &#8594; full 유지 (import + type + 훅 전체)</text>
+  <text x="788" y="982" class="ts">이웃 state 가시성 보존 · 회귀 0</text>
+  <rect x="776" y="994" width="604" height="106" rx="6" fill="#fbfdff" stroke="#9fb8e3"/>
+  <text x="788" y="1013" class="t"><tspan class="tb">비대한 헤더</tspan> &#8594; 관련성 가지치기 (deps 폭주 차단)</text>
+  <text x="788" y="1034" class="ts">· import 전체 유지 &#8212; &#8220;재import 금지&#8221; 신호</text>
+  <text x="788" y="1055" class="ts">· selectReachableTypes &#8212; region/훅/backing에서 도달 가능한 타입만</text>
+  <text x="788" y="1076" class="ts">· sliceRelevantHooks &#8212; 시드 식별자에서 고정점까지 확장한 훅만</text>
+  <text x="788" y="1093" class="ts">(bigfile 계기판의 1순위 레버 = deps 가지치기)</text>
+
+  <path class="flow" marker-end="url(#ar--)" d="M740,1128 L740,1146"/>
+
+  <!-- ④ Gates -->
+  <rect x="60" y="1150" width="1360" height="196" class="cont"/>
+  <text x="84" y="1180" class="contHdr">④ 안전 게이트 &amp; 모호성 판정 · Gates — 결정론으로 못 푸는 경우는 폴백 / 되물음</text>
+
+  <rect x="90" y="1196" width="636" height="62" class="box gate"/>
+  <text x="106" y="1220" class="tb">④.0  모호 동점 판정</text>
+  <text x="106" y="1240" class="ts">generic 토큰 동점이 파일 전체에 spread &#8805; 1000줄 &#8594; full 폴백</text>
+
+  <rect x="760" y="1196" width="636" height="62" class="box gate"/>
+  <text x="776" y="1220" class="tb">detectHandlerBodyOutsideRegion</text>
+  <text x="776" y="1240" class="ts">&#8220;핸들러 동작 바꿔줘&#8221;의 대상이 region 밖 명명함수 &#8594; handler-body 게이트</text>
+
+  <rect x="90" y="1266" width="636" height="62" class="box gate"/>
+  <text x="106" y="1290" class="tb">safety gates</text>
+  <text x="106" y="1310" class="ts">anchor-missing / -comment / -import · snap-failed · cross-cutting · ambiguous</text>
+
+  <rect x="760" y="1266" width="636" height="62" class="box model"/>
+  <text x="776" y="1290" class="tb">candidates &#8594; 모델 disambiguation / 사용자 되물음</text>
+  <text x="776" y="1310" class="ts">단일 region으로 의도 표현 불가 시: 섹션 후보 제시 후 선택</text>
+
+  <path class="flow" marker-end="url(#ar--)" d="M740,1346 L740,1364"/>
+
+  <!-- Output payload -->
+  <rect x="60" y="1368" width="1360" height="92" class="cont" style="stroke:#5f86d0;stroke-width:2"/>
+  <text x="84" y="1396" class="contHdr">분해 산출물 · LocatedRegion</text>
+  <g class="ts">
+    <rect x="90" y="1408" width="172" height="38" rx="6" class="box io"/><text x="176" y="1432" text-anchor="middle" class="t">region 텍스트</text>
+    <rect x="272" y="1408" width="150" height="38" rx="6" class="box io"/><text x="347" y="1432" text-anchor="middle" class="t">start / endLine</text>
+    <rect x="432" y="1408" width="150" height="38" rx="6" class="box io"/><text x="507" y="1432" text-anchor="middle" class="t">depsHeader</text>
+    <rect x="592" y="1408" width="150" height="38" rx="6" class="box io"/><text x="667" y="1432" text-anchor="middle" class="t">backingDecls</text>
+    <rect x="752" y="1408" width="170" height="38" rx="6" class="box io"/><text x="837" y="1432" text-anchor="middle" class="t">controlInventory</text>
+    <rect x="932" y="1408" width="140" height="38" rx="6" class="box io"/><text x="1002" y="1432" text-anchor="middle" class="t">safety</text>
+    <rect x="1082" y="1408" width="150" height="38" rx="6" class="box io"/><text x="1157" y="1432" text-anchor="middle" class="t">candidates</text>
+  </g>
+
+  <path class="flow" marker-end="url(#ar--)" d="M740,1460 L740,1482"/>
+
+  <!-- Handoff to 설명서 삽입 / sLLM -->
+  <rect x="120" y="1486" width="580" height="96" class="box detHdr"/>
+  <text x="410" y="1512" text-anchor="middle" class="tb">③&#8242; 설명서 삽입 · buildHybridPrompt</text>
+  <text x="410" y="1534" text-anchor="middle" class="ts">계약카드(ScaffoldContracts) + 컴포넌트 prop표(componentPropsIndex)</text>
+  <text x="410" y="1552" text-anchor="middle" class="ts">+ 스펙 + controlInventory + depsHeader + region</text>
+  <text x="410" y="1572" text-anchor="middle" class="ts">&#8594; 단일 system 프롬프트로 조립</text>
+
+  <path class="flow" marker-end="url(#ar--)" d="M700,1534 L788,1534"/>
+
+  <rect x="790" y="1486" width="580" height="96" class="box io"/>
+  <text x="1080" y="1512" text-anchor="middle" class="tb">단일 sLLM 콜 (1회)</text>
+  <text x="1080" y="1534" text-anchor="middle" class="ts">태그 응답 파싱: &#60;region&#62; / &#60;hook&#62; / &#60;import&#62; / &#60;replace&#62;</text>
+  <text x="1080" y="1556" text-anchor="middle" class="ts">&#8594; 확장이 각 조각을 대상 위치로 결정론 배치</text>
+</svg>
