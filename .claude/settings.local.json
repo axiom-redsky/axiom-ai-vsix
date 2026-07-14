@@ -26,7 +26,9 @@
       "PowerShell(npm run typecheck)",
       "PowerShell(npm run compile)",
       "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)",
-      "PowerShell(npm run test:patch-grounded)"
+      "PowerShell(npm run test:patch-grounded)",
+      "PowerShell($sp = \"$env:LOCALAPPDATA\\\\Temp\\\\claude\\\\c--redsky-work-vscode-extension-axiom-ai-vsix\\\\76a531f0-7ea9-4f6a-96b2-bfa76ca14b9b\\\\scratchpad\"; $d = Compare-Object \\(Get-Content \"$sp\\\\e2e-before.txt\"\\) \\(Get-Content \"$sp\\\\e2e-after.txt\"\\); if \\($d\\) { $d | Select-Object -First 20 } else { echo \"DIFF 0 - identical\" })",
+      "PowerShell($wt = \"$env:LOCALAPPDATA\\\\Temp\\\\claude\\\\c--redsky-work-vscode-extension-axiom-ai-vsix\\\\76a531f0-7ea9-4f6a-96b2-bfa76ca14b9b\\\\scratchpad\\\\wt-head\"; git check-ignore scripts/eval-goldens; New-Item -ItemType Junction -Path \"$wt\\\\scripts\\\\eval-goldens\" -Target \"c:\\\\redsky\\\\work\\\\vscode-extension\\\\axiom-ai-vsix\\\\scripts\\\\eval-goldens\" | Out-Null; Push-Location $wt; npm run eval:e2e 2>&1 | Out-File -Encoding utf8 \"..\\\\e2e-before.txt\"; Pop-Location; $sp = Split-Path $wt; $d = Compare-Object \\(Get-Content \"$sp\\\\e2e-before.txt\"\\) \\(Get-Content \"$sp\\\\e2e-after.txt\"\\); if \\($d\\) { $d | Format-Table -AutoSize | Out-String -Width 200 } else { echo \"DIFF 0 - identical\" })"
     ]
   }
 }

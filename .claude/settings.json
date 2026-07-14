@@ -8,7 +8,9 @@
       "Bash(unzip -o -q \"/c/redsky/work/vscode-extension/axiom-ai-vsix/docs/Axiom-AI-특허출원-미팅자료.pptx\" -d extracted)",
       "Bash(ls extracted/ppt/slides/)",
       "Bash(SCRATCH=\"/c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad\" *)",
-      "Read(//c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad/pptx/extracted/**)"
+      "Read(//c/Users/PC_NIC/AppData/Local/Temp/claude/c--redsky-work-vscode-extension-axiom-ai-vsix/0107a567-add7-426b-901f-f92c7c9f12d4/scratchpad/pptx/extracted/**)",
+      "PowerShell($wt = \"$env:LOCALAPPDATA\\\\Temp\\\\claude\\\\c--redsky-work-vscode-extension-axiom-ai-vsix\\\\76a531f0-7ea9-4f6a-96b2-bfa76ca14b9b\\\\scratchpad\\\\wt-head\"; if \\(Test-Path $wt\\) { Remove-Item $wt -Recurse -Force -Confirm:$false }; git worktree prune; git worktree list; Test-Path $wt)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json; echo \"tsc exit: $LASTEXITCODE\"; npm run test:region-edit 2>&1 | Select-Object -Last 1)"
     ]
   }
 }
