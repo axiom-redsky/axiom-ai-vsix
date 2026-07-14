@@ -90,7 +90,8 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
   CC 벤치마킹 항목 중 intent 소관 2건(힌트+신뢰도·소리나게)의 첫 단추. 운영 라우팅 무변경.
   - EditorContextCollector: `EditorContext.detectSource` 신설(override/active-editor/active-tab/
     last-editor/visible-tsx/visible-file — 검출 신뢰도 신호, 향후 S4 되묻기 차등의 재료) +
-    **_lastEditor 닫힌 문서 가드**(isClosed면 폐기 — 닫힌 파일을 현재 페이지로 잡던 오탐 차단)
+    **_lastEditor 닫힌 문서 가드**(isClosed면 폐기 — 닫힌 파일을 현재 페이지로 잡던 오탐 차단) +
+    **scheme=file 가드**(활성 에디터·_lastEditor 추적 — 출력 채널 문서 오탐 차단, 채집 2호 즉시 수정)
   - ChatViewProvider: `_logFileDetection` — 주 진입점 2곳에서 `[Axiom AI][파일검출] 출처=… → 경로`
     출력 채널 기록(S1 라우팅측정과 동일 취지 비파괴 계측). 오탐 발생 시 범인 폴백 특정 가능해짐
   - 게이트: tsc 0 · compile OK · region-edit 230/0 · offline-intent 66/0 · **리로드 확인 대기**
@@ -134,6 +135,16 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   1회 낭비. 선택영역 있으면 ②에서 정상 확정. 후보 수집기 설계 시 "억제된 이름은 ④에서 제외" 검토.
 - 슬롯 참고: 파일 없는 상황에서 모델이 targetFile=current를 내는 경향(정규식은 null) — 불일치
   배너까진 아니고 슬롯 차이 노트로만 관찰됨(3회).
+- **[채집 2호] 출력 채널 문서가 현재 파일로 오탐 (2026-07-14, 수정 완료)**: `[파일검출]` 계측 첫
+  실사용에서 즉시 포착 — `출처=active-editor → extension-output-…: Corpus`. 출력 패널에 포커스를
+  두면 로그 문서가 activeTextEditor로 들어오는데, 폴백 사슬 중 첫 단계만 scheme=file 무검사였던
+  비대칭이 원인("현재 페이지 오판 다발"의 범인 1). **수정**: 활성 에디터 scheme=file 가드 +
+  _lastEditor 추적도 file만(오염 차단). tsc 0·compile OK·region-edit 230/0·offline-intent 66/0.
+- **[채집 3호] 파일 지향 질문을 일반 지식 렌더가 가로챔 (2026-07-14, 관찰만)**: "현재 파일에서
+  버튼이 몇 개 있어?" → qna(weak) → 온라인 지식 가이드가 Button 문서 전문 렌더 + LLM 합성 생략.
+  질문이 **현재 파일의 내용**을 묻는데 응답은 일반 Button 사용법 — 확신 게이트(문서 3개 매칭)가
+  파일-컨텍스트 질문을 구분하지 못함. 후보 처방: "현재 파일/이 파일" 토큰이면 문서 전문 렌더
+  게이트를 양보하고 LLM(파일 컨텍스트 포함) 경로로. ⑦retrieval/qna 게이팅 소관 — 데이터 더 모아 판단.
 
 
 - **계기판**: `test:offline-intent`(66) · `eval:intent`(오프라인 합성) · `eval:intent-live`(실 sLLM,

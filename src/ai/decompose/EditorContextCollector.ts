@@ -57,9 +57,12 @@ export class EditorContextCollector {
   private _lastEditor: vscode.TextEditor | undefined;
 
   constructor(private readonly maxLines: number = 200) {
-    this._lastEditor = vscode.window.activeTextEditor;
+    // scheme=file만 추적 — 출력 채널·디버그 콘솔 문서도 activeTextEditor로 들어오는데,
+    // 이런 비파일 편집기가 _lastEditor를 오염시키면 로그 문서가 "현재 페이지"로 잡힌다(채집 2호).
+    const seed = vscode.window.activeTextEditor;
+    this._lastEditor = seed && seed.document.uri.scheme === 'file' ? seed : undefined;
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor) {
+      if (editor && editor.document.uri.scheme === 'file') {
         this._lastEditor = editor;
       }
     });
@@ -82,7 +85,11 @@ export class EditorContextCollector {
     //     다른 파일을 잠깐 눌렀다 터미널로 이동하면 엉뚱한 파일을 가리켜 간헐적 오탐의 원인이 됐다.)
     //  3) _lastEditor — 위가 전부 실패할 때의 최후 편집기.
     //  4) 화면에 떠 있는 코드/파일 편집기(비파일 편집기는 제외 목적으로 .ts/.tsx/.js/.jsx 우선).
-    let editor = vscode.window.activeTextEditor;
+    // 활성 에디터라도 실제 파일이 아니면(출력 채널·디버그 콘솔 등 scheme≠file) 현재 페이지가 아니다
+    // — 출력 패널에 포커스 둔 채 요청하면 로그 문서가 편집 대상으로 잡히던 오탐 차단(채집 2호).
+    // 사슬의 다른 폴백은 전부 scheme=file을 요구하는데 첫 단계만 무검사였던 비대칭 해소.
+    let editor: vscode.TextEditor | undefined = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.scheme !== 'file') editor = undefined;
     let source: FileDetectSource = 'active-editor';
     if (!editor) {
       const tabDoc = this._activeTabDoc();
