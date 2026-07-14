@@ -10,7 +10,7 @@ import {
   skeletonizeSource,
   baseName,
   type IRegionCaptureInput,
-} from '../src/ai/RegionCaptureRecorder';
+} from '../src/ai/pipeline/RegionCaptureRecorder';
 
 let passed = 0;
 let failed = 0;

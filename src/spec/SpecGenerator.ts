@@ -1,5 +1,5 @@
 import * as cp from 'child_process';
-import { LlmService } from '../ai/LlmService';
+import { LlmService } from '../ai/pipeline/LlmService';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { CollectedContext } from './ContextCollector';
 

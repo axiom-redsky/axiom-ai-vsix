@@ -9,7 +9,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { runHybridRegionEdit } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit } from '../src/ai/pipeline/RegionEditService';
 
 const FX = (n: string): string => fs.readFileSync(path.resolve(process.cwd(), 'scripts', 'eval-fixtures', n), 'utf-8');
 const employeeList = FX('EmployeeListPage.tsx');

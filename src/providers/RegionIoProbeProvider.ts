@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { locateEditRegion } from '../ai/locate/RegionEdit';
-import { buildHybridPrompt } from '../ai/RegionEditService';
+import { buildHybridPrompt } from '../ai/pipeline/RegionEditService';
 import { analyzeInputQuality } from '../ai/decompose/RegionInputQuality';
 import { splitIntoSections, scoreSections, selectByBudget, extractApiPaths, matchedApiPaths, formatExactPathDirective, tokenizeQuery } from '../ai/decompose/SectionExtractor';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import { LlmService } from '../ai/LlmService';
+import { LlmService } from '../ai/pipeline/LlmService';
 import type { ChatMessage } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, RegionIoInput, RegionIoOutput } from '../types/messages';
 

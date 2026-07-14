@@ -13,7 +13,7 @@
  * 실행: npm run eval:region  (node scripts/run-eval-region.mjs)
  */
 import { locateEditRegion } from '../src/ai/locate/RegionEdit';
-import { buildHybridPrompt } from '../src/ai/RegionEditService';
+import { buildHybridPrompt } from '../src/ai/pipeline/RegionEditService';
 import { estimateTokens as estTokens, inputBudget, budgetUsagePct } from '../src/ai/contracts/promptBudget';
 import { CASES, FIXTURES, type EvalCase } from './eval-region-corpus';
 

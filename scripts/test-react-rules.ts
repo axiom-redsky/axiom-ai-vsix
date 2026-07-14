@@ -6,7 +6,7 @@
  * 함수 컴포넌트 밖에 조용히 적용되던 버그. 훅 토큰이 첫 줄이 아니라 `} = useApi(` 연속 줄에 있고
  * 그 줄의 brace depth 가 0이 아니어서 종전 라인 단위 검사가 통째로 놓쳤다.
  */
-import { FileCreatorService } from '../src/ai/FileCreatorService';
+import { FileCreatorService } from '../src/ai/pipeline/FileCreatorService';
 import { findDuplicateDeclarations, ensureUiComponentImports } from '../src/ai/apply/StructuralAnchor';
 
 let passed = 0;

@@ -14,7 +14,7 @@ import {
 import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/apply/StructuralAnchor';
 import { locateEditRegion, firstJsxTag } from '../ai/locate/RegionEdit';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import { LlmService } from '../ai/LlmService';
+import { LlmService } from '../ai/pipeline/LlmService';
 import type { ChatMessage } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, ProbeMode } from '../types/messages';
 

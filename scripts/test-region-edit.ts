@@ -5,7 +5,7 @@
  *  - Fix 2: checkRegionRootTag가 영역-밖 재작성(루트 태그 변화)을 거부한다.
  */
 import { locateEditRegion, checkRegionRootTag, firstJsxTag } from '../src/ai/locate/RegionEdit';
-import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit, buildHybridPrompt, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, reconcileImportsWithReference, REGION_GROUNDABLE_REASONS, classifyRegionDecline } from '../src/ai/pipeline/RegionEditService';
 import type { ImportRequest } from '../src/ai/apply/StructuralAnchor';
 import { selectScaffoldContracts, buildContractSection, componentReplacementTargets, contractsRequirePatchMode } from '../src/ai/contracts/ScaffoldContracts';
 import { detectComponentsInRegion, buildComponentPropsSectionForRegion, detectComponentsInText, buildComponentOptionsReference } from '../src/ai/contracts/ComponentPropsIndex';

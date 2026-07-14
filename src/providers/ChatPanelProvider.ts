@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import { LlmService } from '../ai/LlmService';
+import { LlmService } from '../ai/pipeline/LlmService';
 import type { WebviewToHostMessage, HostToWebviewMessage, AxiomSettings } from '../types/messages';
 
 export class ChatPanelProvider implements vscode.WebviewViewProvider {

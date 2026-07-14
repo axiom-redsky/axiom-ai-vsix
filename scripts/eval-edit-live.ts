@@ -18,7 +18,7 @@
  */
 import * as ts from 'typescript';
 import { buildContractSection, contractsRequirePatchMode } from '../src/ai/contracts/ScaffoldContracts';
-import { FileCreatorService } from '../src/ai/FileCreatorService';
+import { FileCreatorService } from '../src/ai/pipeline/FileCreatorService';
 import { resolveModelConfig, callLlm } from './live-model-client';
 import {
   CORE_RULES_SNAPSHOT,

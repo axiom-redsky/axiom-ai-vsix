@@ -19,7 +19,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { locateEditRegion, type RegionCandidate } from '../src/ai/locate/RegionEdit';
-import { buildDisambiguationPrompt, parseDisambiguationPick } from '../src/ai/RegionEditService';
+import { buildDisambiguationPrompt, parseDisambiguationPick } from '../src/ai/pipeline/RegionEditService';
 import { AI_DEFAULTS } from '../src/ai/config';
 import { FIXTURES } from './eval-region-corpus';
 

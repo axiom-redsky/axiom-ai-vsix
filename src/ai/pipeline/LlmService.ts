@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import type { ChatMessage, LlmConfig, LlmTuning, LlmUsage } from './types';
-import { FallbackStubService } from './FallbackStubService';
-import { ExtensionConfig } from '../config/ExtensionConfig';
+import type { ChatMessage, LlmConfig, LlmTuning, LlmUsage } from '../types';
+import { FallbackStubService } from '../FallbackStubService';
+import { ExtensionConfig } from '../../config/ExtensionConfig';
 
 export class LlmService {
   private readonly _bundledStubsDir: string | null;

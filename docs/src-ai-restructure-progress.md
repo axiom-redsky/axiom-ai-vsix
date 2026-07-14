@@ -3,11 +3,11 @@
 > **이 문서의 용도**: 다른 PC에서도 이 작업을 이어서 진행할 수 있도록 목적·현황·다음 단계를 기록한다.
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 >
-> 최종 갱신: 2026-07-13
+> 최종 갱신: 2026-07-14
 >
-> **▶ 재개 지점: 6단계 pipeline/ 이관부터.** 1~5단계(intent·decompose·locate·contracts·apply) 완료.
-> 5단계는 리로드 실사용 확인 후 커밋 필요할 수 있음(§4 표의 미커밋 표시 확인).
-> 6·7단계는 사전 조사까지 완료 — 각 체크리스트의 소비자 지도를 그대로 쓰면 되고,
+> **▶ 재개 지점: 7단계 retrieval/ 이관.** 1~6단계 전부 완료·커밋됨
+> (6단계는 2026-07-14 F5 실사용 3종 — 지식응답·영역수정·페이지생성 — 확인 후 커밋).
+> 7단계는 사전 조사까지 완료 — 체크리스트의 소비자 지도를 그대로 쓰면 되고,
 > 절차는 §6 공통 절차, 함정은 §3 원칙 참고. 게이트 통과 기준: 이전 단계들과 동일
 > (tsc 0 · compile OK · 해당 테스트 전부 green · eval 베이스라인 회귀 0).
 
@@ -66,13 +66,13 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 | # | 작업 | 상태 |
 |---|---|---|
 | 0 | 폴더 7개 생성 + 각 README.md + src/ai/README.md(전체 지도) | ✅ 완료 (2026-07-13) |
-| 1 | **intent/ 이관** (8파일 + 소비자 9곳) | ✅ 완료 (2026-07-13, **미커밋 — 실사용 확인 대기**) |
-| 2 | **decompose/ 이관** (6파일 + 소비자 20곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 3 | **locate/ 이관** (RegionEdit 1파일 + 소비자 11곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 4 | **contracts/ 이관** (3파일+generated/ + 소비자 8곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 5 | **apply/ 이관** (2파일 + 소비자 12곳) | ✅ 완료 (2026-07-13, 미커밋 — 실사용 확인 대기) |
-| 6 | pipeline/ 이관 | ⬜ 다음 차례 |
-| 7 | retrieval/ 이관 | ⬜ |
+| 1 | **intent/ 이관** (8파일 + 소비자 9곳) | ✅ 완료·커밋됨 (2026-07-13) |
+| 2 | **decompose/ 이관** (6파일 + 소비자 20곳) | ✅ 완료·커밋됨 (2026-07-13) |
+| 3 | **locate/ 이관** (RegionEdit 1파일 + 소비자 11곳) | ✅ 완료·커밋됨 (2026-07-13) |
+| 4 | **contracts/ 이관** (3파일+generated/ + 소비자 8곳) | ✅ 완료·커밋됨 (2026-07-13) |
+| 5 | **apply/ 이관** (2파일 + 소비자 12곳) | ✅ 완료·커밋됨 (2026-07-13, `dfcafe7`) |
+| 6 | **pipeline/ 이관** (4파일 + 소비자 17곳) | ✅ 완료·커밋됨 (2026-07-14, F5 실사용 3종 확인) |
+| 7 | retrieval/ 이관 | ⬜ 다음 차례 |
 | 8 | (2단계) 거대 파일 분할 — ScaffoldContextBuilder(분해/설명서), StructuralAnchor(게이트/적용), RegionEdit(locate 속 checkRegionRootTag→apply) | ⬜ 전 폴더 이관 후 |
 
 ### 4.1 intent/ 이관 상세 (완료분 기록)
@@ -117,7 +117,7 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] intent/README "구성 파일"로 갱신
 - [x] 리로드 실사용 확인 후 커밋
 
-### 🔶 2단계 — decompose/ (작업 완료, 리로드 확인·커밋 대기)
+### ✅ 2단계 — decompose/ (완료 2026-07-13, 커밋됨)
 
 - [x] 소비자 전수 조사: SectionExtractor, CodeSectionExtractor, FunctionSpotlight, RegionInputQuality, RegionIntent, EditorContextCollector — providers 3곳(ChatViewProvider·RegionIoProbeProvider·SliceProbeProvider) + src/ai 형제 11곳 + scripts 6곳(eval-bigfile·eval-input-quality·probe-bc-primitives·probe-locate·probe-sliced-output·test-api-binding)
 - [x] `git mv` 6파일 → src/ai/decompose/
@@ -125,9 +125,9 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:api-binding 69/0 · test:offline-answer 70/0 · eval:region 85%(35/41) 회귀 없음 · eval:input 정상
 - [x] decompose/README "구성 파일"로 갱신
 - [x] 이 문서 §4 표 + 이 체크리스트 갱신
-- [ ] 리로드 실사용 확인 → 커밋
+- [x] 리로드 실사용 확인 → 커밋
 
-### 🔶 3단계 — locate/ (작업 완료, 리로드 확인·커밋 대기)
+### ✅ 3단계 — locate/ (완료 2026-07-13, 커밋됨)
 
 - [x] 소비자 전수 조사: RegionEdit.ts — src 4곳(RegionEditService·RegionIoProbeProvider·SliceProbeProvider·decompose/RegionInputQuality) + scripts 7곳(test-region-edit·eval-region·eval-e2e·eval-bigfile·eval-disambig·probe-locate·probe-eval-real)
 - [x] `git mv` → src/ai/locate/
@@ -135,14 +135,14 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:line-edits 15/0 · eval:region 회귀 없음 · eval:e2e **이동 전후 출력 diff 0** (동일)
 - [x] locate/README 갱신 (checkRegionRootTag는 "아직 여기 없는 것" 부채로 기록)
 - [x] 이 문서 갱신
-- [ ] 리로드 실사용 확인 → 커밋
+- [x] 리로드 실사용 확인 → 커밋
 
 > ⚠ **별도 이슈 발견(이 트랙과 무관)**: eval:e2e가 이 PC의 로컬 녹화 기준으로 기존부터 10건 불일치
 > + cond-leave-date TSX 파싱 깨짐 상태. 이동 전후 diff 0으로 이번 작업 원인 아님을 확인함.
 > 원인 추정 = 오래된 로컬 녹화 vs 최근 코드 변경(다른 트랙)의 어긋남. 서버 연결 시
 > `eval:e2e:record` 재녹화 또는 기대값 재점검(`eval:e2e:bless`) 필요.
 
-### 🔶 4단계 — contracts/ (작업 완료, 리로드 확인·커밋 대기)
+### ✅ 4단계 — contracts/ (완료 2026-07-13, 커밋됨)
 
 - [x] 소비자 전수 조사: ScaffoldContracts, ComponentPropsIndex, promptBudget — src 4곳(ChatViewProvider·OfflineResponder·RegionEditService·ScaffoldContextBuilder) + scripts 4곳(test-region-edit·eval-region·eval-bigfile·eval-edit-live)
 - [x] **generated/ 폴더 함께 이동 결정** (소비자가 ComponentPropsIndex뿐) → contracts/generated/, build-component-props.mjs OUT_PATH 수정
@@ -150,18 +150,18 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 - [x] import 경로 수정 (상위 참조는 promptBudget→`../config` 1건뿐)
 - [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:api-binding 69/0 · test:react-rules 39/0 · eval:region 회귀 없음 · **재생성 검증**: `node scripts/build-component-props.mjs` → 새 경로에 53컴포넌트·274prop 출력, 기존 파일과 diff 0
 - [x] contracts/README 갱신 → 이 문서 갱신
-- [ ] 리로드 실사용 확인 → 커밋
+- [x] 리로드 실사용 확인 → 커밋
 
-### 🔶 5단계 — apply/ (작업 완료, 리로드 확인·커밋 대기)
+### ✅ 5단계 — apply/ (완료 2026-07-13, 커밋됨 `dfcafe7`)
 
 - [x] 소비자 전수 조사: StructuralAnchor, DiffUtil — src 6곳(ChatViewProvider·SliceProbeProvider·ApiBindingRecipe·FileCreatorService·OfflineTransplant·RegionEditService) + scripts 6곳(test-region-edit·test-react-rules·test-api-binding·poc-anchor·poc-e2e·probe-bc-primitives)
 - [x] `git mv` 2파일 → src/ai/apply/ (91KB 통째 이동 — 분할은 8단계)
 - [x] import 경로 수정 (상위 참조는 StructuralAnchor→`../decompose/CodeSectionExtractor` 1건뿐, DiffUtil 자립)
 - [x] 게이트: tsc 0 · compile OK · test:region-edit 230/0 · test:line-edits 15/0 · test:react-rules 39/0 · test:patch-grounded 30/0 · test:api-binding 69/0 · eval:e2e **3단계 시점 출력과 diff 0** (기존 이슈 외 변화 없음)
 - [x] apply/README 갱신 → 이 문서 갱신
-- [ ] 리로드 실사용 확인 → 커밋
+- [x] 리로드 실사용 확인 → 커밋
 
-### ⬜ 6단계 — pipeline/ (2026-07-13 사전 조사 완료 — 아래 지도 그대로 사용 가능)
+### ✅ 6단계 — pipeline/ (완료 2026-07-14, 커밋됨)
 
 - [x] 소비자 전수 조사 (2026-07-13 조사 결과):
   - **src 5곳**: ChatViewProvider(4파일 전부 소비), ChatPanelProvider(LlmService),
@@ -174,12 +174,25 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
     다수 import → 이동 후 `'./X'`→`'../X'` 일괄 치환 필요 (tsc가 전수 검증)
   - ⚠ LlmService가 `./FallbackStubService`(retrieval 후보) 참조 → 이동 후 `../FallbackStubService`,
     7단계에서 `../retrieval/FallbackStubService`로 재수정됨 (두 번 손대는 게 정상)
-- [ ] LlmService 포함 여부 결정 — **권고: 일단 pipeline/에 포함**하고 README에 "추후 llm/ 분리 검토" 기록
-  (폴더 추가 논의로 이관을 막지 말 것, 나중에 이동 쉬움)
-- [ ] `git mv` 4파일 → src/ai/pipeline/
-- [ ] import 경로 수정 (소비자 17곳 + 옮긴 파일들의 안→밖 참조)
-- [ ] 게이트: tsc → compile → `test:region-edit` → `test:api-binding` → `test:region-capture` → `test:line-edits` → `test:patch-grounded` → `test:react-rules` → eval:e2e 출력 diff 비교(§주의: 기존 10건 불일치는 별도 이슈)
-- [ ] pipeline/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+- [x] LlmService 포함 여부 결정 — 권고대로 **pipeline/에 포함**, README에 "추후 llm/ 분리 검토" 기록
+- [x] `git mv` 4파일 → src/ai/pipeline/ (RegionEditService·FileCreatorService·LlmService·RegionCaptureRecorder)
+- [x] import 경로 수정 — 소비자 17곳(src 5 + scripts 12) + 옮긴 파일 안→밖 11건
+  (RegionEditService `./locate|decompose|contracts|apply/`→`../` 6건 + FileCreatorService 2건 +
+  LlmService `./types`·`./FallbackStubService`→`../`, `../config/ExtensionConfig`→`../../` 3건.
+  RegionCaptureRecorder는 자립 모듈 — 수정 0)
+- [x] 게이트 (2026-07-14, 전부 통과): tsc 0 · compile OK · `test:region-edit` 230/0 ·
+  `test:api-binding` 69/0 · `test:region-capture` 16/0 · `test:line-edits` 15/0 ·
+  `test:patch-grounded` 30/0 · `test:react-rules` 39/0 · **eval:e2e 이동 전(HEAD)과 출력 diff 0**
+  (기존 10건 불일치·cond-leave-date 파싱 이슈는 그대로 = 별도 이슈, 이번 이동 무영향)
+- [x] pipeline/README "구성 파일"로 갱신 → 이 문서 갱신
+- [x] 리로드 실사용 확인 → 커밋 (2026-07-14 F5 Extension Development Host에서 3종 확인:
+  ①지식응답 "useApi 사용법" 전문 렌더 ②영역수정 "초기화 버튼 추가" 적용 ③"직원 목록 페이지" 생성)
+
+> 📌 **eval:e2e 전후 비교 방법 기록**: HEAD를 임시 `git worktree`에 꺼내 양쪽에서 실행해 diff.
+> 이때 `scripts/eval-recordings/`·`scripts/eval-goldens/`·`node_modules`는 **gitignore라 worktree에 없음**
+> — junction으로 연결해야 동일 조건 비교가 된다(골든 없으면 calendar-picker가 no-gold로 갈려 가짜 diff 발생).
+> ⚠ worktree 삭제 시 junction을 **먼저** `rmdir`(cmd)로 끊을 것 — `git worktree remove`가 junction을
+> 따라 들어가 본 저장소 node_modules/.bin을 지운 사고 있었음(npm install로 복구 후 전 게이트 재검증 완료).
 
 ### ⬜ 7단계 — retrieval/ (2026-07-13 사전 조사 완료 — 아래 지도 그대로 사용 가능)
 

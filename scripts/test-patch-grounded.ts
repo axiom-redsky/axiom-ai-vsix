@@ -2,7 +2,7 @@
  * locateFuzzyRegion + resolvedOk 단위 테스트 (vscode 비의존 — esbuild로 vscode 스텁 후 node 실행).
  * 실행: node scripts/run-test-patch-grounded.mjs
  */
-import { FileCreatorService, type PatchBlock } from '../src/ai/FileCreatorService';
+import { FileCreatorService, type PatchBlock } from '../src/ai/pipeline/FileCreatorService';
 
 const svc = new FileCreatorService();
 let passed = 0;

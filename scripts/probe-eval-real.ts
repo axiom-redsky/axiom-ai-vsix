@@ -1,7 +1,7 @@
 /** 실제 sLLM 출력(사용자 패널 실행)을 본체 runHybridRegionEdit에 흘려 적용 가부 검증. 모델 없음(출력 고정). */
 import * as fs from 'fs';
 import * as path from 'path';
-import { runHybridRegionEdit } from '../src/ai/RegionEditService';
+import { runHybridRegionEdit } from '../src/ai/pipeline/RegionEditService';
 import { locateEditRegion } from '../src/ai/locate/RegionEdit';
 
 const source = fs.readFileSync(path.resolve(process.cwd(), 'scripts', 'eval-fixtures', 'EmployeeListPage.tsx'), 'utf-8');
