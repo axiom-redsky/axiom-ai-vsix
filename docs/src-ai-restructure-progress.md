@@ -9,6 +9,11 @@
 > 8단계(거대 파일 분할)는 이동이 아니라 로직 쪼개기라 성격·규모가 달라 **보류(사용자 결정)** —
 > 나중에 재개할 때는 §5의 8단계 항목 + 각 폴더 README의 "아직 여기 없는 것"이 출발점이고,
 > 착수 전 별도 분할 계획서를 먼저 만들 것.
+>
+> **▶ 후속 트랙(2026-07-14 방향 확정): 단계별 고도화.** 이 재편의 본 목적 —
+> 각 층을 ①intent부터 순서대로 하나씩 잡고 "테스트 검증 → 개선 로직 조금씩 → 고도화"를 반복한다.
+> 층별 계기판·개선 후보 지도는 §8 참고. ①intent는 기존 라우팅 재설계 트랙
+> (AXIOM_INTENT_ROUTING_REDESIGN.md, S1 완료·S2 대기)의 재개로 진행.
 
 ---
 
@@ -271,3 +276,22 @@ compose-binding 트랙), JsonTypeGenerator.ts, PackageVersionScanner.ts, config.
 - 의도 라우팅 재설계(별도 트랙): AXIOM_INTENT_ROUTING_REDESIGN.md, docs/page-creation-intent-routing-plan.md
 - Claude 세션 메모리에도 동일 현황 기록됨 (project_src_ai_layer_folders.md) —
   단, PC 간 공유되는 진실은 **이 문서**다. 갱신은 여기 먼저.
+
+## 8. 후속 트랙 — 단계별 고도화 지도 (2026-07-14 방향 확정)
+
+재편의 본 목적: 각 층을 **①부터 순서대로** 하나씩 잡고 "테스트 검증 → 개선 → 고도화"를 반복.
+층별 현재 계기판과 이미 기록된 개선 후보:
+
+| 층 | 검증 계기판 | 기록된 개선 후보 |
+|---|---|---|
+| ① intent/ | test:offline-intent 66 · eval:intent(-live) | **라우팅 재설계 S2**(단일 라우터, 계획서 있음) · IntentClassifier 플래그 라이브 검증 |
+| ② decompose/ | eval:input · eval:bigfile | bigfile 레버1: deps 가지치기(입력 대부분이 무관 type덤프) |
+| ③ locate/ | eval:region 85%(35/41) · eval:disambig | 앵커 계약 주력화·locate 축소(Stage 0 트랙) |
+| ④ contracts/ | test:region-edit(계약카드) · test:api-binding 69 | 계약카드 커버리지 확장 · 봉투계약 실모델 검증(Phase B) |
+| ⑤ apply/ | test:line-edits 15 · test:patch-grounded 30 · test:react-rules 39 | grounded retry 1C(결정론 rename) · 검증-교정 루프 실모델 검증 |
+| pipeline/ | eval:e2e (record/replay) | ⚠ 로컬 녹화 낡음(10건 불일치) — 서버 연결 시 `eval:e2e:record` 재녹화 |
+| retrieval/ | test:knowledge-routing 80 · test:offline-answer 70 · test:offline-transplant 22 | 실패 포집 회수경로(EvalCase 변환) 미구현 |
+
+- 시작점 = ① intent/: 기존 트랙 **재개**다. S1(effectiveIntent 비파괴 측정 로그)은 커밋됨 —
+  다음은 실사용 불일치 패턴 수집 → S2(단일 라우터 추출). 8단계(파일 분할)와 섞지 말 것.
+- 각 층 작업 시에도 이 문서에 결과·다음 작업을 기록한다(또는 층별 별도 진행 문서를 만들고 여기 링크).
