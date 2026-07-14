@@ -4,7 +4,7 @@
  * 실행: node scripts/run-test-knowledge-routing.mjs
  */
 import * as path from 'node:path';
-import { KeywordRetriever } from '../src/ai/KeywordRetriever';
+import { KeywordRetriever } from '../src/ai/retrieval/KeywordRetriever';
 
 let passed = 0;
 let failed = 0;

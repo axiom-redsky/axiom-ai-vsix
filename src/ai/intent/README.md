@@ -11,7 +11,7 @@
 
 - `IntentClassifier.ts` — 모델 위임 의도분류 (플래그 experimental.intentClassifier). `IntentKind`/`IntentResult`/`IntentContext` 타입 허브
 - `IntentSignals.ts` — 정규식·신호 기반 분류 (classifyOfflineIntent = 통합 폴백, S1의 핵심)
-- `IntentEmbeddingClassifier.ts` / `IntentLinearHead.ts` / `IntentExampleStore.ts` — 임베딩 분류 계열 (상위 `../EmbeddingService`, `../VectorMath` 참조)
+- `IntentEmbeddingClassifier.ts` / `IntentLinearHead.ts` / `IntentExampleStore.ts` — 임베딩 분류 계열 (`../retrieval/EmbeddingService`, `../retrieval/VectorMath` 참조)
 - `OfflineIntentResolver.ts` — 오프라인 의도 해석
 - `PageCreationDetector.ts` — 페이지 생성 의도 감지 (분류기의 폴백·충돌가드)
 - `CrossFileTargeting.ts` — "X를 수정" vs "X로 적용" 대상 파일 전환 판정

@@ -45,9 +45,9 @@ import {
 } from '../ai/decompose/SectionExtractor';
 import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind, type IntentContext } from '../ai/intent/IntentClassifier';
-import { FALLBACK_HINT } from '../ai/OfflineKnowledgeRetriever';
-import { OfflineResponder } from '../ai/OfflineResponder';
-import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/OfflineTransplant';
+import { FALLBACK_HINT } from '../ai/retrieval/OfflineKnowledgeRetriever';
+import { OfflineResponder } from '../ai/retrieval/OfflineResponder';
+import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/retrieval/OfflineTransplant';
 import { IntentExampleStore } from '../ai/intent/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/intent/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../ai/intent/OfflineIntentResolver';

@@ -1,4 +1,4 @@
-import { ExtensionConfig } from '../config/ExtensionConfig';
+import { ExtensionConfig } from '../../config/ExtensionConfig';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FeatureExtractionPipeline = (text: string, options?: Record<string, unknown>) => Promise<any>;

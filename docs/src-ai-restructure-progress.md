@@ -5,11 +5,10 @@
 >
 > 최종 갱신: 2026-07-14
 >
-> **▶ 재개 지점: 7단계 retrieval/ 이관.** 1~6단계 전부 완료·커밋됨
-> (6단계는 2026-07-14 F5 실사용 3종 — 지식응답·영역수정·페이지생성 — 확인 후 커밋).
-> 7단계는 사전 조사까지 완료 — 체크리스트의 소비자 지도를 그대로 쓰면 되고,
-> 절차는 §6 공통 절차, 함정은 §3 원칙 참고. 게이트 통과 기준: 이전 단계들과 동일
-> (tsc 0 · compile OK · 해당 테스트 전부 green · eval 베이스라인 회귀 0).
+> **▶ 재개 지점: 8단계(거대 파일 분할) — 착수 전 별도 계획 수립 필요.**
+> **1~7단계 폴더 이관 전부 완료·커밋됨** (2026-07-14). 7단계는 온라인 Q&A + 오프라인 지식응답
+> 실사용 확인 후 커밋. 8단계는 이동이 아니라 파일 쪼개기(로직 경계 결정)라 성격이 다름 —
+> §5의 8단계 항목과 각 폴더 README의 "아직 여기 없는 것"이 출발점.
 
 ---
 
@@ -72,7 +71,7 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 | 4 | **contracts/ 이관** (3파일+generated/ + 소비자 8곳) | ✅ 완료·커밋됨 (2026-07-13) |
 | 5 | **apply/ 이관** (2파일 + 소비자 12곳) | ✅ 완료·커밋됨 (2026-07-13, `dfcafe7`) |
 | 6 | **pipeline/ 이관** (4파일 + 소비자 17곳) | ✅ 완료·커밋됨 (2026-07-14, F5 실사용 3종 확인) |
-| 7 | retrieval/ 이관 | ⬜ 다음 차례 |
+| 7 | **retrieval/ 이관** (12파일 + 소비자 10곳) | ✅ 완료·커밋됨 (2026-07-14, 온·오프라인 실사용 확인) |
 | 8 | (2단계) 거대 파일 분할 — ScaffoldContextBuilder(분해/설명서), StructuralAnchor(게이트/적용), RegionEdit(locate 속 checkRegionRootTag→apply) | ⬜ 전 폴더 이관 후 |
 
 ### 4.1 intent/ 이관 상세 (완료분 기록)
@@ -194,7 +193,7 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
 > ⚠ worktree 삭제 시 junction을 **먼저** `rmdir`(cmd)로 끊을 것 — `git worktree remove`가 junction을
 > 따라 들어가 본 저장소 node_modules/.bin을 지운 사고 있었음(npm install로 복구 후 전 게이트 재검증 완료).
 
-### ⬜ 7단계 — retrieval/ (2026-07-13 사전 조사 완료 — 아래 지도 그대로 사용 가능)
+### ✅ 7단계 — retrieval/ (완료 2026-07-14, 커밋됨)
 
 - [x] 소비자 전수 조사 (2026-07-13 조사 결과): 12파일(OfflineKnowledgeRetriever, KnowledgeDoc, RagRetriever,
   KeywordRetriever, HybridRagEngine, EmbeddingService, VectorMath, ExternalCorpusLoader,
@@ -206,11 +205,18 @@ S1 effectiveIntent 비파괴 측정 로그. 이것은 폴더 정리가 아니라
   - LlmService (FallbackStubService — 6단계 후 위치 기준으로 수정)
   - intent/ 2파일 (`../EmbeddingService`·`../VectorMath` → `../retrieval/...` 재수정)
   - scripts 4곳: test-knowledge-routing, test-offline-answer, test-offline-intent, test-offline-transplant
-- [ ] `git mv` 12파일 → src/ai/retrieval/
-- [ ] ⚠ intent/ 쪽 재수정 + LlmService(당시 위치)의 FallbackStubService 경로 재수정
-- [ ] import 경로 수정 (나머지 소비자)
-- [ ] 게이트: tsc → compile → `test:knowledge-routing` → `test:offline-answer` → `test:offline-intent` → `test:offline-transplant` → `test:region-edit`(ScaffoldContextBuilder 경유 회귀 확인)
-- [ ] retrieval/README 갱신 → 이 문서 갱신 → 리로드 확인 → 커밋
+- [x] `git mv` 12파일 → src/ai/retrieval/ (닫힌 클러스터 확인 — 내부 경로 무수정)
+- [x] ⚠ intent/ 2파일 `../EmbeddingService`·`../VectorMath` → `../retrieval/` 재수정 +
+  pipeline/LlmService `../FallbackStubService` → `../retrieval/` 재수정 (예고됐던 두 번째 손대기 완료)
+- [x] import 경로 수정 — 나머지 소비자: extension.ts·ChatViewProvider(3종)·ScaffoldContextBuilder(3종)·
+  scripts 4곳. 옮긴 파일들의 안→밖 참조는 `./decompose|apply|intent|contracts/`→`../` +
+  `../config/`→`../../config/` + `./types`→`../types` (intent/README의 참조 표기도 갱신)
+- [x] 게이트 (2026-07-14, 전부 통과): tsc 0 · compile OK · `test:knowledge-routing` 80/0 ·
+  `test:offline-answer` 70/0 · `test:offline-intent` 66/0 · `test:offline-transplant` 22/0 ·
+  `test:region-edit` 230/0 (ScaffoldContextBuilder 경유 회귀 없음) · 옛 경로 잔존 참조 grep 0건
+- [x] retrieval/README "구성 파일"로 갱신 → 이 문서 갱신
+- [x] 리로드 실사용 확인 → 커밋 (2026-07-14 확인: ①온라인 "useApi 사용법" → 지식 가이드 카드 정상
+  ②서버 모델명 불일치(오프라인 폴백) 상태에서 같은 질문 → 오프라인 지식카드 정상, "로컬 지식·토큰 미사용" 표시)
 
 ### 참고 — 6·7단계 후에도 src/ai/ 직하에 남는 파일 (미분류, 의도된 잔류)
 

@@ -13,9 +13,9 @@
  * vscode/디스크 비의존 — 외부 자원은 모두 주입(IOfflineResponderDeps)으로 받아 테스트 가능.
  */
 
-import type { IntentResult, IntentContext } from './intent/IntentClassifier';
-import { classifyOfflineIntent, stripFileRefs } from './intent/IntentSignals';
-import { buildContractSection } from './contracts/ScaffoldContracts';
+import type { IntentResult, IntentContext } from '../intent/IntentClassifier';
+import { classifyOfflineIntent, stripFileRefs } from '../intent/IntentSignals';
+import { buildContractSection } from '../contracts/ScaffoldContracts';
 import { FALLBACK_HINT } from './OfflineKnowledgeRetriever';
 
 /** OfflineResponder가 외부 자원에 접근하기 위한 주입 의존성. */

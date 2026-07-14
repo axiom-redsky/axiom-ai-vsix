@@ -8,7 +8,7 @@
  */
 import * as path from 'node:path';
 import { classifyOfflineIntent, extractFilePathRef, stripFileRefs, fillSlots } from '../src/ai/intent/IntentSignals';
-import { OfflineResponder } from '../src/ai/OfflineResponder';
+import { OfflineResponder } from '../src/ai/retrieval/OfflineResponder';
 import { IntentExampleStore } from '../src/ai/intent/IntentExampleStore';
 import { IntentEmbeddingClassifier, type ClassifyResult } from '../src/ai/intent/IntentEmbeddingClassifier';
 import { resolveOfflineIntent } from '../src/ai/intent/OfflineIntentResolver';

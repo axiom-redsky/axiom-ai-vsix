@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ChatMessage } from './types';
+import type { ChatMessage } from '../types';
 
 interface StubEntry {
   keywords: string[];

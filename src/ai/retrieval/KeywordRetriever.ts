@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { IndexEntry } from './ExternalCorpusLoader';
-import { loadAndScoreSections, type MdSection } from './decompose/SectionExtractor';
+import { loadAndScoreSections, type MdSection } from '../decompose/SectionExtractor';
 
 /**
  * .rag/_index.md 를 파싱해 키워드→파일 매핑을 메모리에 로드한다.

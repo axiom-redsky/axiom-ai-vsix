@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { embed } from './EmbeddingService';
 import { cosineSimilarity } from './VectorMath';
-import { ExtensionConfig } from '../config/ExtensionConfig';
+import { ExtensionConfig } from '../../config/ExtensionConfig';
 
 interface Chunk {
   source: string;

@@ -8,7 +8,7 @@ import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
 import { registerCommands } from './commands/index';
 import { ExtensionConfig } from './config/ExtensionConfig';
 import { AxiomIndexTracker } from './spec/AxiomIndexTracker';
-import { initEmbeddingPipeline } from './ai/EmbeddingService';
+import { initEmbeddingPipeline } from './ai/retrieval/EmbeddingService';
 import * as path from 'path';
 
 export function activate(context: vscode.ExtensionContext): void {

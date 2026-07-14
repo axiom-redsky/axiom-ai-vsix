@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import type { ChatMessage, LlmConfig, LlmTuning, LlmUsage } from '../types';
-import { FallbackStubService } from '../FallbackStubService';
+import { FallbackStubService } from '../retrieval/FallbackStubService';
 import { ExtensionConfig } from '../../config/ExtensionConfig';
 
 export class LlmService {

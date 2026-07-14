@@ -7,8 +7,8 @@
  * 예시/모델이 없으면 null을 돌려 정규식 폴백으로 안전하게 떨어진다.
  */
 
-import { embed as defaultEmbed } from '../EmbeddingService';
-import { cosineSimilarity } from '../VectorMath';
+import { embed as defaultEmbed } from '../retrieval/EmbeddingService';
+import { cosineSimilarity } from '../retrieval/VectorMath';
 import { IntentExampleStore, type EmbedFn } from './IntentExampleStore';
 import { IntentLinearHead } from './IntentLinearHead';
 import type { IntentKind } from './IntentClassifier';

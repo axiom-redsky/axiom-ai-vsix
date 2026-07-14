@@ -17,10 +17,10 @@
  * vscode/fs 비의존 — source 검색·문서 로드를 모두 주입(IOfflineKnowledgeDeps)으로 받는다.
  */
 
-import type { IntentResult } from './intent/IntentClassifier';
+import type { IntentResult } from '../intent/IntentClassifier';
 import { parseKnowledgeDoc, type KnowledgeDoc } from './KnowledgeDoc';
-import { focusKnowledgeBody } from './decompose/SectionExtractor';
-import { buildFunctionSpotlight } from './decompose/FunctionSpotlight';
+import { focusKnowledgeBody } from '../decompose/SectionExtractor';
+import { buildFunctionSpotlight } from '../decompose/FunctionSpotlight';
 
 /** OfflineKnowledgeRetriever가 외부 자원에 접근하기 위한 주입 의존성. */
 export interface IOfflineKnowledgeDeps {

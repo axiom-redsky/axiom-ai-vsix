@@ -2,13 +2,13 @@ import { KeywordRetriever } from './KeywordRetriever';
 import { FileContextRetriever } from './FileContextRetriever';
 import { RagRetriever } from './RagRetriever';
 import type { ExternalCorpus } from './ExternalCorpusLoader';
-import { ExtensionConfig } from '../config/ExtensionConfig';
+import { ExtensionConfig } from '../../config/ExtensionConfig';
 import {
   formatSectionsAsDocs,
   selectByBudget,
   tokenizeQuery,
   type MdSection,
-} from './decompose/SectionExtractor';
+} from '../decompose/SectionExtractor';
 
 /** buildContext() 반환 타입 */
 export interface RagContext {

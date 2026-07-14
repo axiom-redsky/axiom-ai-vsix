@@ -1,5 +1,5 @@
 /**
- * src/ai/OfflineTransplant.ts 단위 테스트 — **모델 비의존**.
+ * src/ai/retrieval/OfflineTransplant.ts 단위 테스트 — **모델 비의존**.
  *
  * 오프라인 verbatim JSX 이식의 결정론 불변식을 회귀로 고정한다:
  *  - extractMainReturnJsx: 여러 return 중 가장 큰 메인 렌더 채택(early return 무시).
@@ -10,7 +10,7 @@ import {
   extractMainReturnJsx,
   planJsxTransplant,
   isVerbatimTransplantRequest,
-} from '../src/ai/OfflineTransplant';
+} from '../src/ai/retrieval/OfflineTransplant';
 
 let passed = 0;
 let failed = 0;
