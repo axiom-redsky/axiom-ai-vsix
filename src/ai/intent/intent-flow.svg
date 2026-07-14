@@ -1,0 +1,192 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+    <marker id="arN" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1F3864"/>
+    </marker>
+    <marker id="arG" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2E7D32"/>
+    </marker>
+    <marker id="arDash" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8C8C8C"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="900" fill="#FFFFFF"/>
+
+  <!-- ═══ 헤더 ═══ -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="22" font-weight="bold" fill="#FFFFFF">①</text>
+  <text x="106" y="54" font-size="26" font-weight="bold" fill="#1F3864">intent — 의도 라우팅(현관문) 로직 흐름</text>
+  <text x="106" y="84" font-size="14" fill="#595959">1) 판정(모델 위임+정규식 폴백) → 2) 라우트 결정 → 3) 대상 파일 해석 · 재설계 트랙 S1~S4 반영 · 2026-07-14 기준</text>
+  <line x1="50" y1="104" x2="1390" y2="104" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- ═══ 입력 ═══ -->
+  <rect x="40" y="140" width="175" height="250" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="127" y="170" text-anchor="middle" font-size="14" font-weight="bold" fill="#333333">입력</text>
+  <text x="58" y="198" font-size="12" fill="#333333">사용자 프롬프트</text>
+  <text x="58" y="224" font-size="12" fill="#333333">컨텍스트:</text>
+  <text x="66" y="244" font-size="11" fill="#595959">· 현재 파일(열린 탭)</text>
+  <text x="66" y="262" font-size="11" fill="#595959">· 선택영역 유무</text>
+  <text x="66" y="280" font-size="11" fill="#595959">· 도메인 목록</text>
+  <text x="58" y="310" font-size="10.5" fill="#8C8C8C">파일 미검출 시 폴백:</text>
+  <text x="58" y="326" font-size="10.5" fill="#8C8C8C">보이는 에디터 → 활성 탭</text>
+  <text x="58" y="342" font-size="10.5" fill="#8C8C8C">(modify→create 누수 방지)</text>
+  <line x1="215" y1="265" x2="238" y2="265" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 1) 의도 판정 ═══ -->
+  <rect x="240" y="128" width="580" height="282" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="258" y="154" font-size="14" font-weight="bold" fill="#1F3864">1) 의도 판정 — 추출·분류는 모델 위임, 폴백은 정규식</text>
+
+  <rect x="258" y="168" width="262" height="102" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="272" y="190" font-size="12.5" font-weight="bold" fill="#1F3864">🤖 모델 분류기 (온라인)</text>
+  <text x="272" y="208" font-size="11" fill="#2E5395">IntentClassifier.ts</text>
+  <text x="272" y="226" font-size="10.5" fill="#333333">buildIntentPrompt → sLLM → parseIntent</text>
+  <text x="272" y="242" font-size="10.5" fill="#333333">슬롯: pageName·domain·targetComponent…</text>
+  <text x="272" y="258" font-size="10.5" fill="#8C8C8C">'}' 조기종료 · 실패/오프라인 → null</text>
+
+  <rect x="258" y="284" width="262" height="108" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="272" y="306" font-size="12.5" font-weight="bold" fill="#1B5E20">🔤 정규식 통합 폴백 (항상 산출)</text>
+  <text x="272" y="324" font-size="11" fill="#2E7D32">IntentSignals.ts · classifyOfflineIntent</text>
+  <text x="272" y="342" font-size="10.5" fill="#333333">신호 강도(strong/weak) 산출</text>
+  <text x="272" y="358" font-size="10.5" fill="#333333">오프라인 보조: 임베딩 분류 계열*</text>
+  <text x="272" y="376" font-size="10.5" fill="#8C8C8C">PageCreationDetector = 생성 충돌가드</text>
+
+  <line x1="520" y1="219" x2="556" y2="240" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="520" y1="338" x2="556" y2="300" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="560" y="200" width="242" height="140" rx="8" fill="#FFFFFF" stroke="#1F3864" stroke-width="2"/>
+  <text x="681" y="226" text-anchor="middle" font-size="13" font-weight="bold" fill="#1F3864">최종 채택 effectiveIntent</text>
+  <text x="576" y="250" font-size="11" fill="#333333">분류기 확신(null 아님 · other 아님)</text>
+  <text x="576" y="268" font-size="11" fill="#333333">→ 모델 판정 채택</text>
+  <text x="576" y="286" font-size="11" fill="#333333">아니면 → 정규식 판정 채택</text>
+  <text x="576" y="310" font-size="10.5" fill="#8C8C8C">(S1 라우팅측정과 동일 규칙 —</text>
+  <text x="576" y="326" font-size="10.5" fill="#8C8C8C"> 서버 死에도 동일 결론 보장)</text>
+
+  <text x="240" y="430" font-size="10.5" fill="#8C8C8C">* 오프라인 임베딩 계열: OfflineIntentResolver · IntentEmbeddingClassifier — 저신뢰 시 정규식 합의, 불일치면 되묻기</text>
+
+  <line x1="820" y1="270" x2="846" y2="270" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 2) 라우트 결정 ═══ -->
+  <rect x="850" y="140" width="272" height="270" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="866" y="166" font-size="14" font-weight="bold" fill="#1F3864">2) 라우트 결정</text>
+  <text x="866" y="184" font-size="10.5" fill="#C55A11">⚠ ChatViewProvider 인라인 — S5가 추출 예정</text>
+  <text x="866" y="210" font-size="11" font-weight="bold" fill="#333333">게이트:</text>
+  <text x="874" y="228" font-size="10.5" fill="#595959">isQnAGated (질문·잡담 게이팅)</text>
+  <text x="874" y="244" font-size="10.5" fill="#595959">classifierSaysModify (분류기 확신)</text>
+  <text x="874" y="260" font-size="10.5" fill="#595959">isFileModificationContext (오프라인)</text>
+  <text x="866" y="290" font-size="12" font-weight="bold" fill="#1F3864">route = qna | modify | passthrough</text>
+  <text x="866" y="318" font-size="10.5" fill="#8C8C8C">S1 [라우팅측정] 로그 — 판정↔게이트</text>
+  <text x="866" y="334" font-size="10.5" fill="#8C8C8C">divergence 비파괴 실측 (S5 데이터)</text>
+  <text x="866" y="362" font-size="10.5" fill="#C55A11">S3④ isFileCtx 오프라인 단일화 ·</text>
+  <text x="866" y="378" font-size="10.5" fill="#C55A11">S4 불일치 되묻기 = 실측 데이터 게이트</text>
+
+  <line x1="1122" y1="180" x2="1156" y2="180" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="1122" y1="258" x2="1156" y2="258" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="1122" y1="345" x2="1156" y2="345" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="1160" y="146" width="240" height="66" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="1174" y="170" font-size="12" font-weight="bold" fill="#333333">qna — 지식응답</text>
+  <text x="1174" y="190" font-size="10.5" fill="#8C8C8C">확신 시 knowledge 문서 전문 렌더,</text>
+  <text x="1174" y="204" font-size="10.5" fill="#8C8C8C">아니면 LLM 합성</text>
+
+  <rect x="1160" y="226" width="240" height="56" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="1174" y="250" font-size="12" font-weight="bold" fill="#333333">passthrough — 일반 대화</text>
+  <text x="1174" y="270" font-size="10.5" fill="#8C8C8C">smalltalk 응답·일반 스트리밍</text>
+
+  <rect x="1160" y="298" width="240" height="94" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="1174" y="324" font-size="12" font-weight="bold" fill="#1F3864">modify — 수정 라우트</text>
+  <text x="1174" y="344" font-size="10.5" fill="#333333">코드 생성 전에 "어떤 파일을</text>
+  <text x="1174" y="360" font-size="10.5" fill="#333333">고칠지"부터 확정</text>
+  <text x="1174" y="380" font-size="11" font-weight="bold" fill="#2E5395">↓ 3) 대상 파일 해석</text>
+
+  <path d="M 1280 392 L 1280 420 L 600 420 L 600 442" fill="none" stroke="#1F3864" stroke-width="2" marker-end="url(#arN)"/>
+
+  <!-- ═══ 3) 대상 파일 해석 ═══ -->
+  <rect x="40" y="446" width="1084" height="272" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="58" y="472" font-size="14" font-weight="bold" fill="#1F3864">3) 대상 파일 해석 — _resolveTargetFile 결정 사슬 (①→⑥ 순서 평가 · 발화한 규칙에서 확정)</text>
+  <text x="820" y="472" font-size="10.5" fill="#C55A11">⚠ ChatViewProvider 인라인 — S5 추출 예정</text>
+
+  <rect x="58" y="486" width="330" height="216" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="72" y="508" font-size="12.5" font-weight="bold" fill="#1B5E20">① cross-file 재타겟</text>
+  <text x="72" y="528" font-size="10.5" fill="#333333">이름: 모델 targetComponent 1순위</text>
+  <text x="80" y="544" font-size="10.5" fill="#595959">폴백: PascalCase 정규식+import 그라운딩</text>
+  <text x="72" y="566" font-size="10.5" fill="#333333">억제: use-as("X로 적용")·landmark("X 위에")</text>
+  <text x="80" y="582" font-size="10.5" fill="#2E7D32">CrossFileTargeting.ts → 현재 파일 유지</text>
+  <text x="72" y="604" font-size="10.5" fill="#333333">해석: _resolveModuleToUri — import 경로=진실</text>
+  <text x="80" y="620" font-size="10.5" fill="#595959">상대경로/basename glob · 모호·외부 → 통과</text>
+  <text x="72" y="646" font-size="11" font-weight="bold" fill="#1B5E20">발화 → 🔀 그 파일로 전환 (선택 칩보다 우선)</text>
+  <text x="72" y="666" font-size="10.5" fill="#8C8C8C">동명 파일 함정 회피: 이름 아닌 import가 진실</text>
+  <text x="72" y="682" font-size="10.5" fill="#8C8C8C">(StatusBadge → StatusEmployBadge.tsx 검증)</text>
+
+  <line x1="388" y1="534" x2="404" y2="534" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="408" y="486" width="160" height="96" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="422" y="508" font-size="12" font-weight="bold" fill="#333333">② 줄 선택 있음</text>
+  <text x="422" y="528" font-size="10.5" fill="#595959">사용자가 현재 파일을</text>
+  <text x="422" y="544" font-size="10.5" fill="#595959">명시적으로 가리킴</text>
+  <text x="422" y="568" font-size="11" font-weight="bold" fill="#2E7D32">→ 📄 현재 파일</text>
+  <line x1="568" y1="534" x2="576" y2="534" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="580" y="486" width="160" height="96" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="594" y="508" font-size="12" font-weight="bold" fill="#333333">③ 파일명 명시</text>
+  <text x="594" y="528" font-size="10.5" fill="#595959">쿼리가 현재 파일/</text>
+  <text x="594" y="544" font-size="10.5" fill="#595959">컴포넌트명 언급</text>
+  <text x="594" y="568" font-size="11" font-weight="bold" fill="#2E7D32">→ 📄 현재 파일</text>
+  <line x1="740" y1="534" x2="748" y2="534" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="752" y="486" width="160" height="96" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="766" y="508" font-size="12" font-weight="bold" fill="#333333">④ 다른 파일 단서</text>
+  <text x="766" y="528" font-size="10.5" fill="#595959">파일명(.tsx) 또는</text>
+  <text x="766" y="544" font-size="10.5" fill="#595959">Page·Table… 접미사</text>
+  <text x="766" y="568" font-size="10.5" fill="#333333">없음→⑤ · 있음→⑥</text>
+  <line x1="912" y1="534" x2="920" y2="534" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="924" y="486" width="180" height="96" rx="8" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="938" y="508" font-size="12" font-weight="bold" fill="#333333">⑤ 모순 없음</text>
+  <text x="938" y="528" font-size="10.5" fill="#595959">현재 파일 있음 +</text>
+  <text x="938" y="544" font-size="10.5" fill="#595959">다른 파일 단서 없음</text>
+  <text x="938" y="568" font-size="11" font-weight="bold" fill="#2E7D32">→ 📄 현재 파일</text>
+
+  <path d="M 1014 582 L 1014 606 L 744 606 L 744 616" fill="none" stroke="#C55A11" stroke-width="1.5" marker-end="url(#arDash)"/>
+
+  <rect x="408" y="616" width="340" height="86" rx="8" fill="#FDF2E9" stroke="#C55A11" stroke-width="1.5"/>
+  <text x="422" y="638" font-size="12" font-weight="bold" fill="#C55A11">⑥ 되묻기 — QuickPick</text>
+  <text x="422" y="658" font-size="10.5" fill="#333333">"현재 파일 / 다른 파일 선택…" (④ 단서는 힌트로)</text>
+  <text x="422" y="676" font-size="10.5" fill="#C55A11">빈손 되묻기 = 대상 파일 해석 고도화(결정론 후보</text>
+  <text x="422" y="692" font-size="10.5" fill="#C55A11">수집기 + 모델 객관식)가 채울 지점 — 후보 작업</text>
+
+  <rect x="790" y="616" width="314" height="86" rx="8" fill="#FFFFFF" stroke="#1F3864" stroke-width="2"/>
+  <text x="804" y="638" font-size="12" font-weight="bold" fill="#1F3864">확정 — 편집 대상 EditorContext</text>
+  <text x="804" y="658" font-size="10.5" fill="#333333">①→🔀 전환 파일 · ②③⑤→📄 현재 파일 · ⑥→선택</text>
+  <text x="804" y="676" font-size="10.5" fill="#8C8C8C">전환 시 파일 열고 컨텍스트 재수집</text>
+  <text x="804" y="692" font-size="10.5" fill="#8C8C8C">(새 파일=선택영역 없음 → 선택 가드 자동 해제)</text>
+
+  <line x1="1124" y1="580" x2="1156" y2="580" stroke="#1F3864" stroke-width="2" marker-end="url(#arN)"/>
+
+  <!-- ═══ 출력 ═══ -->
+  <rect x="1160" y="486" width="240" height="216" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="1280" y="514" text-anchor="middle" font-size="14" font-weight="bold" fill="#1F3864">출력</text>
+  <text x="1176" y="542" font-size="11.5" fill="#333333">확정된 IntentResult</text>
+  <text x="1176" y="560" font-size="11.5" fill="#333333">+ 편집 대상 파일</text>
+  <text x="1176" y="588" font-size="11" fill="#2E5395">→ 이후 파이프라인으로</text>
+  <text x="1176" y="612" font-size="10.5" fill="#8C8C8C">② decompose (분해)</text>
+  <text x="1176" y="628" font-size="10.5" fill="#8C8C8C">③ locate (위치찾기)</text>
+  <text x="1176" y="644" font-size="10.5" fill="#8C8C8C">④ contracts (계약카드)</text>
+  <text x="1176" y="660" font-size="10.5" fill="#8C8C8C">⑤ apply (게이트·적용)</text>
+
+  <!-- ═══ 계기판 ═══ -->
+  <rect x="40" y="742" width="1360" height="132" rx="12" fill="#FFFFFF" stroke="#8C8C8C" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="58" y="768" font-size="13" font-weight="bold" fill="#595959">🧪 계기판 (운영 미영향 · 드라이런 미러) — 단계별 테스트 "1. 의도파악 테스트" 페이지</text>
+  <text x="58" y="794" font-size="11" fill="#333333">판정 나란히 실행: 🤖 모델 vs 🔤 정규식 → ⚠ 불일치 강조 = S5 데이터 능동 채집기</text>
+  <text x="58" y="814" font-size="11" fill="#333333">🎯 해석된 대상 파일: 위 3) 결정 사슬 드라이런 — 규칙별 발화 추적 (파일 열기·QuickPick 없음)</text>
+  <text x="58" y="836" font-size="10.5" fill="#8C8C8C">IntentProbePanel.ts · IntentProbeApp.tsx — ⚠ 운영(_classifyIntent·_resolveTargetFile) 규칙 변경 시 미러 동기화</text>
+
+  <text x="800" y="794" font-size="11" fill="#333333">합성 게이트: test:offline-intent 66 · eval:intent(-live)</text>
+  <text x="800" y="814" font-size="11" fill="#333333">실사용 채집: 출력채널 [Axiom AI][S1 라우팅측정] ⚠ 불일치 라인</text>
+  <text x="800" y="836" font-size="10.5" fill="#2E7D32">라이브 검증(2026-07-14): 온라인 6 + 오프라인 3 전부 통과 — use-as 억제·import-grounded 해석 실측 확인</text>
+
+  <path d="M 400 742 L 400 726 L 530 726 L 530 414" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
+  <path d="M 700 742 L 700 722" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
+</svg>

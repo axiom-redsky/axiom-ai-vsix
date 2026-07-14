@@ -5,6 +5,7 @@
 
 - 위치: sLLM 콜 **전**, 파이프라인 맨 앞 (① 현관문)
 - 원칙: 추출·분류는 모델 위임(폴백 정규식), 실행은 충돌 안전(모호하면 되묻기)
+- **로직 흐름도: [intent-flow.svg](intent-flow.svg)** — 판정→라우트 결정→대상 파일 해석 전체 사슬(2026-07-14)
 - 관련 계획서: `docs/page-creation-intent-routing-plan.md`, `AXIOM_INTENT_ROUTING_REDESIGN.md`
 
 ## 구성 파일 (2026-07-13 이관 완료)

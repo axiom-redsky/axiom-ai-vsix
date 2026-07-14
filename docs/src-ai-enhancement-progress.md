@@ -86,7 +86,9 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
   그룹 활성탭도 아니라 폴백 3단계 전부 빈손(modify→create leak과 동일 함정). 수정=폴백 ④ 패널 생성 직전
   활성 파일 시드+onDidChangeActiveTextEditor 추적 · ⑤ 전 그룹 텍스트 탭(비활성 포함) 스캔.
   게이트: tsc 0 · compile OK
-- [x] **리로드 실사용 확인 완료(2026-07-14, 온라인 6 + 오프라인 3)** → 커밋만 남음
+- [x] **의도 라우팅 로직 흐름도 작성 (2026-07-14)** — [src/ai/intent/intent-flow.svg](../src/ai/intent/intent-flow.svg)
+  (판정→라우트 결정→대상 파일 해석 ①~⑥ 사슬+계기판, docs/diagrams 스타일. README에 링크)
+- [x] **리로드 실사용 확인 완료(2026-07-14, 온라인 6 + 오프라인 3)** — 사용자 커밋 완료
   - 온라인: smalltalk 해당없음 / 빈손 되묻기 / 열린파일 가져오기(수정 후 정상) / ②줄선택 확정 /
     ①cross-file 전환("StatusBadge"→import 따라 StatusEmployBadge.tsx, 동명 StatusBadge.tsx가 별도
     존재하는데도 import 경로=진실원 검증) / ①use-as 억제("SmartTable로 적용"+EmployeeListPage2 →
