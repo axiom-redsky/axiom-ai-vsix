@@ -5,10 +5,10 @@
 >
 > 최종 갱신: 2026-07-14
 >
-> **▶ 재개 지점: 8단계(거대 파일 분할) — 착수 전 별도 계획 수립 필요.**
-> **1~7단계 폴더 이관 전부 완료·커밋됨** (2026-07-14). 7단계는 온라인 Q&A + 오프라인 지식응답
-> 실사용 확인 후 커밋. 8단계는 이동이 아니라 파일 쪼개기(로직 경계 결정)라 성격이 다름 —
-> §5의 8단계 항목과 각 폴더 README의 "아직 여기 없는 것"이 출발점.
+> **▶ 이 트랙은 2026-07-14 일단락.** 목표였던 폴더 이관(1~7단계)은 전부 완료·커밋됨.
+> 8단계(거대 파일 분할)는 이동이 아니라 로직 쪼개기라 성격·규모가 달라 **보류(사용자 결정)** —
+> 나중에 재개할 때는 §5의 8단계 항목 + 각 폴더 README의 "아직 여기 없는 것"이 출발점이고,
+> 착수 전 별도 분할 계획서를 먼저 만들 것.
 
 ---
 
@@ -72,7 +72,7 @@ sLLM 콜 전 3단계("분해 → 위치찾기 → 설명서 삽입")를 골격�
 | 5 | **apply/ 이관** (2파일 + 소비자 12곳) | ✅ 완료·커밋됨 (2026-07-13, `dfcafe7`) |
 | 6 | **pipeline/ 이관** (4파일 + 소비자 17곳) | ✅ 완료·커밋됨 (2026-07-14, F5 실사용 3종 확인) |
 | 7 | **retrieval/ 이관** (12파일 + 소비자 10곳) | ✅ 완료·커밋됨 (2026-07-14, 온·오프라인 실사용 확인) |
-| 8 | (2단계) 거대 파일 분할 — ScaffoldContextBuilder(분해/설명서), StructuralAnchor(게이트/적용), RegionEdit(locate 속 checkRegionRootTag→apply) | ⬜ 전 폴더 이관 후 |
+| 8 | (2단계) 거대 파일 분할 — ScaffoldContextBuilder(분해/설명서), StructuralAnchor(게이트/적용), RegionEdit(locate 속 checkRegionRootTag→apply) | ⏸ 보류 (2026-07-14 사용자 결정 — 규모·성격이 달라 나중에 별도 계획으로) |
 
 ### 4.1 intent/ 이관 상세 (완료분 기록)
 
@@ -224,7 +224,7 @@ ScaffoldContextBuilder.ts(84KB, 분해+설명서 걸침 → 8단계 분할 대�
 compose-binding 트랙), JsonTypeGenerator.ts, PackageVersionScanner.ts, config.ts, types.ts, templates/.
 이들의 소속은 8단계(분할) 시점 또는 필요해질 때 결정한다.
 
-### ⬜ 8단계 — (2단계 작업) 거대 파일 분할 — 전 폴더 이관 완료 후 별도 계획 수립
+### ⏸ 8단계 — (2단계 작업) 거대 파일 분할 — **보류** (재개 시 별도 계획 수립 먼저)
 
 - [ ] ScaffoldContextBuilder: deps 추출부→decompose/, 프롬프트 조립·buildContractSection→contracts/
 - [ ] RegionEdit: checkRegionRootTag→apply/
