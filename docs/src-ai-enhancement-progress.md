@@ -6,8 +6,9 @@
 >
 > 최종 갱신: 2026-07-14
 >
-> **▶ 재개 지점: ① intent 층 착수됨 — "단계별 테스트" 패널 + 의도파악 테스트 페이지 구현 완료
-> (2026-07-14, 미커밋 — 리로드 실사용 확인 대기).** 확인 후 커밋 → 그 패널로 불일치 채집 시작.
+> **▶ 재개 지점: ① intent 층 진행중 — 테스트 도구 완성·리로드 실사용 확인 완료(온라인 6+오프라인 3,
+> 2026-07-14). 🎯 카드+가져오기 수정+문서는 미커밋 → 커밋 후 패널로 불일치·대상해석 패턴 채집 지속.**
+> 채집 1호(억제 후 ④재낚아챔) 이미 기록됨 — §4 ① "수집된 대상해석 패턴" 참조.
 > intent는 새 계획이 아니라 **기존 라우팅 재설계 트랙의 재개**다:
 > [AXIOM_INTENT_ROUTING_REDESIGN.md](../AXIOM_INTENT_ROUTING_REDESIGN.md) 기준 S1~S4 완료·커밋,
 > S5(정규식 정리·오프라인 단일화)는 **S1 실사용 불일치 로그 데이터 게이트** 상태.
@@ -61,7 +62,7 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
 
 **작업 로그**
 
-- [x] **테스트 도구 구축 (2026-07-14, 미커밋)** — "단계별 테스트" 사이드바(트리 목록, 1~5단계) +
+- [x] **테스트 도구 구축 (2026-07-14, 커밋 e01ad5e)** — "단계별 테스트" 사이드바(트리 목록, 1~5단계) +
   **1. 의도파악 테스트 페이지**(에디터 탭 WebviewPanel). 프롬프트+컨텍스트(현재파일·선택영역 시뮬레이션)를
   넣으면 운영과 동일한 두 판정 경로를 실행해 나란히 표시:
   - 🤖 모델 분류기: `buildIntentPrompt`→`LlmService.streamChat`('}' 조기종료)→`parseIntent`
@@ -72,7 +73,28 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
   - 파일: src/views/StageTestPanelProvider.ts · src/providers/IntentProbePanel.ts ·
     src/webview/intentProbe/IntentProbeApp.tsx (+messages.ts·index.tsx·extension.ts·package.json 배선)
   - 게이트: tsc(ext/webview) 0 · compile OK · offline-intent 66/0 · region-edit 230/0
-- [ ] 리로드 실사용 확인(패널 열림·판정 실행·온/오프라인 양쪽) → 커밋
+- [x] **"🎯 해석된 대상 파일" 카드 추가 (2026-07-14, 미커밋)** — 후보 작업(대상 파일 해석 고도화)의
+  **계기판 확보(0단계)**. 최종 채택이 modify_file이면 운영 `_resolveTargetFile` 결정 사슬
+  (①cross-file 재타겟→②줄선택→③파일명 명시→④단서 추출→⑤모순없음→⑥되묻기)을 **드라이런 미러**로
+  실행해 규칙별 발화 추적+최종 판정(cross-file 전환/현재파일/되묻기)을 표시. 이력 테이블에 "대상" 열.
+  outcome=❓되묻기(빈손)가 후보 수집기가 채울 지점의 실측 빈도 데이터가 된다.
+  - 미러 범위: `_probeTargetResolve`(+`_probeCrossFile`·`_probeExtractOtherFileRef`·
+    `_probeResolveModuleToUri`) — ⚠ ChatViewProvider 쪽 규칙 변경 시 동기화(운영 코드에 경고 주석 추가)
+  - 게이트: tsc(ext/webview) 0 · compile OK · offline-intent 66/0 · region-edit 230/0
+- [x] **"열린 파일 가져오기" 무반응 수정 (2026-07-14, 미커밋)** — 리로드 확인 중 발견(체크리스트 1·2 통과,
+  3에서 발견). 원인=패널이 활성 탭이면 activeTextEditor가 비고, **같은 그룹의 파일 탭**은 보이는 에디터도
+  그룹 활성탭도 아니라 폴백 3단계 전부 빈손(modify→create leak과 동일 함정). 수정=폴백 ④ 패널 생성 직전
+  활성 파일 시드+onDidChangeActiveTextEditor 추적 · ⑤ 전 그룹 텍스트 탭(비활성 포함) 스캔.
+  게이트: tsc 0 · compile OK
+- [x] **리로드 실사용 확인 완료(2026-07-14, 온라인 6 + 오프라인 3)** → 커밋만 남음
+  - 온라인: smalltalk 해당없음 / 빈손 되묻기 / 열린파일 가져오기(수정 후 정상) / ②줄선택 확정 /
+    ①cross-file 전환("StatusBadge"→import 따라 StatusEmployBadge.tsx, 동명 StatusBadge.tsx가 별도
+    존재하는데도 import 경로=진실원 검증) / ①use-as 억제("SmartTable로 적용"+EmployeeListPage2 →
+    억제 발화, shared 재작성 재발 없음 — cross-file-retarget 라이브 검증 해소)
+  - 오프라인(서버 끊김): ℹ️ 배너+출처=정규식 채택 표시 정상 / 모델 없이 🎯 ⑤현재파일 확정 /
+    **cross-file 폴백 검증** — ① 출처 "(정규식+import 그라운딩)"으로 온라인과 동일한
+    StatusEmployBadge.tsx 전환(모델 死에도 라우팅 결론 보존). 억제 오프라인 조합은 구성요소
+    각각 검증돼 생략(폴백=오프라인 7-3, 억제=결정론·온라인 6-A)
 - [ ] 테스트 페이지 + 실사용 S1 로그로 `⚠ 불일치` 패턴 수집 → 아래에 기록
 - [ ] 수집된 패턴 분류 → 데이터가 가리키는 지점만 S5 착수
 
@@ -91,7 +113,16 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
 
 **수집된 불일치 패턴** (여기에 누적 기록)
 
-- (아직 없음)
+- (의도 불일치는 아직 없음 — 온라인 테스트 6회 전부 모델=정규식 일치)
+
+**수집된 대상해석 패턴** (🎯 카드 관찰 — 대상 파일 해석 고도화의 입력 데이터)
+
+- **[채집 1호] 억제 후 재낚아챔 (2026-07-14)**: "SmartTable로 적용해줘"(선택영역 없음)에서 ①use-as
+  억제로 cross-file은 막았으나, ④`_extractOtherFileRef`의 접미사 정규식(Table)이 SmartTable을
+  다른파일 단서로 다시 잡아 ⑥ QuickPick 되묻기로 감 — 현재 파일 직행이 자연스러운 상황에서 되묻기
+  1회 낭비. 선택영역 있으면 ②에서 정상 확정. 후보 수집기 설계 시 "억제된 이름은 ④에서 제외" 검토.
+- 슬롯 참고: 파일 없는 상황에서 모델이 targetFile=current를 내는 경향(정규식은 null) — 불일치
+  배너까진 아니고 슬롯 차이 노트로만 관찰됨(3회).
 
 
 - **계기판**: `test:offline-intent`(66) · `eval:intent`(오프라인 합성) · `eval:intent-live`(실 sLLM,

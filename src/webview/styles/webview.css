@@ -2207,6 +2207,14 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .ip-badge--smalltalk    { background: rgba(127,127,127,.18); border-color: rgba(127,127,127,.5); }
 .ip-badge--other        { background: rgba(204,167,0,.18);   border-color: rgba(204,167,0,.55); }
 
+/* 🎯 해석된 대상 파일 — 최종 판정 배지 + 결정 사슬 추적 */
+.ip-badge--target-cross   { background: rgba(59,130,246,.18);  border-color: rgba(59,130,246,.5); }
+.ip-badge--target-current { background: rgba(46,160,67,.18);   border-color: rgba(46,160,67,.5); }
+.ip-badge--target-ask     { background: rgba(214,124,13,.18);  border-color: rgba(214,124,13,.55); }
+.ip-steps { margin: 10px 0 0; padding-left: 20px; font-size: 12px; }
+.ip-steps li { margin: 4px 0; opacity: .5; }
+.ip-steps li.fired { opacity: 1; }
+
 .ip-slots { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 12px; }
 .ip-slots th { text-align: left; font-weight: 400; opacity: .55; padding: 5px 10px 5px 6px; width: 132px; white-space: nowrap; }
 .ip-slots td { padding: 5px 6px; font-family: var(--vscode-editor-font-family, monospace); word-break: break-all; }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { vscode } from '../vscodeApi';
-import type { HostToWebviewMessage, IntentProbeResult, IntentProbeIntent } from '../../types/messages';
+import type { HostToWebviewMessage, IntentProbeResult, IntentProbeIntent, TargetResolveProbe } from '../../types/messages';
 
 const INTENT_LABEL: Record<string, string> = {
   create_page: '페이지 생성',
@@ -46,11 +46,26 @@ function SlotTable({ result, diffKeys }: { result: IntentProbeIntent; diffKeys: 
   );
 }
 
+/** 대상 파일 해석 드라이런의 최종 판정 배지. */
+function TargetOutcomeBadge({ probe }: { probe: TargetResolveProbe }): React.ReactElement {
+  switch (probe.outcome) {
+    case 'cross-file':
+      return <span className="ip-badge ip-badge--target-cross">🔀 cross-file 전환 → {probe.targetFile}</span>;
+    case 'current-file':
+      return <span className="ip-badge ip-badge--target-current">📄 현재 파일 → {probe.targetFile}</span>;
+    case 'ask-user':
+      return <span className="ip-badge ip-badge--target-ask">❓ 되묻기(QuickPick) — 근거 후보 없음</span>;
+    default:
+      return <span className="ip-badge ip-badge--other">— 해당 없음</span>;
+  }
+}
+
 interface HistoryRow {
   time: string;
   query: string;
   model: string;
   offline: string;
+  target: string;
   match: 'match' | 'mismatch' | 'model-only-na';
 }
 
@@ -79,6 +94,12 @@ export function IntentProbeApp(): React.ReactElement {
               query: r.query,
               model: r.model.result?.intent ?? `(${r.model.status})`,
               offline: r.offline.result.intent,
+              target:
+                r.targetResolve.outcome === 'ask-user'
+                  ? '❓되묻기'
+                  : r.targetResolve.targetFile
+                    ? (r.targetResolve.targetFile.split(/[/\\]/).pop() ?? '')
+                    : '—',
               match: (!r.agreement.comparable ? 'model-only-na' : r.agreement.intentMatch ? 'match' : 'mismatch') as HistoryRow['match'],
             },
             ...prev,
@@ -130,7 +151,8 @@ export function IntentProbeApp(): React.ReactElement {
       <p className="ip-sub">
         프롬프트를 넣으면 의도파악 층의 두 판정 경로 — <b>🤖 모델 분류기</b>와 <b>🔤 정규식 폴백</b> — 를
         운영과 동일하게 실행해 나란히 보여줍니다. 두 판정이 갈라지면 ⚠ 불일치로 표시됩니다
-        (라우팅 재설계 S5가 기다리는 수집 대상). 판정만 하며 파일·라우팅에 영향 없습니다.
+        (라우팅 재설계 S5가 기다리는 수집 대상). 수정(modify) 의도일 때는 <b>🎯 해석된 대상 파일</b> —
+        어떤 파일을 고칠지 결정하는 사슬 — 도 드라이런으로 보여줍니다. 판정만 하며 파일·라우팅에 영향 없습니다.
       </p>
 
       {/* ── 입력 ── */}
@@ -231,6 +253,30 @@ export function IntentProbeApp(): React.ReactElement {
             </div>
           </div>
 
+          {/* ── 해석된 대상 파일 (수정 라우트 드라이런) ── */}
+          <div className="ip-card">
+            <div className="ip-card__head">
+              <span className="ip-card__title">🎯 해석된 대상 파일</span>
+              <span className="ip-card__meta">수정(modify) 라우트 결정 사슬 드라이런 — 판정만, 파일 열기 없음</span>
+            </div>
+            {result.targetResolve.applicable ? (
+              <>
+                <TargetOutcomeBadge probe={result.targetResolve} />
+                <ol className="ip-steps">
+                  {result.targetResolve.steps.map((s, i) => (
+                    <li key={i} className={s.fired ? 'fired' : undefined}>
+                      <b>{s.rule}</b> — {s.detail}
+                      {i === result.targetResolve.steps.length - 1 ? ' ◀ 여기서 확정' : ''}
+                    </li>
+                  ))}
+                </ol>
+                {result.targetResolve.note && <div className="ip-empty" style={{ marginTop: 8 }}>{result.targetResolve.note}</div>}
+              </>
+            ) : (
+              <div className="ip-empty">{result.targetResolve.note}</div>
+            )}
+          </div>
+
           {/* ── 내부 들여다보기 ── */}
           <div className="ip-card">
             <div className="ip-card__head">
@@ -266,6 +312,7 @@ export function IntentProbeApp(): React.ReactElement {
                 <th>프롬프트</th>
                 <th>모델</th>
                 <th>정규식</th>
+                <th>대상</th>
                 <th>판정</th>
               </tr>
             </thead>
@@ -276,6 +323,7 @@ export function IntentProbeApp(): React.ReactElement {
                   <td className="q" title={h.query}>{h.query}</td>
                   <td>{h.model}</td>
                   <td>{h.offline}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{h.target}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {h.match === 'match' ? '✅ 일치' : h.match === 'mismatch' ? '⚠ 불일치' : 'ℹ️ 모델없음'}
                   </td>

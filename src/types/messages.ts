@@ -234,6 +234,29 @@ export interface IntentProbeIntent {
   targetComponent: string | null;
 }
 
+/** 단계별 테스트 ①의도파악 — 대상 파일 해석 드라이런의 규칙 한 단계(발화 여부 포함). */
+export interface TargetResolveStep {
+  rule: string;
+  detail: string;
+  fired: boolean;
+}
+
+/**
+ * 단계별 테스트 ①의도파악 — "해석된 대상 파일" 드라이런 결과.
+ * 운영 ChatViewProvider._resolveTargetFile 사슬의 미러(판정만 — 파일 열기·QuickPick 없음).
+ * outcome=ask-user가 "빈손 되묻기" 지점 = 대상 파일 해석 고도화(후보 수집기)가 채울 자리.
+ */
+export interface TargetResolveProbe {
+  /** modify_file 라우트일 때만 수행(운영 isFileCtx 게이트와 동일 취지). */
+  applicable: boolean;
+  outcome: 'cross-file' | 'current-file' | 'ask-user' | 'not-applicable';
+  /** 확정된 대상 파일(워크스페이스 상대경로). ask-user/not-applicable이면 null. */
+  targetFile: string | null;
+  /** 결정 사슬 추적 — 순서대로 평가되며 fired=true인 규칙에서 확정. */
+  steps: TargetResolveStep[];
+  note?: string;
+}
+
 /** 단계별 테스트 ①의도파악 — 프로브 1회 실행 결과. IntentProbePanel 전용. */
 export interface IntentProbeResult {
   query: string;
@@ -255,6 +278,8 @@ export interface IntentProbeResult {
   effective: { source: 'classifier' | 'regex'; intent: string };
   /** 모델 vs 정규식 비교 — intent가 갈라지면 S1 불일치 수집 대상. */
   agreement: { comparable: boolean; intentMatch: boolean; notes: string[] };
+  /** 해석된 대상 파일 — 수정 라우트의 대상 파일 결정 사슬 드라이런. */
+  targetResolve: TargetResolveProbe;
 }
 
 /** 영역(하이브리드) 편집의 "분리된 입력" — 모델에 보내기 전 단계. RegionIoProbeProvider 전용. */

@@ -759,6 +759,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * - 줄 선택 있음 또는 쿼리가 현재 파일/컴포넌트명 명시 → 현재 파일로 바로 진행
    * - 쿼리가 다른 컴포넌트/파일을 지칭, 또는 열린 파일 없음 → 네이티브 QuickPick으로 질문
    * - 그 외(모순 단서 없음) → 현재 파일로 진행
+   * ⚠ IntentProbePanel._probeTargetResolve가 이 사슬(하위 _resolveCrossFileTarget·
+   *   _extractOtherFileRef·_resolveModuleToUri 포함)을 드라이런 미러 — 규칙 변경 시 동기화.
    */
   private async _resolveTargetFile(
     userQuery: string,
