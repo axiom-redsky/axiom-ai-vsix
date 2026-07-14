@@ -279,6 +279,9 @@ compose-binding 트랙), JsonTypeGenerator.ts, PackageVersionScanner.ts, config.
 
 ## 8. 후속 트랙 — 단계별 고도화 지도 (2026-07-14 방향 확정)
 
+> **▶ 이 트랙은 전용 진행 문서로 분리됨: [src-ai-enhancement-progress.md](src-ai-enhancement-progress.md)**
+> (층별 카드·재개 절차·베이스라인 포함). 아래 표는 방향 확정 당시의 요약 스냅샷 — 최신 현황은 전용 문서가 진실.
+
 재편의 본 목적: 각 층을 **①부터 순서대로** 하나씩 잡고 "테스트 검증 → 개선 → 고도화"를 반복.
 층별 현재 계기판과 이미 기록된 개선 후보:
 
