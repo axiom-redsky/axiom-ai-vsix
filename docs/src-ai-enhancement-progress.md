@@ -86,6 +86,15 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
   그룹 활성탭도 아니라 폴백 3단계 전부 빈손(modify→create leak과 동일 함정). 수정=폴백 ④ 패널 생성 직전
   활성 파일 시드+onDidChangeActiveTextEditor 추적 · ⑤ 전 그룹 텍스트 탭(비활성 포함) 스캔.
   게이트: tsc 0 · compile OK
+- [x] **파일검출 계측 + stale 가드 (2026-07-14, 미커밋)** — "현재 페이지 오판 다발" 이력 대응,
+  CC 벤치마킹 항목 중 intent 소관 2건(힌트+신뢰도·소리나게)의 첫 단추. 운영 라우팅 무변경.
+  - EditorContextCollector: `EditorContext.detectSource` 신설(override/active-editor/active-tab/
+    last-editor/visible-tsx/visible-file — 검출 신뢰도 신호, 향후 S4 되묻기 차등의 재료) +
+    **_lastEditor 닫힌 문서 가드**(isClosed면 폐기 — 닫힌 파일을 현재 페이지로 잡던 오탐 차단)
+  - ChatViewProvider: `_logFileDetection` — 주 진입점 2곳에서 `[Axiom AI][파일검출] 출처=… → 경로`
+    출력 채널 기록(S1 라우팅측정과 동일 취지 비파괴 계측). 오탐 발생 시 범인 폴백 특정 가능해짐
+  - 게이트: tsc 0 · compile OK · region-edit 230/0 · offline-intent 66/0 · **리로드 확인 대기**
+  - 보류(데이터 게이트): 신뢰도 기반 확정/되묻기 차등(S4), 폴백 사슬 재정렬·뒷탭 스캔 이식
 - [x] **의도 라우팅 로직 흐름도 작성 (2026-07-14)** — [src/ai/intent/intent-flow.svg](../src/ai/intent/intent-flow.svg)
   (판정→라우트 결정→대상 파일 해석 ①~⑥ 사슬+계기판, docs/diagrams 스타일. README에 링크)
 - [x] **리로드 실사용 확인 완료(2026-07-14, 온라인 6 + 오프라인 3)** — 사용자 커밋 완료

@@ -306,7 +306,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 번호가 아니면 새 요청으로 간주 — 되묻기 해제하고 일반 오프라인 흐름으로.
       this._offlineClarify = null;
       this._history.push({ role: 'user', content: input });
-      await this._respondOffline(input, this._editorCollector.collect());
+      const clarifyCtx = this._editorCollector.collect();
+      this._logFileDetection(clarifyCtx);
+      await this._respondOffline(input, clarifyCtx);
       return;
     }
     const chosen = state.candidates[n - 1];
@@ -1387,6 +1389,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     try {
       let editorCtx = this._editorCollector.collect(overrideSelection);
+      this._logFileDetection(editorCtx);
 
       // 사전 헬스체크 — 서버가 죽었으면 LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·무의미한
       // axiom-action 재시도 데드엔드)를 전부 건너뛰고, 의도 기반 오프라인 응답(로컬 RAG)을 낸다.
@@ -6119,6 +6122,20 @@ export default routes;`;
    * 불일치를 출력 채널에만 기록한다. **라우팅은 바꾸지 않는다** — 어느 결정자가 실사용에서 얼마나
    * 충돌하는지 실측해 다음 단계(S2~)의 우선순위를 정하기 위함. (AXIOM_INTENT_ROUTING_REDESIGN.md §4)
    */
+  /**
+   * [계측 — 비파괴] "현재 파일"을 어느 폴백 단계에서 잡았는지 출력 채널에 남긴다.
+   * S1 라우팅측정과 같은 취지: 실사용에서 검출 오탐이 나면 어느 단계(특히 last-editor 등
+   * 추정 폴백)가 범인인지 실측하는 데이터. 라우팅 동작은 바꾸지 않는다.
+   */
+  private _logFileDetection(editorCtx: EditorContext): void {
+    try {
+      const line = editorCtx.available
+        ? `[Axiom AI][파일검출] 출처=${editorCtx.detectSource ?? '?'} → ${editorCtx.filePath ?? '(경로 없음)'}${editorCtx.selection ? ' (선택영역 있음)' : ''}`
+        : '[Axiom AI][파일검출] 미검출 — 열린 파일 없음(빈손)';
+      this._corpusOutputChannel.appendLine(line);
+    } catch { /* 계측은 흐름을 막지 않는다 */ }
+  }
+
   private _logIntentDivergence(
     query: string,
     classifierIntent: IntentResult | null,
