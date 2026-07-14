@@ -151,7 +151,9 @@ export type WebviewToHostMessage =
   | { type: 'runProbe'; filePath: string; query: string; budget: number; mode: ProbeMode }
   | { type: 'regionIoPickFile' }
   | { type: 'regionIoUseActiveFile' }
-  | { type: 'runRegionIo'; filePath: string; query: string };
+  | { type: 'runRegionIo'; filePath: string; query: string }
+  | { type: 'intentProbeUseActiveFile' }
+  | { type: 'runIntentProbe'; query: string; currentFile: string; hasSelection: boolean };
 
 /** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
 export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
@@ -213,7 +215,47 @@ export type HostToWebviewMessage =
   | { type: 'regionIoInput'; input: RegionIoInput }
   | { type: 'regionIoOutput'; output: RegionIoOutput }
   | { type: 'regionIoDone' }
-  | { type: 'regionIoError'; message: string };
+  | { type: 'regionIoError'; message: string }
+  | { type: 'intentProbeFilePicked'; filePath: string }
+  | { type: 'intentProbeResult'; result: IntentProbeResult }
+  | { type: 'intentProbeDone' }
+  | { type: 'intentProbeError'; message: string };
+
+/**
+ * 단계별 테스트 ①의도파악의 의도 판정 한 건 — IntentResult(src/ai/intent)와 구조 호환이지만
+ * 웹뷰 타입 계층이 ai 계층에 의존하지 않도록 여기 슬림 셰이프로 둔다.
+ */
+export interface IntentProbeIntent {
+  intent: string;
+  pageName: string | null;
+  domain: string | null;
+  contentSource: string | null;
+  targetFile: string | null;
+  targetComponent: string | null;
+}
+
+/** 단계별 테스트 ①의도파악 — 프로브 1회 실행 결과. IntentProbePanel 전용. */
+export interface IntentProbeResult {
+  query: string;
+  /** 판정에 쓰인 컨텍스트(운영 IntentContext와 동일 재료). */
+  ctx: { currentFile: string | null; hasSelection: boolean; domains: string[] };
+  /** 모델에 실제 전송된 분류 프롬프트(buildIntentPrompt 결과 그대로). */
+  prompt: string;
+  /** 모델 분류기 경로. offline=서버 연결 안 됨(운영에선 정규식 폴백과 동일 상황). */
+  model: {
+    status: 'ok' | 'offline' | 'parse-fail' | 'error';
+    raw: string;
+    elapsedMs: number;
+    result: IntentProbeIntent | null;
+    error?: string;
+  };
+  /** 정규식 통합 폴백(classifyOfflineIntent) 경로 — 항상 나온다. */
+  offline: { strength: string; result: IntentProbeIntent };
+  /** 운영 라우팅이 채택하는 최종 판정(S1 effectiveIntent와 동일 규칙). */
+  effective: { source: 'classifier' | 'regex'; intent: string };
+  /** 모델 vs 정규식 비교 — intent가 갈라지면 S1 불일치 수집 대상. */
+  agreement: { comparable: boolean; intentMatch: boolean; notes: string[] };
+}
 
 /** 영역(하이브리드) 편집의 "분리된 입력" — 모델에 보내기 전 단계. RegionIoProbeProvider 전용. */
 export interface RegionIoInput {

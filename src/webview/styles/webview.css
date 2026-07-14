@@ -2096,3 +2096,143 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   font-size: 12px;
   color: var(--vscode-terminal-ansiGreen, #4caf50);
 }
+
+/* ============================================================
+   단계별 테스트 — ① 의도파악 프로브 (IntentProbeApp)
+   ============================================================ */
+.ip {
+  /* 전역 body가 overflow:hidden이라 앱 루트가 자기 스크롤 컨테이너여야 한다. */
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px 24px 40px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.ip::-webkit-scrollbar { width: 8px; }
+.ip::-webkit-scrollbar-track { background: transparent; }
+.ip::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 4px; }
+.ip::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+.ip-inner { max-width: 960px; margin: 0 auto; }
+.ip-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.ip-step {
+  width: 28px; height: 28px; border-radius: 8px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+  font-weight: 700; font-size: 14px;
+}
+.ip-title { font-size: 17px; font-weight: 700; }
+.ip-sub { opacity: .65; font-size: 12px; margin: 0 0 18px 38px; }
+
+.ip-card {
+  background: var(--vscode-editorWidget-background, rgba(127,127,127,.06));
+  border: 1px solid var(--vscode-panel-border, rgba(127,127,127,.25));
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+
+.ip-label { display: block; font-weight: 600; font-size: 12px; margin: 0 0 6px; }
+.ip-label small { font-weight: 400; opacity: .6; }
+.ip-field + .ip-field { margin-top: 12px; }
+
+.ip-textarea, .ip-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, rgba(127,127,127,.35));
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit; font-size: 13px;
+  transition: border-color .12s;
+}
+.ip-textarea { min-height: 66px; resize: vertical; }
+.ip-textarea::placeholder, .ip-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, rgba(127,127,127,.75));
+}
+.ip-textarea:focus, .ip-input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+}
+
+.ip-row { display: flex; gap: 8px; align-items: center; }
+.ip-row .ip-input { flex: 1; min-width: 0; }
+.ip-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.ip-hint { font-size: 11px; opacity: .5; }
+
+.ip-btn {
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  background: var(--vscode-button-secondaryBackground, rgba(127,127,127,.2));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  white-space: nowrap;
+}
+.ip-btn:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, rgba(127,127,127,.3)); }
+.ip-btn--primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-weight: 600;
+  padding: 8px 22px;
+}
+.ip-btn--primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+.ip-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.ip-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; cursor: pointer; user-select: none; }
+.ip-check input { accent-color: var(--vscode-button-background); margin: 0; }
+
+.ip-banner { border-radius: 10px; padding: 12px 16px; margin-top: 14px; border: 1px solid; }
+.ip-banner--ok   { border-color: rgba(46,160,67,.55);   background: rgba(46,160,67,.10); }
+.ip-banner--warn { border-color: rgba(214,124,13,.65);  background: rgba(214,124,13,.12); }
+.ip-banner--info { border-color: rgba(127,127,127,.45); background: rgba(127,127,127,.08); }
+.ip-banner__title { font-weight: 700; font-size: 13.5px; }
+.ip-banner__effective { margin-top: 8px; font-size: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ip-banner ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+
+.ip-cols { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.ip-cols > .ip-card { flex: 1; min-width: 300px; margin-top: 0; }
+.ip-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.ip-card__title { font-weight: 700; }
+.ip-card__meta { font-size: 11px; opacity: .6; white-space: nowrap; }
+.ip-empty { opacity: .5; font-size: 12px; }
+
+.ip-badge {
+  display: inline-block; border-radius: 20px; padding: 3px 12px;
+  font-weight: 600; font-size: 12px; border: 1px solid transparent;
+}
+.ip-badge--modify_file  { background: rgba(59,130,246,.18);  border-color: rgba(59,130,246,.5); }
+.ip-badge--create_page  { background: rgba(46,160,67,.18);   border-color: rgba(46,160,67,.5); }
+.ip-badge--qna          { background: rgba(168,85,247,.18);  border-color: rgba(168,85,247,.5); }
+.ip-badge--smalltalk    { background: rgba(127,127,127,.18); border-color: rgba(127,127,127,.5); }
+.ip-badge--other        { background: rgba(204,167,0,.18);   border-color: rgba(204,167,0,.55); }
+
+.ip-slots { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 12px; }
+.ip-slots th { text-align: left; font-weight: 400; opacity: .55; padding: 5px 10px 5px 6px; width: 132px; white-space: nowrap; }
+.ip-slots td { padding: 5px 6px; font-family: var(--vscode-editor-font-family, monospace); word-break: break-all; }
+.ip-slots tr { border-bottom: 1px solid rgba(127,127,127,.12); }
+.ip-slots tr:last-child { border-bottom: none; }
+.ip-slots tr.diff { background: rgba(214,124,13,.14); }
+.ip-null { opacity: .35; }
+
+.ip-details { margin-top: 8px; }
+.ip-details summary { cursor: pointer; font-size: 12px; opacity: .8; }
+.ip-details summary:hover { opacity: 1; }
+.ip-code {
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--vscode-editor-font-family, monospace); font-size: 11px;
+  background: var(--vscode-textCodeBlock-background, rgba(127,127,127,.1));
+  padding: 10px; border-radius: 6px; max-height: 320px; overflow: auto; margin: 6px 0 0;
+}
+.ip-ctxline { font-size: 12px; opacity: .7; margin-bottom: 4px; }
+
+.ip-history { border-collapse: collapse; width: 100%; font-size: 12px; }
+.ip-history th { text-align: left; padding: 4px 10px; opacity: .55; font-weight: 400; border-bottom: 1px solid rgba(127,127,127,.3); white-space: nowrap; }
+.ip-history td { padding: 5px 10px; border-bottom: 1px solid rgba(127,127,127,.1); }
+.ip-history td.q { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-history tr.mismatch { background: rgba(214,124,13,.12); }
+
+.ip-error {
+  color: var(--vscode-errorForeground, #f48771);
+  border-color: var(--vscode-errorForeground, #f48771);
+}

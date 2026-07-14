@@ -6,11 +6,12 @@
 >
 > 최종 갱신: 2026-07-14
 >
-> **▶ 재개 지점: ① intent 층 — 착수 전.**
+> **▶ 재개 지점: ① intent 층 착수됨 — "단계별 테스트" 패널 + 의도파악 테스트 페이지 구현 완료
+> (2026-07-14, 미커밋 — 리로드 실사용 확인 대기).** 확인 후 커밋 → 그 패널로 불일치 채집 시작.
 > intent는 새 계획이 아니라 **기존 라우팅 재설계 트랙의 재개**다:
 > [AXIOM_INTENT_ROUTING_REDESIGN.md](../AXIOM_INTENT_ROUTING_REDESIGN.md) 기준 S1~S4 완료·커밋,
 > S5(정규식 정리·오프라인 단일화)는 **S1 실사용 불일치 로그 데이터 게이트** 상태.
-> 진입점 = 출력채널 `[Axiom AI][S1 라우팅측정]`에서 `⚠ 불일치` 패턴 수집(§4-① 참고).
+> 데이터 수집 채널 2개: 출력채널 `[Axiom AI][S1 라우팅측정]`(실사용 수동) + 의도파악 테스트 페이지(능동 채집).
 
 ---
 
@@ -37,7 +38,7 @@
 
 | # | 층 | 상태 |
 |---|---|---|
-| ① | intent/ — 의도 라우팅 | ⬜ **다음 차례** (재설계 트랙 S5 재개, S1 로그 수집부터) |
+| ① | intent/ — 의도 라우팅 | 🔶 **진행중** — 테스트 도구(단계별 테스트 패널+의도파악 페이지) 완료, 불일치 채집 단계 |
 | ② | decompose/ — 분해 | ⬜ |
 | ③ | locate/ — 위치찾기 | ⬜ |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
@@ -56,7 +57,42 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
 
 > 각 층 착수 시 이 카드에 체크리스트를 만들어 채우고, 완료되면 §3 표를 갱신한다.
 
-### ① intent/ — 의도 라우팅 ⬜
+### ① intent/ — 의도 라우팅 🔶
+
+**작업 로그**
+
+- [x] **테스트 도구 구축 (2026-07-14, 미커밋)** — "단계별 테스트" 사이드바(트리 목록, 1~5단계) +
+  **1. 의도파악 테스트 페이지**(에디터 탭 WebviewPanel). 프롬프트+컨텍스트(현재파일·선택영역 시뮬레이션)를
+  넣으면 운영과 동일한 두 판정 경로를 실행해 나란히 표시:
+  - 🤖 모델 분류기: `buildIntentPrompt`→`LlmService.streamChat`('}' 조기종료)→`parseIntent`
+    (⚠ ChatViewProvider._classifyIntent 미러 — 그쪽 변경 시 IntentProbePanel도 동기화)
+  - 🔤 정규식 폴백: `classifyOfflineIntent` 운영 함수 그대로 + 신호강도 표시
+  - 최종 채택(effective)은 S1과 동일 규칙 · **의도 불일치 시 ⚠ 강조 = S5 데이터 능동 채집기**
+  - 슬롯(domain/pageName/targetComponent…) 차이 하이라이트 · 전송 프롬프트/원시출력 열람 · 실행 이력 50건
+  - 파일: src/views/StageTestPanelProvider.ts · src/providers/IntentProbePanel.ts ·
+    src/webview/intentProbe/IntentProbeApp.tsx (+messages.ts·index.tsx·extension.ts·package.json 배선)
+  - 게이트: tsc(ext/webview) 0 · compile OK · offline-intent 66/0 · region-edit 230/0
+- [ ] 리로드 실사용 확인(패널 열림·판정 실행·온/오프라인 양쪽) → 커밋
+- [ ] 테스트 페이지 + 실사용 S1 로그로 `⚠ 불일치` 패턴 수집 → 아래에 기록
+- [ ] 수집된 패턴 분류 → 데이터가 가리키는 지점만 S5 착수
+
+**후보 작업 — 대상 파일 해석 고도화 (2026-07-14 사용자 논의로 방향 합의, 착수 전)**
+
+계기: "getArr 함수 만들어줘" 테스트에서 의도(modify_file)는 정확히 잡히나, 대상 파일 해석은
+"열린 파일 없으면 빈손 되묻기"가 전부. Claude Code처럼 "관련 파일을 뒤져 판단"하는 것을
+Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는 것만 모델(객관식 1회)**.
+⚠ 약한 sLLM에 CC식 도구 반복 루프를 주는 방식은 금지(슬라이스 패널 'tool' 모드 실험으로 확인된 한계).
+
+- 1단계(모델 무관·위험 0): 결정론 후보 수집 — 심볼(getArr) 정의·사용처 워크스페이스 검색 +
+  현재 파일 import 이웃 + 열린 탭들 → `_askTargetFile` 되묻기를 "근거 있는 후보 목록"으로 업그레이드
+- 2단계: 후보 여러 개일 때 모델 객관식 pick (region disambiguation 패턴 재사용)
+- 근거 패턴: cross-file 재타겟(추출=모델·해석=결정론) + region disambiguation(후보=결정론·선택=모델)
+- 소속: 재설계 트랙 S4(충돌 안전·되묻기)의 고도화 — S1 불일치 채집이 어느 정도 돈 뒤 착수
+
+**수집된 불일치 패턴** (여기에 누적 기록)
+
+- (아직 없음)
+
 
 - **계기판**: `test:offline-intent`(66) · `eval:intent`(오프라인 합성) · `eval:intent-live`(실 sLLM,
   `$env:AXIOM_EVAL_REPEAT="3"`으로 흔들림 측정, `$env:AXIOM_ENDPOINT`/`$env:AXIOM_MODEL` 덮어쓰기 가능)

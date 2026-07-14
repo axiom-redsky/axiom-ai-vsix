@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ChatPanelProvider } from './providers/ChatPanelProvider';
 import { ChatViewProvider } from './providers/ChatViewProvider';
 import { SddPanelProvider } from './views/SddPanelProvider';
+import { StageTestPanelProvider } from './views/StageTestPanelProvider';
+import { IntentProbePanel } from './providers/IntentProbePanel';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -57,6 +59,18 @@ export function activate(context: vscode.ExtensionContext): void {
       regionIoProbeProvider,
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
+    vscode.window.registerTreeDataProvider(
+      StageTestPanelProvider.viewId,
+      new StageTestPanelProvider(),
+    ),
+    // 단계별 테스트 — 사이드바 목록 클릭 → 해당 단계 테스트 페이지를 에디터 탭으로 연다.
+    vscode.commands.registerCommand('axiom-ai.openStageTest', (stageNo: number) => {
+      if (stageNo === 1) {
+        IntentProbePanel.createOrShow(context.extensionUri);
+      } else {
+        vscode.window.showInformationMessage(`단계별 테스트: ${stageNo}단계 페이지는 아직 준비 중입니다. (현재는 1. 의도파악만)`);
+      }
+    }),
   );
 
   // SDD 패널 + 프로젝트 설정 패널 axiomDir 초기화
