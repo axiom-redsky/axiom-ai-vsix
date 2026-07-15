@@ -4,15 +4,29 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-15
+> 최종 갱신: 2026-07-15 (저녁)
 >
-> **▶ 재개 지점: ② decompose 층 — 계기판(테스트 페이지·SVG·Q3 참조슬라이스) 사용자 커밋 완료 후
-> bigfile 실측 → full/참조 경로 공용 슬라이서 결함 2건(D1 흔한토큰 평평점수·D2 score0 필러) 수정 완료
-> (미커밋, `test:code-slice` 15/0 신설·회귀 0). 다음 = D3 stub 홍수(주입의 98%가 stub 줄 — 복원 계약
-> 얽힘·모델 대면이라 별도 설계+라이브 게이트). §4 ② 작업 로그 참조.
-> 같은 날 ⑤apply 급한 버그 선수정(§2-2 예외): BigFile 라이브 반쪽 편집 → 페치 파생 재선언
-> in-place 교체 채널 신설, 라이브 재검증 applied ✅ (§4 ⑤ 작업 로그). 둘 다 미커밋.**
+> **▶ 재개 지점: ② decompose **D3 stub 홍수** 착수 대기 — 2026-07-15 작업분은 전부 커밋 완료
+> (4e81eab D1/D2+교체채널 · 57026a6 anchor-first 재시도+프로브). 실기기 사용자 검증까지 완주
+> (BigFile 페치 파생 교체 applied + Stage 0 타입검증 첫 라이브 통과).
+> D3의 문제정의·제약·설계 선택지·착수 순서는 §4 ② D3 항목에 전부 기록돼 있음 — 그것만 읽고 착수 가능.**
 > ① intent 층은 채집 가동 중: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.
+>
+> **다른 PC 재개 시 알아야 할 것 (2026-07-15 세션의 도구·환경 유산):**
+> - **라이브 프로브** `scripts/probe-region-live.ts`(+run-probe-region-live.mjs): 실모델로 region
+>   파이프라인 단독 구동+원시 프롬프트/응답/finalText 덤프. **운영 조건 복제 스위치** —
+>   `AXIOM_NATIVE=1`(ollama 네이티브·num_ctx 32768·think:false) · `AXIOM_ANCHOR_FIRST=1`(운영 기본 ON) ·
+>   `AXIOM_DISAMBIG=1`(후보1 강제). ⚠ 교훈: **라이브 재현은 운영 플래그까지 복제**(기본값 차이로
+>   원인을 이틀 놓칠 뻔함). 인증: `AXIOM_API_KEY="Bearer <토큰>"` — 토큰은 vast 셋업 문서/런처 설정
+>   패널의 API 키 값(서버 40242는 Caddy Basic벽, `vastai:<토큰>` 또는 Bearer 통과).
+> - **분해 프로브** `scripts/probe-decompose-bigfile.ts`(테스트 페이지와 동일 함수 CLI) ·
+>   `scripts/probe-slice-size-match.ts`(토큰바 "현재 파일 N자"로 설치본 코드 버전 원격 판별 —
+>   슬라이스+sliceNotice 합 대조).
+> - **픽스처**: `scripts/sample-bigfile.tsx`(표준 합성 10,574줄) · 데모 실파일
+>   `C:\redsky\presentation\demo\react-app-online-demo\src\domains\example\pages\BigFile.tsx`
+>   (11,177줄 — prettier 포맷팅으로 표준과 줄번호 다름 주의). 재생성: `node scripts/write-bigfile-sample.mjs <경로>`.
+> - **⚠ 데모 검증 함정**: 데모 VSCode는 설치형 VSIX — 코드 수정 후엔 `npm run package` →
+>   `code --install-extension axiom-ai-0.1.0.vsix --force` → **Reload Window**까지 해야 반영.
 > 채집 1호(억제 후 ④재낚아챔)·2호(출력채널 오탐, 수정 완료)·3호(파일 지향 질문 가로채기, 관찰)
 > 기록됨 — §4 ① "수집된 대상해석 패턴" 참조. S3④·S4·S5는 채집 데이터 게이트(착수 기준 미정).
 > intent는 새 계획이 아니라 **기존 라우팅 재설계 트랙의 재개**다:
@@ -46,10 +60,10 @@
 | # | 층 | 상태 |
 |---|---|---|
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
-| ② | decompose/ — 분해 | 🔶 **실측 완료 + 1차 수정(D1·D2)** — bigfile 실측으로 full/참조 경로 슬라이서 결함 확인·수정, `test:code-slice` 신설(2026-07-15, 미커밋). 다음=D3 stub 홍수(설계 필요) |
+| ② | decompose/ — 분해 | 🔶 **실측+1차 수정(D1·D2) 커밋 완료** — full/참조 슬라이서 결함 수정·`test:code-slice`(15) 신설·라이브 실증(2026-07-15). **다음=D3 stub 홍수(착수 지점, 카드에 설계 선택지 기록)** |
 | ③ | locate/ — 위치찾기 | ⬜ |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
-| ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 선수정** — 페치 파생 재선언 in-place 교체 채널(BigFile 반쪽 편집 근본 수정, 라이브 applied ✅, 2026-07-15 미커밋). 원칙 §2-2의 "급한 버그 예외" 적용 |
+| ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 2건 선수정·커밋 완료** — ①페치 파생 재선언 교체 채널 ②anchor-first 퇴화 자동 재시도(BigFile 반쪽 편집 근본 수정 2건, **실기기 사용자 검증 applied ✅ + Stage 0 타입검증 첫 라이브 통과**, 2026-07-15). 원칙 §2-2 "급한 버그 예외" 적용 |
 | ⑥ | pipeline/ — 오케스트레이터 | ⬜ (선결 부채: eval:e2e 낡은 녹화 재녹화) |
 | ⑦ | retrieval/ — 지식 검색 | ⬜ |
 
@@ -238,13 +252,25 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   - 게이트: tsc 0 · compile OK · code-slice 14/0 · region-edit 230/0 · api-binding 69/0 ·
     offline-transplant 22/0 · patch-grounded 30/0 · eval:input 베이스라인 동일 · eval:bigfile
     64/64 유지(region 경로 무영향 — 자체 가지치기 사용). 리로드 실측(테스트 페이지 확인) 대기.
-- [ ] **다음 = D3 stub 홍수** — D2로 제외가 늘며 stub 줄만 194개(~12.9K자, **주입의 98%**)가 됨.
+- [ ] **다음 = D3 stub 홍수 (착수 지점 — 아래만 읽고 시작 가능)** — D2로 제외가 늘며 stub 줄만
+  194개(~12.9K자, **주입의 98%**)가 됨.
   **라이브 증거(2026-07-15, qwen3-coder-64k × BigFile.tsx 실사용)**: full 폴백 시 토큰바
   "현재 파일 13,699자(58%) · 잔여 ~5K" — stub 줄이 컨텍스트 58%를 점유, 잔여를 5K까지 압박.
   합성 예측이 실전에서 그대로 재현 → D3가 다음 #1 확정.
-  ⚠ stub 포맷은 복원 계약 2곳에 얽힘(restoreSlicedStubs + FileCreatorService.resolveStubSection
-  정규식이 `원본 NN줄 보존` 의존) + 모델 대면(줄당 "참조 금지" 경고) → 축약·그룹핑은 별도 설계
-  + 실 sLLM 라이브 게이트 필요. 참조 경로는 이미 stripSliceStubs로 접혀 무관(편집 대상 경로만).
+  - **제약(함부로 못 줄이는 이유)**: stub 포맷은 복원 계약 2곳에 얽힘 — ① restoreSlicedStubs
+    (`// ... [kind name]` 프리픽스 의존, full 모드에서 모델이 stub을 베끼면 쓰기 직전 원본 복원) ·
+    ② FileCreatorService.resolveStubSection(정규식이 `원본 NN줄 보존` 문구 의존, ~L488).
+    +줄당 "참조 금지" 경고는 **모델 대면 텍스트**(변경 시 실 sLLM 라이브 게이트 필수).
+    +분해 테스트 페이지·probe의 포함 역판정도 `includes('// ... [kind name]')` 의존.
+    참조 파일 경로는 이미 stripSliceStubs로 접혀 무관 — **편집 대상 경로만의 문제**.
+  - **설계 선택지**: (a) stub 꼬리 축약(`// ... [type TFoo] 3줄 생략` — 프리픽스 유지, ② 정규식
+    갱신 필요, 절감 ~50%) / (b) 연속 stub 그룹핑+라인범위 복원(`// ... [L7~775 선언 152개 생략]` —
+    절감 ~95%, 복원을 라인범위 기반으로 확장+역판정 로직 수정 필요) / (c) a+b 조합(유점수 인접은
+    개별, 먼 덩어리는 그룹). **FileCreatorService 계약부터 열어보고 a로 갈지 b까지 갈지 결정**.
+  - **착수 순서**: ① 베이스라인(probe-decompose-bigfile로 stub 바이트 수치 기록) → ② 설계 결정·구현
+    → ③ 복원 계약 테스트 green(test:patch-grounded의 resolveStubSection 케이스 + test:code-slice +
+    region-edit 237) → ④ 실 sLLM 라이브 게이트(probe-region-live, 운영 플래그 복제 스위치로
+    full 폴백 경로에서 모델이 새 포맷을 안 깨뜨리는지).
 - [ ] (후순위) D4 거대 함수 하위 분할 — 단일 함수가 예산 초과면 통째 stub돼 관련 본문 소실.
   단, 큰 파일 편집의 주력은 region 경로(이미 green)라 실피해 낮음. RegionEdit의 훅 슬라이스·
   타입 전이참조 기계를 full 경로로 이식하는 방향(착수 시 별도 설계).
