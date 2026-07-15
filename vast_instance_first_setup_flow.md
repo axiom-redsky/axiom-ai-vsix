@@ -147,3 +147,6 @@ eval rate:            25.13 tokens/s
 Base URL:  http://185.113.120.195:40242
 Model:     qwen3-coder-64k
 API Key:   00bd588d5b741b444cd02294746d6b68281755c58601913b93ef8ea7a27bf32d
+
+
+직원관리의 상태 select를 api로 바꿔줘

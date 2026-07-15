@@ -299,7 +299,24 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   - 게이트: tsc 0 · compile OK · **region-edit 237/0(신규 7: 페치파생 적용 5 + 가드 2)** ·
     patch-grounded 30/0 · line-edits 15/0 · react-rules 39/0 · api-binding 69/0 · eval:region 회귀 없음.
   - 부수 확보: **probe-region-live**(실모델로 region 파이프라인 단독 구동+원시 프롬프트/응답/finalText
-    덤프) — ⑤층 라이브 계기판. 인증은 `AXIOM_API_KEY`(vast Caddy Basic 또는 Bearer 토큰).
+    덤프, `AXIOM_NATIVE=1`=운영 동일 ollama 네이티브 호출 · `AXIOM_ANCHOR_FIRST=1`·`AXIOM_DISAMBIG=1`=
+    운영 조건 재현) — ⑤층 라이브 계기판. 인증은 `AXIOM_API_KEY`(vast Caddy Basic 또는 Bearer 토큰).
+- [x] **anchor-first 퇴화 자동 재시도 (2026-07-15, 미커밋)** — 위 수정 후에도 실기기 채팅은 여전히
+  no-op → 원인 2호 격리: 프로브는 anchorFirst=false 기본값으로 돌았는데 **운영 기본은 ON**(2026-06-30
+  승격). anchor-first 지침("작은 국소 수정은 기존 코드 인용 `<replace>`")을 약한 모델이 **훅 추가가
+  필요한 구조 편집에까지 과적용** → 원본과 동일한 JSX만 `<replace>`에 담고 훅 생략(474자 퇴화 응답)
+  → no-op/empty-output → full 폴백. 운영 동일 조건(`AXIOM_ANCHOR_FIRST=1`) 프로브로 재현 확정.
+  - 수정: `runHybridRegionEdit`에 `retryWithoutAnchorFirst` — no-op/empty-output && anchorFirst일 때
+    **같은 영역을 pin한 채 앵커 지침 없는 종전 프롬프트로 1회 재시도**(재시도는 anchorFirst=false라
+    재귀 불가, 추가 호출은 실패 케이스 한정). anchor-first가 잘 듣는 국소 수정 케이스는 무영향.
+  - **라이브 검증 ✅**: 운영 동일 조건에서 1차 퇴화(474자)→자동 재시도(896자)→**applied**(페치 파생
+    교체 완주). 게이트: tsc 0 · region-edit 237/0 · patch-grounded 30 · line-edits 15 · react-rules 39 ·
+    api-binding 69 · code-slice 15 · eval:region 회귀 없음 · compile+VSIX 재패키징(15:44).
+  - 교훈: **라이브 재현은 운영 플래그까지 복제해야 한다** — 프로브 기본값(anchorFirst=false)이 운영
+    기본(ON)과 달라 원인 1호 수정 후에도 증상이 지속됐다. 프로브에 운영 조건 재현 스위치 추가로 해소.
+  - **실기기 사용자 검증 ✅(2026-07-15)**: 데모 채팅에서 재시도 발동→페치 파생 교체 적용→
+    **"✅ 타입검증 통과"(Stage 0 검증-교정 루프의 첫 라이브 통과 목격 — ⑤ 개선 후보의 "실모델 검증"
+    일부 해소)**. 전 과정: 퇴화 1차→재시도→applied→타입검증→수정 대기 diff 정상.
 
 - **계기판**: `test:line-edits`(15) · `test:patch-grounded`(30) · `test:react-rules`(39) ·
   `test:region-edit`(237) · eval:e2e 게이트 통계 · **probe-region-live(실모델 단건)**

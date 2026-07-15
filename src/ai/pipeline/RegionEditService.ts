@@ -562,8 +562,23 @@ export async function runHybridRegionEdit(
     importCorrections = rec.corrections;
   }
 
+  // anchor-first 지침의 알려진 퇴화(2026-07-15 BigFile 라이브): 약한 모델이 "기존 코드 인용 <replace>"
+  // 지침을 훅 추가가 필요한 구조 편집에까지 과적용 → 원본과 동일한 JSX만 <replace>에 담고 훅을 생략
+  // (→ no-op) 또는 형식이 깨져 산출물 0(→ empty-output). 이때 같은 영역을 고정(pin)한 채 앵커 지침
+  // 없는 종전 프롬프트로 **1회** 재시도한다(재시도는 anchorFirst=false라 재귀 불가·모델 호출 +1은
+  // 실패 케이스에서만). anchorFirst=false 프롬프트는 같은 요청에서 region+hook 완주가 라이브 검증됨.
+  const retryWithoutAnchorFirst = async (failedReason: string): Promise<RegionEditOutcome> => {
+    const pin: RegionDisambiguator = async () => ({ startLine: loc.startLine, endLine: loc.endLine });
+    const retried = await runHybridRegionEdit(source, query, callModel, referencedSpec, pin, referenceImports, verify, false);
+    retried.diagnostics =
+      `[regionEdit] anchor-first 산출물 무효(${failedReason}) → 앵커 지침 없이 동일 영역 1회 재시도\n` +
+      retried.diagnostics;
+    return retried;
+  };
+
   // 아무 산출물도 없으면(빈 응답) full로 넘긴다 — region이 줄 수 있는 게 없음.
   if (!newRegion.trim() && !hookCode.trim() && imports.length === 0 && replaceBlocks.length === 0) {
+    if (anchorFirst) return retryWithoutAnchorFirst('empty-output');
     return { status: 'fallback', reason: 'empty-output', diagnostics: '[regionEdit] 모델 산출물 없음 → full 폴백', locatedRegion: groundedRegion() };
   }
 
@@ -770,7 +785,9 @@ export async function runHybridRegionEdit(
   }
 
   // 변경이 전혀 없으면(splice가 동일·structural no-op) full로 넘긴다.
+  // anchor-first였다면 알려진 퇴화(원본 동일 <replace>·훅 생략)일 수 있어 앵커 지침 없이 1회 재시도.
   if (composed === source) {
+    if (anchorFirst) return retryWithoutAnchorFirst('no-op');
     return { status: 'fallback', reason: 'no-op', diagnostics: '[regionEdit] 합성 결과가 원본과 동일(no-op) → full 폴백' };
   }
 
