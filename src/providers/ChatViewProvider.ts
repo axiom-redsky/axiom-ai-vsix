@@ -7,7 +7,7 @@ import { EditorContextCollector, type EditorContext } from '../ai/decompose/Edit
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
 import { FileCreatorService } from '../ai/pipeline/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/pipeline/FileCreatorService';
-import { restoreSlicedStubs, splitTsSections } from '../ai/decompose/CodeSectionExtractor';
+import { extractRelevantTsSlice, restoreSlicedStubs, splitTsSections, stripSliceStubs } from '../ai/decompose/CodeSectionExtractor';
 import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclarations, resolveKnownImports, ensureUiComponentImports, type ImportRequest } from '../ai/apply/StructuralAnchor';
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/pipeline/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/pipeline/RegionCaptureRecorder';
@@ -549,6 +549,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             `[Axiom AI] 참조 ${rel}: 관련 섹션 미검출 → 앞부분 ${budget}자만 포함`,
           );
         }
+      } else if (/\.(tsx?|jsx?)$/i.test(rel)) {
+        // 큰 코드 파일(.ts/.tsx/.js/.jsx)을 앞부분만 자르면 파일 끝의 원하는 선언(타입·함수)이
+        // 통째로 잘려나가 모델이 근거를 못 본다. 현재 파일에 쓰는 것과 **동일한 결정론 슬라이스**
+        // (선언 분할→쿼리 점수→예산 선택, 나머지는 stub)로 관련 조각만 남긴다 — 마크다운 섹션 추출과 대칭.
+        const slice = extractRelevantTsSlice(content, queryTokens, budget);
+        // 참조(읽기 전용) 파일은 stub이 불필요·예산 밖 누적 위험 → 접어서 주입 크기를 예산 이하로 되돌린다.
+        const lean = stripSliceStubs(slice.text);
+        injected = `(질문 관련 코드 섹션 추출)\n\n${lean.text}`;
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] 참조 ${rel}: ${content.length}자(>${budget}) → 관련 코드 섹션 ${slice.includedCount}개 포함(${injected.length}자), 관련 낮은 ${lean.strippedCount}개 생략`,
+        );
       } else {
         injected = content.slice(0, budget) + `\n\n... (이하 ${content.length - budget}자 생략)`;
       }

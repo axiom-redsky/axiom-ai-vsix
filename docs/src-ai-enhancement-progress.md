@@ -41,7 +41,7 @@
 | # | 층 | 상태 |
 |---|---|---|
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
-| ② | decompose/ — 분해 | ⬜ |
+| ② | decompose/ — 분해 | 🔶 **계기판 확보(0단계)** — "2. 분해 테스트" 페이지 + 흐름도 SVG 완료(2026-07-15). 개선 착수 전(측정 도구만) |
 | ③ | locate/ — 위치찾기 | ⬜ |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
 | ⑤ | apply/ — 게이트·적용 | ⬜ |
@@ -112,7 +112,9 @@ eval:e2e ⚠기존 10건 불일치+cond-leave-date 파싱깨짐(낡은 로컬 �
 - [ ] 테스트 페이지 + 실사용 S1 로그로 `⚠ 불일치` 패턴 수집 → 아래에 기록
 - [ ] 수집된 패턴 분류 → 데이터가 가리키는 지점만 S5 착수
 
-**후보 작업 — 대상 파일 해석 고도화 (2026-07-14 사용자 논의로 방향 합의, 착수 전)**
+**후보 작업 — 대상 파일 해석 고도화 (2026-07-14 방향 합의 · 2026-07-15 계획서 확정, 착수 전)**
+
+> 📋 상세 계획: [추후작업계획일꺼리.md](추후작업계획일꺼리.md) 항목 1 (3단계 접근·후보 소스·create/modify 분기)
 
 계기: "getArr 함수 만들어줘" 테스트에서 의도(modify_file)는 정확히 잡히나, 대상 파일 해석은
 "열린 파일 없으면 빈손 되묻기"가 전부. Claude Code처럼 "관련 파일을 뒤져 판단"하는 것을
@@ -166,9 +168,53 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   docs/page-creation-intent-routing-plan.md
 - ⚠ 라우팅 '결정' 덩어리는 아직 ChatViewProvider 인라인(재편 트랙 §4.2) — S5가 곧 그 추출 작업이다.
 
-### ② decompose/ — 분해 ⬜
+### ② decompose/ — 분해 🔶
 
-- **계기판**: `eval:input`(입력 품질) · `eval:bigfile`(큰파일 합성 하니스) · region-edit(간접)
+**작업 로그**
+
+- [x] **흐름도 SVG + "2. 분해 테스트" 페이지 (2026-07-15, 미커밋)** — intent와 동일하게 이 층의
+  **계기판 확보(0단계, 개선 착수 전 측정 도구)**. 사용자 목적 = "decompose 개선점 파악 + 내용 이해".
+  - 흐름도: [src/ai/decompose/decompose-flow.svg](../src/ai/decompose/decompose-flow.svg) — 2갈래
+    (쿼리 분해 tokenizeQuery·extractApiPaths·impliedControlTags / 코드 분해 splitTsSections→
+    scoreCodeSections→sliceByBudget) + 산출물(재료) + 측정(RegionInputQuality) + 계기판. README 링크.
+  - 테스트 페이지: `axiom-ai.stageTestPanel` → 2단계 클릭 → 에디터 탭. 프롬프트(+현재 파일)를 넣으면
+    ① 토큰 칩(조사 어근 파랑 강조)·정확 경로·컨트롤 태그 · ② 섹션 표(kind·라인·글자·**점수**·포함여부)
+    + 예산 슬라이싱 dietRatio·stub 전문. **다이어트 >90%+섹션 다수 → deps 폭주 경고 자동 표면화**.
+  - ★ **intent 패널과 결정적 차이**: decompose 폴더 함수는 전부 `export`된 순수 함수라 **직접 호출**
+    (운영 미러 아님 → 동기화 드리프트 0). 화면 결과 = 실제 운영 산출물 그대로.
+  - 파일: src/providers/DecomposeProbePanel.ts · src/webview/decomposeProbe/DecomposeProbeApp.tsx
+    (+messages.ts 타입·index.tsx·extension.ts stageNo===2·StageTestPanelProvider ready·webview.css dp-*)
+  - 게이트: tsc(ext/webview) 0 · compile OK · region-edit 230/0 · offline-intent 66/0. **리로드 실측 대기**.
+- [x] **참조 .ts/.tsx 앞잘림 → 관련 섹션 슬라이스 (2026-07-15, 미커밋)** — 사용자 Q3 지적:
+  `_loadReferencedFiles`가 큰 마크다운은 섹션 추출하면서 **큰 코드 파일(.ts/.tsx/.js/.jsx)은 앞부분만
+  뚝 잘라**(content.slice(0,budget)) 파일 끝의 원하는 선언(타입·함수)을 통째로 날리던 비대칭.
+  수정: 현재 파일과 **동일한 결정론 함수** `extractRelevantTsSlice`(선언 분할→쿼리 점수→예산, 나머지
+  stub)로 관련 조각만 남김 — 마크다운 섹션 추출과 대칭. 위험 0(기존 검증 함수 재사용·별도 경로인
+  content-port는 미변경). [ChatViewProvider.ts:552 근처]. 게이트: tsc 0·compile OK·region-edit 230/0·
+  **api-binding 69/0·offline-transplant 22/0**(참조 경로 인접 기능 무회귀). 리로드 실측 대기.
+  - **+테스트 페이지·SVG 반영 (2026-07-15)**: "2. 분해 테스트" 페이지에 **참조 파일 입력 + 슬라이싱
+    카드** 추가 — 코드 참조는 관련 섹션 슬라이스 결과 + **"앞잘림이었으면 잃었을 조각"(컷오프 뒤 포함
+    섹션)을 초록 수치로 대조**(Q3 효과 가시화), md 참조는 선택 섹션 헤더. 전부 순수 함수 직접 호출
+    (extractRelevantTsSlice·splitIntoSections/scoreSections/selectByBudget). SVG 입력 박스에 "참조 파일
+    (@경로)" + 계기판 띠에 ③ 참조 슬라이싱 줄 추가. 게이트: tsc 0·compile OK·region-edit 230/0·
+    offline-intent 66/0. (messages.ts refPath·DecomposeReference · DecomposeProbePanel._buildReference ·
+    DecomposeProbeApp ReferenceCard · webview.css dp-win)
+  - **+예산 누수 가드 (2026-07-15, 사용자 지적)**: `sliceByBudget`의 stub 자리표시자는 글자 예산 **밖**에서
+    붙어(예산은 포함 본문만 셈), 선언 많은 참조 파일이면 파일당 상한(8000자)을 초과할 소지. stub은
+    **편집 대상**에서만 안전장치이고 **읽기 전용 참조 파일**엔 순수 토큰 낭비 → 신규 순수함수
+    `stripSliceStubs`(stub 줄 제거+"관련 낮은 N개 생략" 요약 한 줄)로 접어 주입을 예산 이하로 되돌림.
+    운영(`_loadReferencedFiles` 코드 참조 분기)+테스트 페이지(실제 주입 글자 수 표시) 양쪽 적용. 자가검증:
+    204자(stub 2줄)→96자, 본문 보존·stub 0. 게이트: tsc 0·compile OK·region-edit 230/0·api-binding 69/0·
+    offline-transplant 22/0·line-edits 15/0.
+- [ ] 실측: 실제 큰 파일(god component)로 분해 실행 → deps 폭주(keepRatio·dietRatio) 눈으로 확인
+- [ ] 개선 착수: 데이터가 가리키면 레버1(deps 가지치기)부터
+- **후보(사용자 Q1, 2026-07-15 논의)**: 관련 파일 자동 탐색 부재 — "getArr 만들어줘"처럼 현재 파일에
+  없는 심볼을 워크스페이스에서 뒤져 후보를 대는 로직이 없음. 처방=**결정론 후보 수집(심볼 정의·사용처
+  검색+import 이웃+열린 탭)+모델 객관식 1회**. CC는 강한 모델의 도구 반복 루프지만 약한 sLLM엔 금지 —
+  이건 ①intent §4의 "대상 파일 해석 고도화"와 동일 작업(그 트랙에서 착수). 여기엔 포인터만 기록.
+
+- **계기판**: `eval:input`(입력 품질) · `eval:bigfile`(큰파일 합성 하니스) · region-edit(간접) ·
+  **"2. 분해 테스트" 페이지(수동 관측)**
 - **개선 후보**: **bigfile 레버1 = deps 가지치기** — 큰파일에서 입력의 대부분이 0%관련 type덤프로
   채워지는 것이 보편 #1 문제(eval:bigfile 베이스라인 조사 완료 상태). 레버2(모호쿼리)·레버3(섹션라우팅
   복합어 토큰화 top-bias)은 그 다음.
@@ -245,6 +291,7 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
 
 ## 7. 관련 문서
 
+- 추후 작업 계획: [추후작업계획일꺼리.md](추후작업계획일꺼리.md) — 나중에 할 큰 작업의 계획서 모음(항목 1=관련 파일 자동 탐색)
 - 선행 트랙(폴더 재편, 완료): [src-ai-restructure-progress.md](src-ai-restructure-progress.md) — §8에 이 트랙의 요약 지도
 - 구조 지도: [src/ai/README.md](../src/ai/README.md) + 각 폴더 README.md
 - 흐름 도식: [docs/diagrams/](diagrams/)

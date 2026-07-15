@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1040" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+    <marker id="arN" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1F3864"/>
+    </marker>
+    <marker id="arDash" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8C8C8C"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="1040" fill="#FFFFFF"/>
+
+  <!-- ═══ 헤더 ═══ -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="22" font-weight="bold" fill="#FFFFFF">②</text>
+  <text x="106" y="54" font-size="26" font-weight="bold" fill="#1F3864">decompose — 분해 로직 흐름 (원본·프롬프트 → sLLM 재료)</text>
+  <text x="106" y="84" font-size="14" fill="#595959">두 갈래: 1) 쿼리 분해(토큰화·경로·컨트롤) · 2) 코드·배경 분해(선언 분할→점수→예산) · 전부 결정론(모델 무관) · 2026-07-15 기준</text>
+  <line x1="50" y1="104" x2="1390" y2="104" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- ═══ 💬 쉬운 한 마디 (먼저 읽는 띠) ═══ -->
+  <rect x="40" y="116" width="1360" height="104" rx="12" fill="#FFF9E6" stroke="#C0A000" stroke-width="1.8"/>
+  <text x="58" y="142" font-size="14" font-weight="bold" fill="#7A6A00">💬 쉬운 한 마디 — 이 그림이 하는 일 (코드 몰라도 이것만 알면 됨)</text>
+  <text x="58" y="167" font-size="12.5" fill="#333333">약한 sLLM은 한 번에 읽는 양(토큰)이 작다. 800줄을 통째로 주면 <tspan font-weight="bold">① 예산을 넘겨 앞부분이 잘려나가고(주원인), ② 남아도 무관한 코드에 산만해진다.</tspan></text>
+  <text x="58" y="188" font-size="12.5" fill="#333333">그래서 '분해 층' = <tspan font-weight="bold">예산에 맞게 관련 부분만 손질하는 준비 담당</tspan>. ① 네 말을 낱말로 정리하고, ② 큰 파일에서 필요한 부분만 오려서 넘긴다.</text>
+  <text x="58" y="209" font-size="12" fill="#8C6A00">아래 예시로 따라가기 →  "재직상태 select도 필터에 반영해줘"  (파일: 800줄 EmployeeListPage.tsx)</text>
+
+  <!-- ═══ 입력 ═══ -->
+  <rect x="40" y="244" width="175" height="278" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="127" y="270" text-anchor="middle" font-size="14" font-weight="bold" fill="#333333">입력</text>
+  <text x="58" y="296" font-size="12" fill="#333333">사용자 프롬프트</text>
+  <text x="58" y="320" font-size="12" fill="#333333">현재 파일 (TS/TSX)</text>
+  <text x="66" y="338" font-size="10.5" fill="#595959">· ①intent가 정한 편집 대상</text>
+  <text x="58" y="362" font-size="12" fill="#333333">참조 파일 (@경로 명시)</text>
+  <text x="66" y="380" font-size="10.5" fill="#595959">· 프롬프트에 적은 스펙/타입</text>
+  <text x="58" y="404" font-size="12" fill="#333333">선택 영역 (있으면)</text>
+  <text x="66" y="422" font-size="10.5" fill="#595959">· 겹치는 조각에 +4점</text>
+  <text x="58" y="450" font-size="11" font-weight="bold" fill="#9C6A00">💬 "무슨 일을, 어느</text>
+  <text x="58" y="466" font-size="11" font-weight="bold" fill="#9C6A00">   파일·참조를" 받아 손질</text>
+  <text x="58" y="492" font-size="10.5" fill="#8C8C8C">원칙: 손질 전부 결정론.</text>
+  <text x="58" y="508" font-size="10.5" fill="#8C8C8C">모델엔 판단 한 조각만 남김.</text>
+  <line x1="215" y1="300" x2="238" y2="300" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="215" y1="470" x2="238" y2="470" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 갈래 1) 쿼리 분해 ═══ -->
+  <rect x="240" y="232" width="560" height="222" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="258" y="258" font-size="14" font-weight="bold" fill="#1F3864">1) 쿼리 분해 — 네 '말'을 검색용 낱말로 쪼갠다 (SectionExtractor · RegionIntent)</text>
+  <text x="258" y="278" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 "재직상태 select도 필터에" → [재직상태] [select] [필터] 낱말로 자른다</text>
+
+  <rect x="258" y="290" width="256" height="152" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="272" y="312" font-size="12.5" font-weight="bold" fill="#1F3864">tokenizeQuery — 낱말 자르기</text>
+  <text x="272" y="330" font-size="10.5" fill="#333333">소문자화 · 공백/구두점으로 분할</text>
+  <text x="272" y="346" font-size="10.5" fill="#333333">1글자 노이즈 버림(길이 2 이상만)</text>
+  <text x="272" y="362" font-size="10.5" fill="#333333">한국어 조사 떼서 어근 **추가**</text>
+  <text x="272" y="386" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "필터에"의 '에'를 떼서 '필터'도</text>
+  <text x="272" y="402" font-size="10.5" font-weight="bold" fill="#9C6A00">   추가 — 코드 속 filter와 맞추려고</text>
+  <text x="272" y="424" font-size="10" fill="#8C8C8C">(안 떼면 "필터에"가 코드에 안 걸림)</text>
+
+  <rect x="522" y="290" width="264" height="70" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="536" y="312" font-size="12.5" font-weight="bold" fill="#1B5E20">extractApiPaths — 주소 집기</text>
+  <text x="536" y="330" font-size="10.5" fill="#333333">/api/employees 같은 정확 경로 추출</text>
+  <text x="536" y="349" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 비슷한 형제 주소로 안 바뀌게 못박음</text>
+
+  <rect x="522" y="372" width="264" height="70" rx="8" fill="#F5F0FA" stroke="#7C3AED" stroke-width="1.5"/>
+  <text x="536" y="394" font-size="12.5" font-weight="bold" fill="#5B21B6">impliedControlTags — 부품 알아채기</text>
+  <text x="536" y="412" font-size="10.5" fill="#333333">"select" → &lt;Select&gt; 태그 딱지</text>
+  <text x="536" y="431" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "아, 드롭다운 버튼 얘기구나"</text>
+
+  <line x1="800" y1="330" x2="846" y2="360" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 갈래 2) 코드·배경 분해 ═══ -->
+  <rect x="240" y="466" width="560" height="326" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="258" y="492" font-size="14" font-weight="bold" fill="#1F3864">2) 코드·배경 분해 — 큰 파일에서 필요한 부분만 오린다 (CodeSectionExtractor)</text>
+  <text x="258" y="512" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 800줄을 다 못 준다 → 관련된 토막만 오려서 준다. 3단계.</text>
+
+  <rect x="258" y="524" width="250" height="88" rx="8" fill="#FFFFFF" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="272" y="546" font-size="12.5" font-weight="bold" fill="#1F3864">① splitTsSections — 토막내기</text>
+  <text x="272" y="564" font-size="10.5" fill="#333333">파일을 함수·타입 단위로 조각냄</text>
+  <text x="272" y="580" font-size="10.5" fill="#333333">(A함수 10~50줄, B타입 51~60줄…)</text>
+  <text x="272" y="600" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "이건 A함수, 저건 B타입" 표딱지</text>
+
+  <line x1="508" y1="568" x2="524" y2="568" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="526" y="524" width="260" height="88" rx="8" fill="#FFFFFF" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="540" y="546" font-size="12.5" font-weight="bold" fill="#1F3864">② scoreCodeSections — 점수매기기</text>
+  <text x="540" y="564" font-size="10.5" fill="#333333">이름 딱맞음 +5 · 본문에 낱말 +1</text>
+  <text x="540" y="580" font-size="10.5" fill="#333333">import +2 · 선택한 줄 +4</text>
+  <text x="540" y="600" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "이 토막이 얼마나 관련있나" 채점</text>
+
+  <path d="M 640 612 L 640 626 L 400 626 L 400 638" fill="none" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <rect x="258" y="640" width="528" height="96" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="272" y="662" font-size="12.5" font-weight="bold" fill="#1B5E20">③ sliceByBudget — 책상 크기 안에서 고르기</text>
+  <text x="272" y="680" font-size="10.5" fill="#333333">"책상은 4000자까지" 정하고, 점수 높은 토막부터 채운다.</text>
+  <text x="272" y="698" font-size="10.5" fill="#333333">못 든 토막은 버리지 않고 포스트잇으로: <tspan font-family="monospace" fill="#1B5E20">// ... [function 큰함수] 원본 232줄 보존</tspan></text>
+  <text x="272" y="720" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "지금 볼 페이지만 찢어주고, 나머진 포스트잇" (조수가 stub 그대로 뱉으면 저장 직전 원문 복원)</text>
+
+  <rect x="258" y="744" width="528" height="42" rx="8" fill="#FDF6E9" stroke="#C0A000" stroke-width="1.5"/>
+  <text x="272" y="762" font-size="10.5" fill="#7A6A00">지식 문서(md)도 같은 방식: splitIntoSections → scoreSections(헤더 +3) → selectByBudget · focusKnowledgeBody</text>
+  <text x="272" y="778" font-size="10" fill="#8C8C8C">💬 매뉴얼 책에서도 필요한 챕터만 뽑아준다(오프라인 지식 렌더 전용)</text>
+
+  <line x1="786" y1="670" x2="846" y2="470" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 산출물(재료) ═══ -->
+  <rect x="850" y="264" width="300" height="308" rx="12" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="1000" y="292" text-anchor="middle" font-size="14" font-weight="bold" fill="#1F3864">산출물 = sLLM에 줄 재료</text>
+  <text x="866" y="316" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 조수한테 넘길, 손질 끝난 재료 꾸러미</text>
+  <text x="866" y="344" font-size="11.5" fill="#333333">· 낱말들(queryTokens)</text>
+  <text x="866" y="366" font-size="11.5" fill="#333333">· 정확 주소 / 부품 태그</text>
+  <text x="866" y="388" font-size="11.5" fill="#333333">· 오려낸 코드 조각(+포스트잇)</text>
+  <text x="866" y="410" font-size="11.5" fill="#333333">· 배경 선언(depsHeader)*</text>
+  <text x="866" y="432" font-size="11.5" fill="#333333">· 뽑아낸 지식 챕터</text>
+  <text x="866" y="460" font-size="10.5" fill="#8C8C8C">* depsHeader·backing은 ③locate가</text>
+  <text x="866" y="476" font-size="10.5" fill="#8C8C8C">조립 — 분해와 긴밀히 얽힘(경계 흐릿)</text>
+  <text x="866" y="502" font-size="11" font-weight="bold" fill="#2E5395">→ ③locate · ④contracts로 넘어감</text>
+  <text x="866" y="526" font-size="10.5" fill="#8C8C8C">"모델은 필드 매핑 한 조각만,</text>
+  <text x="866" y="542" font-size="10.5" fill="#8C8C8C"> 위치·구성은 확장이 결정론으로"</text>
+
+  <line x1="1150" y1="400" x2="1176" y2="400" stroke="#1F3864" stroke-width="2" marker-end="url(#arN)"/>
+
+  <!-- ═══ 다음 층 ═══ -->
+  <rect x="1180" y="300" width="220" height="208" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="1290" y="328" text-anchor="middle" font-size="13" font-weight="bold" fill="#333333">이후 파이프라인</text>
+  <text x="1196" y="356" font-size="11" fill="#333333">③ locate (위치찾기)</text>
+  <text x="1196" y="378" font-size="11" fill="#333333">④ contracts (계약카드)</text>
+  <text x="1196" y="400" font-size="11" fill="#333333">⑤ apply (게이트·적용)</text>
+  <text x="1196" y="430" font-size="10.5" fill="#8C8C8C">💬 손질이 나쁘면(엉뚱한 조각</text>
+  <text x="1196" y="446" font-size="10.5" fill="#8C8C8C">폭주·필요한 조각 누락) 아래</text>
+  <text x="1196" y="462" font-size="10.5" fill="#8C8C8C">모든 층이 그 쓰레기를 물려받음</text>
+  <text x="1196" y="486" font-size="10.5" font-weight="bold" fill="#C55A11">→ 여기가 입력 품질의 원천</text>
+
+  <!-- ═══ 측정(계기판) ═══ -->
+  <rect x="850" y="588" width="550" height="200" rx="12" fill="#FBFCFE" stroke="#2E7D32" stroke-width="2"/>
+  <text x="866" y="614" font-size="14" font-weight="bold" fill="#1B5E20">검사 — 손질 잘했나 스스로 채점 (RegionInputQuality)</text>
+  <text x="866" y="634" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 모델 부르기 전에, 재료만 보고 "잘 손질됐나" 점수를 매긴다</text>
+  <text x="866" y="658" font-size="11" fill="#333333">dietRatio = 원본 대비 얼마나 줄였나 (낮을수록 잘 줄임)</text>
+  <text x="866" y="676" font-size="11" fill="#333333">keepRatio = 안 쓰는 타입 덩어리를 얼마나 걸러냈나</text>
+  <text x="866" y="694" font-size="10.5" fill="#595959">경보: region-mistarget · control-invisible · edit-locus-readonly · anchor-unsafe</text>
+  <text x="866" y="716" font-size="10.5" fill="#C55A11">⚠ locate를 호출 — 이 검사는 ②분해+③locate에 걸쳐 있음</text>
+  <text x="866" y="740" font-size="11" font-weight="bold" fill="#1B5E20">★ 큰 파일 1번 문제 = deps 폭주:</text>
+  <text x="866" y="758" font-size="10.5" fill="#333333">   상관없는 type 덩어리가 책상을 다 차지 → 정작 필요한 함수가 밀려남</text>
+  <text x="866" y="776" font-size="10.5" fill="#8C6A00">   개선 1순위 = "deps 가지치기"(안 쓰는 타입은 애초에 안 넣기)</text>
+
+  <!-- ═══ 계기판(테스트 페이지) ═══ -->
+  <rect x="40" y="810" width="1360" height="216" rx="12" fill="#FFFFFF" stroke="#8C8C8C" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="58" y="836" font-size="13" font-weight="bold" fill="#595959">🧪 계기판 — 단계별 테스트 "2. 분해 테스트" 페이지 (DecomposeProbePanel · DecomposeProbeApp)</text>
+  <text x="58" y="858" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 위 흐름을 실제로 눈으로 본다: 프롬프트+현재 파일+참조 파일 넣으면 낱말·오려낸 조각·점수·다이어트%가 화면에 뜬다</text>
+  <text x="58" y="878" font-size="11" fill="#333333">① 쿼리 분해: 낱말 칩(조사 어근은 파랑) · 정확 주소 · 부품 태그    ② 코드 분해: 조각 표(종류·라인·글자·점수·포함여부) + 포스트잇 전문</text>
+  <text x="58" y="898" font-size="11" fill="#333333">③ 참조 파일 슬라이싱(Q3): 코드=관련 섹션(앞잘림 아님) · md=선택 섹션 · <tspan font-weight="bold" fill="#2E7D32">"앞잘림이었으면 잃었을 조각" 수를 초록으로 표시</tspan></text>
+  <text x="58" y="918" font-size="11" fill="#333333">★ 다이어트 &gt;90% + 조각 많음 → <tspan font-weight="bold" fill="#C55A11">"deps 폭주" 빨간 경고 자동 표시</tspan> (코드 몰라도 개선 지점이 눈에 보이게)</text>
+  <text x="58" y="940" font-size="11" fill="#2E7D32">★ intent 페이지와 달리 실제 함수를 그대로 호출 — 화면 결과 = 진짜 운영 산출물 (베낀 게 아니라 동기화 어긋날 일 없음)</text>
+  <text x="58" y="966" font-size="10.5" fill="#595959">합성 계기판: eval:input(입력 품질) · eval:bigfile(큰 파일 deps 폭주 정량) · test:region-edit(간접)</text>
+  <text x="58" y="988" font-size="10.5" fill="#8C8C8C">개선 후보: 레버1=deps 가지치기(최우선) · 레버2=모호 쿼리 · 레버3=섹션 라우팅 복합어 top-bias · (Q3 참조 .ts 앞잘림→관련 슬라이스 = 완료)</text>
+
+  <line x1="400" y1="810" x2="400" y2="792" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
+  <line x1="1000" y1="810" x2="1000" y2="790" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
+</svg>

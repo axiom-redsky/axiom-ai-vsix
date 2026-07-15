@@ -2244,3 +2244,52 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   color: var(--vscode-errorForeground, #f48771);
   border-color: var(--vscode-errorForeground, #f48771);
 }
+
+/* ═══ 단계별 테스트 ② 분해 (decompose-probe) — .ip-* 컨테이너 재사용 + dp-* 추가 ═══ */
+.dp-sub { font-size: 12px; font-weight: 600; margin: 0 0 6px; }
+.dp-sub small { font-weight: 400; opacity: .6; }
+.dp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dp-chip {
+  display: inline-block; border-radius: 6px; padding: 2px 8px; font-size: 12px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  background: rgba(127,127,127,.14); border: 1px solid rgba(127,127,127,.28);
+}
+.dp-chip--stem { background: rgba(59,130,246,.16); border-color: rgba(59,130,246,.45); }
+.dp-chip--path { background: rgba(46,160,67,.14);  border-color: rgba(46,160,67,.45); }
+.dp-chip--ctrl { background: rgba(168,85,247,.14); border-color: rgba(168,85,247,.45); }
+
+.dp-num { display: inline-flex; flex-direction: column; gap: 4px; font-size: 11px; opacity: .8; }
+.dp-num__input { width: 110px; flex: none; }
+
+.dp-metrics { display: flex; gap: 24px; flex-wrap: wrap; margin: 4px 0 12px; }
+.dp-metric__num { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.dp-metric__den { font-size: 14px; font-weight: 400; opacity: .5; }
+.dp-metric__lab { font-size: 11px; opacity: .6; margin-top: 2px; }
+.dp-metric__lab small { opacity: .8; }
+
+.dp-warn {
+  border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; font-size: 12px;
+  border: 1px solid rgba(214,124,13,.55); background: rgba(214,124,13,.10);
+}
+.dp-win {
+  border-radius: 8px; padding: 9px 12px; margin: 4px 0 8px; font-size: 12px;
+  border: 1px solid rgba(46,160,67,.55); background: rgba(46,160,67,.10);
+}
+.dp-metric__num--win { color: var(--vscode-testing-iconPassed, #2ea043); }
+
+.dp-sections { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 6px; }
+.dp-sections th { text-align: left; padding: 4px 8px; opacity: .55; font-weight: 400; border-bottom: 1px solid rgba(127,127,127,.3); white-space: nowrap; }
+.dp-sections td { padding: 4px 8px; border-bottom: 1px solid rgba(127,127,127,.1); }
+.dp-sections tr.dp-out { opacity: .45; }
+.dp-sections tr.dp-in { background: rgba(46,160,67,.06); }
+.dp-name { font-family: var(--vscode-editor-font-family, monospace); word-break: break-all; }
+.dp-kind {
+  display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 10.5px;
+  background: rgba(127,127,127,.16); border: 1px solid rgba(127,127,127,.25);
+}
+.dp-kind--function  { background: rgba(59,130,246,.16);  border-color: rgba(59,130,246,.4); }
+.dp-kind--const     { background: rgba(46,160,67,.14);   border-color: rgba(46,160,67,.4); }
+.dp-kind--interface,
+.dp-kind--type      { background: rgba(204,167,0,.16);   border-color: rgba(204,167,0,.45); }
+.dp-kind--import    { background: rgba(168,85,247,.14);  border-color: rgba(168,85,247,.4); }
+.dp-kind--class     { background: rgba(214,124,13,.14);  border-color: rgba(214,124,13,.4); }

@@ -333,6 +333,27 @@ export function extractRelevantTsSlice(
   return sliceByBudget(sections, maxChars);
 }
 
+/**
+ * `sliceByBudget`이 삽입한 stub 자리표시자 줄을 제거하고, 생략 개수만 한 줄로 요약한다.
+ *
+ * stub의 목적은 **편집 대상 파일**에서 생략된 코드를 모델이 "있는 척" 참조하지 못하게 막는 것이다.
+ * 그런데 **읽기 전용 참조 파일**(스펙·타입)엔 그 위험이 없어 stub이 순수 토큰 낭비다. 게다가 stub은
+ * `sliceByBudget`의 글자 예산 **밖**에서 붙으므로(예산은 포함 본문만 셈), 선언이 많은 파일에선 주입
+ * 크기가 의도한 예산을 초과한다. 참조 파일 주입 시 이 함수로 stub을 접으면 출력이 예산(=포함 본문 합
+ * + 요약 한 줄) 이하로 돌아온다. 편집 대상 파일 경로에는 쓰지 말 것(그쪽은 stub이 안전장치).
+ */
+export function stripSliceStubs(sliced: string): { text: string; strippedCount: number } {
+  // sliceByBudget 신 포맷 `// ... [kind name] ...` + 구 포맷 `// ... (kind name 생략, NN줄)` 모두 수용.
+  const STUB_RE = /^[ \t]*\/\/\s*\.\.\.\s*(?:\[[^\]\n]*\]|\([^)\n]*생략[^)\n]*\))[^\n]*$/gm;
+  const matches = sliced.match(STUB_RE);
+  const strippedCount = matches ? matches.length : 0;
+  if (strippedCount === 0) return { text: sliced, strippedCount: 0 };
+  const text =
+    sliced.replace(STUB_RE, '').replace(/\n{3,}/g, '\n\n').trim() +
+    `\n\n// (관련 낮은 선언 ${strippedCount}개 생략)`;
+  return { text, strippedCount };
+}
+
 /** stub 복원 결과 */
 export interface RestoreStubsResult {
   /** stub 라인이 원본 본문으로 교체된 결과 텍스트 */

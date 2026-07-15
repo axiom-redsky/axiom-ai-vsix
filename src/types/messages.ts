@@ -153,7 +153,9 @@ export type WebviewToHostMessage =
   | { type: 'regionIoUseActiveFile' }
   | { type: 'runRegionIo'; filePath: string; query: string }
   | { type: 'intentProbeUseActiveFile' }
-  | { type: 'runIntentProbe'; query: string; currentFile: string; hasSelection: boolean };
+  | { type: 'runIntentProbe'; query: string; currentFile: string; hasSelection: boolean }
+  | { type: 'decomposeProbeUseActiveFile' }
+  | { type: 'runDecomposeProbe'; query: string; filePath: string; budget: number; selStart: number; selEnd: number; refPath: string };
 
 /** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
 export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
@@ -219,7 +221,11 @@ export type HostToWebviewMessage =
   | { type: 'intentProbeFilePicked'; filePath: string }
   | { type: 'intentProbeResult'; result: IntentProbeResult }
   | { type: 'intentProbeDone' }
-  | { type: 'intentProbeError'; message: string };
+  | { type: 'intentProbeError'; message: string }
+  | { type: 'decomposeProbeFilePicked'; filePath: string }
+  | { type: 'decomposeProbeResult'; result: DecomposeProbeResult }
+  | { type: 'decomposeProbeDone' }
+  | { type: 'decomposeProbeError'; message: string };
 
 /**
  * 단계별 테스트 ①의도파악의 의도 판정 한 건 — IntentResult(src/ai/intent)와 구조 호환이지만
@@ -280,6 +286,99 @@ export interface IntentProbeResult {
   agreement: { comparable: boolean; intentMatch: boolean; notes: string[] };
   /** 해석된 대상 파일 — 수정 라우트의 대상 파일 결정 사슬 드라이런. */
   targetResolve: TargetResolveProbe;
+}
+
+/**
+ * 단계별 테스트 ②분해 — 쿼리 분해 토큰 한 개.
+ * isStem=true면 한국어 조사를 벗겨 **추가**된 어근(원본 토큰도 별도 유지).
+ */
+export interface DecomposeToken {
+  token: string;
+  isStem: boolean;
+}
+
+/** 단계별 테스트 ②분해 — splitTsSections가 쪼갠 코드 섹션 한 개(+쿼리 점수·예산 포함 여부). */
+export interface DecomposeSection {
+  name: string;
+  kind: string;
+  startLine: number;
+  endLine: number;
+  length: number;
+  /** scoreCodeSections 기준 쿼리 적합도(이름 +5 / 본문 토큰 +1 / import +2 / 선택겹침 +4). */
+  score: number;
+  /** 예산 슬라이싱에서 원문 그대로 포함됐는지(false면 stub 자리표시자로 대체). */
+  included: boolean;
+}
+
+/**
+ * 단계별 테스트 ②분해 — 프롬프트에 명시한 "참조 파일"의 슬라이싱 결과(Q3 개선 시각화).
+ *
+ * 운영 `_loadReferencedFiles`가 큰 참조 파일을 예산에 맞게 줄일 때, 코드 파일은 앞잘림 대신
+ * `extractRelevantTsSlice`(관련 섹션만)로, 마크다운은 섹션 추출로 처리한다. 이 뷰는 그 산출물과
+ * **"앞잘림이었으면 잃었을 조각"**을 대조해 보여준다(전부 순수 decompose 함수 직접 호출).
+ */
+export interface DecomposeReference {
+  path: string;
+  chars: number;
+  lines: number;
+  kind: 'code' | 'markdown' | 'other';
+  /** 이 파일에 적용한 글자 예산. */
+  budget: number;
+  /** 예산 이하라 통째로 주입되는가(슬라이싱 불필요). */
+  wholeInjected: boolean;
+  /** kind='code'일 때 — extractRelevantTsSlice 산출(운영과 동일하게 stub 접은 후). */
+  code?: {
+    includedCount: number;
+    /** 관련도 낮아 생략된(접힌) 섹션 수. */
+    skippedCount: number;
+    /** stub 제거 후 실제 주입 글자 수(= 모델에 나가는 크기). budget 이하 보장. */
+    injectedChars: number;
+    /** 포함된 섹션 중 앞잘림 컷오프(budget 글자) **뒤**에 있던 것 = 앞잘림이었으면 잃었을 관련 조각. */
+    savedFromTailCount: number;
+    savedFromTailNames: string[];
+    text: string;
+  };
+  /** kind='markdown'일 때 — splitIntoSections→scoreSections→selectByBudget 산출. */
+  markdown?: {
+    pickedCount: number;
+    droppedCount: number;
+    pickedHeaders: string[];
+  };
+  /** 슬라이싱 대상이 아닌 경우(비 코드/비 md, 또는 예산 이하)의 설명. */
+  note?: string;
+}
+
+/**
+ * 단계별 테스트 ②분해 — 프로브 1회 실행 결과. DecomposeProbePanel 전용.
+ *
+ * decompose 층의 두 갈래를 그대로 실행해 보여준다(전부 export된 순수 함수라 **직접 호출** — 미러 아님):
+ *  - 갈래 1(쿼리 분해): tokenizeQuery(조사 어근 분해)·extractApiPaths·impliedControlTags
+ *  - 갈래 2(코드·배경 분해): splitTsSections → scoreCodeSections → sliceByBudget
+ *  - 참조 파일 슬라이싱(Q3): 프롬프트에 명시한 스펙/타입 파일을 예산에 맞게 관련 조각만 남김
+ */
+export interface DecomposeProbeResult {
+  query: string;
+  // ── 갈래 1: 쿼리 분해 ──
+  tokens: DecomposeToken[];
+  apiPaths: string[];
+  controlTags: string[];
+  // ── 갈래 2: 코드·배경 분해 (현재 파일이 TS/TSX일 때만) ──
+  file: { path: string; chars: number; lines: number; isTs: boolean } | null;
+  sections: DecomposeSection[];
+  /** 예산 슬라이싱 산출물. 코드 분해가 수행됐을 때만. */
+  slice: {
+    budget: number;
+    includedCount: number;
+    skippedCount: number;
+    totalChars: number;
+    /** totalChars / sourceChars — 낮을수록 공격적 다이어트(입력 경량). */
+    dietRatio: number;
+    text: string;
+  } | null;
+  /** 프롬프트에 명시한 참조 파일의 슬라이싱(Q3). 참조 파일이 없으면 null. */
+  reference: DecomposeReference | null;
+  /** 코드 분해를 건너뛴 사유(파일 없음/비TS 등). */
+  note?: string;
 }
 
 /** 영역(하이브리드) 편집의 "분리된 입력" — 모델에 보내기 전 단계. RegionIoProbeProvider 전용. */

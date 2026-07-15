@@ -4,6 +4,7 @@ import { ChatViewProvider } from './providers/ChatViewProvider';
 import { SddPanelProvider } from './views/SddPanelProvider';
 import { StageTestPanelProvider } from './views/StageTestPanelProvider';
 import { IntentProbePanel } from './providers/IntentProbePanel';
+import { DecomposeProbePanel } from './providers/DecomposeProbePanel';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -67,8 +68,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('axiom-ai.openStageTest', (stageNo: number) => {
       if (stageNo === 1) {
         IntentProbePanel.createOrShow(context.extensionUri);
+      } else if (stageNo === 2) {
+        DecomposeProbePanel.createOrShow(context.extensionUri);
       } else {
-        vscode.window.showInformationMessage(`단계별 테스트: ${stageNo}단계 페이지는 아직 준비 중입니다. (현재는 1. 의도파악만)`);
+        vscode.window.showInformationMessage(`단계별 테스트: ${stageNo}단계 페이지는 아직 준비 중입니다. (현재는 1. 의도파악, 2. 분해)`);
       }
     }),
   );
