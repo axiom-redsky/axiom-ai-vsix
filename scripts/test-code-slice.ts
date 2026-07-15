@@ -113,10 +113,15 @@ console.log('■ D2 — score=0 필러 가드 (sliceByBudget)');
   );
 }
 
-console.log('■ D2 — 전부 0점이면 종전 폴백(최단 우선 채움) 유지');
+console.log('■ D2 — 쿼리 신호 0이면 종전 폴백(최단 우선 채움) 유지');
 {
   const slice = extractRelevantTsSlice(source, ['없는토큰들'], 2000);
-  check('무매칭 쿼리에서도 빈손 아님(폴백 채움)', slice.includedCount > 0, `included=${slice.includedCount}`);
+  check(
+    '무매칭 쿼리 → 폴백이 예산을 실제로 채움(imports 고정 +2는 가드 신호 아님)',
+    slice.includedCount > 10,
+    `included=${slice.includedCount}`,
+  );
+  check('무매칭 쿼리에서도 imports는 포함(+2 우선순위)', slice.text.includes(`import { useApi }`));
 }
 
 console.log('■ D2 — 예산 이하 파일은 전부 포함(가드 미발동, 종전 유지)');

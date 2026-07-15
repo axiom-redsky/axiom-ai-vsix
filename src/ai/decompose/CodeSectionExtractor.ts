@@ -307,9 +307,11 @@ export function sliceByBudget(sections: CodeSection[], maxChars: number): SliceR
   // 파일이 예산을 넘겨 진짜 슬라이싱이 일어나고(overflow) 점수 있는 섹션이 하나라도 있으면,
   // 무관(score 0) 섹션으로 남은 예산을 채우지 않는다. 동점·최단 우선 정렬이 한 줄짜리
   // type/const 덤프를 예산에 선적하던 폭주(2026-07-15 bigfile 실측: 포함 80개 전부 노이즈) 차단.
-  // 전부 0점이면 종전 동작(최단 우선 채움) 유지 — 쿼리가 코드와 아예 안 겹치는 파일의 폴백.
+  // 쿼리가 코드와 아예 안 겹치면(진짜 신호 0) 종전 동작(최단 우선 채움) 유지 — 이때 imports의
+  // 무조건 +2 가점은 쿼리 신호가 아니므로 판정에서 제외한다(막연한 쿼리가 가드를 오발하지 않게).
   const totalLen = sections.reduce((sum, s) => sum + s.length, 0);
-  const skipZeroScore = totalLen > maxChars && sections.some((s) => s.score > 0);
+  const hasQuerySignal = sections.some((s) => s.score > 0 && s.kind !== 'import');
+  const skipZeroScore = totalLen > maxChars && hasQuerySignal;
 
   const includedIds = new Set<number>();
   let remaining = maxChars;

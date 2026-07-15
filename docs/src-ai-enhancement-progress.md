@@ -8,7 +8,7 @@
 >
 > **▶ 재개 지점: ② decompose 층 — 계기판(테스트 페이지·SVG·Q3 참조슬라이스) 사용자 커밋 완료 후
 > bigfile 실측 → full/참조 경로 공용 슬라이서 결함 2건(D1 흔한토큰 평평점수·D2 score0 필러) 수정 완료
-> (미커밋, `test:code-slice` 14/0 신설·회귀 0). 다음 = D3 stub 홍수(주입의 98%가 stub 줄 — 복원 계약
+> (미커밋, `test:code-slice` 15/0 신설·회귀 0). 다음 = D3 stub 홍수(주입의 98%가 stub 줄 — 복원 계약
 > 얽힘·모델 대면이라 별도 설계+라이브 게이트). §4 ② 작업 로그 참조.**
 > ① intent 층은 채집 가동 중: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.
 > 채집 1호(억제 후 ④재낚아챔)·2호(출력채널 오탐, 수정 완료)·3호(파일 지향 질문 가로채기, 관찰)
@@ -225,11 +225,14 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   - D1 `scoreCodeSections`: body 매칭 섹션 수가 **max(3, 전체의 20%)** 초과인 토큰은 변별력 없음
     → body 가점 제외(이름 매칭 +5는 유지). 섹션 8개 미만 파일은 가드 OFF(종전 보존).
     ※ 처음 "전체 60%" 기준은 실측 검산에서 미발동(65/195=33%) — 실측 수치로 임계 보정.
-  - D2 `sliceByBudget`: overflow + 유점수 섹션 존재 시 score=0 섹션으로 잔여 예산을 채우지 않음.
-    전부 0점이면 종전 폴백(최단 우선) 유지.
-  - 효과(동일 probe 재실행): 포함 80(전부 노이즈) → **1(imports만, 덤프 전원 score 0)**.
-  - **신규 전용 안전망 `test:code-slice`(14/0)** — 이 경로의 첫 회귀 게이트(D1·D2 + 종전 동작
-    4종 + stub 복원 계약 고정). scripts/test-code-slice.ts · run-test-code-slice.mjs.
+  - D2 `sliceByBudget`: overflow + **쿼리 신호**(imports 고정 +2 제외한 유점수 섹션) 존재 시
+    score=0 섹션으로 잔여 예산을 채우지 않음. 쿼리 신호 0이면 종전 폴백(최단 우선) 유지.
+    ※ 재테스트 중 발견·보정: imports의 무조건 +2가 "유점수 존재"로 잡혀 무매칭 쿼리에서도
+    가드가 오발(폴백 사망) — 가드 판정에서 imports 고정 가점 제외(`hasQuerySignal`).
+  - 효과(동일 probe 재실행, 쿼리 3종 검증): "직원관리 select…" 포함 80(전부 노이즈)→**1(imports)** /
+    "EMPLOYEE_ENDPOINT 수정" → **2(imports+해당 상수만, 형제 63개 차단)** / 무관 문장 → 80(종전 폴백).
+  - **신규 전용 안전망 `test:code-slice`(15/0)** — 이 경로의 첫 회귀 게이트(D1·D2 + 종전 동작
+    4종 + 폴백 오발 + stub 복원 계약 고정). scripts/test-code-slice.ts · run-test-code-slice.mjs.
   - 게이트: tsc 0 · compile OK · code-slice 14/0 · region-edit 230/0 · api-binding 69/0 ·
     offline-transplant 22/0 · patch-grounded 30/0 · eval:input 베이스라인 동일 · eval:bigfile
     64/64 유지(region 경로 무영향 — 자체 가지치기 사용). 리로드 실측(테스트 페이지 확인) 대기.
