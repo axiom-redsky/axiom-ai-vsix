@@ -999,6 +999,63 @@ console.log('\n기존 const 결정론 교체:');
     }
   }
 
+  // (e) 페치 파생 재선언 → 멀티라인 정적 배열 in-place 대체 (2026-07-15 BigFile 라이브 채집 갭)
+  //   모델: "정적 옵션 배열을 api로" 요청에 [새 useApi 페치 + 같은 이름 파생 재선언 + JSX 무변경]으로
+  //   답함(올바름). 종전엔 중복 드롭 → 페치 고아(dead-binding) → full 폴백으로 죽던 경로.
+  {
+    const FD = [
+      "import { useApi } from '@axiom/hooks';",
+      "import { useState } from 'react';",
+      '',
+      'type TStatusOption = { value: string; label: string };',
+      '',
+      'export default function P(): React.ReactNode {',
+      "  const [selected, setSelected] = useState('all');",
+      '  const statusOptions: TStatusOption[] = [',
+      "    { value: 'all', label: '전체' },",
+      "    { value: 'active', label: '재직' },",
+      "    { value: 'leave', label: '휴직' },",
+      '  ];',
+      '  return (',
+      '    <select>',
+      '      {statusOptions.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}',
+      '    </select>',
+      '  );',
+      '}',
+    ].join('\n');
+    const HOOK = [
+      "const { data: statusResp } = useApi<{ success: boolean; data: TStatusOption[] }>('/api/statuses');",
+      'const statusOptions = statusResp?.data ?? [];',
+    ].join('\n');
+    const { text, changes } = applyStructuralEdit(FD, { hookCode: HOOK });
+    check(
+      '페치 파생 재선언 → 정적 배열 대체(useApi 삽입 + 파생 선언)',
+      text.includes("useApi<{ success: boolean; data: TStatusOption[] }>('/api/statuses')") &&
+        text.includes('statusResp?.data ?? []'),
+      changes.join(' | '),
+    );
+    check('정적 배열 항목 제거됨(교체 완료)', !text.includes("label: '재직'"));
+    check('statusOptions 선언 1곳만(중복 없음)', (text.match(/const statusOptions/g) ?? []).length === 1);
+    check(
+      'TDZ 안전: 페치 선언이 파생 선언보다 위',
+      text.indexOf('const { data: statusResp }') < text.indexOf('const statusOptions ='),
+    );
+    check('교체 변경 기록(페치 파생)', changes.some((c) => c.includes('페치 파생')));
+
+    // (e-가드) 페치 없는 파생 재선언(기존 바인딩 참조만) → 종전 거부(드롭) — 예외 채널 미발동
+    {
+      const { text: t2 } = applyStructuralEdit(FD, { hookCode: 'const statusOptions = selected ? [] : [];' });
+      check('페치 미동반 파생 재선언 → 교체 안 함(정적 배열 보존)', t2.includes("label: '재직'"));
+    }
+    // (e-가드2) 배열 리터럴 손실 재선언은 여전히 거부(멀티라인 존재해도 무손실 가드 유지)
+    {
+      const { text: t3 } = applyStructuralEdit(FD, {
+        hookCode: "const statusOptions: TStatusOption[] = [{ value: 'all', label: '전체' }];",
+      });
+      check('멀티라인 배열 손실 재선언 → 거부(원본 보존)', t3.includes("label: '재직'"));
+    }
+  }
+
   // (e) 컴포넌트 헬퍼 함수 재선언은 교체 안 함(formatDate/handleSearch류 헛교체 방지)
   {
     const C = [

@@ -776,6 +776,15 @@ function stripDeadStatements(restCode: string, baseText: string): { code: string
  * 안전 범위(보수적): **바인딩 집합이 정확히 일치**하는 기존 **단일 라인** 선언만 교체하고, 가드는 allowCall=true
  * (useState 등 호출 초기값 변경 허용)지만 화살표/함수 RHS는 제외(handleSearch 등 헬퍼 헛교체 방지) +
  * 컬렉션은 무손실. 멀티라인 기존 선언·바인딩 불일치는 종전 동작(드롭)으로 둔다.
+ *
+ * **예외 채널 — 페치 파생 재선언(2026-07-15 실측 갭)**: "정적 옵션 배열을 api로 바꿔줘"에 모델은
+ * `const X = resp?.data ?? []`(같은 이름 재선언, JSX 무변경)로 답하는데 — 올바른 편집이지만 기존
+ * 멀티라인 정적 배열이 살아있어 중복 드롭 → 페치 훅만 고아(dead-binding) → full 폴백으로 죽던 갭
+ * (BigFile.tsx 라이브 채집·probe-region-live로 원인 격리). 새 RHS가 **같은 조각에서 새로 선언된
+ * 데이터 페치 훅의 바인딩을 참조**할 때만: 기존 멀티라인 정적 **배열** 선언을 [페치 훅 + 파생 선언]
+ * 으로 in-place 대체한다(페치를 함께 원위치로 끌어와 TDZ 안전 — 파생이 페치보다 위면 컴파일 에러).
+ * 무손실(superset) 가드를 우회하지만, "모델이 페치도 함께 신설 + 파생 참조"라는 이중 조건이
+ * 손실 환각(단순 배열 재작성 누락)과 구조적으로 구분해 준다 — 배열 리터럴 재선언은 종전 가드 그대로.
  */
 function extractComponentReplacements(
   hookRest: string,
@@ -788,35 +797,104 @@ function extractComponentReplacements(
 
   // 컴포넌트 본문의 "단일 라인 완결" 선언만 인덱싱: 정렬한 바인딩키 → {라인 idx0, body}
   const existingByKey = new Map<string, { idx0: number; body: string }>();
+  // 멀티라인 **정적 배열** const 인덱스(페치 파생 교체 전용): 바인딩키 → {idx0, span, indent}
+  const existingMultiByKey = new Map<string, { idx0: number; span: number; indent: string }>();
   for (let i = range.startLine - 1; i < range.endLine && i < sourceLines.length; i++) {
     const ln = sourceLines[i];
     const { open, close } = countDelimiters(ln);
-    if (open !== close) continue; // 멀티라인 선언 시작 → 보수적 제외
+    if (open !== close) {
+      // 멀티라인 선언 시작 후보 — 정적 배열 리터럴만 수집(페치 파생 교체 대상)
+      if (!/^\s*const\s/.test(ln)) continue;
+      let depth = 0;
+      let j = i;
+      const buf: string[] = [];
+      for (; j < range.endLine && j < sourceLines.length && j - i < 60; j++) {
+        const d = countDelimiters(sourceLines[j]);
+        depth += d.open - d.close;
+        buf.push(sourceLines[j]);
+        if (depth <= 0 && /;\s*$/.test(stripTrailingLineComment(sourceLines[j]).trimEnd())) break;
+      }
+      if (j - i >= 60 || j >= range.endLine || j >= sourceLines.length) continue; // 미완결/과대 → 보수적 제외
+      const stmt = buf.join('\n');
+      const mb = declBindings(stmt);
+      if (mb.length === 0) continue;
+      const rhs = constRhs(stmt);
+      if (rhs === null || rhs.trimStart()[0] !== '[') continue; // 정적 배열 리터럴만
+      existingMultiByKey.set([...mb].sort().join(','), {
+        idx0: i,
+        span: j - i + 1,
+        indent: ln.match(/^[ \t]*/)?.[0] ?? '',
+      });
+      continue;
+    }
     if (!/;\s*$/.test(stripTrailingLineComment(ln).trimEnd())) continue; // 한 줄 완결(;)만
     const b = declBindings(ln);
     if (b.length === 0) continue;
     existingByKey.set([...b].sort().join(','), { idx0: i, body: ln });
   }
-  if (existingByKey.size === 0) return { reduced: hookRest, ops, replaced };
+  if (existingByKey.size === 0 && existingMultiByKey.size === 0) {
+    return { reduced: hookRest, ops, replaced };
+  }
 
-  const kept: string[] = [];
-  for (const stmt of splitStatements(hookRest)) {
+  const stmts = splitStatements(hookRest);
+  const consumed = new Set<number>();
+  const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 조각 안의 데이터 페치 선언(신규 useApi 등) — 페치 파생 교체의 동반 이동 후보
+  const fragFetches = stmts
+    .map((stmt, idx) => ({ idx, stmt, rhs: constRhs(stmt), bindings: declBindings(stmt) }))
+    .filter((f) => f.rhs !== null && DATA_FETCH_HOOK_RHS.test(f.rhs) && f.bindings.length > 0);
+
+  for (let si = 0; si < stmts.length; si++) {
+    if (consumed.has(si)) continue;
+    const stmt = stmts[si];
     const b = declBindings(stmt);
-    if (b.length > 0) {
-      const ex = existingByKey.get([...b].sort().join(','));
-      if (ex && normDecl(ex.body) !== normDecl(stmt) && canReplaceDecl(ex.body, stmt, { allowCall: true, removalIntent }).ok) {
-        const indent = ex.body.match(/^[ \t]*/)?.[0] ?? '';
+    if (b.length === 0) continue;
+    const key = [...b].sort().join(',');
+
+    // (a) 단일 라인 기존 선언 — 종전 로직 그대로(무손실 가드)
+    const ex = existingByKey.get(key);
+    if (ex && normDecl(ex.body) !== normDecl(stmt) && canReplaceDecl(ex.body, stmt, { allowCall: true, removalIntent }).ok) {
+      const indent = ex.body.match(/^[ \t]*/)?.[0] ?? '';
+      ops.push({
+        atLine: ex.idx0 + 1,
+        removeCount: 1,
+        content: stmt.split('\n').map((l) => (l.trim() ? indent + l.trim() : l)),
+      });
+      replaced.push(b.join(', '));
+      consumed.add(si);
+      continue;
+    }
+
+    // (b) 멀티라인 정적 배열 ← 페치 파생 재선언 (docstring의 예외 채널)
+    const exM = existingMultiByKey.get(key);
+    if (exM) {
+      const rhsN = constRhs(stmt);
+      const feeders =
+        rhsN === null
+          ? []
+          : fragFetches.filter(
+              (f) =>
+                f.idx !== si &&
+                !consumed.has(f.idx) &&
+                f.bindings.some((fb) => new RegExp(`\\b${escapeRe(fb)}\\b`).test(rhsN)),
+            );
+      if (feeders.length > 0) {
+        const parts = [...feeders.map((f) => f.stmt), stmt];
         ops.push({
-          atLine: ex.idx0 + 1,
-          removeCount: 1,
-          content: stmt.split('\n').map((l) => (l.trim() ? indent + l.trim() : l)),
+          atLine: exM.idx0 + 1,
+          removeCount: exM.span,
+          content: parts.flatMap((p) => p.split('\n')).map((l) => (l.trim() ? exM.indent + l.trim() : l)),
         });
-        replaced.push(b.join(', '));
-        continue; // 소비 — 드롭 경로로 안 보냄
+        replaced.push(`${b.join(', ')} (페치 파생 — 정적 배열 대체·페치 동반 이동)`);
+        consumed.add(si);
+        for (const f of feeders) consumed.add(f.idx);
+        continue;
       }
     }
-    kept.push(stmt);
   }
+
+  if (consumed.size === 0) return { reduced: hookRest, ops, replaced };
+  const kept = stmts.filter((_, i) => !consumed.has(i));
   return { reduced: kept.join('\n'), ops, replaced };
 }
 

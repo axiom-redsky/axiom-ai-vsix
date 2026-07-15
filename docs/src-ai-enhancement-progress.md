@@ -9,7 +9,9 @@
 > **▶ 재개 지점: ② decompose 층 — 계기판(테스트 페이지·SVG·Q3 참조슬라이스) 사용자 커밋 완료 후
 > bigfile 실측 → full/참조 경로 공용 슬라이서 결함 2건(D1 흔한토큰 평평점수·D2 score0 필러) 수정 완료
 > (미커밋, `test:code-slice` 15/0 신설·회귀 0). 다음 = D3 stub 홍수(주입의 98%가 stub 줄 — 복원 계약
-> 얽힘·모델 대면이라 별도 설계+라이브 게이트). §4 ② 작업 로그 참조.**
+> 얽힘·모델 대면이라 별도 설계+라이브 게이트). §4 ② 작업 로그 참조.
+> 같은 날 ⑤apply 급한 버그 선수정(§2-2 예외): BigFile 라이브 반쪽 편집 → 페치 파생 재선언
+> in-place 교체 채널 신설, 라이브 재검증 applied ✅ (§4 ⑤ 작업 로그). 둘 다 미커밋.**
 > ① intent 층은 채집 가동 중: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.
 > 채집 1호(억제 후 ④재낚아챔)·2호(출력채널 오탐, 수정 완료)·3호(파일 지향 질문 가로채기, 관찰)
 > 기록됨 — §4 ① "수집된 대상해석 패턴" 참조. S3④·S4·S5는 채집 데이터 게이트(착수 기준 미정).
@@ -47,7 +49,7 @@
 | ② | decompose/ — 분해 | 🔶 **실측 완료 + 1차 수정(D1·D2)** — bigfile 실측으로 full/참조 경로 슬라이서 결함 확인·수정, `test:code-slice` 신설(2026-07-15, 미커밋). 다음=D3 stub 홍수(설계 필요) |
 | ③ | locate/ — 위치찾기 | ⬜ |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
-| ⑤ | apply/ — 게이트·적용 | ⬜ |
+| ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 선수정** — 페치 파생 재선언 in-place 교체 채널(BigFile 반쪽 편집 근본 수정, 라이브 applied ✅, 2026-07-15 미커밋). 원칙 §2-2의 "급한 버그 예외" 적용 |
 | ⑥ | pipeline/ — 오케스트레이터 | ⬜ (선결 부채: eval:e2e 낡은 녹화 재녹화) |
 | ⑦ | retrieval/ — 지식 검색 | ⬜ |
 
@@ -237,6 +239,9 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
     offline-transplant 22/0 · patch-grounded 30/0 · eval:input 베이스라인 동일 · eval:bigfile
     64/64 유지(region 경로 무영향 — 자체 가지치기 사용). 리로드 실측(테스트 페이지 확인) 대기.
 - [ ] **다음 = D3 stub 홍수** — D2로 제외가 늘며 stub 줄만 194개(~12.9K자, **주입의 98%**)가 됨.
+  **라이브 증거(2026-07-15, qwen3-coder-64k × BigFile.tsx 실사용)**: full 폴백 시 토큰바
+  "현재 파일 13,699자(58%) · 잔여 ~5K" — stub 줄이 컨텍스트 58%를 점유, 잔여를 5K까지 압박.
+  합성 예측이 실전에서 그대로 재현 → D3가 다음 #1 확정.
   ⚠ stub 포맷은 복원 계약 2곳에 얽힘(restoreSlicedStubs + FileCreatorService.resolveStubSection
   정규식이 `원본 NN줄 보존` 의존) + 모델 대면(줄당 "참조 금지" 경고) → 축약·그룹핑은 별도 설계
   + 실 sLLM 라이브 게이트 필요. 참조 경로는 이미 stripSliceStubs로 접혀 무관(편집 대상 경로만).
@@ -261,7 +266,9 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
 
 - **계기판**: `eval:region` 85%(35/41) · `eval:disambig`(+record) · test:region-edit
 - **개선 후보**: 앵커 계약 주력화·locate 축소(verify-correct 루프 Stage 0 트랙의 후속 방향),
-  region disambiguation 모델 객관식(pick 품질 라이브 검증 대기)
+  region disambiguation 모델 객관식 — **라이브 1건 성공(2026-07-15, qwen3-coder-64k × 합성
+  10k파일): "직원관리의 상태 select" → 후보 6개 중 모델이 "1"(직원관리 1843~1860) 정확 선택**.
+  (그 후 region no-op→full 폴백은 "정적 배열→api" 기지 한계로 정당 — disambiguation 자체는 ✓)
 - **참고**: 메모리 project_verify_correct_loop_stage0, project_region_disambiguation,
   project_locate_text_anchor
 
@@ -273,9 +280,29 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
 - **참고**: 메모리 project_scaffold_contract_coverage, project_compose_binding_recipe,
   project_recipe_contract_cards
 
-### ⑤ apply/ — 게이트·적용 ⬜
+### ⑤ apply/ — 게이트·적용 🔶
 
-- **계기판**: `test:line-edits`(15) · `test:patch-grounded`(30) · `test:react-rules`(39) · eval:e2e 게이트 통계
+**작업 로그**
+
+- [x] **페치 파생 재선언 in-place 교체 채널 (2026-07-15, 미커밋)** — BigFile.tsx(11K줄 데모)
+  라이브 채집 "직원관리 상태 select를 api로" 반쪽 편집의 근본 수정. 원인 사슬(전부 결정론 재현으로
+  격리, `scripts/probe-region-live.ts` = 실모델 라이브 프로브 신설): 모델 출력은 **완벽**
+  (새 useApi 페치 + 같은 이름 파생 재선언 `const X = resp?.data ?? []` + JSX 무변경 — 기존 이름
+  재사용 전략)인데, 기존 **멀티라인 정적 배열**(컴포넌트 스코프)을 교체할 채널이 없어 중복 드롭 →
+  페치 고아(dead-binding) → full 폴백 → (D3 stub 장님) 훅만 삽입되는 반쪽 편집. 6월 5일
+  "정당 폴백"으로 기록했던 그 간극(메모리 bigfile 중복선언 게이트 절).
+  - 수정: `extractComponentReplacements`에 예외 채널 — 새 RHS가 **같은 조각의 신규 페치 훅 바인딩을
+    참조**할 때만 멀티라인 정적 배열을 [페치+파생]으로 in-place 대체(**페치 동반 이동 = TDZ 안전**).
+    무손실 가드는 배열 리터럴 재선언에 종전 그대로(이중 조건이 손실 환각과 구조적으로 구분).
+  - **라이브 검증 ✅**: probe-region-live 재실행 → status **applied**, 페치+파생이 직원 훅 구역
+    정확 안착·타입 모듈 스코프·중복 0·프롬프트 3.6K토큰(full 폴백 없이 region 완주).
+  - 게이트: tsc 0 · compile OK · **region-edit 237/0(신규 7: 페치파생 적용 5 + 가드 2)** ·
+    patch-grounded 30/0 · line-edits 15/0 · react-rules 39/0 · api-binding 69/0 · eval:region 회귀 없음.
+  - 부수 확보: **probe-region-live**(실모델로 region 파이프라인 단독 구동+원시 프롬프트/응답/finalText
+    덤프) — ⑤층 라이브 계기판. 인증은 `AXIOM_API_KEY`(vast Caddy Basic 또는 Bearer 토큰).
+
+- **계기판**: `test:line-edits`(15) · `test:patch-grounded`(30) · `test:react-rules`(39) ·
+  `test:region-edit`(237) · eval:e2e 게이트 통계 · **probe-region-live(실모델 단건)**
 - **개선 후보**: grounded patch retry 1C(결정론 rename, 미구현), 검증-교정 루프(experimental.regionVerify)
   실모델 검증, full 폴백 파괴적 누락 가드 실모델 검증
 - **참고**: 메모리 project_grounded_patch_retry, project_verify_correct_loop_stage0,
