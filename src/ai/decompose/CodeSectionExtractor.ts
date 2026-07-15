@@ -213,9 +213,24 @@ export function splitTsSections(source: string): CodeSection[] {
 }
 
 /**
+ * 흔한 토큰(변별력 없음) 판정에 쓰는 최소 섹션 수 — 이보다 작은 파일은 가드를 끈다(종전 동작 보존).
+ * 작은 파일은 어차피 예산 안에 다 들어가는 경우가 대부분이라 과매칭 피해가 없다.
+ */
+const FLOOD_GUARD_MIN_SECTIONS = 8;
+
+/**
+ * body 매칭 섹션 수가 `max(3, 전체 × 이 비율)`을 초과하는 토큰은 변별력 없음으로 본다.
+ * 2026-07-15 bigfile 실측: "api" 토큰이 모든 `*_ENDPOINT` 값(`'/api/…'`)에 매칭돼
+ * 195섹션 중 65개가 동점 +1 — 예산이 무관 한 줄 선언 덤프로 채워지는 폭주의 뿌리.
+ */
+const FLOOD_TOKEN_RATIO = 0.2;
+
+/**
  * 사용자 쿼리·선택 영역 키워드로 섹션 점수를 매긴다.
  * - 선언 이름이 쿼리에 등장: +5
  * - body에 쿼리 토큰 등장: 토큰 1개당 +1 (중복 매칭 1점 한정)
+ *   단, 너무 많은 섹션에 등장하는 흔한 토큰은 변별력이 없어 body 가점에서 제외한다
+ *   (이름 매칭 +5는 유지 — 이름에 든 토큰은 여전히 특정 선언을 가리킨다).
  * - imports 섹션: 항상 +2 (작고 단가 높음 — 보통 유지)
  * - 선택 영역과 라인 범위 겹침: +4
  */
@@ -224,15 +239,32 @@ export function scoreCodeSections(
   queryTokens: string[],
   selection?: { startLine: number; endLine: number },
 ): void {
-  for (const section of sections) {
+  // ── 흔한 토큰 가드 (IDF 취지) ──
+  // 토큰별 body 매칭 섹션 수(DF)를 먼저 세고, max(3, 전체의 20%)를 초과하면 body 가점 제외.
+  const bodiesLower = sections.map((s) => s.body.toLowerCase());
+  const floodTokens = new Set<string>();
+  if (sections.length >= FLOOD_GUARD_MIN_SECTIONS) {
+    const floodThreshold = Math.max(3, sections.length * FLOOD_TOKEN_RATIO);
+    for (const token of new Set(queryTokens)) {
+      if (!token) continue;
+      let hits = 0;
+      for (const body of bodiesLower) {
+        if (body.includes(token)) hits++;
+      }
+      if (hits > floodThreshold) floodTokens.add(token);
+    }
+  }
+
+  for (let idx = 0; idx < sections.length; idx++) {
+    const section = sections[idx];
     let score = 0;
     const nameLower = section.name.toLowerCase();
-    const bodyLower = section.body.toLowerCase();
+    const bodyLower = bodiesLower[idx];
 
     for (const token of queryTokens) {
       if (!token) continue;
       if (nameLower.includes(token)) score += 5;
-      else if (bodyLower.includes(token)) score += 1;
+      else if (!floodTokens.has(token) && bodyLower.includes(token)) score += 1;
     }
 
     if (section.kind === 'import') score += 2;
@@ -271,9 +303,18 @@ export function sliceByBudget(sections: CodeSection[], maxChars: number): SliceR
     return a.length - b.length;
   });
 
+  // ── score=0 필러 가드 ──
+  // 파일이 예산을 넘겨 진짜 슬라이싱이 일어나고(overflow) 점수 있는 섹션이 하나라도 있으면,
+  // 무관(score 0) 섹션으로 남은 예산을 채우지 않는다. 동점·최단 우선 정렬이 한 줄짜리
+  // type/const 덤프를 예산에 선적하던 폭주(2026-07-15 bigfile 실측: 포함 80개 전부 노이즈) 차단.
+  // 전부 0점이면 종전 동작(최단 우선 채움) 유지 — 쿼리가 코드와 아예 안 겹치는 파일의 폴백.
+  const totalLen = sections.reduce((sum, s) => sum + s.length, 0);
+  const skipZeroScore = totalLen > maxChars && sections.some((s) => s.score > 0);
+
   const includedIds = new Set<number>();
   let remaining = maxChars;
   for (let i = 0; i < sorted.length; i++) {
+    if (skipZeroScore && sorted[i].score <= 0) break; // score 내림차순 정렬 — 이후 전부 0점
     if (sorted[i].length <= remaining) {
       includedIds.add(sections.indexOf(sorted[i]));
       remaining -= sorted[i].length;

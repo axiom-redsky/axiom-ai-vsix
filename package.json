@@ -544,6 +544,7 @@
     "test:region-edit": "node scripts/test-region-edit.mjs",
     "test:region-capture": "node scripts/test-region-capture.mjs",
     "test:api-binding": "node scripts/run-test-api-binding.mjs",
+    "test:code-slice": "node scripts/run-test-code-slice.mjs",
     "test:react-rules": "node scripts/run-test-react-rules.mjs",
     "test:offline-intent": "node scripts/run-test-offline-intent.mjs",
     "test:offline-answer": "node scripts/run-test-offline-answer.mjs",

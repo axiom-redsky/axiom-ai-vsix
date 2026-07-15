@@ -4,10 +4,13 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-14
+> 최종 갱신: 2026-07-15
 >
-> **▶ 재개 지점: ① intent 층 — 도구·검증·1차 수정까지 전부 커밋 완료(0020c23, 2026-07-14).
-> 현재 단계 = 채집: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.**
+> **▶ 재개 지점: ② decompose 층 — 계기판(테스트 페이지·SVG·Q3 참조슬라이스) 사용자 커밋 완료 후
+> bigfile 실측 → full/참조 경로 공용 슬라이서 결함 2건(D1 흔한토큰 평평점수·D2 score0 필러) 수정 완료
+> (미커밋, `test:code-slice` 14/0 신설·회귀 0). 다음 = D3 stub 홍수(주입의 98%가 stub 줄 — 복원 계약
+> 얽힘·모델 대면이라 별도 설계+라이브 게이트). §4 ② 작업 로그 참조.**
+> ① intent 층은 채집 가동 중: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.
 > 채집 1호(억제 후 ④재낚아챔)·2호(출력채널 오탐, 수정 완료)·3호(파일 지향 질문 가로채기, 관찰)
 > 기록됨 — §4 ① "수집된 대상해석 패턴" 참조. S3④·S4·S5는 채집 데이터 게이트(착수 기준 미정).
 > intent는 새 계획이 아니라 **기존 라우팅 재설계 트랙의 재개**다:
@@ -41,7 +44,7 @@
 | # | 층 | 상태 |
 |---|---|---|
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
-| ② | decompose/ — 분해 | 🔶 **계기판 확보(0단계)** — "2. 분해 테스트" 페이지 + 흐름도 SVG 완료(2026-07-15). 개선 착수 전(측정 도구만) |
+| ② | decompose/ — 분해 | 🔶 **실측 완료 + 1차 수정(D1·D2)** — bigfile 실측으로 full/참조 경로 슬라이서 결함 확인·수정, `test:code-slice` 신설(2026-07-15, 미커밋). 다음=D3 stub 홍수(설계 필요) |
 | ③ | locate/ — 위치찾기 | ⬜ |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
 | ⑤ | apply/ — 게이트·적용 | ⬜ |
@@ -206,18 +209,49 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
     운영(`_loadReferencedFiles` 코드 참조 분기)+테스트 페이지(실제 주입 글자 수 표시) 양쪽 적용. 자가검증:
     204자(stub 2줄)→96자, 본문 보존·stub 0. 게이트: tsc 0·compile OK·region-edit 230/0·api-binding 69/0·
     offline-transplant 22/0·line-edits 15/0.
-- [ ] 실측: 실제 큰 파일(god component)로 분해 실행 → deps 폭주(keepRatio·dietRatio) 눈으로 확인
-- [ ] 개선 착수: 데이터가 가리키면 레버1(deps 가지치기)부터
+- [x] **bigfile 실측 (2026-07-15)** — `write-bigfile-sample.mjs`로 합성 god component(10,574줄/383K자/
+  195섹션) 생성, 테스트 페이지와 동일한 순수 함수를 직접 실행(`scripts/probe-decompose-bigfile.ts`,
+  쿼리 "직원관리의 상태 select를 api로 바꿔줘" × 예산 4000자). **두 갈래 발견**:
+  - **정정: region 경로의 deps 폭주(원래 레버1)는 이미 수정 완료돼 있었다** — RegionEdit.ts의
+    depsHeader 가지치기(커밋 53cfc82 "위치 단계 작업내용 완료"). eval:bigfile green(64/64 적중,
+    depsHeader 평균 ~1K자, 타입출하 ~1%). 이 카드의 "개선 후보: 레버1"은 낡은 정보였음.
+  - **진짜 결함 = full/참조 경로 공용 슬라이서**(`sliceByBudget`/`scoreCodeSections` —
+    ScaffoldContextBuilder full 모드 현재파일 + _loadReferencedFiles 참조파일, 전용 테스트 0):
+    포함 80섹션 **전부 노이즈**(`api` 토큰이 64개 `*_ENDPOINT` 값 `'/api/…'`에 매칭돼 전원 동점
+    +1 → 동점·최단 우선 정렬이 한 줄 덤프 선적 + score=0 type이 잔여 예산 필러) · 정작 관련 본문
+    (364K자 단일 함수)은 통째 stub.
+- [x] **1차 수정: D1 흔한 토큰 가드 + D2 score=0 필러 가드 (2026-07-15, 미커밋)** —
+  CodeSectionExtractor 순수 함수 2곳, 결정론·모델 무관.
+  - D1 `scoreCodeSections`: body 매칭 섹션 수가 **max(3, 전체의 20%)** 초과인 토큰은 변별력 없음
+    → body 가점 제외(이름 매칭 +5는 유지). 섹션 8개 미만 파일은 가드 OFF(종전 보존).
+    ※ 처음 "전체 60%" 기준은 실측 검산에서 미발동(65/195=33%) — 실측 수치로 임계 보정.
+  - D2 `sliceByBudget`: overflow + 유점수 섹션 존재 시 score=0 섹션으로 잔여 예산을 채우지 않음.
+    전부 0점이면 종전 폴백(최단 우선) 유지.
+  - 효과(동일 probe 재실행): 포함 80(전부 노이즈) → **1(imports만, 덤프 전원 score 0)**.
+  - **신규 전용 안전망 `test:code-slice`(14/0)** — 이 경로의 첫 회귀 게이트(D1·D2 + 종전 동작
+    4종 + stub 복원 계약 고정). scripts/test-code-slice.ts · run-test-code-slice.mjs.
+  - 게이트: tsc 0 · compile OK · code-slice 14/0 · region-edit 230/0 · api-binding 69/0 ·
+    offline-transplant 22/0 · patch-grounded 30/0 · eval:input 베이스라인 동일 · eval:bigfile
+    64/64 유지(region 경로 무영향 — 자체 가지치기 사용). 리로드 실측(테스트 페이지 확인) 대기.
+- [ ] **다음 = D3 stub 홍수** — D2로 제외가 늘며 stub 줄만 194개(~12.9K자, **주입의 98%**)가 됨.
+  ⚠ stub 포맷은 복원 계약 2곳에 얽힘(restoreSlicedStubs + FileCreatorService.resolveStubSection
+  정규식이 `원본 NN줄 보존` 의존) + 모델 대면(줄당 "참조 금지" 경고) → 축약·그룹핑은 별도 설계
+  + 실 sLLM 라이브 게이트 필요. 참조 경로는 이미 stripSliceStubs로 접혀 무관(편집 대상 경로만).
+- [ ] (후순위) D4 거대 함수 하위 분할 — 단일 함수가 예산 초과면 통째 stub돼 관련 본문 소실.
+  단, 큰 파일 편집의 주력은 region 경로(이미 green)라 실피해 낮음. RegionEdit의 훅 슬라이스·
+  타입 전이참조 기계를 full 경로로 이식하는 방향(착수 시 별도 설계).
 - **후보(사용자 Q1, 2026-07-15 논의)**: 관련 파일 자동 탐색 부재 — "getArr 만들어줘"처럼 현재 파일에
   없는 심볼을 워크스페이스에서 뒤져 후보를 대는 로직이 없음. 처방=**결정론 후보 수집(심볼 정의·사용처
   검색+import 이웃+열린 탭)+모델 객관식 1회**. CC는 강한 모델의 도구 반복 루프지만 약한 sLLM엔 금지 —
   이건 ①intent §4의 "대상 파일 해석 고도화"와 동일 작업(그 트랙에서 착수). 여기엔 포인터만 기록.
 
-- **계기판**: `eval:input`(입력 품질) · `eval:bigfile`(큰파일 합성 하니스) · region-edit(간접) ·
-  **"2. 분해 테스트" 페이지(수동 관측)**
-- **개선 후보**: **bigfile 레버1 = deps 가지치기** — 큰파일에서 입력의 대부분이 0%관련 type덤프로
-  채워지는 것이 보편 #1 문제(eval:bigfile 베이스라인 조사 완료 상태). 레버2(모호쿼리)·레버3(섹션라우팅
-  복합어 토큰화 top-bias)은 그 다음.
+- **계기판**: `eval:input`(입력 품질) · `eval:bigfile`(큰파일 합성 하니스) · **`test:code-slice`(14,
+  신설 — full/참조 경로 슬라이서 전용)** · region-edit(간접) · **"2. 분해 테스트" 페이지(수동 관측)** ·
+  `scripts/probe-decompose-bigfile.ts`(테스트 페이지와 동일 함수 CLI 실행)
+- **개선 후보**: ~~bigfile 레버1 = deps 가지치기~~ → **2026-07-15 실측 정정: region 경로는 이미
+  구현 완료(53cfc82)·green, full/참조 경로 결함은 D1·D2로 수정**. 남은 것 = **D3 stub 홍수(신규 #1,
+  설계 필요)** · 레버2(모호쿼리 — eval:bigfile ②에서 64후보 되물음 실측됨, locate/pipeline과 걸침) ·
+  레버3(섹션라우팅 복합어 토큰화 top-bias) · D4(거대 함수 하위 분할, 후순위).
 - **참고**: 메모리 project_bigfile_eval_harness, project_endpoint_disambiguation_gap(레버 B 미구현)
 
 ### ③ locate/ — 위치찾기 ⬜
