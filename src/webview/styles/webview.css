@@ -2293,3 +2293,25 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .dp-kind--type      { background: rgba(204,167,0,.16);   border-color: rgba(204,167,0,.45); }
 .dp-kind--import    { background: rgba(168,85,247,.14);  border-color: rgba(168,85,247,.4); }
 .dp-kind--class     { background: rgba(214,124,13,.14);  border-color: rgba(214,124,13,.4); }
+
+/* ═══ 단계별 테스트 ③ 위치찾기 (locate-probe) — ip-·dp- 클래스 재사용 + lp- 추가 ═══ */
+.lp-gateline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.lp-gate {
+  display: inline-block; border-radius: 6px; padding: 3px 10px; font-size: 13px; font-weight: 700;
+  font-family: var(--vscode-editor-font-family, monospace);
+  background: rgba(127,127,127,.16); border: 1px solid rgba(127,127,127,.3);
+}
+.lp-gate--ok    { background: rgba(46,160,67,.16);   border-color: rgba(46,160,67,.5); }
+.lp-gate--ask   { background: rgba(204,167,0,.16);   border-color: rgba(204,167,0,.55); }
+.lp-gate--block { background: rgba(218,54,51,.14);   border-color: rgba(218,54,51,.5); }
+.lp-gatehint { font-size: 11.5px; opacity: .65; }
+.lp-reason {
+  border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.5;
+  background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2);
+}
+
+.lp-cands { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 6px; }
+.lp-cands th { text-align: left; padding: 4px 8px; opacity: .55; font-weight: 400; border-bottom: 1px solid rgba(127,127,127,.3); white-space: nowrap; }
+.lp-cands td { padding: 4px 8px; border-bottom: 1px solid rgba(127,127,127,.1); }
+.lp-cands tr.lp-cand--chosen { background: rgba(46,160,67,.08); }
+.lp-pick { font-size: 11px; padding: 2px 8px; white-space: nowrap; }

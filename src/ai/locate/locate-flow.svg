@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1240" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+    <marker id="arN" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1F3864"/>
+    </marker>
+    <marker id="arDash" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8C8C8C"/>
+    </marker>
+    <marker id="arP" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#7C3AED"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="1240" fill="#FFFFFF"/>
+
+  <!-- ═══ 헤더 ═══ -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="22" font-weight="bold" fill="#FFFFFF">③</text>
+  <text x="106" y="54" font-size="26" font-weight="bold" fill="#1F3864">locate — 위치찾기 로직 흐름 (②분해 산출물 → 편집 영역·게이트·후보)</text>
+  <text x="106" y="84" font-size="14" fill="#595959">②분해 산출물(쿼리 토큰·섹션 도구)을 받아 동작 · 스냅 사다리: 위→아래 순차, 앞 실패 시에만 다음 · 전부 결정론 — 단 <tspan font-weight="bold" fill="#5B21B6">모호할 때 후보 선택 한 조각만 모델(보라 루프)</tspan> · 2026-07-16 기준</text>
+  <line x1="50" y1="104" x2="1390" y2="104" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- ═══ 💬 쉬운 한 마디 ═══ -->
+  <rect x="40" y="116" width="1360" height="104" rx="12" fill="#FFF9E6" stroke="#C0A000" stroke-width="1.8"/>
+  <text x="58" y="142" font-size="14" font-weight="bold" fill="#7A6A00">💬 쉬운 한 마디 — 이 그림이 하는 일 (코드 몰라도 이것만 알면 됨)</text>
+  <text x="58" y="167" font-size="12.5" fill="#333333">②분해가 재료를 손질해 넘기면, 위치찾기는 그걸 받아 <tspan font-weight="bold">"파일 어디를 고칠지" 자로 재듯 정하는 층</tspan>. 800줄 전체가 아니라 딱 그 요소(영역)만 모델에 준다.</text>
+  <text x="58" y="188" font-size="12.5" fill="#333333">핵심 철학: 확실하면 영역 확정, 애매하면 <tspan font-weight="bold">정하지 않는다</tspan> — 후보만 추려서 <tspan font-weight="bold" fill="#5B21B6">최종 선택은 의미를 아는 모델에게(객관식 pick, 보라 루프)</tspan> 넘기고, 위험하면 full로 물러선다.</text>
+  <text x="58" y="209" font-size="12" fill="#8C6A00">아래 예시로 따라가기 →  "재직상태 select를 api로 바꿔줘"  (파일: 800줄 EmployeeListPage.tsx에서 &lt;Select …재직상태…&gt; 요소 찾기)</text>
+
+  <!-- ═══ 입력 (←②분해) ═══ -->
+  <rect x="40" y="244" width="175" height="256" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="127" y="270" text-anchor="middle" font-size="14" font-weight="bold" fill="#333333">입력 (← ②분해)</text>
+  <text x="58" y="296" font-size="12" fill="#333333">쿼리 토큰 (낱말)</text>
+  <text x="66" y="314" font-size="10.5" fill="#595959">· ②분해 tokenizeQuery 산출물</text>
+  <text x="58" y="340" font-size="12" fill="#333333">현재 파일 (TS/TSX)</text>
+  <text x="66" y="358" font-size="10.5" fill="#595959">· ①intent가 정한 편집 대상</text>
+  <text x="58" y="384" font-size="12" font-weight="bold" fill="#5B21B6">forcedRegion (있으면)</text>
+  <text x="66" y="402" font-size="10.5" fill="#7C3AED">· 🤖 모델 pick 재진입(보라 루프)</text>
+  <text x="66" y="418" font-size="10.5" fill="#7C3AED">· 사다리 휴리스틱 전부 덮어씀</text>
+  <text x="58" y="446" font-size="11" font-weight="bold" fill="#9C6A00">💬 "이 말이 가리키는 곳이</text>
+  <text x="58" y="462" font-size="11" font-weight="bold" fill="#9C6A00">   이 파일 몇 줄이냐"를 판정</text>
+  <text x="58" y="488" font-size="10.5" fill="#8C8C8C">원칙: 모호하면 결정하지 않음</text>
+  <line x1="215" y1="330" x2="238" y2="330" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 스냅 사다리 ═══ -->
+  <rect x="240" y="232" width="560" height="668" rx="12" fill="#FBFCFE" stroke="#1F3864" stroke-width="2.5"/>
+  <text x="258" y="258" font-size="14" font-weight="bold" fill="#1F3864">스냅 사다리 — 위에서 아래로, 앞이 실패할 때만 다음 (locateEditRegion)</text>
+  <text x="258" y="278" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 "재직상태·select 낱말이 모인 줄을 찾고 → 그 줄을 감싸는 완결 요소로 넓힌다"</text>
+
+  <rect x="258" y="292" width="528" height="54" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="272" y="312" font-size="12.5" font-weight="bold" fill="#1F3864">0. 토큰 보강 <tspan font-size="10.5" font-weight="normal" fill="#595959">(②분해와의 연결점)</tspan></text>
+  <text x="272" y="330" font-size="10.5" fill="#333333">②분해의 낱말을 받아: 불용어 제거 · 복합어 어근(예산관리→+예산) · 한→영 브리지(달력→+calendar)</text>
+
+  <rect x="258" y="354" width="528" height="54" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="272" y="374" font-size="12.5" font-weight="bold" fill="#1F3864">① grep — 모든 줄 점수화</text>
+  <text x="272" y="392" font-size="10.5" fill="#333333">줄마다 매칭 토큰 수 채점(substring 이중집계 제거) · 점수 내림차순, 동점이면 위쪽 우선</text>
+
+  <rect x="258" y="416" width="528" height="62" rx="8" fill="#FFFFFF" stroke="#2E5395" stroke-width="1.5"/>
+  <text x="272" y="436" font-size="12.5" font-weight="bold" fill="#1F3864">② 채택+스냅 — 첫 "안전한" 후보</text>
+  <text x="272" y="454" font-size="10.5" fill="#333333">점수≥2 · 주석/import 줄 제외 · snapToElement(그 줄을 감싸는 완결 JSX 요소)에 성공하는 첫 후보</text>
+  <text x="272" y="470" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "낱말 2개 이상 모였고, 통째로 오려낼 수 있는 요소"만 인정</text>
+
+  <rect x="258" y="486" width="528" height="196" rx="8" fill="#FDFAF4" stroke="#C0A000" stroke-width="1.5"/>
+  <text x="272" y="506" font-size="12" font-weight="bold" fill="#7A6A00">②가 빈손이면 — 구제 랜드마크 (순서대로, 걸리면 채택)</text>
+  <text x="272" y="528" font-size="10.5" fill="#333333"><tspan font-weight="bold">②.5 유일 테이블</tspan> — "테이블/컬럼" 의도 + 파일에 표가 하나뿐이면 그 표로</text>
+  <text x="272" y="550" font-size="10.5" fill="#333333"><tspan font-weight="bold">②.7 앵커 품질</tspan> — 도메인어가 JSX 텍스트/문자열에 있고 완결 요소로 스냅되면 1토큰도 인정</text>
+  <text x="286" y="566" font-size="10" fill="#8C8C8C">(단, 그런 후보가 여러 요소로 흩어지면 모호 — 같은 요소로 수렴할 때만)</text>
+  <text x="272" y="588" font-size="10.5" fill="#333333"><tspan font-weight="bold">②.8 섹션 주석 랜드마크</tspan> — {/* 직원 요약 카드 */} 주석이 질문어와 맞으면 그 다음 요소로 스냅</text>
+  <text x="272" y="610" font-size="10.5" fill="#333333"><tspan font-weight="bold">②.85 유일 컨트롤 앵커</tspan> — 쿼리가 버튼/입력을 지목 + 그 태그가 파일에 하나뿐이면 그리로</text>
+  <text x="286" y="626" font-size="10" fill="#8C8C8C">(&lt;button&gt; 소문자·&lt;Button&gt; 대문자 모두 · 둘 이상이면 손대지 않음 — 오발 방지)</text>
+  <text x="272" y="650" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 점수 계산이 놓쳐도 "사람이 쓰는 표지판"(표·주석·유일 컨트롤)으로 한 번 더 찾는다</text>
+  <text x="272" y="670" font-size="10" fill="#7C3AED">채택 후 보정: ②.9 테이블 의도 교정(표 아닌 앵커→그 섹션의 표) · 🤖 forcedRegion(모델 pick)은 이 전부를 덮어씀</text>
+
+  <rect x="258" y="692" width="528" height="86" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="272" y="712" font-size="12.5" font-weight="bold" fill="#1B5E20">③ 동봉 재료 — 영역과 함께 모델에 갈 것</text>
+  <text x="272" y="730" font-size="10.5" fill="#333333">depsHeader(import·타입·훅 — 비대하면 관련 것만 가지치기) · backingDecls(영역이 참조하는 모듈 const)</text>
+  <text x="272" y="746" font-size="10.5" fill="#333333">controlInventory(영역 밖 기존 컨트롤 1줄 목록 — 모델이 중복 생성하지 않게)</text>
+  <text x="272" y="766" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "고칠 부분+주변 지식" 한 봉투 — 섹션 분할은 ②분해 splitTsSections 재사용</text>
+
+  <rect x="258" y="786" width="528" height="100" rx="8" fill="#FFF5F5" stroke="#C0392B" stroke-width="1.5"/>
+  <text x="272" y="806" font-size="12.5" font-weight="bold" fill="#96281B">④ 안전 게이트 — 확신 없으면 진행하지 않는다</text>
+  <text x="272" y="824" font-size="10.5" fill="#333333">④.0 모호 판정: generic 동점이 파일 전반(1000줄+)에 흩어짐 · 지목 컨트롤/표가 다수 → ambiguous(되묻기)</text>
+  <text x="272" y="842" font-size="10.5" fill="#333333">차단 사슬: anchor-missing(토큰 0매칭) · anchor-comment/import(우연 일치) · snap-failed(완결 요소 없음)</text>
+  <text x="272" y="858" font-size="10.5" fill="#333333">· handler-body(함수 본문이 영역 밖) · cross-cutting(다중지점) → 전부 full 폴백 / 통과 = ok</text>
+  <text x="272" y="878" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "엉뚱한 곳을 자신 있게 고치는 것"이 최악 — 그럴 바엔 물러선다</text>
+
+  <line x1="800" y1="420" x2="846" y2="420" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- ═══ 산출물 ═══ -->
+  <rect x="850" y="264" width="300" height="330" rx="12" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <text x="1000" y="292" text-anchor="middle" font-size="14" font-weight="bold" fill="#1F3864">산출물 = LocatedRegion</text>
+  <text x="866" y="316" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 "몇 줄~몇 줄을 고쳐라" 작업 지시서</text>
+  <text x="866" y="344" font-size="11.5" fill="#333333">· 채택 영역 startLine~endLine + 원문</text>
+  <text x="866" y="366" font-size="11.5" fill="#333333">· 앵커(bestLine·점수·매칭 토큰)</text>
+  <text x="866" y="388" font-size="11.5" fill="#333333">· safety 게이트(ok/ambiguous/차단)</text>
+  <text x="866" y="410" font-size="11.5" fill="#5B21B6">· candidates(모델 객관식, 최대 6)</text>
+  <text x="866" y="432" font-size="11.5" fill="#333333">· ambiguousCandidates(되묻기 라벨)</text>
+  <text x="866" y="454" font-size="11.5" fill="#333333">· 동봉 재료(deps·backing·인벤토리)</text>
+  <text x="866" y="482" font-size="11" font-weight="bold" fill="#2E5395">→ ok: ④contracts → sLLM → ⑤apply</text>
+  <text x="866" y="504" font-size="11" font-weight="bold" fill="#5B21B6">→ ambiguous: 🤖 모델 객관식 pick</text>
+  <text x="880" y="522" font-size="10.5" fill="#7C3AED">(아래 보라 루프 — 되묻기는 그 다음)</text>
+  <text x="866" y="544" font-size="11" font-weight="bold" fill="#C0392B">→ 차단: full 폴백(⑥pipeline)</text>
+  <text x="866" y="570" font-size="10.5" fill="#8C8C8C">"우선순위는 미리 알 수 없다 —</text>
+  <text x="866" y="586" font-size="10.5" fill="#8C8C8C"> 최종 선택은 의미를 아는 모델에 위임"</text>
+
+  <line x1="1150" y1="400" x2="1176" y2="400" stroke="#1F3864" stroke-width="2" marker-end="url(#arN)"/>
+
+  <!-- ═══ 다음 층 ═══ -->
+  <rect x="1180" y="300" width="220" height="208" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="1290" y="328" text-anchor="middle" font-size="13" font-weight="bold" fill="#333333">이후 파이프라인</text>
+  <text x="1196" y="356" font-size="11" fill="#333333">④ contracts (계약카드)</text>
+  <text x="1196" y="378" font-size="11" fill="#333333">━ 단일 sLLM 콜 ━</text>
+  <text x="1196" y="400" font-size="11" fill="#333333">⑤ apply (게이트·적용)</text>
+  <text x="1196" y="430" font-size="10.5" fill="#8C8C8C">💬 여기서 영역을 잘못 잡으면</text>
+  <text x="1196" y="446" font-size="10.5" fill="#8C8C8C">모델이 아무리 잘해도 엉뚱한</text>
+  <text x="1196" y="462" font-size="10.5" fill="#8C8C8C">곳이 고쳐진다</text>
+  <text x="1196" y="486" font-size="10.5" font-weight="bold" fill="#C55A11">→ 정확도의 원천 = 여기</text>
+
+  <!-- ═══ 🤖 모델 객관식 pick 루프 (보라) ═══ -->
+  <rect x="850" y="618" width="550" height="90" rx="12" fill="#F5F0FA" stroke="#7C3AED" stroke-width="2.5"/>
+  <text x="866" y="642" font-size="14" font-weight="bold" fill="#5B21B6">🤖 모델 객관식 pick 루프 — 모호할 때 최종 선택은 모델이 한다</text>
+  <text x="866" y="664" font-size="10.5" fill="#333333">후보 최대 6개(라벨+라인)를 sLLM에 <tspan font-weight="bold">객관식으로 제시</tspan> → 모델은 <tspan font-weight="bold">번호 하나만</tspan> 고른다(약한 모델도 가능한 "판단 한 조각")</text>
+  <text x="866" y="682" font-size="10.5" fill="#333333">선택 영역이 <tspan font-weight="bold" fill="#5B21B6">forcedRegion으로 locate 재진입</tspan> → 모호 게이트 우회 + 동봉 재료 조립 → ok로 완주</text>
+  <text x="866" y="700" font-size="10" fill="#8C6A00">💬 테스트 페이지의 "이 후보로 강제" 버튼 = 이 pick을 사람이 대신 누르는 수동 시뮬레이션(모델 무관 계기판이라서)</text>
+
+  <path d="M 1000 594 L 1000 616" fill="none" stroke="#7C3AED" stroke-width="2.5" marker-end="url(#arP)"/>
+  <path d="M 848 664 L 806 664" fill="none" stroke="#7C3AED" stroke-width="2.5" marker-end="url(#arP)"/>
+  <text x="827" y="654" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#5B21B6">재진입</text>
+
+  <!-- ═══ 베이스라인 카드 ═══ -->
+  <rect x="850" y="732" width="550" height="170" rx="12" fill="#FBFCFE" stroke="#2E7D32" stroke-width="2"/>
+  <text x="866" y="758" font-size="14" font-weight="bold" fill="#1B5E20">📐 0단계 베이스라인 (2026-07-16, 착수 시점 고정)</text>
+  <text x="866" y="780" font-size="11" fill="#333333">eval:region <tspan font-weight="bold">85% (35/41)</tspan> — 게이트: ok 35 · anchor-import 3 · anchor-missing 2 · snap-failed 1</text>
+  <text x="866" y="798" font-size="11" fill="#333333">eval:disambig(replay) pick <tspan font-weight="bold">3/3</tspan> · test:region-edit <tspan font-weight="bold">237/0</tspan> · 평균 토큰 절감 60%</text>
+  <text x="866" y="822" font-size="11" font-weight="bold" fill="#1B5E20">★ 비적격 6건 중 5건은 정당 가드(없는 기능·합성 대조군) —</text>
+  <text x="866" y="840" font-size="11" fill="#333333">   실측 실패는 <tspan font-weight="bold" fill="#C0392B">attr-readonly 1건뿐</tspan>: 속성 토글 쿼리가 import 라인에 스냅(anchor-import)</text>
+  <text x="866" y="862" font-size="10.5" fill="#8C6A00">   + 관찰 1호(라이브): ambiguous 되묻기 라벨 60개+ 무제한 폭주 — 캡·정렬 부재</text>
+  <text x="866" y="884" font-size="10.5" fill="#8C8C8C">   no-recording 3건은 서버 연결 시 eval:disambig:record 재녹화(비차단 부채)</text>
+
+  <!-- ═══ 계기판(테스트 페이지) ═══ -->
+  <rect x="40" y="1000" width="1360" height="200" rx="12" fill="#FFFFFF" stroke="#8C8C8C" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="58" y="1026" font-size="13" font-weight="bold" fill="#595959">🧪 계기판 — 단계별 테스트 "3. 위치찾기 테스트" 페이지 (LocateProbePanel · LocateProbeApp)</text>
+  <text x="58" y="1048" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 위 흐름을 실제로 눈으로 본다: 프롬프트+현재 파일 넣으면 게이트 배지·앵커·채택 영역·후보 목록·동봉 재료 크기가 화면에 뜬다</text>
+  <text x="58" y="1070" font-size="11" fill="#333333">① 판정: 게이트 배지(✅ok/❓ambiguous/⛔차단) + 사유 + 앵커 라인·점수·매칭 토큰 칩    ② 후보 표: 모델 객관식 입력 그대로(라벨·라인·점수)</text>
+  <text x="58" y="1090" font-size="11" fill="#333333">③ <tspan font-weight="bold" fill="#5B21B6">후보 행 "이 후보로 강제" 클릭 = 위 보라 루프의 모델 pick을 사람이 대신(forcedRegion 재실행)</tspan>    ④ 동봉 재료 글자 수 + 전문</text>
+  <text x="58" y="1112" font-size="11" fill="#2E7D32">★ decompose 페이지와 동일 원칙: 운영 미러가 아니라 <tspan font-weight="bold">locateEditRegion 순수 함수를 직접 호출</tspan> — 화면 결과 = 진짜 운영 산출물(드리프트 0)</text>
+  <text x="58" y="1138" font-size="10.5" fill="#595959">합성 계기판: eval:region(적용률·게이트 분포) · eval:disambig(+record — pick 정확도) · test:region-edit(237, 간접) · eval:bigfile(큰파일 region 경로)</text>
+  <text x="58" y="1160" font-size="10.5" fill="#8C8C8C">개선 후보: 되묻기 라벨 캡·정렬(관찰 1호) · 앵커 계약 주력화·locate 축소(Stage 0 후속) · 의미론 연관성(tsserver/LSP) — attr-readonly(anchor-import) 실측 1건이 시작점</text>
+
+  <line x1="400" y1="1000" x2="400" y2="902" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
+  <line x1="1000" y1="1000" x2="1000" y2="908" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
+</svg>

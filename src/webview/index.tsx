@@ -7,6 +7,7 @@ import { SliceProbeApp } from './sliceProbe/SliceProbeApp';
 import { RegionIoApp } from './regionIo/RegionIoApp';
 import { IntentProbeApp } from './intentProbe/IntentProbeApp';
 import { DecomposeProbeApp } from './decomposeProbe/DecomposeProbeApp';
+import { LocateProbeApp } from './locateProbe/LocateProbeApp';
 import './styles/webview.css';
 import 'highlight.js/styles/vs2015.css';
 
@@ -21,6 +22,7 @@ if (rootEl) {
     : mode === 'region-io' ? <RegionIoApp />
     : mode === 'intent-probe' ? <IntentProbeApp />
     : mode === 'decompose-probe' ? <DecomposeProbeApp />
+    : mode === 'locate-probe' ? <LocateProbeApp />
     : <ChatApp />,
   );
 }

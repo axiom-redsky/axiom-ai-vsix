@@ -4,12 +4,17 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-16 (D3 stub 홍수 **완주** — 구현+합성 게이트+실 sLLM 라이브 게이트 PASS, 미커밋)
+> 최종 갱신: 2026-07-16 (③ locate **착수** — 0단계 베이스라인 측정 완료. ② decompose는 커밋
+> 5009800으로 일단락 + README·flow SVG 최신화(미커밋))
 >
-> **▶ 재개 지점: ② decompose D3 완료(커밋 대기) — 라이브 검증까지 전부 통과. 주입 13,120→3,519자
-> (73% 절감), 실모델이 그룹 표식 보존+심볼 재선언 0+보존 타입 참조사용까지 확인(§4 ② D3 ④ 항목).
-> 부산물: 가드 오거부 수정(관찰 2호)·라이브 관찰 3건 기록. 다음 후보 = ② 레버2(모호쿼리)/레버3/
-> 무신호 폴백 예산 캡(관찰 1호) 또는 층 순서대로 ③ locate 착수. 커밋은 사용자 결정.**
+> **▶ 재개 지점: ③ locate 0.5단계 완료(미커밋) — 0단계 베이스라인(eval:region 85%(35/41) ·
+> disambig 3/3 · 실측 실패=attr-readonly 1건뿐=1번 데이터 포인트) + 관측 도구 구축 완료:
+> locate-flow.svg + "3. 위치찾기 테스트" 페이지(locateEditRegion 직접 호출·후보 클릭=모델 pick
+> 시뮬레이션). 게이트 전부 green(tsc 0·compile·region-edit 237/0·offline-intent 66/0).
+> **리로드 실측 1차 확인 ✅**(BigFile.tsx × "이메일 입력 읽기전용" → diffuseControl ambiguous
+> 라이브 재현 + **관찰 1호 채집: 되묻기 라벨 60개+ 무제한 폭주** — §4 ③ 수집된 관찰).
+> 다음 = 1단계(개선 후보 선택: attr-readonly(anchor-import) · 관찰 1호(되묻기 라벨 캡) ·
+> 의미론 연관성(tsserver/LSP) 중 데이터가 가리키는 것, §4 ③ 카드).**
 > ① intent 층은 채집 가동 중: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.
 >
 > **다른 PC 재개 시 알아야 할 것 (2026-07-15 세션의 도구·환경 유산):**
@@ -60,8 +65,8 @@
 | # | 층 | 상태 |
 |---|---|---|
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
-| ② | decompose/ — 분해 | 🔶 **D1·D2 커밋 + D3 완주(2026-07-16, 미커밋)** — b′ 스켈레톤 그룹 표식(73% 절감), 복원 3곳+생존 가드, code-slice 26/0, **실 sLLM 라이브 게이트 PASS(표식 보존·재선언 0·복원 왕복 ✅)**. 잔여=레버2·레버3·D4·무신호 예산 캡(전부 후순위) |
-| ③ | locate/ — 위치찾기 | ⬜ |
+| ② | decompose/ — 분해 | ✅ **일단락(D1·D2·D3 전부 커밋, D3=5009800)** — b′ 그룹 표식(73% 절감)+생존 가드, code-slice 26/0, 실 sLLM 라이브 게이트 PASS. README·flow SVG 최신화(2026-07-16). 잔여=레버2·레버3·D4·무신호 예산 캡(전부 후순위·데이터 게이트) |
+| ③ | locate/ — 위치찾기 | 🔶 **착수 — 0단계 베이스라인 완료(2026-07-16)** — eval:region 85%(35/41), 실측 실패=attr-readonly 1건뿐(나머지 5건은 정당 가드). disambig replay 3/3(+no-recording 3) |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
 | ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 2건 선수정·커밋 완료** — ①페치 파생 재선언 교체 채널 ②anchor-first 퇴화 자동 재시도(BigFile 반쪽 편집 근본 수정 2건, **실기기 사용자 검증 applied ✅ + Stage 0 타입검증 첫 라이브 통과**, 2026-07-15). 원칙 §2-2 "급한 버그 예외" 적용 |
 | ⑥ | pipeline/ — 오케스트레이터 | ⬜ (선결 부채: eval:e2e 낡은 녹화 재녹화) |
@@ -354,7 +359,63 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   헤드리스=독립 tsserver) 유지. ③locate 스코어링과 걸침(③ 카드에도 기록). D3 뒤 순서대로.
 - **참고**: 메모리 project_bigfile_eval_harness, project_endpoint_disambiguation_gap(레버 B 미구현)
 
-### ③ locate/ — 위치찾기 ⬜
+### ③ locate/ — 위치찾기 🔶
+
+**작업 로그**
+
+- [x] **0단계 베이스라인 측정 (2026-07-16)** — 모델 무관 계기판 3종 실행·기록 (회귀 없음,
+  2026-07-14 공통 베이스라인과 동일 수치):
+  - `test:region-edit` **237/0** · `eval:region` **85%(35/41)** — 게이트 분포 ok=35 ·
+    anchor-import=3 · anchor-missing=2 · snap-failed=1 · 평균 토큰 절감 60% · 평균 프롬프트
+    2,439토큰(예산 24,576의 10%) · 예산 초과 0/35
+  - `eval:disambig`(replay) — pick 정확도 **3/3(100%)**, no-recording 3건(emp-hiredate-sem ·
+    emp-name-2 · mem-status-sem) → 서버 연결 시 `eval:disambig:record` 재녹화 필요(비차단 부채)
+  - **비적격 6건 분해**: 5건은 정당 가드 — missing-featur·import-anchor·nonjsx-const(합성 대조군,
+    expectGate 일치) + emp-list-excel·proj-detail-ex(실파일 "없는 기능"→full 가드가 정답).
+    **실측 실패는 attr-readonly 1건뿐**: 속성 토글(readOnly, 이메일 Input)이 anchor-import
+    (최고 매칭=import 라인)로 비적격→full 폴백. 파일에 대상이 실존하는데 locate가 못 찾는
+    유일 케이스 = **③ 개선의 1번 데이터 포인트**(쿼리 토큰이 JSX 본문보다 import 라인에 더
+    매칭되는 스코어링 문제 — 흔한 토큰 오탐 계열, 의미론 연관성(tsserver/LSP) 후보와 직결)
+- [x] **0.5단계 — 관측 도구 구축 (2026-07-16, 미커밋)** — locate 층은 단일 export 순수 함수
+  (`locateEditRegion`, vscode 의존 0·decompose 순수 함수만 import)임을 확인 → decompose 패턴
+  그대로 **직접 호출** 페이지 구축(운영 미러 아님, 드리프트 0).
+  - 흐름도: [src/ai/locate/locate-flow.svg](../src/ai/locate/locate-flow.svg) — 스냅 사다리
+    (0.토큰보강 → ①grep 전줄 점수화 → ②채택+스냅 → 구제 랜드마크 ②.5 유일테이블/②.7 앵커품질/
+    ②.8 섹션주석/②.85 유일컨트롤 → ②.9 테이블교정·forcedRegion → ③동봉재료 → ④.0 모호판정+
+    ④안전게이트 → ⑤후보) + 0단계 베이스라인 카드 + 계기판 띠. locate/README.md에 계기판 절 추가.
+    ⚠ 정정: "②.4 유일 JSX텍스트 앵커 override"는 **되돌려진(reverted) 시도**라 현 코드에 없음
+    (메모리 project_locate_text_anchor 본문 확인 — 결정론 보편해결 불가 → 모델 객관식 위임이 결론).
+    현 코드의 콘텐츠 앵커는 ②.7 앵커 품질뿐 — 도식·문서는 현 코드 기준으로 작성.
+  - 테스트 페이지: `axiom-ai.stageTestPanel` → 3단계 → 에디터 탭. 프롬프트+현재 파일을 넣으면
+    ① 게이트 배지(✅ok/❓ambiguous/⛔차단)+사유(eval:region과 동일 어휘) · ② 앵커(라인·점수·매칭
+    토큰 칩)+채택 영역 전문 · ③ **후보 표(모델 객관식 입력 그대로) — 행의 "이 후보로 강제" 클릭 =
+    모델 pick 시뮬레이션**(forcedRegion 재실행, 운영 재타겟과 동일 경로) · ④ 되묻기 섹션 라벨 ·
+    ⑤ 동봉 재료(depsHeader/backingDecls/controlInventory) 글자 수+전문 · 실행 이력 50건.
+  - 파일: src/providers/LocateProbePanel.ts · src/webview/locateProbe/LocateProbeApp.tsx ·
+    src/types/messages.ts(LocateProbeResult+메시지 4종) · webview/index.tsx(locate-probe 모드) ·
+    extension.ts(stageNo===3) · StageTestPanelProvider(3단계 ready) · webview.css(lp-*)
+  - 게이트: tsc(ext/webview) 0 · compile OK · region-edit 237/0 · offline-intent 66/0.
+  - **리로드 실측 1차 확인 ✅ (2026-07-16)** — "이메일 입력을 읽기전용으로" × BigFile.tsx(11,178줄):
+    페이지 열림·파일 가져오기·게이트 배지·앵커 계기판·후보 표 6개·되묻기 라벨·동봉 재료·이력 전부
+    정상 렌더. 판정도 운영 로직상 정답 — "이메일" 0매칭(합성 파일엔 '메일관리'만)+흔한 'input' 1점
+    → **④.0 무앵커 모호(diffuseControl, <Input> 64곳/9,340줄) 라이브 재현**.
+  - **pick 시뮬레이션 확인 ✅ (2026-07-16)** — 후보1 "부서관리(1689~1752) 강제" 클릭 →
+    disambiguation 왕복 재현: ambiguous → forcedRegion 재진입 → **게이트 ok 전환**(모호 우회) +
+    동봉 재료 조립 확인(depsHeader 1,182자 가지치기 발동 · controlInventory 5,866자 = 영역 밖
+    Input 63개 인벤토리). 운영에선 이 pick을 모델이 함(객관식) — 페이지는 모델 무관 계기판이라
+    사람이 대신 누르는 구조. 잔여 확인(비차단): attr-readonly 원 케이스(anchor-import)는
+    작은 실파일에서 재현.
+
+**수집된 관찰** (③ 개선 후보의 입력 데이터)
+
+- **[관찰 1호] 되묻기 라벨 무제한 폭주 (2026-07-16, 첫 실측)**: 위 ambiguous 케이스에서
+  `ambiguousCandidates`(되묻기 섹션 라벨)가 **60개+** 쏟아짐(부서관리~설정관리 전 섹션).
+  candidates(모델 객관식)는 최대 6개 캡이 있으나 되묻기 라벨은 캡·우선순위가 없어 god component에선
+  "어느 구역인가요?" 선택지로 실용성 없음. ② 카드 "레버2(모호쿼리 64후보 되물음)"와 같은 지점의
+  locate 쪽 실측 — 처방 후보: 라벨 상한+관련도 정렬(앵커 근접/토큰 매칭 순) 또는 되묻기도 모델
+  객관식(후보 6개)으로 일원화. 데이터 더 모아 1단계 후보 선택 시 함께 판단.
+
+- [ ] 1단계 — 개선 후보 하나 선택(attr-readonly + 관찰 1호 데이터 포인트 기준)
 
 - **계기판**: `eval:region` 85%(35/41) · `eval:disambig`(+record) · test:region-edit
 - **개선 후보**: 앵커 계약 주력화·locate 축소(verify-correct 루프 Stage 0 트랙의 후속 방향),

@@ -155,7 +155,9 @@ export type WebviewToHostMessage =
   | { type: 'intentProbeUseActiveFile' }
   | { type: 'runIntentProbe'; query: string; currentFile: string; hasSelection: boolean }
   | { type: 'decomposeProbeUseActiveFile' }
-  | { type: 'runDecomposeProbe'; query: string; filePath: string; budget: number; selStart: number; selEnd: number; refPath: string };
+  | { type: 'runDecomposeProbe'; query: string; filePath: string; budget: number; selStart: number; selEnd: number; refPath: string }
+  | { type: 'locateProbeUseActiveFile' }
+  | { type: 'runLocateProbe'; query: string; filePath: string; forcedStart: number; forcedEnd: number };
 
 /** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
 export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
@@ -225,7 +227,11 @@ export type HostToWebviewMessage =
   | { type: 'decomposeProbeFilePicked'; filePath: string }
   | { type: 'decomposeProbeResult'; result: DecomposeProbeResult }
   | { type: 'decomposeProbeDone' }
-  | { type: 'decomposeProbeError'; message: string };
+  | { type: 'decomposeProbeError'; message: string }
+  | { type: 'locateProbeFilePicked'; filePath: string }
+  | { type: 'locateProbeResult'; result: LocateProbeResult }
+  | { type: 'locateProbeDone' }
+  | { type: 'locateProbeError'; message: string };
 
 /**
  * 단계별 테스트 ①의도파악의 의도 판정 한 건 — IntentResult(src/ai/intent)와 구조 호환이지만
@@ -378,6 +384,46 @@ export interface DecomposeProbeResult {
   /** 프롬프트에 명시한 참조 파일의 슬라이싱(Q3). 참조 파일이 없으면 null. */
   reference: DecomposeReference | null;
   /** 코드 분해를 건너뛴 사유(파일 없음/비TS 등). */
+  note?: string;
+}
+
+/**
+ * 단계별 테스트 ③위치찾기 — 프로브 1회 실행 결과. LocateProbePanel 전용.
+ *
+ * locate 층의 핵심 함수 `locateEditRegion`(export 순수 함수)을 **직접 호출**한 산출물 그대로다
+ * (decompose 패널과 동일 원칙 — 운영 미러 아님, 동기화 드리프트 0). 스냅 사다리의 최종 판정
+ * (게이트·앵커·영역)과 모델 객관식 후보, region에 동봉되는 재료 크기를 보여준다.
+ */
+export interface LocateProbeResult {
+  query: string;
+  file: { path: string; chars: number; lines: number } | null;
+  /** 강제 영역(모델 객관식 pick 시뮬레이션) — 지정 시 휴리스틱을 덮어쓰고 이 영역으로 payload 빌드. */
+  forced: { startLine: number; endLine: number } | null;
+  /** 안전 게이트 판정 — ok=false면 운영에선 full 폴백(ambiguous는 되묻기/모델 객관식). */
+  gate: string;
+  gateOk: boolean;
+  reason: string;
+  /** grep 앵커 — 최고 매칭 라인(1-based)·점수(distinct 토큰 수)·매칭 토큰. */
+  bestLine: number;
+  bestScore: number;
+  matched: string[];
+  /** 채택 편집 영역(1-based, 포함). */
+  startLine: number;
+  endLine: number;
+  region: string;
+  /** 모델 객관식 disambiguation 후보(최대 6, 첫째=채택 영역). */
+  candidates: { startLine: number; endLine: number; label: string; score: number }[];
+  /** gate==='ambiguous'일 때 되묻기용 후보 섹션 라벨. */
+  ambiguousCandidates: string[];
+  /** region에 동봉되는 재료 — 글자 수 계기판 + 전문(접기). */
+  materials: {
+    depsHeaderChars: number;
+    depsHeader: string;
+    backingDeclsChars: number;
+    backingDecls: string;
+    controlInventoryChars: number;
+    controlInventory: string;
+  };
   note?: string;
 }
 
