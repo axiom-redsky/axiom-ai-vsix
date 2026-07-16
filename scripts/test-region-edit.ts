@@ -898,6 +898,23 @@ console.log('\n앵커 품질 스코어링(B):');
   check('모델이 같은 영역 확정 pick → 게이트 우회·완주(applied)', oPick.status === 'applied' && !!oPick.finalText && /readOnly/.test(oPick.finalText), `status=${oPick.status}, reason=${oPick.reason}`);
   const oNull = await runHybridRegionEdit(AMBIG_SRC, q, async () => model, undefined, async () => null);
   check('모델 불확실(null) → 종전대로 ambiguous 되묻기 유지', oNull.status === 'fallback' && oNull.reason === 'ambiguous', `status=${oNull.status}, reason=${oNull.reason}`);
+
+  // 되묻기 라벨 관련도 정렬(관찰 1호) — 파일 순서 그대로면 소비자 캡(채팅 SHOW=8)이 앞쪽 섹션만
+  // 노출해 정답 구역(파일 뒤쪽)이 선택지에서 사라진다. 질문 토큰이 라벨과 매칭되는 섹션이 맨 앞이어야 한다.
+  const qLast = '자격증관리의 입력칸을 읽기 전용으로 만들어줘'; // 자격증관리 = 파일 맨 아래(5번째) 섹션
+  const rSort = locateEditRegion(AMBIG_SRC, qLast);
+  check(
+    '되묻기 라벨 정렬: 파일 맨 아래 정답 섹션(자격증관리)이 첫 라벨',
+    rSort.safety.gate === 'ambiguous' && rSort.ambiguousCandidates[0] === '자격증관리',
+    `gate=${rSort.safety.gate}, labels=${JSON.stringify(rSort.ambiguousCandidates)}`,
+  );
+  // 무신호(라벨 매칭 없는 쿼리) 동점이면 안정 정렬 → 종전 파일 순서 보존(회귀 0).
+  const rNoSig = locateEditRegion(AMBIG_SRC, '입력칸을 읽기 전용으로 만들어줘');
+  check(
+    '되묻기 라벨 정렬: 무신호 동점은 종전 파일 순서 유지',
+    rNoSig.safety.gate === 'ambiguous' && rNoSig.ambiguousCandidates[0] === '부서관리' && rNoSig.ambiguousCandidates[4] === '자격증관리',
+    `gate=${rNoSig.safety.gate}, labels=${JSON.stringify(rNoSig.ambiguousCandidates)}`,
+  );
 }
 {
   // 주석 속 단어는 앵커 아님(우연일치 배제) → 폴백.

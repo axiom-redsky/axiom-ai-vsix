@@ -843,18 +843,27 @@ export function locateEditRegion(
       : `generic 토큰(${chosen?.hit.join(', ')})만으로 ${topLines.length}개 동점 후보가 ${spread}줄에 걸쳐 흩어짐 — 어느 섹션인지 불명확(맨 위로 추락) → 되물음.`;
 
   // 모호하면 후보 섹션 라벨을 모은다(되물음용). 후보 줄(주석/import 제외) 위의 섹션 랜드마크를 중복 없이.
+  // 관련도 내림차순 정렬(관찰 1호): 파일 순서 그대로 내보내면 소비자의 상위 N 캡(채팅 SHOW=8)이
+  // 파일 앞쪽 섹션만 노출해 정답 구역이 뒤쪽이면 선택지에서 사라진다. 관련도 = 라벨 텍스트의
+  // 질문 토큰 매칭(가장 강한 신호, ×10) + 그 라벨에 속한 후보 줄의 최고 grep 점수. 전부 동점
+  // (무신호)이면 안정 정렬이라 종전 파일 순서 그대로다(회귀 0).
   const candidateLines = diffuseControl ? controlOccurrences : diffuseTable ? tableOccurrences : topLines;
   const ambiguousCandidates: string[] = [];
   if (isAmbiguous) {
-    const seen = new Set<string>();
+    const scoreByLine = new Map<number, number>();
+    for (const s of scored) scoreByLine.set(s.line, s.score);
+    const relByLabel = new Map<string, number>();
     for (const ln of candidateLines) {
       if (isCommentOrImport(lines[ln - 1] ?? '')) continue; // 주석/import 줄은 섹션 앵커가 아님
       const label = sectionLabelAbove(lines, ln);
-      if (label && !seen.has(label)) {
-        seen.add(label);
-        ambiguousCandidates.push(label);
-      }
+      if (!label) continue;
+      const labelLow = label.toLowerCase();
+      const labelHits = dedupeSubstrings(tokens.filter((t) => labelLow.includes(t))).length;
+      const rel = labelHits * 10 + (scoreByLine.get(ln) ?? 0);
+      if (!relByLabel.has(label)) ambiguousCandidates.push(label); // 최초 등장 = 파일 순서(동점 tie-break)
+      relByLabel.set(label, Math.max(relByLabel.get(label) ?? 0, rel));
     }
+    ambiguousCandidates.sort((a, b) => (relByLabel.get(b) ?? 0) - (relByLabel.get(a) ?? 0));
   }
 
   // ④ 안전 게이트
