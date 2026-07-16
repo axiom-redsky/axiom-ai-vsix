@@ -4,15 +4,18 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-16 (④ **contracts 착수 — 0단계 베이스라인 + 0.5단계 관측 도구(4단계
-> 테스트 페이지+contracts-flow.svg) + 문서 정정(카드 11→13종·Phase B 완료 반영) 완료·미커밋** —
+> 최종 갱신: 2026-07-16 (④ **contracts 일단락 — 0단계 베이스라인 + 0.5단계 관측 도구(4단계
+> 테스트 페이지+contracts-flow.svg) + 문서 정정(카드 11→13종·Phase B 완료 반영) 완료·
+> 커밋 완료(d254659·f7fe4c0)** —
 > tsc 0 · compile · region-edit 243/0 · api-binding 69/0 · offline-intent 66/0 · 회귀 0.
 > **리로드 실측 ✅(2026-07-16, BigFile 4건 전부 기대 일치 + 계기판 오탐 1건 당일 수정 —
 > T*Response 제네릭을 태그로 오인, 패널 전용)**. 잔여 개선(트리거 정밀도 등)은 ④ 카드
 > "추가 작업" 절에 기록만 — 채집 데이터 게이트(사용자 지시: ⓐⓑ까지만 진행, ⓒ 이후는 기록))
 >
-> **▶ 재개 지점: ④ contracts 0단계+0.5단계+리로드 실측 완료(미커밋) — 다음 = 커밋(사용자
-> 결정) → 4단계 페이지·실사용으로 트리거 불일치 채집(추가 작업 1번). 채집 표본 2건 ④ 카드 참조.
+> **▶ 재개 지점: ⑤ apply/ 정식 사이클 착수 — 0단계 베이스라인 완료(2026-07-16, 전부 green:
+> tsc 0·compile·line-edits 15/0·patch-grounded 32/0·react-rules 39/0·region-edit 243/0).
+> 다음 = 0.5단계 관측 도구(apply-flow.svg + 5단계 테스트 페이지, ②③④ 패턴). ④ 잔여(트리거
+> 정밀도 등)는 채집 데이터 게이트 — 4단계 페이지·실사용으로 불일치 채집 계속(표본 2건 ④ 카드 참조).
 > 직전 일단락: ③ locate 1차 개선 커밋 완료(아래) — 0단계 베이스라인 → 0.5단계 관측 도구
 > (locate-flow.svg + "3. 위치찾기 테스트" 페이지, 리로드 실측·pick 시뮬레이션 확인 ✅) →
 > 1단계 attr-readonly 진단(원인=isContentAnchor가 화살표 `=>`의 `>`를 JSX 텍스트로 오인 →
@@ -84,8 +87,8 @@
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
 | ② | decompose/ — 분해 | ✅ **일단락(D1·D2·D3 전부 커밋, D3=5009800)** — b′ 그룹 표식(73% 절감)+생존 가드, code-slice 26/0, 실 sLLM 라이브 게이트 PASS. README·flow SVG 최신화(2026-07-16). 잔여=레버2·레버3·D4·무신호 예산 캡(전부 후순위·데이터 게이트) |
 | ③ | locate/ — 위치찾기 | ✅ **1차 개선 일단락·전부 커밋(2843dcf·f34b0f2·dd699de)** — 0단계 베이스라인→0.5단계 관측도구(테스트 페이지+SVG)→1단계 수정①(isContentAnchor 화살표 오인)+수정②(disambiguation 확정 무시)+수정③(되묻기 라벨 관련도 정렬), 셋 다 실기기 검증 ✅. **eval:region 85%→88%(36/41), 실측 실패 0**, region-edit 243/0. 잔여(채집 게이트)=관찰 3호(예문 중복)·의미론 연관성(증거 채집 중) |
-| ④ | contracts/ — 설명서 삽입 | 🔶 **0단계+0.5단계+리로드 실측 완료(미커밋)** — 문서 정정(카드 11→13종·Phase B 완료 반영) + 베이스라인(243/0·69/0·88%·주입 비용 예산 10%) + 4단계 테스트 페이지(발동/미발동·ablation 근거·prop 표·토큰)+contracts-flow.svg + **리로드 실측 ✅(BigFile 4건 기대 일치·주입 2~5% 실측·계기판 T*Response 오탐 수정)**. 잔여(트리거 정밀도 등)=채집 데이터 게이트, 카드 "추가 작업" 절 참조 |
-| ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 2건 선수정·커밋 완료** — ①페치 파생 재선언 교체 채널 ②anchor-first 퇴화 자동 재시도(BigFile 반쪽 편집 근본 수정 2건, **실기기 사용자 검증 applied ✅ + Stage 0 타입검증 첫 라이브 통과**, 2026-07-15). 원칙 §2-2 "급한 버그 예외" 적용 |
+| ④ | contracts/ — 설명서 삽입 | ✅ **일단락(채집 가동 중, 커밋 d254659·f7fe4c0)** — 문서 정정(카드 11→13종·Phase B 완료 반영) + 베이스라인(243/0·69/0·88%·주입 비용 예산 10%) + 4단계 테스트 페이지(발동/미발동·ablation 근거·prop 표·토큰)+contracts-flow.svg + **리로드 실측 ✅(BigFile 4건 기대 일치·주입 2~5% 실측·계기판 T*Response 오탐 수정)**. 잔여(트리거 정밀도 등)=채집 데이터 게이트, 카드 "추가 작업" 절 참조 |
+| ⑤ | apply/ — 게이트·적용 | 🔶 **정식 사이클 착수 — 0단계 베이스라인 완료(2026-07-16, 전부 green: line-edits 15/0·patch-grounded 32/0·react-rules 39/0·region-edit 243/0), 다음=0.5단계 관측 도구**. 선행: 실사용 버그 2건 선수정·커밋(①페치 파생 재선언 교체 채널 ②anchor-first 퇴화 자동 재시도 — 실기기 검증 applied ✅+Stage 0 타입검증 첫 라이브 통과, 2026-07-15, 원칙 §2-2 급한 버그 예외) |
 | ⑥ | pipeline/ — 오케스트레이터 | ⬜ (선결 부채: eval:e2e 낡은 녹화 재녹화) |
 | ⑦ | retrieval/ — 지식 검색 | ⬜ |
 
@@ -547,7 +550,7 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
     합계가 예산에 여유 있음(주입 비용은 현재 문제 아님)
   - 참고: eval:region의 calendar-picke 케이스가 date-picker 계약카드의 실모델 검증 기록을 보존
     (카드 없을 땐 import만 → 카드 주입 후 4부품 완비 applied)
-- [x] **0.5단계 — 관측 도구 구축 (2026-07-16, 미커밋)** — contracts 층은 전부 export 순수 함수
+- [x] **0.5단계 — 관측 도구 구축 (2026-07-16, 커밋 완료)** — contracts 층은 전부 export 순수 함수
   (`selectScaffoldContracts`·`buildContractSection`·`buildComponentPropsSectionForRegion`·
   `estimateTokens`/`inputBudget`)임을 확인 → ②③ 패턴 그대로 **직접 호출** 페이지(운영 미러 아님,
   드리프트 0).
@@ -575,7 +578,7 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
     webview.css(cp-*)
   - 게이트: tsc(ext/webview) 0 · compile OK · region-edit 243/0 · api-binding 69/0 ·
     offline-intent 66/0. 리로드 실측 ✅(아래 항목).
-- [x] **리로드 실측 확인 ✅ + 계기판 오탐 1건 수정 (2026-07-16, 미커밋)** — 4단계 페이지 ×
+- [x] **리로드 실측 확인 ✅ + 계기판 오탐 1건 수정 (2026-07-16, 커밋 완료)** — 4단계 페이지 ×
   BigFile.tsx(11,178줄/388K자, 영역 없음=파일 전체 판정) 실측 4건 **전부 기대 일치**:
   - ① "직원 테이블에 /api/employees 적용해줘" → **2/13**(use-api: 쿼리+코드deps ·
     list-table-binding: 쿼리, patch 강제) · 파생 칩 "structural 제거" · 주입 1,119tk(예산 5%)
@@ -668,8 +671,15 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
     **"✅ 타입검증 통과"(Stage 0 검증-교정 루프의 첫 라이브 통과 목격 — ⑤ 개선 후보의 "실모델 검증"
     일부 해소)**. 전 과정: 퇴화 1차→재시도→applied→타입검증→수정 대기 diff 정상.
 
-- **계기판**: `test:line-edits`(15) · `test:patch-grounded`(30) · `test:react-rules`(39) ·
-  `test:region-edit`(237) · eval:e2e 게이트 통계 · **probe-region-live(실모델 단건)**
+- [x] **0단계 베이스라인 측정 (2026-07-16, ④ 일단락 후 정식 사이클 착수)** — 층 소관 계기판
+  전부 green·회귀 0: tsc 0 · compile OK · **line-edits 15/0 · patch-grounded 32/0 ·
+  react-rules 39/0 · region-edit 243/0**. 비고: ⓐ eval:e2e 게이트 통계는 낡은 로컬 녹화
+  (⑥ 선결 부채와 동일)라 이번 베이스라인에서 제외 — 신뢰 가능하려면 서버 연결 후 재녹화 선행.
+  ⓑ probe-region-live(실모델 단건)는 서버 필요 — 직전 라이브 검증(2026-07-15, applied+타입검증
+  통과)이 최신 실측 기록. 다음 = 0.5단계 관측 도구(apply-flow.svg + 5단계 테스트 페이지).
+
+- **계기판**: `test:line-edits`(15) · `test:patch-grounded`(32) · `test:react-rules`(39) ·
+  `test:region-edit`(243) · eval:e2e 게이트 통계(⚠ 재녹화 선행) · **probe-region-live(실모델 단건)**
 - **개선 후보**: grounded patch retry 1C(결정론 rename, 미구현), 검증-교정 루프(experimental.regionVerify)
   실모델 검증, full 폴백 파괴적 누락 가드 실모델 검증
 - **신규 후보(2026-07-16, 저비용 실험): 제약 디코딩(constrained decoding)** — 출력 형식을 토큰
