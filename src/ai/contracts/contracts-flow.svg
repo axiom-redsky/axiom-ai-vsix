@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1060" font-family="Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
+    </marker>
+    <marker id="arN" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1F3864"/>
+    </marker>
+    <marker id="arDash" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#8C8C8C"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="1060" fill="#FFFFFF"/>
+
+  <!-- ═══ 헤더 ═══ -->
+  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
+  <text x="62" y="67" text-anchor="middle" font-size="22" font-weight="bold" fill="#FFFFFF">④</text>
+  <text x="106" y="54" font-size="26" font-weight="bold" fill="#1F3864">contracts — 설명서 삽입 흐름 (트리거 기반 계약카드 + 존재 기반 prop 표)</text>
+  <text x="106" y="84" font-size="14" fill="#595959">sLLM 콜 직전에 프롬프트에 끼울 "관련 있는 설명서만" 고르는 층 · 전부 결정론(모델·임베딩 없음) · 2026-07-16 기준</text>
+  <line x1="50" y1="104" x2="1390" y2="104" stroke="#D9E2F3" stroke-width="2"/>
+
+  <!-- ═══ 💬 쉬운 한 마디 ═══ -->
+  <rect x="40" y="116" width="1360" height="100" rx="12" fill="#FFF9E6" stroke="#C0A000" stroke-width="1.8"/>
+  <text x="58" y="142" font-size="14" font-weight="bold" fill="#7A6A00">💬 쉬운 한 마디 — 이 그림이 하는 일 (코드 몰라도 이것만 알면 됨)</text>
+  <text x="58" y="167" font-size="12.5" fill="#333333">약한 모델은 이 스캐폴드의 규약(useApi 봉투·전역 $ui/$util·SmartTable DSL…)을 몰라서 <tspan font-weight="bold">생짜 React를 지어낸다</tspan>. 그렇다고 가이드 전부를 보내면 토큰 폭발.</text>
+  <text x="58" y="188" font-size="12.5" fill="#333333">그래서 <tspan font-weight="bold">요청·파일에 트리거가 있을 때만, 관련 카드만</tspan> 압축해 끼운다 — 발동 0장이면 토큰 0. 컴포넌트 prop 표도 "영역에 실제로 있는 컴포넌트"만(존재 기반).</text>
+  <text x="58" y="208" font-size="12" fill="#8C6A00">아래 예시로 따라가기 →  "직원 테이블에 /api/employees 적용해줘"  (발동: use-api + list-table-binding 레시피 → patch 강제)</text>
+
+  <!-- ═══ 입력 ═══ -->
+  <rect x="40" y="240" width="230" height="240" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="56" y="266" font-size="14" font-weight="bold" fill="#404040">입력 (IContractContext)</text>
+  <rect x="56" y="280" width="198" height="50" rx="6" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="66" y="300" font-size="12.5" font-weight="bold" fill="#1F3864">query — 사용자 요청</text>
+  <text x="66" y="318" font-size="11" fill="#595959">"…테이블에 api 적용해줘"</text>
+  <rect x="56" y="338" width="198" height="50" rx="6" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="66" y="358" font-size="12.5" font-weight="bold" fill="#1F3864">deps — 영역 밖 코드</text>
+  <text x="66" y="376" font-size="11" fill="#595959">region 경로=③의 depsHeader</text>
+  <rect x="56" y="396" width="198" height="50" rx="6" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="66" y="416" font-size="12.5" font-weight="bold" fill="#1F3864">region — 편집 영역</text>
+  <text x="66" y="434" font-size="11" fill="#595959">full 경로는 ''(빈 값)</text>
+  <text x="56" y="470" font-size="10.5" fill="#8C8C8C">파일·모델·디스크 접근 없음(순수 함수)</text>
+
+  <!-- ═══ ① 카드 선택 ═══ -->
+  <rect x="310" y="240" width="360" height="240" rx="10" fill="#F4F8FF" stroke="#1F3864" stroke-width="2"/>
+  <text x="326" y="266" font-size="14" font-weight="bold" fill="#1F3864">① selectScaffoldContracts — 트리거 판정</text>
+  <text x="326" y="290" font-size="12" fill="#333333">13개 카드의 applies(ctx)를 레지스트리 순서로 순회</text>
+  <text x="326" y="309" font-size="12" fill="#333333">· 트리거 = 정규식/hasWord (쿼리·deps·region 스캔)</text>
+  <text x="326" y="328" font-size="12" fill="#333333">· 발동 조건은 카드마다: 쿼리만 / 코드만 / 조합 필요</text>
+  <text x="326" y="354" font-size="12" font-weight="bold" fill="#7A6A00">양보(상호 배타) 규칙 — 모순 지침 방지</text>
+  <text x="326" y="373" font-size="11.5" fill="#595959">· SmartTable 지목 ↔ 순수 table 레시피(wantsSmartTable)</text>
+  <text x="326" y="391" font-size="11.5" fill="#595959">· 로컬 함수·상수 지목 시 API 카드 양보</text>
+  <text x="326" y="409" font-size="11.5" fill="#595959">  (referencesLocalDataSource → local-data-render 발동)</text>
+  <text x="326" y="435" font-size="11" fill="#B00020">⚠ 한글 트리거엔 정규식 \b 금지(ASCII 전용 — 미매칭 함정)</text>
+  <text x="326" y="453" font-size="11" fill="#B00020">⚠ 카드 본문 = coreRules·knowledge 축약본 → 가이드 변경 시 동반 갱신</text>
+
+  <!-- ═══ 카드 레지스트리 ═══ -->
+  <rect x="710" y="240" width="690" height="240" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="726" y="266" font-size="14" font-weight="bold" fill="#404040">카드 레지스트리 13종 (SCAFFOLD_CONTRACTS — 배열 순서 = 출력 순서)</text>
+  <text x="726" y="292" font-size="12" font-weight="bold" fill="#1F3864">규약 오버라이드 7 (generic 대신 scaffold 방식 강제)</text>
+  <text x="726" y="311" font-size="11.5" fill="#595959">use-api(봉투·refetch 무인자) · router($router) · global-ui-alerts($ui) · global-util($util)</text>
+  <text x="726" y="329" font-size="11.5" fill="#595959">class-merge-cn(cn()) · type-naming(T/I 접두사) · button-component(&lt;Button&gt;)</text>
+  <text x="726" y="355" font-size="12" font-weight="bold" fill="#1F3864">레시피 5 (다부품 골격 — 약한 모델의 1-shot 코디네이트 실패를 슬롯 채우기로 낮춤)</text>
+  <text x="726" y="374" font-size="11.5" fill="#595959">date-picker(4부품) · smart-table-binding(3부품·루트교체) · list-table-binding(3부품)</text>
+  <text x="726" y="392" font-size="11.5" fill="#595959">local-data-render(API 환각 차단 긍정지시) · form-validation(RHF+zod)</text>
+  <text x="726" y="418" font-size="12" font-weight="bold" fill="#1F3864">일반 React 1</text>
+  <text x="726" y="437" font-size="11.5" fill="#595959">handler-extraction(핸들러 구조 보존 — 현재 코드가 결정)</text>
+  <text x="726" y="463" font-size="11" fill="#8C8C8C">카드 옵션: requiresPatchMode(JSX 렌더 필요 → structural 제거) · replacesRegionRootWith(루트 교체 허용)</text>
+
+  <!-- 입력→① 화살표 -->
+  <line x1="270" y1="360" x2="306" y2="360" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <!-- 레지스트리→① 화살표(점선: 참조) -->
+  <line x1="710" y1="360" x2="674" y2="360" stroke="#8C8C8C" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arDash)"/>
+
+  <!-- ═══ ② 조립 ═══ -->
+  <rect x="310" y="520" width="360" height="120" rx="10" fill="#F4F8FF" stroke="#1F3864" stroke-width="2"/>
+  <text x="326" y="546" font-size="14" font-weight="bold" fill="#1F3864">② buildContractSection — 섹션 조립</text>
+  <text x="326" y="570" font-size="12" fill="#333333">발동 카드만 "### 제목 + 압축 본문(3~5줄)" 마크다운으로</text>
+  <text x="326" y="589" font-size="12" fill="#333333">· 발동 0장 → 섹션 자체 미출력(토큰 0)</text>
+  <text x="326" y="608" font-size="12" fill="#333333">· 카드당 ~0.3~1K자 — region 토큰 절약 취지 유지</text>
+  <text x="326" y="627" font-size="11" fill="#8C8C8C">"위반 시 적용 거부" 헤더로 규범성 명시</text>
+
+  <!-- ═══ ③ 파생 신호 ═══ -->
+  <rect x="710" y="520" width="330" height="120" rx="10" fill="#FFF4F0" stroke="#C55A11" stroke-width="1.8"/>
+  <text x="726" y="546" font-size="14" font-weight="bold" fill="#C55A11">③ 파생 신호 (프롬프트 밖 — 파이프라인 제어)</text>
+  <text x="726" y="570" font-size="12" fill="#333333">contractsRequirePatchMode → 편집 모드 메뉴에서</text>
+  <text x="726" y="588" font-size="12" fill="#333333">structural 제거(선언만 삽입 → 표 누락 방지)</text>
+  <text x="726" y="608" font-size="12" fill="#333333">componentReplacementTargets → 루트태그 게이트</text>
+  <text x="726" y="626" font-size="12" fill="#333333">화이트리스트(SmartTable 교체 허용 등)</text>
+
+  <!-- ═══ ④ prop 표 ═══ -->
+  <rect x="1070" y="520" width="330" height="120" rx="10" fill="#F0FAF2" stroke="#2E7D32" stroke-width="1.8"/>
+  <text x="1086" y="546" font-size="14" font-weight="bold" fill="#2E7D32">④ ComponentPropsIndex — 존재 기반 prop 표</text>
+  <text x="1086" y="570" font-size="12" fill="#333333">detectComponentsInRegion: 영역의 PascalCase 태그 중</text>
+  <text x="1086" y="588" font-size="12" fill="#333333">인덱스 존재만(최대 3개) → 압축 prop 표 주입</text>
+  <text x="1086" y="608" font-size="12" fill="#333333">← generated/componentPropsIndex.ts</text>
+  <text x="1086" y="626" font-size="11" fill="#8C8C8C">(build-component-props.mjs가 실 scaffold 소스에서 생성 — 수동)</text>
+
+  <!-- ①→② 화살표 -->
+  <line x1="490" y1="480" x2="490" y2="516" stroke="#1F3864" stroke-width="2" marker-end="url(#arN)"/>
+  <!-- ①→③ 화살표 -->
+  <line x1="600" y1="480" x2="820" y2="516" stroke="#C55A11" stroke-width="1.8" marker-end="url(#arDash)"/>
+  <!-- 입력(region)→④ 화살표 -->
+  <path d="M 155 480 C 155 700, 900 700, 1170 644" fill="none" stroke="#2E7D32" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arDash)"/>
+
+  <!-- ═══ promptBudget ═══ -->
+  <rect x="40" y="520" width="230" height="120" rx="10" fill="#FFFFFF" stroke="#A6A6A6" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="56" y="546" font-size="13" font-weight="bold" fill="#595959">promptBudget — 계측 전용</text>
+  <text x="56" y="570" font-size="11.5" fill="#595959">estimateTokens(chars/3 보수 추정)</text>
+  <text x="56" y="588" font-size="11.5" fill="#595959">inputBudget(창−출력예약=24,576)</text>
+  <text x="56" y="608" font-size="11.5" fill="#595959">주입 합계의 예산 점유율 표시만</text>
+  <text x="56" y="627" font-size="11" fill="#8C8C8C">게이트/폴백 결정에 안 씀(개입 0)</text>
+
+  <!-- ═══ 주입 지점 5곳 ═══ -->
+  <rect x="40" y="680" width="1360" height="150" rx="10" fill="#FBFBFB" stroke="#A6A6A6" stroke-width="1.5"/>
+  <text x="56" y="706" font-size="14" font-weight="bold" fill="#404040">주입 지점 5곳 — ②③④ 산출물이 실제로 들어가는 곳 (sLLM 콜 직전)</text>
+  <rect x="56" y="722" width="250" height="88" rx="8" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="68" y="744" font-size="12.5" font-weight="bold" fill="#1F3864">region 프롬프트</text>
+  <text x="68" y="763" font-size="11" fill="#595959">RegionEditService(buildHybridPrompt)</text>
+  <text x="68" y="781" font-size="11" fill="#595959">계약+prop표+루트교체 — 주력 경로</text>
+  <text x="68" y="799" font-size="10.5" fill="#8C8C8C">deps=③이 가지치기한 depsHeader</text>
+  <rect x="322" y="722" width="250" height="88" rx="8" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="334" y="744" font-size="12.5" font-weight="bold" fill="#1F3864">선택/full 편집</text>
+  <text x="334" y="763" font-size="11" fill="#595959">ScaffoldContextBuilder</text>
+  <text x="334" y="781" font-size="11" fill="#595959">buildSystemPrompt(시나리오 C 포함)</text>
+  <text x="334" y="799" font-size="10.5" fill="#8C8C8C">deps=파일 전체 · region=선택 텍스트</text>
+  <rect x="588" y="722" width="250" height="88" rx="8" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="600" y="744" font-size="12.5" font-weight="bold" fill="#1F3864">full 자동 폴백 재주입</text>
+  <text x="600" y="763" font-size="11" fill="#595959">ChatViewProvider(_retryForAxiomAction)</text>
+  <text x="600" y="781" font-size="11" fill="#595959">폴백 시 계약 유실 방지(useApi 회귀 차단)</text>
+  <rect x="854" y="722" width="250" height="88" rx="8" fill="#EDF2FA" stroke="#8FAADC"/>
+  <text x="866" y="744" font-size="12.5" font-weight="bold" fill="#1F3864">오프라인 응답</text>
+  <text x="866" y="763" font-size="11" fill="#595959">OfflineResponder</text>
+  <text x="866" y="781" font-size="11" fill="#595959">모델 없이도 계약 카드로 안내</text>
+  <rect x="1120" y="722" width="264" height="88" rx="8" fill="#FFF4E5" stroke="#C55A11"/>
+  <text x="1132" y="744" font-size="12.5" font-weight="bold" fill="#C55A11">RAG 예산 캡</text>
+  <text x="1132" y="763" font-size="11" fill="#595959">카드 발동 시 RAG charBudget 축소</text>
+  <text x="1132" y="781" font-size="11" fill="#595959">(카드가 이미 가르침 → 중복 지식 경량화)</text>
+  <text x="1132" y="799" font-size="10.5" fill="#8C8C8C">contractRag.capChars · Q&amp;A는 제외</text>
+
+  <!-- ②→주입 화살표 -->
+  <line x1="490" y1="640" x2="490" y2="676" stroke="#1F3864" stroke-width="2" marker-end="url(#arN)"/>
+  <line x1="1235" y1="640" x2="1235" y2="676" stroke="#2E7D32" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arDash)"/>
+
+  <!-- ═══ 계기판 띠 ═══ -->
+  <rect x="40" y="850" width="1360" height="90" rx="10" fill="#EEF6EE" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="56" y="876" font-size="13.5" font-weight="bold" fill="#2E7D32">📊 계기판 (0단계 베이스라인 2026-07-16)</text>
+  <text x="56" y="899" font-size="12" fill="#333333">test:region-edit <tspan font-weight="bold">243/0</tspan>(계약카드·버튼·date-picker·SmartTable 케이스 포함) · test:api-binding <tspan font-weight="bold">69/0</tspan>(봉투 계약) · eval:region <tspan font-weight="bold">88%(36/41)</tspan> · 평균 토큰 절감 60%</text>
+  <text x="56" y="920" font-size="12" fill="#333333">실제 프롬프트 평균 2,450토큰(예산 24,576의 10%) · <tspan font-weight="bold">4단계 테스트 페이지</tspan>(발동/미발동·발동 근거 ablation·prop 표·토큰 비용 — 순수 함수 직접 호출, 드리프트 0)</text>
+
+  <!-- ═══ 원칙 ═══ -->
+  <rect x="40" y="956" width="1360" height="80" rx="10" fill="#FFF9E6" stroke="#C0A000" stroke-width="1.5"/>
+  <text x="56" y="982" font-size="13" font-weight="bold" fill="#7A6A00">원칙 · 함정</text>
+  <text x="56" y="1004" font-size="12" fill="#333333">존재/트리거 기반 주입(필요할 때만·관련만) · 결정론(테스트로 회귀 고정) · 카드 기준 = "스캐폴드가 generic과 <tspan font-weight="bold">다른 방식을 강제</tspan>하는 오버라이드"만(일반 React 규칙은 기각)</text>
+  <text x="56" y="1024" font-size="12" fill="#B00020">⚠ 프롬프트(카드 문구) 변경의 효과는 오프라인 측정 불가 — 승격 판단은 실 sLLM(record/live)로만 (원칙 §2-4)</text>
+</svg>

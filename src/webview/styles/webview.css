@@ -2315,3 +2315,9 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .lp-cands td { padding: 4px 8px; border-bottom: 1px solid rgba(127,127,127,.1); }
 .lp-cands tr.lp-cand--chosen { background: rgba(46,160,67,.08); }
 .lp-pick { font-size: 11px; padding: 2px 8px; white-space: nowrap; }
+
+/* ══ 단계별 테스트 ④ 설명서 삽입 (contracts-probe) — cp-* ══ */
+.cp-chip--patch   { background: rgba(204,167,0,.16);  border-color: rgba(204,167,0,.55); }
+.cp-chip--swap    { background: rgba(168,85,247,.14); border-color: rgba(168,85,247,.45); }
+.cp-chip--combo   { background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.35); font-style: italic; }
+.cp-chip--unknown { background: rgba(218,54,51,.12);  border-color: rgba(218,54,51,.45); }

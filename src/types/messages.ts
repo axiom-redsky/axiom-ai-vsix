@@ -157,7 +157,9 @@ export type WebviewToHostMessage =
   | { type: 'decomposeProbeUseActiveFile' }
   | { type: 'runDecomposeProbe'; query: string; filePath: string; budget: number; selStart: number; selEnd: number; refPath: string }
   | { type: 'locateProbeUseActiveFile' }
-  | { type: 'runLocateProbe'; query: string; filePath: string; forcedStart: number; forcedEnd: number };
+  | { type: 'runLocateProbe'; query: string; filePath: string; forcedStart: number; forcedEnd: number }
+  | { type: 'contractsProbeUseActiveFile' }
+  | { type: 'runContractsProbe'; query: string; filePath: string; selStart: number; selEnd: number };
 
 /** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
 export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
@@ -231,7 +233,11 @@ export type HostToWebviewMessage =
   | { type: 'locateProbeFilePicked'; filePath: string }
   | { type: 'locateProbeResult'; result: LocateProbeResult }
   | { type: 'locateProbeDone' }
-  | { type: 'locateProbeError'; message: string };
+  | { type: 'locateProbeError'; message: string }
+  | { type: 'contractsProbeFilePicked'; filePath: string }
+  | { type: 'contractsProbeResult'; result: ContractsProbeResult }
+  | { type: 'contractsProbeDone' }
+  | { type: 'contractsProbeError'; message: string };
 
 /**
  * 단계별 테스트 ①의도파악의 의도 판정 한 건 — IntentResult(src/ai/intent)와 구조 호환이지만
@@ -424,6 +430,71 @@ export interface LocateProbeResult {
     controlInventoryChars: number;
     controlInventory: string;
   };
+  note?: string;
+}
+
+/**
+ * 단계별 테스트 ④설명서 삽입 — 카드 한 장의 발동 판정. ContractsProbePanel 전용.
+ *
+ * 발동 근거(byQueryOnly/byDepsOnly/byRegionOnly)는 **동일한 운영 `applies` 함수를 입력만 비워
+ * 재호출(ablation)** 한 결과다 — 트리거 내부를 미러하지 않으므로 드리프트 0. 셋 다 false인데
+ * fired=true면 "조합 필요"(쿼리+코드가 함께 있어야 발동, 예: local-data-render).
+ */
+export interface ContractsProbeCard {
+  id: string;
+  title: string;
+  /** 이 컨텍스트(deps+region+query)에서 발동했는가. */
+  fired: boolean;
+  /** 쿼리만으로도 발동하는가(ablation). */
+  byQueryOnly: boolean;
+  /** 코드(deps)만으로도 발동하는가(ablation). */
+  byDepsOnly: boolean;
+  /** 편집 영역(region)만으로도 발동하는가(ablation). */
+  byRegionOnly: boolean;
+  /** true면 편집 모드 메뉴에서 structural 제거(JSX 렌더 필요 레시피). */
+  requiresPatchMode: boolean;
+  /** 영역 루트를 이 컴포넌트로 통째 교체하는 레시피면 그 태그명. */
+  replacesRegionRootWith: string | null;
+  /** 카드 본문 글자 수(주입 비용). */
+  chars: number;
+}
+
+/**
+ * 단계별 테스트 ④설명서 삽입 — 프로브 1회 실행 결과. ContractsProbePanel 전용.
+ *
+ * contracts 층의 export 순수 함수(selectScaffoldContracts·buildContractSection·
+ * buildComponentPropsSectionForRegion·estimateTokens/inputBudget)를 **직접 호출**한 산출물
+ * 그대로다(②③ 패널과 동일 원칙 — 운영 미러 아님, 드리프트 0).
+ *
+ * ⚠ deps 주의: region 경로의 실제 deps는 locate가 가지치기한 depsHeader지만, 여기선 파일 전체를
+ * deps로 쓴다(선택/full/오프라인 경로의 주입과 동일 — 발동 관찰엔 상위집합이라 보수적).
+ */
+export interface ContractsProbeResult {
+  query: string;
+  file: { path: string; chars: number; lines: number } | null;
+  /** 선택 줄 범위(region 시뮬레이션). 없으면 null — full 경로처럼 region=''로 판정. */
+  region: { startLine: number; endLine: number; chars: number } | null;
+  /** 전 카드(레지스트리 순서) 발동 판정 — 미발동 카드도 포함(미발동 관찰용). */
+  cards: ContractsProbeCard[];
+  firedCount: number;
+  /** buildContractSection 산출물(발동 카드 조립 섹션). */
+  contractSection: { text: string; chars: number; tokens: number };
+  /** 컴포넌트 prop 표 주입(존재 기반). */
+  props: {
+    /** prop 인덱스에 있는 감지 컴포넌트(등장 순, 주입은 앞 3개까지). */
+    detected: string[];
+    /** 영역에 있으나 인덱스에 없는 PascalCase 태그 — 인덱스 공백(재생성 후보) 신호. */
+    unknownTags: string[];
+    text: string;
+    chars: number;
+    tokens: number;
+  };
+  /** 발동 카드 중 하나라도 JSX 렌더 요구 → 편집 모드 메뉴에서 structural 제거. */
+  requiresPatchMode: boolean;
+  /** 영역 루트 교체 허용 화이트리스트(루트태그 게이트·프롬프트 지침에 전달). */
+  swapTargets: string[];
+  /** 주입 합계의 토큰 비용 — promptBudget 단일 추정기 기준. */
+  budget: { totalTokens: number; usableInput: number; pct: number };
   note?: string;
 }
 

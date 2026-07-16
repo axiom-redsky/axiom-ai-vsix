@@ -6,6 +6,7 @@ import { StageTestPanelProvider } from './views/StageTestPanelProvider';
 import { IntentProbePanel } from './providers/IntentProbePanel';
 import { DecomposeProbePanel } from './providers/DecomposeProbePanel';
 import { LocateProbePanel } from './providers/LocateProbePanel';
+import { ContractsProbePanel } from './providers/ContractsProbePanel';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -73,8 +74,10 @@ export function activate(context: vscode.ExtensionContext): void {
         DecomposeProbePanel.createOrShow(context.extensionUri);
       } else if (stageNo === 3) {
         LocateProbePanel.createOrShow(context.extensionUri);
+      } else if (stageNo === 4) {
+        ContractsProbePanel.createOrShow(context.extensionUri);
       } else {
-        vscode.window.showInformationMessage(`단계별 테스트: ${stageNo}단계 페이지는 아직 준비 중입니다. (현재는 1. 의도파악, 2. 분해, 3. 위치찾기)`);
+        vscode.window.showInformationMessage(`단계별 테스트: ${stageNo}단계 페이지는 아직 준비 중입니다. (현재는 1. 의도파악, 2. 분해, 3. 위치찾기, 4. 설명서 삽입)`);
       }
     }),
   );

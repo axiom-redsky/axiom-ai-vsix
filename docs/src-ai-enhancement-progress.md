@@ -4,10 +4,15 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-16 (③ **수정③ 되묻기 라벨 관련도 정렬 완료·커밋 dd699de** — region-edit
-> **243/0** · eval:region 88% 유지·회귀 0. 수정①②는 2843dcf·f34b0f2)
+> 최종 갱신: 2026-07-16 (④ **contracts 착수 — 0단계 베이스라인 + 0.5단계 관측 도구(4단계
+> 테스트 페이지+contracts-flow.svg) + 문서 정정(카드 11→13종·Phase B 완료 반영) 완료·미커밋** —
+> tsc 0 · compile · region-edit 243/0 · api-binding 69/0 · offline-intent 66/0 · 회귀 0.
+> **리로드 실측 대기**. 잔여 개선(트리거 정밀도 등)은 ④ 카드 "추가 작업" 절에 기록만 —
+> 채집 데이터 게이트(사용자 지시: ⓐⓑ까지만 진행, ⓒ 이후는 기록))
 >
-> **▶ 재개 지점: ③ locate 1차 개선 커밋 완료 — 0단계 베이스라인 → 0.5단계 관측 도구
+> **▶ 재개 지점: ④ contracts 0단계+0.5단계 완료(미커밋) — 다음 = 리로드 실측(4단계 페이지
+> 확인) → 커밋(사용자 결정) → 4단계 페이지·실사용으로 트리거 불일치 채집(추가 작업 1번).
+> 직전 일단락: ③ locate 1차 개선 커밋 완료(아래) — 0단계 베이스라인 → 0.5단계 관측 도구
 > (locate-flow.svg + "3. 위치찾기 테스트" 페이지, 리로드 실측·pick 시뮬레이션 확인 ✅) →
 > 1단계 attr-readonly 진단(원인=isContentAnchor가 화살표 `=>`의 `>`를 JSX 텍스트로 오인 →
 > 가짜 앵커 흩어짐 → ②.7 구제 실패) + 수정 적용(한 줄+회귀테스트 1).
@@ -78,7 +83,7 @@
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
 | ② | decompose/ — 분해 | ✅ **일단락(D1·D2·D3 전부 커밋, D3=5009800)** — b′ 그룹 표식(73% 절감)+생존 가드, code-slice 26/0, 실 sLLM 라이브 게이트 PASS. README·flow SVG 최신화(2026-07-16). 잔여=레버2·레버3·D4·무신호 예산 캡(전부 후순위·데이터 게이트) |
 | ③ | locate/ — 위치찾기 | ✅ **1차 개선 일단락·전부 커밋(2843dcf·f34b0f2·dd699de)** — 0단계 베이스라인→0.5단계 관측도구(테스트 페이지+SVG)→1단계 수정①(isContentAnchor 화살표 오인)+수정②(disambiguation 확정 무시)+수정③(되묻기 라벨 관련도 정렬), 셋 다 실기기 검증 ✅. **eval:region 85%→88%(36/41), 실측 실패 0**, region-edit 243/0. 잔여(채집 게이트)=관찰 3호(예문 중복)·의미론 연관성(증거 채집 중) |
-| ④ | contracts/ — 설명서 삽입 | ⬜ |
+| ④ | contracts/ — 설명서 삽입 | 🔶 **0단계+0.5단계 완료(미커밋)** — 문서 정정(카드 11→13종·Phase B 완료 반영) + 베이스라인(243/0·69/0·88%·주입 비용 예산 10%) + 4단계 테스트 페이지(발동/미발동·ablation 근거·prop 표·토큰)+contracts-flow.svg. 잔여(트리거 정밀도 등)=채집 데이터 게이트, 카드 "추가 작업" 절 참조 |
 | ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 2건 선수정·커밋 완료** — ①페치 파생 재선언 교체 채널 ②anchor-first 퇴화 자동 재시도(BigFile 반쪽 편집 근본 수정 2건, **실기기 사용자 검증 applied ✅ + Stage 0 타입검증 첫 라이브 통과**, 2026-07-15). 원칙 §2-2 "급한 버그 예외" 적용 |
 | ⑥ | pipeline/ — 오케스트레이터 | ⬜ (선결 부채: eval:e2e 낡은 녹화 재녹화) |
 | ⑦ | retrieval/ — 지식 검색 | ⬜ |
@@ -518,11 +523,78 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
 - **참고**: 메모리 project_verify_correct_loop_stage0, project_region_disambiguation,
   project_locate_text_anchor
 
-### ④ contracts/ — 설명서 삽입 ⬜
+### ④ contracts/ — 설명서 삽입 🔶
 
-- **계기판**: test:region-edit(계약카드 케이스들) · `test:api-binding`(69) · eval:region 토큰절감 지표
-- **개선 후보**: 계약카드 커버리지 확장(현재 11카드), 봉투계약 실 sLLM 검증(compose-binding Phase B),
-  ComponentPropsIndex 재생성 자동화 검토
+**착수 전 정정(2026-07-16, 문서·현실 대조)** — 이 카드의 종전 내용 2건이 낡아 있었다:
+
+1. 카드 수 "11" → **실제 13종**(issue#2 `button-component` · issue#3 `local-data-render` 추가분
+   미반영이었음). 분류: 규약 오버라이드 7(use-api·router·$ui·$util·cn·type-naming·button) +
+   레시피 5(date-picker·smart-table·list-table·local-data-render·form-validation) + 일반 React 1
+   (handler-extraction, 사용자 요청 예외).
+2. 개선 후보 "봉투계약 실 sLLM 검증(Phase B)"은 **사실상 완료** — 2026-07-01 봉투 3종
+   (result/list/bare) 실모델 완전 통과로 compose 트랙 종료(세션 메모리
+   project_compose_binding_recipe). 남은 건 폐쇄망 체크리스트
+   (docs/phase-b-live-verification-checklist.md) **사용자 결과 회신 대기**뿐 — 개선 후보 아님.
+
+**작업 로그**
+
+- [x] **0단계 베이스라인 측정 (2026-07-16)** — 이 층 소관 계기판 3종(회귀 없음):
+  - `test:region-edit` **243/0**(계약카드 발동 검증·버튼 7·date-picker·SmartTable 교체·local-data
+    케이스 포함) · `test:api-binding` **69/0**(봉투 계약 A1·A2)
+  - `eval:region` **88%(36/41)** · 평균 토큰 절감 60% · 실제 프롬프트 평균 **2,450토큰**
+    (예산 24,576의 10%) · 최대 3,739(15%) · 예산 초과 0/36 — 계약카드+prop표를 포함한 주입
+    합계가 예산에 여유 있음(주입 비용은 현재 문제 아님)
+  - 참고: eval:region의 calendar-picke 케이스가 date-picker 계약카드의 실모델 검증 기록을 보존
+    (카드 없을 땐 import만 → 카드 주입 후 4부품 완비 applied)
+- [x] **0.5단계 — 관측 도구 구축 (2026-07-16, 미커밋)** — contracts 층은 전부 export 순수 함수
+  (`selectScaffoldContracts`·`buildContractSection`·`buildComponentPropsSectionForRegion`·
+  `estimateTokens`/`inputBudget`)임을 확인 → ②③ 패턴 그대로 **직접 호출** 페이지(운영 미러 아님,
+  드리프트 0).
+  - 흐름도: [src/ai/contracts/contracts-flow.svg](../src/ai/contracts/contracts-flow.svg) —
+    입력(IContractContext) → ①카드 선택(트리거·양보 규칙) → ②섹션 조립 / ③파생 신호
+    (patch 강제·루트교체 화이트리스트) / ④존재 기반 prop 표 + 주입 지점 5곳
+    (region·선택/full·full 폴백 재주입·오프라인·RAG 예산 캡) + 계기판 띠. README에 링크+계기판 절.
+  - 테스트 페이지: `axiom-ai.stageTestPanel` → **4단계** → 에디터 탭. 프롬프트(+현재 파일,
+    선택 줄)를 넣으면 ① **전 카드 발동/미발동 표**(레지스트리 순, 미발동도 흐리게 — 미발동 관찰용)
+    + **발동 근거**(같은 운영 `applies`를 입력만 비워 재호출하는 **ablation**: 쿼리만/코드만/
+    영역만/조합 필요 — 트리거 내부 미러 없이 근거 특정) ② buildContractSection 조립 전문
+    ③ 파생 신호 칩(structural 제거·루트 교체 허용) ④ prop 표(감지 컴포넌트 + **인덱스에 없는
+    PascalCase 태그** = 재생성·TARGET_FILES 후보 신호) ⑤ 주입 합계 토큰·예산 점유율(promptBudget
+    단일 추정기) · 실행 이력 50건.
+  - ⚠ deps 주의(페이지에 명시): 여기 deps는 파일 전체(선택/full/오프라인 경로와 동일) —
+    region 경로의 실제 deps는 ③이 가지치기한 depsHeader라 코드 트리거가 덜 발동할 수 있음
+    (상위집합이라 오발동 관찰엔 보수적).
+  - CLI 자체검증 완료: 13카드 · "직원 테이블에 /api/employees 적용" → use-api+list-table 발동
+    (patch 강제) · "입사일을 달력으로" → date-picker(쿼리+영역 근거) · 잡담 "안녕하세요"에도
+    deps 트리거 2카드(alert·button) 발동 — **deps 기반 카드는 쿼리 무관 발동**이 첫 관찰
+    데이터(운영에선 잡담이 편집 경로에 안 오므로 무해하나, 트리거 정밀도 채집의 표본 형태 확인).
+  - 파일: src/providers/ContractsProbePanel.ts · src/webview/contractsProbe/ContractsProbeApp.tsx ·
+    src/types/messages.ts(ContractsProbeResult·Card+메시지 6종) · webview/index.tsx
+    (contracts-probe 모드) · extension.ts(stageNo===4) · StageTestPanelProvider(4단계 ready) ·
+    webview.css(cp-*)
+  - 게이트: tsc(ext/webview) 0 · compile OK · region-edit 243/0 · api-binding 69/0 ·
+    offline-intent 66/0. **리로드 실측 대기**.
+
+**추가 작업(ⓒ 이후 — 기록만, 착수 안 함. 사용자 지시 2026-07-16)**
+
+1. **트리거 정밀도(1순위 후보)** — 이 층의 구조적 약점은 카드 본문이 아니라 정규식 트리거의
+   오발동/미발동(실측 이력: "보여" 동사 오발동·한글 `\b` 함정·getProd 미발동 — 전부 사후
+   두더지잡기였음). **4단계 테스트 페이지로 발동 불일치를 능동 채집 → 데이터가 가리키는
+   트리거만 정밀화**(①intent의 `⚠ 불일치` 채집과 같은 구도, measure-then-build).
+2. **ComponentPropsIndex 재생성 자동화** — 현재 수동(`npm run build:component-props`) +
+   TARGET_FILES 12개 하드코딩. scaffold types 변경 시 인덱스가 조용히 낡음. 후보: 낡음 검사
+   (스캐폴드 소스 해시 대조 경고)·대상 파일 자동 발견. 테스트 페이지의 "인덱스에 없는 태그"
+   칩이 공백 실측 데이터를 준다.
+3. **카드↔지식문서 정합성 가드** — 카드는 coreRules·knowledge/*.md 수동 축약본(파일 헤더가
+   직접 경고). use-api.md 봉투 모순이 실제 사고 전례. 가벼운 drift 검사(카드 핵심 문구 ↔
+   지식문서 대조) 후보.
+4. (보류) promptBudget 계측→개입 승격 — 베이스라인상 주입 비용이 예산 10%라 근거 없음,
+   관측 데이터 쌓인 뒤 판단. / loadable-code-split 카드 — 기존 보류 사유 유효(라우트설정
+   전용, region 본문에 거의 안 나옴).
+5. (장기 연결점) §6-3 한국어 도메인 코드 — 계약카드가 도메인 레시피로 확장될 자리.
+
+- **계기판**: test:region-edit(계약카드 케이스들) · `test:api-binding`(69) · eval:region 토큰절감
+  지표 · **"4. 설명서 삽입" 테스트 페이지(수동 관측·능동 채집)**
 - **참고**: 메모리 project_scaffold_contract_coverage, project_compose_binding_recipe,
   project_recipe_contract_cards
 

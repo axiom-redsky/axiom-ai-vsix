@@ -13,7 +13,8 @@
       "PowerShell(npx tsc --noEmit -p tsconfig.json; echo \"tsc exit: $LASTEXITCODE\"; npm run test:region-edit 2>&1 | Select-Object -Last 1)",
       "PowerShell(npx tsc --noEmit -p tsconfig.webview.json; echo \"tsc\\(webview\\): $LASTEXITCODE\"; npm run compile 2>&1 | Select-Object -Last 2)",
       "Bash(node -e ' *)",
-      "Bash(AXIOM_NATIVE=1 AXIOM_ANCHOR_FIRST=1 AXIOM_DISAMBIG=1 AXIOM_API_KEY='Bearer 00bd588d5b741b444cd02294746d6b68281755c58601913b93ef8ea7a27bf32d' node scripts/run-probe-region-live.mjs C:/redsky/presentation/demo/react-app-online-demo/src/domains/example/pages/BigFile.tsx '직원관리의 상태 select를 api로 바꿔줘' __TRACKED_VAR__/rd-anchorfirst.txt)"
+      "Bash(AXIOM_NATIVE=1 AXIOM_ANCHOR_FIRST=1 AXIOM_DISAMBIG=1 AXIOM_API_KEY='Bearer 00bd588d5b741b444cd02294746d6b68281755c58601913b93ef8ea7a27bf32d' node scripts/run-probe-region-live.mjs C:/redsky/presentation/demo/react-app-online-demo/src/domains/example/pages/BigFile.tsx '직원관리의 상태 select를 api로 바꿔줘' __TRACKED_VAR__/rd-anchorfirst.txt)",
+      "Bash(awk -F: '{print $2}')"
     ]
   }
 }

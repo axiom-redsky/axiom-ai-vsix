@@ -18,7 +18,7 @@ const STAGES: StageDef[] = [
   { no: 1, label: '의도파악', detail: '프롬프트 → 모델 분류기 vs 정규식 폴백 판정 비교 (src/ai/intent)', ready: true },
   { no: 2, label: '분해', detail: '쿼리 토큰화 + 코드·배경 분해(선언 분할→점수→예산 슬라이싱) (src/ai/decompose)', ready: true },
   { no: 3, label: '위치찾기', detail: '스냅 사다리로 편집 대상 영역·게이트 판정 + 모델 객관식 후보 (src/ai/locate)', ready: true },
-  { no: 4, label: '설명서 삽입', detail: '계약카드·prop 인덱스 프롬프트 주입 (src/ai/contracts) — 예정', ready: false },
+  { no: 4, label: '설명서 삽입', detail: '계약카드 발동/미발동·발동 근거 + prop 표 + 토큰 비용 (src/ai/contracts)', ready: true },
   { no: 5, label: '게이트·적용', detail: 'sLLM 응답 검증 후 결정론 배치 (src/ai/apply) — 예정', ready: false },
 ];
 
