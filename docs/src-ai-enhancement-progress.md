@@ -4,12 +4,12 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-16 (D3 설계 논의 반영 — 스켈레톤 방향 보강 + 신규 개선 후보 2건 기록)
+> 최종 갱신: 2026-07-16 (D3 stub 홍수 **완주** — 구현+합성 게이트+실 sLLM 라이브 게이트 PASS, 미커밋)
 >
-> **▶ 재개 지점: ② decompose **D3 stub 홍수** 착수 대기 — 2026-07-15 작업분은 전부 커밋 완료
-> (4e81eab D1/D2+교체채널 · 57026a6 anchor-first 재시도+프로브). 실기기 사용자 검증까지 완주
-> (BigFile 페치 파생 교체 applied + Stage 0 타입검증 첫 라이브 통과).
-> D3의 문제정의·제약·설계 선택지·착수 순서는 §4 ② D3 항목에 전부 기록돼 있음 — 그것만 읽고 착수 가능.**
+> **▶ 재개 지점: ② decompose D3 완료(커밋 대기) — 라이브 검증까지 전부 통과. 주입 13,120→3,519자
+> (73% 절감), 실모델이 그룹 표식 보존+심볼 재선언 0+보존 타입 참조사용까지 확인(§4 ② D3 ④ 항목).
+> 부산물: 가드 오거부 수정(관찰 2호)·라이브 관찰 3건 기록. 다음 후보 = ② 레버2(모호쿼리)/레버3/
+> 무신호 폴백 예산 캡(관찰 1호) 또는 층 순서대로 ③ locate 착수. 커밋은 사용자 결정.**
 > ① intent 층은 채집 가동 중: 테스트 페이지 + 출력채널 `[S1 라우팅측정]`·`[파일검출]` 로그로 불일치·오탐 수집.
 >
 > **다른 PC 재개 시 알아야 할 것 (2026-07-15 세션의 도구·환경 유산):**
@@ -60,7 +60,7 @@
 | # | 층 | 상태 |
 |---|---|---|
 | ① | intent/ — 의도 라우팅 | ✅ **일단락(채집 가동 중)** — 도구·검증·계측·1차 수정(채집 2호) 완료. 잔여(S3④·S4·S5·대상해석 고도화)는 전부 채집 데이터 게이트 |
-| ② | decompose/ — 분해 | 🔶 **실측+1차 수정(D1·D2) 커밋 완료** — full/참조 슬라이서 결함 수정·`test:code-slice`(15) 신설·라이브 실증(2026-07-15). **다음=D3 stub 홍수(착수 지점, 카드에 설계 선택지 기록)** |
+| ② | decompose/ — 분해 | 🔶 **D1·D2 커밋 + D3 완주(2026-07-16, 미커밋)** — b′ 스켈레톤 그룹 표식(73% 절감), 복원 3곳+생존 가드, code-slice 26/0, **실 sLLM 라이브 게이트 PASS(표식 보존·재선언 0·복원 왕복 ✅)**. 잔여=레버2·레버3·D4·무신호 예산 캡(전부 후순위) |
 | ③ | locate/ — 위치찾기 | ⬜ |
 | ④ | contracts/ — 설명서 삽입 | ⬜ |
 | ⑤ | apply/ — 게이트·적용 | 🔶 **실사용 버그 2건 선수정·커밋 완료** — ①페치 파생 재선언 교체 채널 ②anchor-first 퇴화 자동 재시도(BigFile 반쪽 편집 근본 수정 2건, **실기기 사용자 검증 applied ✅ + Stage 0 타입검증 첫 라이브 통과**, 2026-07-15). 원칙 §2-2 "급한 버그 예외" 적용 |
@@ -252,34 +252,83 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   - 게이트: tsc 0 · compile OK · code-slice 14/0 · region-edit 230/0 · api-binding 69/0 ·
     offline-transplant 22/0 · patch-grounded 30/0 · eval:input 베이스라인 동일 · eval:bigfile
     64/64 유지(region 경로 무영향 — 자체 가지치기 사용). 리로드 실측(테스트 페이지 확인) 대기.
-- [ ] **다음 = D3 stub 홍수 (착수 지점 — 아래만 읽고 시작 가능)** — D2로 제외가 늘며 stub 줄만
-  194개(~12.9K자, **주입의 98%**)가 됨.
-  **라이브 증거(2026-07-15, qwen3-coder-64k × BigFile.tsx 실사용)**: full 폴백 시 토큰바
-  "현재 파일 13,699자(58%) · 잔여 ~5K" — stub 줄이 컨텍스트 58%를 점유, 잔여를 5K까지 압박.
-  합성 예측이 실전에서 그대로 재현 → D3가 다음 #1 확정.
-  - **제약(함부로 못 줄이는 이유)**: stub 포맷은 복원 계약 2곳에 얽힘 — ① restoreSlicedStubs
-    (`// ... [kind name]` 프리픽스 의존, full 모드에서 모델이 stub을 베끼면 쓰기 직전 원본 복원) ·
-    ② FileCreatorService.resolveStubSection(정규식이 `원본 NN줄 보존` 문구 의존, ~L488).
-    +줄당 "참조 금지" 경고는 **모델 대면 텍스트**(변경 시 실 sLLM 라이브 게이트 필수).
-    +분해 테스트 페이지·probe의 포함 역판정도 `includes('// ... [kind name]')` 의존.
-    참조 파일 경로는 이미 stripSliceStubs로 접혀 무관 — **편집 대상 경로만의 문제**.
-  - **설계 선택지**: (a) stub 꼬리 축약(`// ... [type TFoo] 3줄 생략` — 프리픽스 유지, ② 정규식
-    갱신 필요, 절감 ~50%) / (b) 연속 stub 그룹핑+라인범위 복원(`// ... [L7~775 선언 152개 생략]` —
-    절감 ~95%, 복원을 라인범위 기반으로 확장+역판정 로직 수정 필요) / (c) a+b 조합(유점수 인접은
-    개별, 먼 덩어리는 그룹). **FileCreatorService 계약부터 열어보고 a로 갈지 b까지 갈지 결정**.
-  - **+2026-07-16 설계 논의(b′ = 스켈레톤 보강, 유력)**: 업계 표준 조사(Aider repo-map ·
-    tree-sitter AST 스켈레톤 계열, 90~98% 절감 보고) 결과 — (b)의 약점인 **이름 정보 소실
-    (모델이 보존 구간 심볼을 몰라 재선언→복원 후 중복 선언)**을 뭉친 라인범위에 **압축 심볼
-    목록**을 얹어 동시 해결: `// [보존 L5~L520] 타입 63종·상수 64종: TDeptRow, DEPT_ENDPOINT, …
-    (수정·재선언 금지)`. 절감 ~95% + 이름 정보 유지. 추가 합의: 수정 지점 **인접**(유점수 근처)
-    심볼은 이름 stub 개별 유지(c 조합), 표식은 반드시 **빈자리 제자리에**(한 곳에 몰아쓰기 금지 —
-    복원 위치는 출력물 속 표식 위치로 결정), **표식 전수 생존 검사 가드**(하나라도 누락 시 적용
-    거부 — 뭉친 표식은 폭발 반경이 커서 필수). 결정 절차는 종전대로 ① FileCreatorService·
-    restoreSlicedStubs 복원 계약 확인 후 확정.
-  - **착수 순서**: ① 베이스라인(probe-decompose-bigfile로 stub 바이트 수치 기록) → ② 설계 결정·구현
-    → ③ 복원 계약 테스트 green(test:patch-grounded의 resolveStubSection 케이스 + test:code-slice +
-    region-edit 237) → ④ 실 sLLM 라이브 게이트(probe-region-live, 운영 플래그 복제 스위치로
-    full 폴백 경로에서 모델이 새 포맷을 안 깨뜨리는지).
+- [x] **D3 stub 홍수 — b′ 스켈레톤+c 인접 조합 구현 (2026-07-16, 미커밋)** — 합성 게이트 전부 green,
+  **남은 것 = ④ 실 sLLM 라이브 게이트**.
+  - **베이스라인(착수 ①)**: sample-bigfile(10,574줄)×예산 4000 → stub 194줄 = **12,684자(주입의 96.7%)**,
+    본문 436자뿐. 데모 실파일(BigFile.tsx 11,177줄)도 동일 패턴.
+  - **설계(착수 ②)**: 복원 계약(restoreSlicedStubs·resolveStubSection·Pass 0) 열어본 뒤 b′ 확정.
+    `sliceByBudget`이 **연속 제외 런 ≥3개**를 그룹 표식 한 줄로 뭉침:
+    `// ... [보존 Ls~Le] 원본 NN줄(kind 요약) 보존 (자리 표시자…재선언 금지): 심볼이름목록`.
+    포함 섹션과 **인접한** 제외 섹션은 개별 stub 유지(c 조합). `SliceResult.groupedRanges` 신설.
+    복원·생존검사는 **프리픽스 `[보존 Ls~Le]`만 매칭** — 모델이 이름 꼬리를 잘라도 복원 생존.
+    한글 `보존`은 기존 정규식 `[a-zA-Z]+`와 충돌 0(구 포맷 오인 불가).
+  - **복원 계약 3곳 확장**: ① restoreSlicedStubs 그룹 브랜치(원본 라인범위 통째 복원, `{/* */}` 변형
+    수용, 경계 밖은 unmatched 보존) ② resolveStubSection 그룹 브랜치(라인범위→FuzzyRegion, 섹션 탐색
+    불필요) ③ FileCreatorService Pass 0 그룹 브랜치(search=표식 → 라인범위 영역).
+  - **표식 전수 생존 검사 가드(합의 사항)**: ScaffoldContextBuilder가 슬라이싱 시 표식 목록 스태시
+    (`lastSliceGroupGuard`, 매 빌드 초기화) → ChatViewProvider 적용 길목(restore 직전)에서 full 계열
+    응답에 표식이 하나라도 없으면 **적용 거부**(⛔ 카드+실패 리포트). structural은 확장이 원본에
+    병합해 표식 없는 게 정상 → 제외. 파일 불일치 시 fail-open+로그.
+  - **역판정 2곳 수정**: DecomposeProbePanel·probe-decompose-bigfile — 개별 stub 부재+groupedRanges
+    범위 포함으로 판정. sliceNotice(모델 대면)에 그룹 표식 설명+"하나라도 빠지면 적용 거부" 추가,
+    probe-sliced-output·SliceProbeProvider stubNote도 동기화.
+  - **효과(착수 ① 대비)**: 주입 **13,120→3,519자(73% 절감)**, stub 194줄→표식 2줄(+인접 개별 2~3).
+    남은 3.3K자는 심볼 이름 목록 = 재선언 방지 비용(b의 이름 소실 약점 해소 대가). 라이브 예측:
+    full 폴백 시 "현재 파일 13,699자(58%)" → **~3.5K자(~15%)**.
+  - **게이트(착수 ③)**: tsc 0 · compile OK · **code-slice 26/0(D3 케이스 11 신규: 그룹핑·인접 개별·
+    round-trip·꼬리잘림 복원·경계밖 보존·짧은런 종전동작)** · **patch-grounded 32/0(그룹 resolve 2
+    신규)** · region-edit 237/0 · api-binding 69/0 · offline-transplant 22/0 · line-edits 15/0 ·
+    eval:bigfile 종전 동일(region 무영향) · eval:input 동일. VSIX 재패키징 완료.
+  - **변경 파일(11, 커밋 대기)**: src/ai/decompose/CodeSectionExtractor.ts(그룹핑+복원 그룹 브랜치+
+    groupedRanges) · src/ai/pipeline/FileCreatorService.ts(resolveStubSection·Pass 0 그룹) ·
+    src/ai/ScaffoldContextBuilder.ts(sliceNotice 그룹 안내+lastSliceGroupGuard 스태시/clear) ·
+    src/providers/ChatViewProvider.ts(생존 가드+`!precomputedDiff`+요청 단위 clear) ·
+    src/providers/DecomposeProbePanel.ts·scripts/probe-decompose-bigfile.ts(역판정) ·
+    src/providers/SliceProbeProvider.ts·scripts/probe-sliced-output.ts(모델 대면 stubNote) ·
+    scripts/test-code-slice.ts(+11)·scripts/test-patch-grounded.ts(+2) · 이 문서.
+  - [x] **④ 실 sLLM 라이브 게이트 ✅ PASS (2026-07-16, qwen3-coder-64k × 데모 BigFile.tsx 388K자)**:
+    `probe-sliced-output --mode sliced`(운영 모델·실파일·신규추가 쿼리, 인증=Bearer vast 토큰) →
+    모델 full 출력을 `restoreSlicedStubs` 왕복 검증 10항목 전부 green —
+    ① 그룹 표식(L22~L11177·심볼 193개) **원문 그대로 제자리 생존** ② 개별 stub 생존
+    ③ 보존 심볼 재선언 0 ④ 보존 타입를 **참조로만 사용**(`TEmployeeRow[]` 파라미터 — 스켈레톤
+    설계 의도 그대로) ⑤ 복원 2/2·unmatched 0 ⑥ 라인 11,178→11,207(신규 함수만 증가)
+    ⑦ MegaDashboardPage 본문 생존 ⑧ 신규 함수 생존 ⑨ 표식 잔존 0
+    ⑩ 유일 관찰: 모델이 가짜 stub 1줄 창작(`[기존 컴포넌트 로직]` — 어느 정규식에도 안 걸려
+    **무해한 주석으로 잔존**, 파손 없음). ⚠ 부가 발견: 프로브가 OpenAI 경로(/v1)만 지원해
+    Caddy 401 — vast 토큰을 Bearer로 넘기면 통과(`AXIOM_API_KEY="Bearer <OPEN_BUTTON_TOKEN>"`,
+    운영 확장은 SecretStorage `axiom-ai.llm.apiKey`에 보관되어 설정 json엔 안 보임).
+    ⚠ **쿼리에 파일과 매칭되는 신호 토큰이 있어야 D3가 발동**한다 — 라이브 관찰 1호 참조.
+    잔여 관찰 항목(비차단): 필드 환각(모델이 TEmployeeRow 필드를 추측 — 보존 구간 본문을 못 보는
+    D4 소관) · 실기기 채팅에서의 가드/복원 end-to-end는 full 폴백이 유기적으로 뜰 때 자연 관찰.
+  - **라이브 관찰 1호(2026-07-16, D3 미발동 케이스)**: "이 파일의 정렬 로직을 리팩토링해줘" ×
+    BigFile.tsx → 토큰바 "현재 파일 18,304자(67%)". 원인 재현 완료: 쿼리 토큰(정렬·로직·리팩토링)이
+    파일과 0매칭 → 유점수 0 → **D2가 보존한 종전 무신호 폴백**(최단 우선)이 적응형 예산(~17.7K)을
+    무관 한 줄 선언들로 가득 채움(17,690+안내문=18,304 정확 일치, 그룹 0). D3 결함이 아니라 설계대로
+    (무신호는 종전 동작 보존)이나, **무신호 쿼리 + 큰 파일 + 적응형 예산 = 컨텍스트 67% 점유**는
+    별도 개선 후보(무신호 폴백 예산 캡? 데이터 더 모아 판단). +당시 대화 이력 과다로 잔여 484토큰
+    (응답 절단 위험)이었음 — 라이브 테스트는 대화 초기화 후 권장.
+  - **라이브 관찰 2호(2026-07-16, 가드 오거부 위험 발견·수정)**: 신호 쿼리("직원관리 목록 정렬…
+    리팩토링") × BigFile.tsx가 **region 경로로 완주**(disambiguation 후보 3→모델 pick "직원관리"
+    1837~1900·splice 적용·타입검증 통과·5,382토큰 22% — 제품으로선 최선, D3는 미검증). 이 로그에서
+    가드 결함 발견: region 합성 action도 `mode:"full"`로 `_handleAxiomAction`을 지나는데 합성은
+    원본 디스크 기반이라 표식이 없는 게 정상 → 직전 요청의 슬라이싱 스태시가 남아 있으면 **오거부**.
+    수정 2중: ① 가드 조건에 `!precomputedDiff`(region 합성 식별) ② 매 사용자 요청 시작 시
+    `clearSliceGroupGuard()`(요청 간 누수 원천 차단). 게이트: tsc 0·region-edit 237/0·code-slice
+    26/0·compile·VSIX 재패키징. **교훈: 신호 쿼리는 region이 잘 처리해서 full+D3를 organic하게
+    태우기 어렵다** — 라이브 게이트는 (i) 신규추가 의도+도메인어 쿼리(예: "직원관리 데이터를
+    내보내는 공통 유틸 함수를 이 파일에 새로 추가해줘" — 사전 검증: 주입 3,531자·그룹 1, add
+    의도=full 정당) 또는 (ii) `probe-sliced-output` CLI(결정론 강제)로.
+  - **라이브 관찰 3호(2026-07-16)**: 위 (i) 신규추가 쿼리마저 **region이 완주** — disambiguation
+    후보 6→"직원관리" pick, handleExport CSV 유틸을 훅 삽입 채널(after-last-fetch)로 정확 안착,
+    import skip(이미 존재)·타입검증 통과·4,957토큰(20%). 2026-07-15 수정들 이후 신호 있는 쿼리는
+    region이 사실상 전부 처리(제품 관점 최선). **결론: full+신호 조합은 유기적으로 거의 안 생김 →
+    D3 라이브 게이트는 `probe-sliced-output` CLI로 강제 검증**(프로브가 VSCode 설정에서
+    endpoint/model 자동 판독).
+- 참고(문제정의·설계 논의 이력, 구현 반영 완료): D2로 제외가 늘며 stub 194줄(~12.9K자)이 주입의
+  98%·라이브 컨텍스트 58%를 점유(2026-07-15 실증) → 2026-07-16 설계 논의에서 b′(그룹 라인범위+
+  압축 심볼 목록으로 이름 소실 해소)+c(인접 개별 유지)+표식 제자리+전수 생존 가드로 합의 →
+  위 작업 로그대로 구현. 폐기 대안: (a) 꼬리 축약(절감 ~50%뿐) / (b) 단순 그룹핑(이름 소실로
+  복원 후 중복 선언 위험).
 - [ ] (후순위) D4 거대 함수 하위 분할 — 단일 함수가 예산 초과면 통째 stub돼 관련 본문 소실.
   단, 큰 파일 편집의 주력은 region 경로(이미 green)라 실피해 낮음. RegionEdit의 훅 슬라이스·
   타입 전이참조 기계를 full 경로로 이식하는 방향(착수 시 별도 설계).
@@ -288,13 +337,15 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   검색+import 이웃+열린 탭)+모델 객관식 1회**. CC는 강한 모델의 도구 반복 루프지만 약한 sLLM엔 금지 —
   이건 ①intent §4의 "대상 파일 해석 고도화"와 동일 작업(그 트랙에서 착수). 여기엔 포인터만 기록.
 
-- **계기판**: `eval:input`(입력 품질) · `eval:bigfile`(큰파일 합성 하니스) · **`test:code-slice`(14,
-  신설 — full/참조 경로 슬라이서 전용)** · region-edit(간접) · **"2. 분해 테스트" 페이지(수동 관측)** ·
-  `scripts/probe-decompose-bigfile.ts`(테스트 페이지와 동일 함수 CLI 실행)
+- **계기판**: `eval:input`(입력 품질) · `eval:bigfile`(큰파일 합성 하니스) · **`test:code-slice`(26 —
+  full/참조 경로 슬라이서 전용, D3 케이스 11 포함)** · region-edit(간접) · **"2. 분해 테스트" 페이지
+  (수동 관측)** · `scripts/probe-decompose-bigfile.ts`(테스트 페이지와 동일 함수 CLI 실행) ·
+  `scripts/probe-sliced-output.ts`(sliced/full A/B 실모델 원시 출력 — D3 라이브 게이트용)
 - **개선 후보**: ~~bigfile 레버1 = deps 가지치기~~ → **2026-07-15 실측 정정: region 경로는 이미
-  구현 완료(53cfc82)·green, full/참조 경로 결함은 D1·D2로 수정**. 남은 것 = **D3 stub 홍수(신규 #1,
-  설계 필요)** · 레버2(모호쿼리 — eval:bigfile ②에서 64후보 되물음 실측됨, locate/pipeline과 걸침) ·
-  레버3(섹션라우팅 복합어 토큰화 top-bias) · D4(거대 함수 하위 분할, 후순위).
+  구현 완료(53cfc82)·green, full/참조 경로 결함은 D1·D2로 수정**. ~~D3 stub 홍수~~ →
+  **2026-07-16 구현 완료(라이브 게이트만 잔여)**. 남은 것 = 레버2(모호쿼리 — eval:bigfile ②에서
+  64후보 되물음 실측됨, locate/pipeline과 걸침) · 레버3(섹션라우팅 복합어 토큰화 top-bias) ·
+  D4(거대 함수 하위 분할, 후순위).
 - **신규 후보(2026-07-16, 중기): 의미론 연관성 — tsserver/LSP** — 섹션 스코어링(토큰 문자열
   매칭)을 컴파일러의 정의·참조 그래프로 교체. D1류 오탐("api" 토큰이 64개 `'/api/…'` 상수에
   동점)의 뿌리 제거 — 글자가 같아도 참조 관계 없으면 무관 판정. VSCode `executeDefinitionProvider`/

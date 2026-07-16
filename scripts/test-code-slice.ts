@@ -147,6 +147,87 @@ console.log('■ stub 복원 계약 (restoreSlicedStubs) — 포맷 무변경 �
   check('복원 실패 stub 없음', restored.unmatched.length === 0, restored.unmatched.join(', '));
 }
 
+console.log('■ D3 — stub 그룹핑 (연속 제외 런 → 그룹 표식 한 줄)');
+{
+  const slice = extractRelevantTsSlice(source, tokens, 4000);
+  const stubLines = slice.text.match(/^[ \t]*\/\/\s*\.\.\.\s*\[[^\n]*$/gm) ?? [];
+  check('그룹 표식 생성(groupedRanges ≥ 1)', slice.groupedRanges.length >= 1, `groups=${slice.groupedRanges.length}`);
+  check(
+    'stub 줄 수 급감(제외 81개 → 표식·stub 합계 10줄 이하)',
+    slice.skippedCount >= 50 && stubLines.length <= 10,
+    `skipped=${slice.skippedCount}, stubLines=${stubLines.length}`,
+  );
+  check(
+    '그룹 표식에 심볼 이름 목록 포함(재선언 방지)',
+    slice.groupedRanges.some((g) => {
+      const line = slice.text.split('\n').find((l) => l.includes(g.marker));
+      return !!line && /재선언/.test(line) && /X10_ENDPOINT/.test(line);
+    }),
+  );
+  check(
+    '포함 섹션과 인접한 제외 섹션은 개별 stub 유지(c 조합)',
+    // imports(포함) 바로 뒤 X1_ENDPOINT · apiClient(포함) 바로 앞 TX40Row는 인접 → 개별 stub
+    slice.text.includes('// ... [const X1_ENDPOINT]') &&
+      slice.text.includes('// ... [type TX40Row]'),
+  );
+}
+
+console.log('■ D3 — round-trip: 뷰 그대로 에코 → 그룹 구간 원본 복원');
+{
+  const slice = extractRelevantTsSlice(source, tokens, 4000);
+  const restored = restoreSlicedStubs(slice.text, source);
+  check(
+    '그룹 구간의 모든 선언 복원(X1~X40 ENDPOINT·TXnRow)',
+    restored.text.includes(`const X40_ENDPOINT = '/api/x40';`) &&
+      restored.text.includes(`type TX40Row = { id: number; name: string };`),
+  );
+  check('복원 후 표식 잔존 없음', !/\[\s*보존\s+L\d+/.test(restored.text));
+  check('복원 실패 없음', restored.unmatched.length === 0, restored.unmatched.join(', '));
+}
+
+console.log('■ D3 — 표식 프리픽스 생존이면 꼬리(이름 목록) 잘려도 복원');
+{
+  const slice = extractRelevantTsSlice(source, tokens, 4000);
+  const g = slice.groupedRanges[0];
+  const truncated = slice.text.replace(
+    new RegExp(`(${g.marker.replace(/[[\]~]/g, '\\$&')})[^\\n]*`),
+    '$1 원본 보존',
+  );
+  const restored = restoreSlicedStubs(truncated, source);
+  check(
+    '꼬리 잘린 표식도 라인범위로 복원',
+    restored.restoredCount >= 1 && restored.text.includes(`X1_ENDPOINT`),
+    `restored=${restored.restoredCount}`,
+  );
+}
+
+console.log('■ D3 — 경계 밖 표식은 unmatched로 보존(조용한 파손 금지)');
+{
+  const bogus = `const a = 1;\n// ... [보존 L900~L999] 원본 100줄 보존\nconst b = 2;`;
+  const restored = restoreSlicedStubs(bogus, source);
+  check('경계 밖 → 복원 안 함 + unmatched 기록', restored.unmatched.includes('보존 L900~L999'));
+  check('표식 라인 원문 유지', restored.text.includes('[보존 L900~L999]'));
+}
+
+console.log('■ D3 — 짧은 런(3개 미만)은 개별 stub 유지(종전 동작)');
+{
+  const small = [
+    `function hit() { return '직원'; }`,
+    `const A_ONE = 1;`,
+    `const B_TWO = 2;`,
+    `function hit2() { return '직원 둘'; }`,
+    `function giant() {`,
+    ...Array.from({ length: 80 }, (_, i) => `\tconst f${i} = ${i};`),
+    `}`,
+  ].join('\n');
+  const slice = extractRelevantTsSlice(small, ['직원'], 200);
+  check(
+    '제외 런이 짧으면 그룹 표식 대신 개별 stub',
+    slice.groupedRanges.length === 0 || slice.text.includes('// ... [const A_ONE]'),
+    `groups=${slice.groupedRanges.length}`,
+  );
+}
+
 console.log('');
 console.log(`결과: ${pass} pass / ${fail} fail`);
 if (fail > 0) process.exit(1);

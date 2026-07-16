@@ -18,7 +18,11 @@ const secs = splitTsSections(source);
 scoreCodeSections(secs, tokens, undefined);
 const sliceResult = sliceByBudget(secs, budget);
 
-const included = secs.filter((s) => !sliceResult.text.includes(`// ... [${s.kind} ${s.name}]`));
+const included = secs.filter(
+  (s) =>
+    !sliceResult.text.includes(`// ... [${s.kind} ${s.name}]`) &&
+    !sliceResult.groupedRanges.some((g) => s.startLine >= g.startLine && s.endLine <= g.endLine),
+);
 const scored = secs.filter((s) => s.score > 0);
 
 console.log('=== 쿼리 분해 ===');

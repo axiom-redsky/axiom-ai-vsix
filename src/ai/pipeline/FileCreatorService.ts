@@ -484,6 +484,23 @@ export class FileCreatorService {
    * fuzzy(locateFuzzyRegion)보다 우선해서 시도한다 — 섹션명이 명시돼 있어 결정론적이기 때문.
    */
   resolveStubSection(originalContent: string, search: string): FuzzyRegion | null {
+    // 그룹 표식 `[보존 Ls~Le]`(D3 stub 그룹핑) — 라인 범위가 표식에 그대로 있어 섹션 탐색 불필요.
+    const g = search.match(/\[\s*보존\s+L(\d+)\s*~\s*L(\d+)\s*\]/);
+    if (g) {
+      const s = Number(g[1]);
+      const e = Number(g[2]);
+      const normContent = originalContent.replace(/\r\n/g, '\n');
+      const lines = normContent.split('\n');
+      if (s >= 1 && e >= s && e <= lines.length) {
+        return {
+          startLine: s,
+          endLine: e,
+          text: lines.slice(s - 1, e).join('\n'),
+          confidence: 1,
+        };
+      }
+      return null;
+    }
     // `[kind name]` 뒤에 `원본 NN줄 보존`이 오는 스텁 마커. 주석 구문(`//`·`{/* */}`)과 무관하게 매칭.
     const m = search.match(/\[\s*([a-zA-Z]+)\s+([\w$]+)\s*\][^\]\n]*원본\s*\d+\s*줄\s*보존/);
     if (!m) return null;
@@ -857,6 +874,18 @@ export class FileCreatorService {
     // `// ... [kind name] 원본 NN줄 보존 ...` 라인을 <search>로 사용한 케이스.
     // 실제 파일엔 stub이 없으므로 원본 섹션 본문의 라인 범위로 교체한다.
     if (sLen === 1) {
+      // 그룹 표식 `[보존 Ls~Le]`(D3) — 표식의 라인 범위를 그대로 영역으로 쓴다.
+      const groupStub = searchLines[0].match(
+        /(?:\/\/|\{\/\*)\s*\.\.\.\s*\[\s*보존\s+L(\d+)\s*~\s*L(\d+)\s*\]/,
+      );
+      if (groupStub) {
+        const gs = Number(groupStub[1]);
+        const ge = Number(groupStub[2]);
+        if (gs >= 1 && ge >= gs && ge <= oLen) {
+          return { kind: 'ok', start: gs - 1, end: ge - 1, replaceLines: replaceLinesDefault };
+        }
+        return { kind: 'not-found' };
+      }
       const stubMatch = searchLines[0].match(
         /\/\/\s*\.\.\.\s*(?:\[\s*([a-zA-Z]+)\s+([\w$]+)\s*\]|\(\s*([a-zA-Z]+)\s+([\w$]+)\s*생략)/,
       );

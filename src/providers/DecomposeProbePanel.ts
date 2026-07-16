@@ -178,7 +178,8 @@ export class DecomposeProbePanel {
           scoreCodeSections(secs, tokenStrings, selection);
           const budgetSafe = budget > 0 ? budget : 4000;
           const sliceResult = sliceByBudget(secs, budgetSafe);
-          // 포함 여부는 실제 산출 텍스트에서 판정 — 제외 섹션은 stub `// ... [kind name] …`로 나온다.
+          // 포함 여부는 실제 산출 텍스트에서 판정 — 제외 섹션은 stub `// ... [kind name] …` 또는
+          // 그룹 표식 `[보존 Ls~Le]`(D3, groupedRanges로 역판정)로 나온다.
           // (sliceByBudget 내부 includedIds를 밖으로 새로 계산하지 않고 실 출력으로 역판정 = 드리프트 0)
           sections = secs.map((s) => ({
             name: s.name,
@@ -187,7 +188,11 @@ export class DecomposeProbePanel {
             endLine: s.endLine,
             length: s.length,
             score: s.score,
-            included: !sliceResult.text.includes(`// ... [${s.kind} ${s.name}]`),
+            included:
+              !sliceResult.text.includes(`// ... [${s.kind} ${s.name}]`) &&
+              !sliceResult.groupedRanges.some(
+                (g) => s.startLine >= g.startLine && s.endLine <= g.endLine,
+              ),
           }));
           slice = {
             budget: budgetSafe,

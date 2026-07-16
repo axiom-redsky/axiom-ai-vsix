@@ -151,6 +151,19 @@ const STUB_FILE = [
   check('없는 섹션 스텁 → null', r === null);
 }
 
+// 12-b. 그룹 표식 `[보존 Ls~Le]`(D3) → 라인 범위 그대로 영역 해소
+{
+  const r = svc.resolveStubSection(STUB_FILE, '// ... [보존 L3~L7] 원본 5줄(function 1) 보존 (자리 표시자): Foo');
+  check('그룹 표식 → 라인범위 영역', r !== null && r.startLine === 3 && r.endLine === 7 && r.text.includes('export function Foo'),
+    r ? `lines=${r.startLine}~${r.endLine}` : 'null');
+}
+
+// 12-c. 경계 밖 그룹 표식 → null (조용한 파손 금지)
+{
+  const r = svc.resolveStubSection(STUB_FILE, '// ... [보존 L3~L99] 원본 97줄 보존');
+  check('경계 밖 그룹 표식 → null', r === null);
+}
+
 console.log('\nextractRenameMap / applyRenameMap (1B ripple guard):');
 
 // 13. 단순 필드 rename 추출

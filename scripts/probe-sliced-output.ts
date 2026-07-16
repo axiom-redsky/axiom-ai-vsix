@@ -55,7 +55,7 @@ function parseArgs(argv: string[]): Args {
  */
 function buildPrompt(fileLabel: string, fileView: string, sliced: boolean, query: string) {
   const stubNote = sliced
-    ? `\n> ⚠️ 이 파일은 커서 질문과 무관한 선언은 \`// ... [kind name] 원본 NN줄 보존 (자리 표시자)\` 형식의 stub으로 대체했습니다.\n> stub은 자리 표시자일 뿐 실제 코드는 디스크에 그대로 있습니다. stub에 적힌 이름을 이미 선언된 변수처럼 참조하지 마세요.\n`
+    ? `\n> ⚠️ 이 파일은 커서 질문과 무관한 선언은 \`// ... [kind name] 원본 NN줄 보존 (자리 표시자)\` 형식의 stub으로 대체했습니다.\n> stub은 자리 표시자일 뿐 실제 코드는 디스크에 그대로 있습니다. stub에 적힌 이름을 이미 선언된 변수처럼 참조하지 마세요.\n> 연속 생략 구간은 \`// ... [보존 Ls~Le] ...\` 형식의 그룹 표식 한 줄로 뭉쳤습니다. 표식 뒤 이름 목록은 이미 선언된 심볼입니다 — 재선언하지 말고, full 응답 시 표식 라인을 한 글자도 바꾸지 말고 원래 위치에 그대로 포함하세요.\n`
     : '';
   const system = `당신은 Axiom AI, react-app-scaffold 전용 코딩 어시스턴트입니다.
 

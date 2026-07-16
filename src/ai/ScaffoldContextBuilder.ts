@@ -47,6 +47,12 @@ export class ScaffoldContextBuilder {
   };
   /** buildSystemPrompt 가장 최근 호출이 프롬프트에 실제로 주입한 scaffold 문서 출처 목록(중복 제거). */
   private _lastScaffoldSources: string[] = [];
+  /**
+   * 가장 최근 buildSystemPrompt가 현재 파일을 슬라이싱하며 삽입한 그룹 보존 표식(D3).
+   * full 응답 적용 직전 "표식 전수 생존 검사"의 기준 — 뭉친 표식은 하나만 떨어져도
+   * 수백 줄이 조용히 사라지므로, 적용부가 이 목록으로 출력 생존을 검증한다.
+   */
+  private _lastSliceGroupGuard: { filePath: string; markers: string[] } | null = null;
   private readonly _libraryVersions: string;
 
   constructor(
@@ -67,6 +73,19 @@ export class ScaffoldContextBuilder {
    */
   lastScaffoldSources(): string[] {
     return this._lastScaffoldSources;
+  }
+
+  /**
+   * 가장 최근 buildSystemPrompt가 현재 파일 뷰에 삽입한 그룹 보존 표식 목록(D3 생존 검사용).
+   * 슬라이싱이 없었거나 그룹 표식이 안 생겼으면 null.
+   */
+  lastSliceGroupGuard(): { filePath: string; markers: string[] } | null {
+    return this._lastSliceGroupGuard;
+  }
+
+  /** D3 보존 표식 스태시 초기화 — 새 사용자 요청 시작 시 호출해 요청 간 누수를 막는다. */
+  clearSliceGroupGuard(): void {
+    this._lastSliceGroupGuard = null;
   }
 
   /**
@@ -392,6 +411,7 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
 
     let scaffoldSection = '';
     this._lastScaffoldSources = [];
+    this._lastSliceGroupGuard = null;
 
     if (ragDir) {
       const ragCtx = await this._engine.buildContext(
@@ -442,12 +462,23 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
       );
       fileContent = sliced.text;
       if (sliced.skippedCount > 0) {
+        const groupNotice =
+          sliced.groupedRanges.length > 0
+            ? `> - 연속 생략 구간은 \`// ... [보존 Ls~Le] ...\` 형식의 **그룹 표식 한 줄**로 뭉쳤습니다. 표식 뒤 이름 목록은 그 구간에 **이미 선언된 심볼**입니다 — 같은 이름을 다시 선언하지 마세요.\n`
+            : '';
         sliceNotice =
           `\n> ⚠️ 파일이 커서 쿼리와 무관한 ${sliced.skippedCount}개 선언은 \`// ... [kind name] 원본 NN줄 보존 (자리 표시자)\` 형식의 stub 라인으로 대체했습니다.\n` +
           `> - **stub 라인은 자리 표시자**입니다. 디스크에는 원본 코드가 그대로 있고, 응답에 stub을 그대로 포함하면 서버가 쓰기 직전에 원본으로 복원합니다.\n` +
+          groupNotice +
           `> - ⚠️ **stub에 적힌 이름(kpiCards, useFoo 등)을 새 코드에서 이미 선언된 변수·hook처럼 참조하지 마세요.** 사용자가 새 API/데이터 소스 추가를 요청했다면 별도의 \`const\` 선언과 \`import\`를 응답에 명시적으로 추가해야 합니다.\n` +
           `> - 모드 선택은 위의 "출력 모드 선택" 규칙을 따르세요(import 추가·여러 위치 변경이면 full). stub의 존재가 모드 선택을 바꾸지는 않습니다.\n` +
-          `> - full 모드로 응답할 때 stub 라인은 **한 글자도 바꾸지 말고 그대로** 포함하세요.\n`;
+          `> - full 모드로 응답할 때 stub 라인과 \`[보존 Ls~Le]\` 표식 라인은 **한 글자도 바꾸지 말고 각자 원래 위치에 그대로** 포함하세요(하나라도 빠지면 적용이 거부됩니다).\n`;
+        if (sliced.groupedRanges.length > 0) {
+          this._lastSliceGroupGuard = {
+            filePath: ctx.absoluteFilePath ?? ctx.filePath ?? '',
+            markers: sliced.groupedRanges.map((g) => g.marker),
+          };
+        }
       }
     }
 

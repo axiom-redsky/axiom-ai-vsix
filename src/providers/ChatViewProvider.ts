@@ -1377,6 +1377,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     this._history.push({ role: 'user', content: text });
     this._lastUserQuery = text;
+    // D3 보존 표식 스태시를 요청 단위로 초기화 — 직전 요청의 슬라이싱 표식이 이번 요청의
+    // 적용(특히 buildSystemPrompt를 안 타는 region 합성)에 새어 들어 오거부하는 것을 차단.
+    this._scaffoldBuilder.clearSliceGroupGuard();
 
     // 히스토리가 너무 길면 오래된 메시지 제거 (최신 20개 유지)
     if (this._history.length > 20) {
@@ -4147,6 +4150,55 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._corpusOutputChannel.appendLine(
             `[Axiom AI] multi-patch 적용 완료 (${action.filePath}, ${action.patches.length}개 블록)`,
           );
+        }
+
+        // 그룹 보존 표식 전수 생존 검사(D3) — 뷰에 넣어준 `[보존 Ls~Le]` 표식이 full 재생성 출력에서
+        // 하나라도 빠지면 그 구간(수백 줄)이 통째로 사라진 채 쓰인다. 개별 stub과 달리 폭발 반경이
+        // 커서 적용 자체를 거부한다. structural은 확장이 원본에 병합해 표식이 없는 게 정상 → 제외.
+        // region 합성 경로(precomputedDiff 존재)도 제외 — 원본 디스크 기반 합성이라 표식이 없는 게
+        // 정상인데, 직전 요청의 슬라이싱 스태시가 남아 있으면 오거부한다(2026-07-16 라이브 관찰 2호).
+        if (
+          action.mode !== 'patch' &&
+          action.mode !== 'lines' &&
+          action.mode !== 'structural' &&
+          !precomputedDiff &&
+          originalContent !== undefined &&
+          action.generatedCode
+        ) {
+          const guard = this._scaffoldBuilder.lastSliceGroupGuard();
+          if (guard && guard.markers.length > 0) {
+            const norm = (p: string): string => p.replace(/\\/g, '/').toLowerCase();
+            const guardPath = norm(guard.filePath);
+            const actionPath = norm(action.filePath);
+            const samePath =
+              guardPath.endsWith(actionPath) || actionPath.endsWith(guardPath);
+            if (samePath) {
+              const missing = guard.markers.filter((m) => !action.generatedCode!.includes(m));
+              if (missing.length > 0) {
+                this._corpusOutputChannel.appendLine(
+                  `[Axiom AI] ⛔ 보존 표식 생존 검사 실패 (${action.filePath}): ` +
+                    `${missing.length}/${guard.markers.length}개 누락 — ${missing.join(', ')} → 적용 거부`,
+                );
+                this._post({
+                  type: 'token',
+                  content:
+                    `\n\n> ⛔ **이 수정은 적용하지 않았습니다.** 파일이 커서 일부 구간을 보존 표식으로 접어 ` +
+                    `모델에 전달했는데, 응답에서 표식 ${missing.length}개(\`${missing.join('`, `')}\`)가 사라졌습니다. ` +
+                    `그대로 적용하면 해당 구간의 원본 코드가 통째로 유실됩니다. **수정할 부분만 지정**해 ` +
+                    `다시 요청하시면(예: 특정 함수·영역) 안전하게 반영합니다.\n`,
+                });
+                this._reportPatchFailure(action.filePath, [
+                  `[보존 표식 누락] ${missing.join(', ')} (${missing.length}/${guard.markers.length})`,
+                ]);
+                this._post({ type: 'fileCancelled' });
+                break;
+              }
+            } else {
+              this._corpusOutputChannel.appendLine(
+                `[Axiom AI] ℹ️ 보존 표식 가드 건너뜀 — 대상 파일 불일치 (guard=${guard.filePath}, action=${action.filePath})`,
+              );
+            }
+          }
         }
 
         // full 모드: 컨텍스트가 sliced되어 LLM이 stub 라인(`// ... (kind name 생략, NN줄)`)을

@@ -284,8 +284,20 @@ export function scoreCodeSections(
 /**
  * 글자 수 예산 안에서 점수 높은 섹션을 선택한다.
  * 점수가 동일하면 짧은 섹션을 우선해 다양성 확보.
- * 선택되지 않은 섹션은 한 줄짜리 stub `// ... ({kind} {name} 생략, NN줄)` 로 대체된다.
+ * 선택되지 않은 섹션은 한 줄짜리 stub `// ... [{kind} {name}] 원본 NN줄 보존 ...` 로 대체되며,
+ * 연속 제외 런(STUB_GROUP_MIN_RUN 이상)은 그룹 표식 한 줄로 뭉친다(D3 stub 홍수 대응).
  */
+export interface SliceGroupRange {
+  /** 그룹이 덮는 원본 시작 라인 (1-based, 첫 섹션 startLine) */
+  startLine: number;
+  /** 그룹이 덮는 원본 끝 라인 (1-based, 마지막 섹션 endLine) */
+  endLine: number;
+  /** 그룹에 뭉친 섹션 수 */
+  sectionCount: number;
+  /** 표식 프리픽스 `[보존 Ls~Le]` — 복원·생존 검사가 이 키로 매칭한다 */
+  marker: string;
+}
+
 export interface SliceResult {
   /** 라인 번호 순으로 재배열된 최종 문자열 */
   text: string;
@@ -295,7 +307,16 @@ export interface SliceResult {
   skippedCount: number;
   /** 결과 전체 글자 수 */
   totalChars: number;
+  /** 그룹 표식으로 뭉친 보존 구간들 (없으면 빈 배열) */
+  groupedRanges: SliceGroupRange[];
 }
+
+/**
+ * 이 길이 이상의 연속 제외 런만 그룹 표식으로 뭉친다.
+ * 짧은 런은 개별 stub이 더 정밀하고(이름이 표식 헤더에 그대로), 그룹 표식의 고정 문구
+ * 오버헤드 대비 절감도 미미하다.
+ */
+const STUB_GROUP_MIN_RUN = 3;
 
 export function sliceByBudget(sections: CodeSection[], maxChars: number): SliceResult {
   const sorted = [...sections].sort((a, b) => {
@@ -329,18 +350,64 @@ export function sliceByBudget(sections: CodeSection[], maxChars: number): SliceR
     .map((s, idx) => ({ section: s, idx }))
     .sort((a, b) => a.section.startLine - b.section.startLine);
 
+  // ── D3 stub 그룹핑 ──
+  // 제외 섹션이 수백 개면 개별 stub 줄만으로 주입의 대부분을 먹는다(2026-07-15 라이브 실측:
+  // stub 194줄 = 컨텍스트 58%). 연속 제외 런을 그룹 표식 한 줄(라인범위+심볼 목록)로 뭉치되,
+  //  - 포함 섹션과 **인접**한 제외 섹션은 개별 stub 유지(수정 지점 근처는 이름 정밀도 보존)
+  //  - 심볼 이름 목록을 실어 모델이 보존 구간의 선언을 몰라 재선언하는 사고(복원 후 중복 선언) 방지
+  //  - 복원·생존 검사는 프리픽스 `[보존 Ls~Le]`만 매칭 — 모델이 긴 이름 꼬리를 잘라도 복원 생존
+  const flags = ordered.map(({ idx }) => includedIds.has(idx));
+  const keepIndividual = ordered.map(
+    (_, i) =>
+      !flags[i] &&
+      ((i > 0 && flags[i - 1]) || (i + 1 < ordered.length && flags[i + 1])),
+  );
+
   const parts: string[] = [];
+  const groupedRanges: SliceGroupRange[] = [];
   let skipped = 0;
-  for (const { section, idx } of ordered) {
-    if (includedIds.has(idx)) {
-      parts.push(section.body);
-    } else {
-      const lineCount = section.endLine - section.startLine + 1;
-      parts.push(
-        `// ... [${section.kind} ${section.name}] 원본 ${lineCount}줄 보존 (자리 표시자: 이 이름을 변수처럼 참조 금지)`,
-      );
-      skipped++;
+  const pushIndividualStub = (section: CodeSection): void => {
+    const lineCount = section.endLine - section.startLine + 1;
+    parts.push(
+      `// ... [${section.kind} ${section.name}] 원본 ${lineCount}줄 보존 (자리 표시자: 이 이름을 변수처럼 참조 금지)`,
+    );
+    skipped++;
+  };
+
+  let i = 0;
+  while (i < ordered.length) {
+    if (flags[i]) {
+      parts.push(ordered[i].section.body);
+      i++;
+      continue;
     }
+    if (!keepIndividual[i]) {
+      let j = i;
+      while (j < ordered.length && !flags[j] && !keepIndividual[j]) j++;
+      if (j - i >= STUB_GROUP_MIN_RUN) {
+        const run = ordered.slice(i, j).map((o) => o.section);
+        const startLine = run[0].startLine;
+        const endLine = run[run.length - 1].endLine;
+        const kindCounts = new Map<string, number>();
+        for (const s of run) kindCounts.set(s.kind, (kindCounts.get(s.kind) ?? 0) + 1);
+        const kindSummary = [...kindCounts.entries()].map(([k, c]) => `${k} ${c}`).join('·');
+        const names = run.map((s) => s.name).join(', ');
+        const marker = `[보존 L${startLine}~L${endLine}]`;
+        parts.push(
+          `// ... ${marker} 원본 ${endLine - startLine + 1}줄(${kindSummary}) 보존 ` +
+            `(자리 표시자: 이 줄을 그대로 유지. 다음 이름은 이미 선언되어 있음 — 재선언·수정 금지): ${names}`,
+        );
+        groupedRanges.push({ startLine, endLine, sectionCount: run.length, marker });
+        skipped += run.length;
+        i = j;
+        continue;
+      }
+      for (let k = i; k < j; k++) pushIndividualStub(ordered[k].section);
+      i = j;
+      continue;
+    }
+    pushIndividualStub(ordered[i].section);
+    i++;
   }
 
   const text = parts.join('\n\n');
@@ -349,6 +416,7 @@ export function sliceByBudget(sections: CodeSection[], maxChars: number): SliceR
     includedCount: includedIds.size,
     skippedCount: skipped,
     totalChars: text.length,
+    groupedRanges,
   };
 }
 
@@ -370,7 +438,7 @@ export function extractRelevantTsSlice(
   if (sections.length === 0) {
     // 분할 실패: 원본을 예산까지 자른다
     const text = source.length <= maxChars ? source : source.slice(0, maxChars) + '\n// ... (이하 생략)';
-    return { text, includedCount: 0, skippedCount: 0, totalChars: text.length };
+    return { text, includedCount: 0, skippedCount: 0, totalChars: text.length, groupedRanges: [] };
   }
   scoreCodeSections(sections, queryTokens, selection);
   return sliceByBudget(sections, maxChars);
@@ -419,39 +487,67 @@ export interface RestoreStubsResult {
  *
  * 하위 호환: 구 포맷 `// ... (kind name 생략, NN줄)` 도 함께 인식한다 — 진행 중인 세션이나
  * 캐시된 응답이 구 포맷을 포함할 수 있어, 한 차례 릴리스 사이클 동안 양쪽 모두 수용한다.
+ *
+ * 그룹 표식 `// ... [보존 Ls~Le] ...`(D3)은 원본의 해당 라인 범위를 통째로 복원한다.
+ * 프리픽스 `[보존 Ls~Le]`만 매칭하므로 모델이 표식 뒤의 심볼 목록을 잘라먹어도 복원된다.
  */
 export function restoreSlicedStubs(generated: string, original: string): RestoreStubsResult {
   // 신 포맷: `// ... [kind name] ...` — 대괄호 안 (kind, name)만 정확히 잡고 나머지는 관대하게.
   // 구 포맷: `// ... (kind name 생략, NN줄)` — 하위 호환용.
   const stubRegex =
     /^[ \t]*\/\/\s*\.\.\.\s*(?:\[\s*([a-zA-Z]+)\s+([\w$]+)\s*\]|\(\s*([a-zA-Z]+)\s+([\w$]+)\s*생략[\s,]*\d+\s*줄\s*\))[^\n]*$/gm;
+  // 그룹 표식: `// ... [보존 Ls~Le] ...` — 모델이 `{/* ... */}`로 변형한 것도 수용.
+  const groupRegex =
+    /^[ \t]*(?:\/\/|\{\/\*)\s*\.\.\.\s*\[\s*보존\s+L(\d+)\s*~\s*L(\d+)\s*\][^\n]*$/gm;
 
-  if (!stubRegex.test(generated)) {
+  const hasStub = stubRegex.test(generated);
+  const hasGroup = groupRegex.test(generated);
+  if (!hasStub && !hasGroup) {
     return { text: generated, restoredCount: 0, unmatched: [] };
   }
   stubRegex.lastIndex = 0;
-
-  const originalSections = splitTsSections(original);
-  const byKey = new Map<string, CodeSection>();
-  for (const s of originalSections) byKey.set(`${s.kind}:${s.name}`, s);
+  groupRegex.lastIndex = 0;
 
   let restoredCount = 0;
   const unmatched: string[] = [];
+  let text = generated;
 
-  const text = generated.replace(
-    stubRegex,
-    (full, newKind?: string, newName?: string, oldKind?: string, oldName?: string) => {
-      const kind = newKind ?? oldKind ?? '';
-      const name = newName ?? oldName ?? '';
-      const section = byKey.get(`${kind}:${name}`);
-      if (section) {
+  // 1) 그룹 표식 → 원본 라인 범위 통째 복원 (섹션 매칭 불필요·경계만 검증)
+  if (hasGroup) {
+    const originalLines = original.replace(/\r\n/g, '\n').split('\n');
+    text = text.replace(groupRegex, (full, sStr: string, eStr: string) => {
+      const s = Number(sStr);
+      const e = Number(eStr);
+      if (s >= 1 && e >= s && e <= originalLines.length) {
         restoredCount++;
-        return section.body;
+        return originalLines.slice(s - 1, e).join('\n');
       }
-      unmatched.push(`${kind} ${name}`);
+      unmatched.push(`보존 L${s}~L${e}`);
       return full;
-    },
-  );
+    });
+  }
+
+  // 2) 개별 stub → (kind, name) 섹션 복원 (종전 동작)
+  if (hasStub) {
+    const originalSections = splitTsSections(original);
+    const byKey = new Map<string, CodeSection>();
+    for (const s of originalSections) byKey.set(`${s.kind}:${s.name}`, s);
+
+    text = text.replace(
+      stubRegex,
+      (full, newKind?: string, newName?: string, oldKind?: string, oldName?: string) => {
+        const kind = newKind ?? oldKind ?? '';
+        const name = newName ?? oldName ?? '';
+        const section = byKey.get(`${kind}:${name}`);
+        if (section) {
+          restoredCount++;
+          return section.body;
+        }
+        unmatched.push(`${kind} ${name}`);
+        return full;
+      },
+    );
+  }
 
   return { text, restoredCount, unmatched };
 }
