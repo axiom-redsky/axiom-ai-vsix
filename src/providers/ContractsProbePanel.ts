@@ -192,10 +192,14 @@ export class ContractsProbePanel {
     const detected = detectComponentsInRegion(propsSource);
     const propsText = buildComponentPropsSectionForRegion(propsSource);
     // 인덱스에 없는 PascalCase 태그 — 인덱스 공백(재생성/TARGET_FILES 후보) 신호(표시용 스캔).
+    // JSX 태그는 식별자 문자 바로 뒤에 올 수 없다 — `useApi<TDeptResponse>` 같은 제네릭 인자를
+    // 태그로 오인해 신호 채널이 타입 이름으로 도배되던 오탐을 앞글자 검사로 차단(리로드 실측 관찰).
     const unknownTags: string[] = [];
     const tagRe = /<([A-Z][A-Za-z0-9]*)/g;
     let m: RegExpExecArray | null;
     while ((m = tagRe.exec(propsSource)) !== null) {
+      const prev = m.index > 0 ? propsSource[m.index - 1] : '';
+      if (/[A-Za-z0-9_$]/.test(prev)) continue;
       if (!detected.includes(m[1]) && !unknownTags.includes(m[1])) unknownTags.push(m[1]);
     }
 
