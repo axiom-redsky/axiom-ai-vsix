@@ -4,7 +4,7 @@
 > 작업을 이어받는 세션(사람 또는 AI)은 이 문서를 먼저 읽을 것.
 > 폴더 재편(선행 트랙, 완료)은 [src-ai-restructure-progress.md](src-ai-restructure-progress.md) 참고.
 >
-> 최종 갱신: 2026-07-15 (저녁)
+> 최종 갱신: 2026-07-16 (D3 설계 논의 반영 — 스켈레톤 방향 보강 + 신규 개선 후보 2건 기록)
 >
 > **▶ 재개 지점: ② decompose **D3 stub 홍수** 착수 대기 — 2026-07-15 작업분은 전부 커밋 완료
 > (4e81eab D1/D2+교체채널 · 57026a6 anchor-first 재시도+프로브). 실기기 사용자 검증까지 완주
@@ -267,6 +267,15 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
     갱신 필요, 절감 ~50%) / (b) 연속 stub 그룹핑+라인범위 복원(`// ... [L7~775 선언 152개 생략]` —
     절감 ~95%, 복원을 라인범위 기반으로 확장+역판정 로직 수정 필요) / (c) a+b 조합(유점수 인접은
     개별, 먼 덩어리는 그룹). **FileCreatorService 계약부터 열어보고 a로 갈지 b까지 갈지 결정**.
+  - **+2026-07-16 설계 논의(b′ = 스켈레톤 보강, 유력)**: 업계 표준 조사(Aider repo-map ·
+    tree-sitter AST 스켈레톤 계열, 90~98% 절감 보고) 결과 — (b)의 약점인 **이름 정보 소실
+    (모델이 보존 구간 심볼을 몰라 재선언→복원 후 중복 선언)**을 뭉친 라인범위에 **압축 심볼
+    목록**을 얹어 동시 해결: `// [보존 L5~L520] 타입 63종·상수 64종: TDeptRow, DEPT_ENDPOINT, …
+    (수정·재선언 금지)`. 절감 ~95% + 이름 정보 유지. 추가 합의: 수정 지점 **인접**(유점수 근처)
+    심볼은 이름 stub 개별 유지(c 조합), 표식은 반드시 **빈자리 제자리에**(한 곳에 몰아쓰기 금지 —
+    복원 위치는 출력물 속 표식 위치로 결정), **표식 전수 생존 검사 가드**(하나라도 누락 시 적용
+    거부 — 뭉친 표식은 폭발 반경이 커서 필수). 결정 절차는 종전대로 ① FileCreatorService·
+    restoreSlicedStubs 복원 계약 확인 후 확정.
   - **착수 순서**: ① 베이스라인(probe-decompose-bigfile로 stub 바이트 수치 기록) → ② 설계 결정·구현
     → ③ 복원 계약 테스트 green(test:patch-grounded의 resolveStubSection 케이스 + test:code-slice +
     region-edit 237) → ④ 실 sLLM 라이브 게이트(probe-region-live, 운영 플래그 복제 스위치로
@@ -286,6 +295,12 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   구현 완료(53cfc82)·green, full/참조 경로 결함은 D1·D2로 수정**. 남은 것 = **D3 stub 홍수(신규 #1,
   설계 필요)** · 레버2(모호쿼리 — eval:bigfile ②에서 64후보 되물음 실측됨, locate/pipeline과 걸침) ·
   레버3(섹션라우팅 복합어 토큰화 top-bias) · D4(거대 함수 하위 분할, 후순위).
+- **신규 후보(2026-07-16, 중기): 의미론 연관성 — tsserver/LSP** — 섹션 스코어링(토큰 문자열
+  매칭)을 컴파일러의 정의·참조 그래프로 교체. D1류 오탐("api" 토큰이 64개 `'/api/…'` 상수에
+  동점)의 뿌리 제거 — 글자가 같아도 참조 관계 없으면 무관 판정. VSCode `executeDefinitionProvider`/
+  `executeReferenceProvider`(언어 중립 명령, JS도 동일 엔진) 또는 독립 tsserver 프로세스.
+  ⚠ 설계 원칙: **코어에는 인터페이스 뒤로**(SemanticIndex 류) — 편집기 중립(IntelliJ=PSI,
+  헤드리스=독립 tsserver) 유지. ③locate 스코어링과 걸침(③ 카드에도 기록). D3 뒤 순서대로.
 - **참고**: 메모리 project_bigfile_eval_harness, project_endpoint_disambiguation_gap(레버 B 미구현)
 
 ### ③ locate/ — 위치찾기 ⬜
@@ -295,6 +310,8 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   region disambiguation 모델 객관식 — **라이브 1건 성공(2026-07-15, qwen3-coder-64k × 합성
   10k파일): "직원관리의 상태 select" → 후보 6개 중 모델이 "1"(직원관리 1843~1860) 정확 선택**.
   (그 후 region no-op→full 폴백은 "정적 배열→api" 기지 한계로 정당 — disambiguation 자체는 ✓)
+  · **의미론 연관성(tsserver/LSP, 2026-07-16 신규)** — locate 스코어링(흔한 토큰 오탐 → text-anchor
+  override 같은 두더지)에도 정의·참조 그래프 적용. 상세는 ② 카드 신규 후보 항목(공용 설계).
 - **참고**: 메모리 project_verify_correct_loop_stage0, project_region_disambiguation,
   project_locate_text_anchor
 
@@ -348,6 +365,13 @@ Axiom 방식으로 이식한다 — **뒤지는 건 확장(결정론), 고르는
   `test:region-edit`(237) · eval:e2e 게이트 통계 · **probe-region-live(실모델 단건)**
 - **개선 후보**: grounded patch retry 1C(결정론 rename, 미구현), 검증-교정 루프(experimental.regionVerify)
   실모델 검증, full 폴백 파괴적 누락 가드 실모델 검증
+- **신규 후보(2026-07-16, 저비용 실험): 제약 디코딩(constrained decoding)** — 출력 형식을 토큰
+  생성 레벨에서 강제해 퇴화 응답(anchor-first 474자류)·형식 붕괴를 구조적으로 차단.
+  Ollama=`format`(JSON 스키마만) / vLLM=guided_json·regex·**grammar(EBNF)** — vLLM이면 `<replace>`
+  블록 구조 자체를 문법으로 강제 가능(코드의 JSON 이스케이프 문제 우회). ⚠ 구현은 LlmService
+  요청 옵션 층에 **엔진 중립**으로(현 토폴로지 LiteLLM→Ollama, 전환 시 그대로 승계). ⚠ 주의:
+  constraint tax(제약이 약한 모델 내용 품질 저하 보고) + 중도 절단은 여전히 가능 —
+  **채택 판단은 probe-region-live 실측 게이트로만**(원칙 §2-4).
 - **참고**: 메모리 project_grounded_patch_retry, project_verify_correct_loop_stage0,
   project_full_fallback_contract_loss
 
