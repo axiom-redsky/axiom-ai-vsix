@@ -859,6 +859,47 @@ console.log('\n앵커 품질 스코어링(B):');
   check('파싱: 범위밖 → null', parseDisambiguationPick('9', cands) === null, '');
 }
 {
+  // disambiguation 확정 무시(관찰 2호, BigFile 라이브 실측) — 모델이 휴리스틱 채택과 **같은** 영역을
+  // 골랐을 때(pick=후보1=확정), ambiguous 게이트가 그대로 남아 되묻기로 새던 버그. 확정도
+  // forcedRegion 재실행으로 게이트를 우회해 완주해야 한다. 모델 "0"(불확실)은 종전대로 되묻기 유지.
+  const sect = (name: string, st: string): string[] => [
+    '      <section>',
+    `        <CardTitle>${name}</CardTitle>`,
+    `        <Input value={${st}} onChange={(e) => set${st.toUpperCase()}(e.target.value)} />`,
+    '      </section>',
+  ];
+  const pad = Array.from({ length: 280 }, () => '      <div className="pad" />');
+  const AMBIG_SRC = [
+    'export default function P(): React.ReactNode {',
+    '  return (',
+    '    <div>',
+    ...sect('부서관리', 'a'), ...pad,
+    ...sect('직원관리', 'b'), ...pad,
+    ...sect('급여관리', 'c'), ...pad,
+    ...sect('교육관리', 'd'), ...pad,
+    ...sect('자격증관리', 'e'), ...pad,
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const q = '급여관리의 입력칸을 읽기 전용으로 만들어줘';
+  // 전제 확인: 휴리스틱은 급여관리 섹션을 채택하되(콘텐츠 앵커), diffuse <Input>로 ambiguous 게이트.
+  const pre = locateEditRegion(AMBIG_SRC, q);
+  check('전제: ambiguous + 후보1=급여관리(휴리스틱 채택)', !pre.safety.ok && pre.safety.gate === 'ambiguous' && /급여관리/.test(pre.region), `gate=${pre.safety.gate}, region=${pre.startLine}~${pre.endLine}`);
+  const model = [
+    '<region>',
+    '      <section>',
+    '        <CardTitle>급여관리</CardTitle>',
+    '        <Input value={c} onChange={(e) => setC(e.target.value)} readOnly />',
+    '      </section>',
+    '</region>',
+  ].join('\n');
+  const oPick = await runHybridRegionEdit(AMBIG_SRC, q, async () => model, undefined, async (_q, cands) => cands[0]);
+  check('모델이 같은 영역 확정 pick → 게이트 우회·완주(applied)', oPick.status === 'applied' && !!oPick.finalText && /readOnly/.test(oPick.finalText), `status=${oPick.status}, reason=${oPick.reason}`);
+  const oNull = await runHybridRegionEdit(AMBIG_SRC, q, async () => model, undefined, async () => null);
+  check('모델 불확실(null) → 종전대로 ambiguous 되묻기 유지', oNull.status === 'fallback' && oNull.reason === 'ambiguous', `status=${oNull.status}, reason=${oNull.reason}`);
+}
+{
   // 주석 속 단어는 앵커 아님(우연일치 배제) → 폴백.
   const COMMENT = [
     'export default function P(): React.ReactNode {',
@@ -868,6 +909,34 @@ console.log('\n앵커 품질 스코어링(B):');
   ].join('\n');
   const r = locateEditRegion(COMMENT, '보너스 항목을 손봐줘');
   check('주석 속 단어는 콘텐츠 앵커 아님 → 폴백', !r.safety.ok, `gate=${r.safety.gate}`);
+}
+{
+  // 화살표 핸들러 identifier는 콘텐츠 앵커 아님(attr-readonly 실측 버그) — `=>`의 '>'가 JSX 텍스트
+  // 판정을 오염시켜, 브리지 토큰 'input'이 `() => setNewSkillInput(…)`에서 가짜 앵커로 승격되고
+  // 진짜 유일 앵커(이메일 label)와 흩어져 ②.7 구제가 깨지던 케이스. 수정 후엔 라벨 영역으로 ok.
+  const ARROW = [
+    'export default function P(): React.ReactNode {',
+    "  const [email, setEmail] = useState('');",
+    "  const [newSkillInput, setNewSkillInput] = useState('');",
+    '  return (',
+    '    <div>',
+    '      <div className="mb-4">',
+    '        <label>이메일 *</label>',
+    '        <Input type="email" value={email} />',
+    '      </div>',
+    '      <section>',
+    "        <button onClick={() => setNewSkillInput('')}>초기화</button>",
+    '      </section>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const r = locateEditRegion(ARROW, '이메일 입력칸을 읽기 전용으로 만들어줘');
+  check(
+    '화살표 핸들러 identifier는 콘텐츠 앵커 아님 → 유일 라벨(이메일)로 ok',
+    r.safety.ok && /이메일/.test(r.region) && !/setNewSkillInput/.test(r.region),
+    `gate=${r.safety.gate}, region=${r.startLine}~${r.endLine}`,
+  );
 }
 
 // ─── 섹션-주석 랜드마킹(E) — 사람이 단 {/* 섹션 */} 주석을 랜드마크로 ──────────────────

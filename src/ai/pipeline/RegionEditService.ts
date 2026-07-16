@@ -482,12 +482,15 @@ export async function runHybridRegionEdit(
 
   // 0) 영역 객관식 disambiguation — 결정론 휴리스틱은 우선순위를 보편적으로 알 수 없다(예: '입사일' vs
   //    흔한 'input'). 후보가 2개 이상이면 모델에게 의미로 고르게 하고, 고른 영역으로 재타겟한다.
-  //    모델이 불확실(null)이거나 같은 영역을 고르면 휴리스틱 결과를 그대로 둔다. disambiguate 미주입
+  //    모델이 불확실(null)이면 휴리스틱 결과를 그대로 둔다(되묻기 정당). disambiguate 미주입
   //    (eval 하니스 등)이면 종전과 100% 동일.
+  //    ⚠ 모델이 휴리스틱 채택과 **같은** 영역을 골랐어도 게이트가 막힌 상태(ambiguous 등)면 그건
+  //    "확정"이므로 forcedRegion 재실행으로 게이트를 우회해야 한다 — 같다고 생략하면 모델의 정답
+  //    pick이 버려지고 되묻기로 새던 실측 버그(관찰 2호: "급여관리의 …" pick "1" 후에도 되물음).
   if (disambiguate && loc.candidates.length >= 2) {
     try {
       const pick = await disambiguate(query, loc.candidates);
-      if (pick && (pick.startLine !== loc.startLine || pick.endLine !== loc.endLine)) {
+      if (pick && (!loc.safety.ok || pick.startLine !== loc.startLine || pick.endLine !== loc.endLine)) {
         loc = locateEditRegion(source, query, pick);
       }
     } catch {

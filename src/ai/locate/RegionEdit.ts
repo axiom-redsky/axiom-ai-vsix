@@ -362,8 +362,12 @@ function isContentAnchor(lineLower: string, token: string): boolean {
   const before = lineLower.slice(0, i);
   const inDquote = (before.split('"').length - 1) % 2 === 1;
   const inSquote = (before.split("'").length - 1) % 2 === 1;
-  // JSX 텍스트 영역: 토큰 직전에 닫힌 '>'가 열린 '<'보다 뒤 (= 태그 바깥의 텍스트 노드)
-  const inJsxText = before.lastIndexOf('>') > before.lastIndexOf('<');
+  // JSX 텍스트 영역: 토큰 직전에 닫힌 '>'가 열린 '<'보다 뒤 (= 태그 바깥의 텍스트 노드).
+  // 화살표 함수의 '=>'는 태그 닫힘이 아니므로 제외 — `onChange={(e) => setNewSkillInput(…)}`의
+  // identifier 속 'input'이 가짜 콘텐츠 앵커로 승격돼 진짜 앵커(유일 label 텍스트)와 흩어지고,
+  // ②.7 수렴이 깨져 anchor-import 폴백되던 실측 버그(attr-readonly).
+  const noArrow = before.replace(/=>/g, '  ');
+  const inJsxText = noArrow.lastIndexOf('>') > noArrow.lastIndexOf('<');
   return inDquote || inSquote || inJsxText;
 }
 
