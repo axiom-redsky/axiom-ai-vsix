@@ -16,7 +16,7 @@
   <circle cx="62" cy="58" r="26" fill="#1F3864"/>
   <text x="62" y="67" text-anchor="middle" font-size="22" font-weight="bold" fill="#FFFFFF">②</text>
   <text x="106" y="54" font-size="26" font-weight="bold" fill="#1F3864">decompose — 분해 로직 흐름 (원본·프롬프트 → sLLM 재료)</text>
-  <text x="106" y="84" font-size="14" fill="#595959">두 갈래: 1) 쿼리 분해(토큰화·경로·컨트롤) · 2) 코드·배경 분해(선언 분할→점수→예산) · 전부 결정론(모델 무관) · 2026-07-15 기준</text>
+  <text x="106" y="84" font-size="14" fill="#595959">두 갈래: 1) 쿼리 분해(토큰화·경로·컨트롤) · 2) 코드·배경 분해(선언 분할→점수→예산) · 전부 결정론(모델 무관) · 2026-07-16 기준 (D1·D2·D3 반영)</text>
   <line x1="50" y1="104" x2="1390" y2="104" stroke="#D9E2F3" stroke-width="2"/>
 
   <!-- ═══ 💬 쉬운 한 마디 (먼저 읽는 띠) ═══ -->
@@ -84,17 +84,17 @@
 
   <rect x="526" y="524" width="260" height="88" rx="8" fill="#FFFFFF" stroke="#2E5395" stroke-width="1.5"/>
   <text x="540" y="546" font-size="12.5" font-weight="bold" fill="#1F3864">② scoreCodeSections — 점수매기기</text>
-  <text x="540" y="564" font-size="10.5" fill="#333333">이름 딱맞음 +5 · 본문에 낱말 +1</text>
-  <text x="540" y="580" font-size="10.5" fill="#333333">import +2 · 선택한 줄 +4</text>
-  <text x="540" y="600" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "이 토막이 얼마나 관련있나" 채점</text>
+  <text x="540" y="564" font-size="10.5" fill="#333333">이름 딱맞음 +5 · 본문에 낱말 +1 · import +2 · 선택 줄 +4</text>
+  <text x="540" y="580" font-size="10.5" fill="#333333">D1 가드: 흔한 낱말(섹션 20%+ 매칭)은 본문 가점 제외</text>
+  <text x="540" y="600" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 '/api/…' 64곳에 걸리는 'api' 같은 낱말은 무시</text>
 
   <path d="M 640 612 L 640 626 L 400 626 L 400 638" fill="none" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
 
   <rect x="258" y="640" width="528" height="96" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
   <text x="272" y="662" font-size="12.5" font-weight="bold" fill="#1B5E20">③ sliceByBudget — 책상 크기 안에서 고르기</text>
-  <text x="272" y="680" font-size="10.5" fill="#333333">"책상은 4000자까지" 정하고, 점수 높은 토막부터 채운다.</text>
-  <text x="272" y="698" font-size="10.5" fill="#333333">못 든 토막은 버리지 않고 포스트잇으로: <tspan font-family="monospace" fill="#1B5E20">// ... [function 큰함수] 원본 232줄 보존</tspan></text>
-  <text x="272" y="720" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 "지금 볼 페이지만 찢어주고, 나머진 포스트잇" (조수가 stub 그대로 뱉으면 저장 직전 원문 복원)</text>
+  <text x="272" y="680" font-size="10.5" fill="#333333">점수 높은 토막부터 예산(4000자)까지. D2: 낱말 신호 있으면 0점 토막으로 잔여 예산 안 채움.</text>
+  <text x="272" y="698" font-size="10.5" fill="#333333">D3: 연속 제외 3개+는 그룹 표식 한 줄 <tspan font-family="monospace" fill="#1B5E20">// ... [보존 Ls~Le] …: 심볼목록</tspan> · 인접은 개별 포스트잇 (stub 73%↓)</text>
+  <text x="272" y="720" font-size="10.5" font-weight="bold" fill="#9C6A00">💬 stub·표식이 그대로 오면 저장 직전 원문 복원 · full 응답에 표식 하나라도 없으면 적용 거부(생존 가드)</text>
 
   <rect x="258" y="744" width="528" height="42" rx="8" fill="#FDF6E9" stroke="#C0A000" stroke-width="1.5"/>
   <text x="272" y="762" font-size="10.5" fill="#7A6A00">지식 문서(md)도 같은 방식: splitIntoSections → scoreSections(헤더 +3) → selectByBudget · focusKnowledgeBody</text>
@@ -108,7 +108,7 @@
   <text x="866" y="316" font-size="11.5" font-weight="bold" fill="#9C6A00">💬 조수한테 넘길, 손질 끝난 재료 꾸러미</text>
   <text x="866" y="344" font-size="11.5" fill="#333333">· 낱말들(queryTokens)</text>
   <text x="866" y="366" font-size="11.5" fill="#333333">· 정확 주소 / 부품 태그</text>
-  <text x="866" y="388" font-size="11.5" fill="#333333">· 오려낸 코드 조각(+포스트잇)</text>
+  <text x="866" y="388" font-size="11.5" fill="#333333">· 오려낸 코드 조각(+포스트잇·그룹 표식)</text>
   <text x="866" y="410" font-size="11.5" fill="#333333">· 배경 선언(depsHeader)*</text>
   <text x="866" y="432" font-size="11.5" fill="#333333">· 뽑아낸 지식 챕터</text>
   <text x="866" y="460" font-size="10.5" fill="#8C8C8C">* depsHeader·backing은 ③locate가</text>
@@ -138,9 +138,9 @@
   <text x="866" y="676" font-size="11" fill="#333333">keepRatio = 안 쓰는 타입 덩어리를 얼마나 걸러냈나</text>
   <text x="866" y="694" font-size="10.5" fill="#595959">경보: region-mistarget · control-invisible · edit-locus-readonly · anchor-unsafe</text>
   <text x="866" y="716" font-size="10.5" fill="#C55A11">⚠ locate를 호출 — 이 검사는 ②분해+③locate에 걸쳐 있음</text>
-  <text x="866" y="740" font-size="11" font-weight="bold" fill="#1B5E20">★ 큰 파일 1번 문제 = deps 폭주:</text>
-  <text x="866" y="758" font-size="10.5" fill="#333333">   상관없는 type 덩어리가 책상을 다 차지 → 정작 필요한 함수가 밀려남</text>
-  <text x="866" y="776" font-size="10.5" fill="#8C6A00">   개선 1순위 = "deps 가지치기"(안 쓰는 타입은 애초에 안 넣기)</text>
+  <text x="866" y="740" font-size="11" font-weight="bold" fill="#1B5E20">★ 큰 파일 결함 3종 수정 완료(2026-07-15~16, 실 sLLM 라이브 PASS):</text>
+  <text x="866" y="758" font-size="10.5" fill="#333333">   D1 흔한 토큰 오탐 · D2 0점 필러 · D3 stub 홍수(그룹 표식, 주입 73%↓)</text>
+  <text x="866" y="776" font-size="10.5" fill="#8C6A00">   deps 가지치기는 region 경로에 기구현(53cfc82) — 종전 "레버1" 표기는 정정</text>
 
   <!-- ═══ 계기판(테스트 페이지) ═══ -->
   <rect x="40" y="810" width="1360" height="216" rx="12" fill="#FFFFFF" stroke="#8C8C8C" stroke-width="1.5" stroke-dasharray="6 4"/>
@@ -150,8 +150,8 @@
   <text x="58" y="898" font-size="11" fill="#333333">③ 참조 파일 슬라이싱(Q3): 코드=관련 섹션(앞잘림 아님) · md=선택 섹션 · <tspan font-weight="bold" fill="#2E7D32">"앞잘림이었으면 잃었을 조각" 수를 초록으로 표시</tspan></text>
   <text x="58" y="918" font-size="11" fill="#333333">★ 다이어트 &gt;90% + 조각 많음 → <tspan font-weight="bold" fill="#C55A11">"deps 폭주" 빨간 경고 자동 표시</tspan> (코드 몰라도 개선 지점이 눈에 보이게)</text>
   <text x="58" y="940" font-size="11" fill="#2E7D32">★ intent 페이지와 달리 실제 함수를 그대로 호출 — 화면 결과 = 진짜 운영 산출물 (베낀 게 아니라 동기화 어긋날 일 없음)</text>
-  <text x="58" y="966" font-size="10.5" fill="#595959">합성 계기판: eval:input(입력 품질) · eval:bigfile(큰 파일 deps 폭주 정량) · test:region-edit(간접)</text>
-  <text x="58" y="988" font-size="10.5" fill="#8C8C8C">개선 후보: 레버1=deps 가지치기(최우선) · 레버2=모호 쿼리 · 레버3=섹션 라우팅 복합어 top-bias · (Q3 참조 .ts 앞잘림→관련 슬라이스 = 완료)</text>
+  <text x="58" y="966" font-size="10.5" fill="#595959">합성 계기판: eval:input · eval:bigfile(region 경로) · test:code-slice(26 — full/참조 슬라이서 전용) · test:region-edit(간접) · probe-decompose-bigfile / probe-sliced-output(실모델 CLI)</text>
+  <text x="58" y="988" font-size="10.5" fill="#8C8C8C">완료: Q3 참조 슬라이스 · D1·D2·D3 — 남은 후보(후순위): 레버2=모호 쿼리 · 레버3=섹션 라우팅 top-bias · D4=거대 함수 하위 분할 · 무신호 폴백 예산 캡 · 의미론 연관성(tsserver/LSP)</text>
 
   <line x1="400" y1="810" x2="400" y2="792" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
   <line x1="1000" y1="810" x2="1000" y2="790" fill="none" stroke="#8C8C8C" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arDash)"/>
