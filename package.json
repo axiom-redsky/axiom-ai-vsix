@@ -275,6 +275,11 @@
           "default": false,
           "description": "포집 시 성공(applied) 케이스도 남길지 여부. 기본 꺼짐(실패=폴백/에러만 포집). 켜면 '적용됐지만 실은 틀림' 후분석·전체 분포 확보용으로 성공 케이스도 함께 기록합니다. captureRegionCases가 켜져 있을 때만 적용."
         },
+        "axiom-ai.experimental.captureRegionDir": {
+          "type": "string",
+          "default": "",
+          "description": "포집 JSONL(region-captures.jsonl) 저장 디렉터리. 비우면 워크스페이스의 .axiom/captures/ 에 저장하고(폐쇄망에서 개발자가 접근·반출하기 쉬우며 코드와 같은 반출 심사를 그대로 탑니다), 워크스페이스가 없으면 확장 globalStorage로 폴백합니다. 절대 경로를 지정하면 그 폴더에 저장하고(예: 접근 가능한 공유 드라이브), 상대 경로는 워크스페이스 루트 기준으로 해석합니다. VDI·로밍 프로필로 globalStorage(APPDATA)에 접근이 어렵거나 로그아웃 시 초기화되는 폐쇄망 SI 환경에서 접근 가능한 위치로 돌리기 위한 설정입니다. 저장 폴더 접근 실패 시 편집은 막지 않고 Output 채널 'Axiom AI'에 경고를 남깁니다. captureRegionCases가 켜져 있을 때만 적용."
+        },
         "axiom-ai.scenarioC.compactModes": {
           "type": "boolean",
           "default": true,

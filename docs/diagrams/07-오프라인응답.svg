@@ -1,105 +1,203 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" font-family="Malgun Gothic, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 966" font-family="Malgun Gothic, sans-serif">
   <defs>
     <marker id="ar" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
       <path d="M0,0 L8,4 L0,8 Z" fill="#8FAADC"/>
     </marker>
+    <marker id="arN" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1F3864"/>
+    </marker>
+    <marker id="arO" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#C55A11"/>
+    </marker>
+    <marker id="arG" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2E7D32"/>
+    </marker>
+    <filter id="aiGlow" x="-45%" y="-45%" width="190%" height="190%">
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#ED7D31" flood-opacity="0.9"/>
+    </filter>
   </defs>
-  <rect width="1440" height="810" fill="#FFFFFF"/>
+  <rect width="1480" height="966" fill="#FFFFFF"/>
 
-  <!-- 헤더 -->
-  <circle cx="62" cy="58" r="26" fill="#1F3864"/>
-  <text x="62" y="67" text-anchor="middle" font-size="26" font-weight="bold" fill="#FFFFFF">7</text>
-  <text x="106" y="54" font-size="28" font-weight="bold" fill="#1F3864">오프라인 응답 — 모델이 꺼져 있어도 어시스턴트는 동작한다</text>
-  <text x="106" y="86" font-size="15" fill="#595959">청구항 후보 E: sLLM 미연결을 장애가 아니라 정상 동작 모드로 전환 + 실패 사례는 로컬에만 포집 (네트워크 0)</text>
+  <!-- ═══ 제목 ═══ -->
+  <text x="30" y="44" font-size="24" font-weight="bold" fill="#1F3864">오프라인 응답 — 서버가 꺼져 있어도 어시스턴트는 동작한다</text>
+  <text x="1450" y="44" text-anchor="end" font-size="12" fill="#595959">세로줄 하나 = 처리 단계 하나 · 이 경로 전체에서 큰 AI(sLLM) 호출 0회</text>
 
-  <!-- 관계 배지 -->
-  <rect x="1040" y="26" width="350" height="60" rx="8" fill="#FFF9EC" stroke="#C55A11" stroke-width="1.5"/>
-  <text x="1215" y="51" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">🔗 01의 확대가 아닌 병렬 경로 —</text>
-  <text x="1215" y="73" text-anchor="middle" font-size="13" font-weight="bold" fill="#C55A11">서버가 죽으면 이 모드로 갈아탄다</text>
+  <!-- ═══ 외곽 프레임 + 레인 배경 ═══ -->
+  <rect x="30" y="64" width="1420" height="540" fill="#FFFFFF" stroke="#7F7F7F" stroke-width="1.5"/>
+  <rect x="30"   y="118" width="190" height="486" fill="#FAFAFA"/>
+  <rect x="1130" y="118" width="320" height="486" fill="#F3FBF4"/>
 
-  <line x1="50" y1="116" x2="1390" y2="116" stroke="#D9E2F3" stroke-width="2"/>
+  <!-- ═══ 레인 헤더 ═══ -->
+  <rect x="30"   y="64" width="190" height="54" fill="#595959"/>
+  <text x="125"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">👤 사용자</text>
+  <text x="125"  y="108" text-anchor="middle" font-size="10.5" fill="#D9D9D9">질문하고 답 확인</text>
 
-  <!-- STEP 1: 헬스체크 -->
-  <rect x="50" y="150" width="310" height="210" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
-  <rect x="272" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
-  <text x="311" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
-  <text x="72" y="198" font-size="16" font-weight="bold" fill="#1F3864">① 사전 헬스체크</text>
-  <text x="72" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/providers/ChatViewProvider.ts</text>
-  <text x="72" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">checkHealth() + _healthCache L163</text>
-  <text x="72" y="278" font-size="12.5" fill="#595959">LLM 서버 가용성을 사전 판정</text>
-  <text x="72" y="300" font-size="12.5" fill="#595959">(10초 캐시) — 미가용이면 모델</text>
-  <text x="72" y="322" font-size="12.5" fill="#595959">경로 전체를 선차단</text>
-  <text x="72" y="346" font-size="12" font-weight="bold" fill="#2E5395">→ 무의미한 재시도 데드엔드 제거</text>
-  <line x1="360" y1="255" x2="388" y2="255" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+  <rect x="220"  y="64" width="290" height="54" fill="#1F3864"/>
+  <text x="365"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">🚦 서버 확인</text>
+  <text x="365"  y="108" text-anchor="middle" font-size="10.5" fill="#B4C7E7">ChatViewProvider · 문지기</text>
 
-  <!-- STEP 2: 의도 분류 -->
-  <rect x="395" y="150" width="310" height="210" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
-  <rect x="617" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
-  <text x="656" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
-  <text x="417" y="198" font-size="16" font-weight="bold" fill="#1F3864">② 의도 분류 — 모델 없이</text>
-  <text x="417" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/IntentSignals.ts</text>
-  <text x="417" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">classifyOfflineIntent() L194</text>
-  <text x="417" y="278" font-size="12.5" fill="#595959">정규식·신호 기반으로 질문·</text>
-  <text x="417" y="300" font-size="12.5" fill="#595959">잡담·수정요청을 그룹핑</text>
-  <text x="417" y="322" font-size="12.5" fill="#595959">(IntentResult + 확신 강도)</text>
-  <line x1="705" y1="255" x2="733" y2="255" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+  <rect x="510"  y="64" width="300" height="54" fill="#1F3864"/>
+  <text x="660"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">🧭 ② 의도 분류</text>
+  <text x="660"  y="108" text-anchor="middle" font-size="10.5" fill="#B4C7E7">ai/intent — 무슨 요청?</text>
 
-  <!-- STEP 3: 의미검색 -->
-  <rect x="740" y="150" width="310" height="210" rx="10" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
-  <rect x="962" y="160" width="78" height="26" rx="13" fill="#2E5395"/>
-  <text x="1001" y="178" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFFFFF">결정론</text>
-  <text x="762" y="198" font-size="16" font-weight="bold" fill="#1F3864">③ 로컬 지식 의미검색</text>
-  <text x="762" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/OfflineKnowledgeRetriever.ts</text>
-  <text x="762" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E5395">OfflineKnowledgeRetriever L159</text>
-  <text x="762" y="278" font-size="12.5" fill="#595959">로컬 지식문서(knowledge/*.md)를</text>
-  <text x="762" y="300" font-size="12.5" fill="#595959">의미+키워드 하이브리드 랭킹 —</text>
-  <text x="762" y="322" font-size="12.5" fill="#595959">온라인 검색기와 분리된 전용 설계</text>
-  <line x1="1050" y1="255" x2="1078" y2="255" stroke="#8FAADC" stroke-width="3" marker-end="url(#ar)"/>
+  <rect x="810"  y="64" width="320" height="54" fill="#1F3864"/>
+  <text x="970"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">📚 ③ 지식 검색</text>
+  <text x="970"  y="108" text-anchor="middle" font-size="10.5" fill="#B4C7E7">ai/retrieval — 문서 찾기</text>
 
-  <!-- STEP 4: 카드 렌더 + 확신 게이트 -->
-  <rect x="1085" y="150" width="305" height="210" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
-  <rect x="1267" y="160" width="110" height="26" rx="13" fill="#2E7D32"/>
-  <text x="1322" y="178" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#FFFFFF">모델 호출 0회</text>
-  <text x="1107" y="198" font-size="16" font-weight="bold" fill="#2E7D32">④ 카드 렌더+확신 게이트</text>
-  <text x="1107" y="224" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">src/ai/OfflineResponder.ts</text>
-  <text x="1107" y="248" font-family="Consolas, monospace" font-size="12.5" font-weight="bold" fill="#2E7D32">respond() L80</text>
-  <text x="1107" y="278" font-size="12.5" fill="#595959">매칭 문서를 종류별 카드로 렌더</text>
-  <text x="1107" y="300" font-size="12.5" fill="#595959">확신 없으면 폴백 안내(FALLBACK_HINT)</text>
-  <text x="1107" y="322" font-size="12.5" fill="#595959">규약 카드(06 도식)도 재사용 — L102</text>
+  <rect x="1130" y="64" width="320" height="54" fill="#2E7D32"/>
+  <text x="1290" y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">💬 ④ 카드 응답</text>
+  <text x="1290" y="108" text-anchor="middle" font-size="10.5" fill="#C8E0CA">ai/retrieval — 결과</text>
 
-  <!-- 경로 전체 무모델 강조 -->
-  <text x="720" y="390" text-anchor="middle" font-size="14" font-weight="bold" fill="#2E7D32">↑ 이 경로 전체에서 sLLM 호출 0회 — Scaffold 사용 가이드를 모델 없이 채팅창에 제공한다</text>
+  <!-- 레인 구분선 -->
+  <line x1="220"  y1="118" x2="220"  y2="604" stroke="#D9D9D9" stroke-width="1.5"/>
+  <line x1="510"  y1="118" x2="510"  y2="604" stroke="#D9D9D9" stroke-width="1.5"/>
+  <line x1="810"  y1="118" x2="810"  y2="604" stroke="#D9D9D9" stroke-width="1.5"/>
+  <line x1="1130" y1="118" x2="1130" y2="604" stroke="#D9D9D9" stroke-width="1.5"/>
 
-  <!-- 실패 포집 밴드 -->
-  <rect x="50" y="412" width="1340" height="182" rx="10" fill="#FBFCFE" stroke="#8FAADC" stroke-width="2"/>
-  <text x="78" y="444" font-size="15" font-weight="bold" fill="#1F3864">＋ 실패 포집 — 개선 플라이휠의 연료 (텔레메트리 아님)</text>
-  <text x="560" y="444" font-family="Consolas, monospace" font-size="11.5" fill="#7A8CA8">src/ai/RegionCaptureRecorder.ts · 배선: _captureRegionCase (ChatViewProvider.ts L1016)</text>
+  <!-- ═══ 사용자 레인 진입 안내 ═══ -->
+  <text x="42" y="158" font-size="12.5" font-weight="bold" fill="#1F3864">▼ 08에서 진입</text>
+  <text x="42" y="182" font-size="11" fill="#595959">질문이거나</text>
+  <text x="42" y="199" font-size="11" fill="#595959">서버가 오프라인이면</text>
+  <text x="42" y="216" font-size="11" fill="#595959">이 흐름으로 들어온다</text>
+  <line x1="125" y1="230" x2="125" y2="296" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
 
-  <rect x="78" y="462" width="410" height="112" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
-  <text x="100" y="492" font-size="13.5" font-weight="bold" fill="#1F3864">① 포집 여부 판정</text>
-  <text x="100" y="516" font-family="Consolas, monospace" font-size="11.5" fill="#2E5395">shouldCapture() L131</text>
-  <text x="100" y="540" font-size="12" fill="#595959">기본 OFF — 설정으로 옵트인해야 동작.</text>
-  <text x="100" y="560" font-size="12" fill="#595959">실패(fallback·error) 사례만 대상</text>
+  <!-- ═══ 설계 노트 카드 ═══ -->
+  <rect x="250" y="132" width="540" height="96" rx="10" fill="#FBFCFE" stroke="#1F3864" stroke-width="1.5"/>
+  <text x="272" y="158" font-size="13.5" font-weight="bold" fill="#1F3864">💡 서버가 꺼져도 왜 답이 되나</text>
+  <text x="272" y="182" font-size="11.5" fill="#595959">서버의 큰 AI(sLLM)엔 못 붙어도 — 규칙(정규식) + PC에 내장된 <tspan fill="#C55A11" font-weight="bold">작은 AI(임베딩)</tspan>만으로</text>
+  <text x="272" y="200" font-size="11.5" fill="#595959">뜻을 파악하고 사내 문서(knowledge/*.md)를 찾아 답한다. 이 경로 전체 큰 AI 호출 <tspan font-weight="bold" fill="#2E7D32">0회</tspan>.</text>
+  <text x="272" y="220" font-size="10.5" font-style="italic" fill="#8C8C8C">🆕 &apos;새 페이지 만들기&apos;는 문지기 전에 갈라져 나감(이 그림 밖) · ✏️ 수정·질문만 이 흐름 진입</text>
 
-  <rect x="515" y="462" width="410" height="112" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
-  <text x="537" y="492" font-size="13.5" font-weight="bold" fill="#1F3864">② 민감정보 익명화 3단계</text>
-  <text x="537" y="516" font-family="Consolas, monospace" font-size="11.5" fill="#2E5395">CaptureRedaction L21 · skeletonizeSource() L83</text>
-  <text x="537" y="540" font-size="12" fill="#595959">full / skeleton / meta 선택 —</text>
-  <text x="537" y="560" font-size="12" fill="#595959">코드 원문을 제거한 뼈대만 남길 수 있음</text>
+  <!-- ═══ 읽는 법 (범례) ═══ -->
+  <rect x="820" y="132" width="618" height="96" rx="10" fill="#FFFFFF" stroke="#8FAADC" stroke-width="1.5"/>
+  <text x="842" y="158" font-size="13.5" font-weight="bold" fill="#1F3864">🔎 읽는 법</text>
+  <rect x="842" y="170" width="11" height="11" fill="#F2F6FC" stroke="#2E5395"/>
+  <text x="860" y="180" font-size="11" fill="#595959">파랑 = 정해진 규칙(결정론)</text>
+  <rect x="1120" y="170" width="11" height="11" fill="#EAF4EB" stroke="#2E7D32"/>
+  <text x="1138" y="180" font-size="11" fill="#595959">초록 = 사용자에게 나가는 결과</text>
+  <rect x="842" y="192" width="80" height="18" rx="9" fill="#ED7D31" filter="url(#aiGlow)"/>
+  <text x="882" y="205" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#FFFFFF">🤖 임베딩</text>
+  <text x="930" y="205" font-size="11" fill="#595959">= 작은 AI를 쓰는 <tspan font-weight="bold" fill="#C55A11">유일한 2지점</tspan> (② 분류 · ③ 검색)</text>
+  <text x="842" y="224" font-size="11" fill="#595959">▸ = 산출물 · 파란 실선 = 흐름 · 점선 = 예외·되묻기 · 파랑 글씨 = 담당 파일</text>
 
-  <rect x="952" y="462" width="410" height="112" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
-  <text x="974" y="492" font-size="13.5" font-weight="bold" fill="#1F3864">③ 로컬 JSONL 저장</text>
-  <text x="974" y="516" font-family="Consolas, monospace" font-size="11.5" fill="#2E5395">serializeCaptureLine() L123</text>
-  <text x="974" y="540" font-size="12" fill="#595959">파일로만 기록 — 네트워크 전송 0.</text>
-  <text x="974" y="560" font-size="12" fill="#595959">포집 ≠ 반출 (반출은 별도 수동 절차)</text>
+  <!-- ═══════════ 메인 파이프라인 (좌→우) ═══════════ -->
 
-  <!-- 요약 배너 -->
-  <rect x="50" y="616" width="1340" height="54" rx="10" fill="#1F3864"/>
-  <text x="720" y="650" text-anchor="middle" font-size="15.5" font-weight="bold" fill="#FFFFFF">sLLM 미연결은 장애가 아니라 정상 동작 모드 — 온라인(01 파이프라인) ↔ 오프라인(이 경로)의 무중단 전환이 종속항 핵심</text>
+  <!-- U1 요청 -->
+  <rect x="37" y="300" width="176" height="124" rx="8" fill="#FFFFFF" stroke="#7F7F7F" stroke-width="1.5"/>
+  <text x="125" y="332" text-anchor="middle" font-size="13" font-weight="bold" fill="#333333">💬 질문 (서버 꺼짐)</text>
+  <text x="125" y="360" text-anchor="middle" font-size="11" fill="#595959">&quot;useApi 어떻게 써?&quot;</text>
+  <text x="125" y="378" text-anchor="middle" font-size="11" fill="#595959">순수 질문 · 코드 수정 아님</text>
+  <text x="125" y="400" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 자연어 한 문장</text>
 
-  <!-- 실체 확인 푸터 -->
-  <rect x="50" y="686" width="1340" height="96" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
-  <text x="78" y="714" font-size="15" font-weight="bold" fill="#2E7D32">실체 확인</text>
-  <text x="78" y="738" font-size="13" fill="#333333">· 전부 실존: checkHealth·_healthCache (ChatViewProvider.ts L163) · classifyOfflineIntent (IntentSignals.ts L194) · OfflineKnowledgeRetriever (L159) · OfflineResponder.respond (L80) · RegionCaptureRecorder.ts</text>
-  <text x="78" y="762" font-size="13" fill="#333333">· 자동 테스트: test:offline-intent (66건) · test:knowledge-routing · test:region-capture (16건) — 포집 기본 OFF · 네트워크 0 (폐쇄망 안전 설계)</text>
+  <!-- ① 서버 살아있나 (문지기) -->
+  <rect x="260" y="300" width="210" height="124" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="390" y="290" width="70" height="22" rx="11" fill="#2E5395"/>
+  <text x="425" y="305" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFFFFF">결정론</text>
+  <text x="365" y="330" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1F3864">🚦 서버 살아있나?</text>
+  <text x="365" y="354" text-anchor="middle" font-size="11" fill="#595959">신호 보내 확인 (10초 기억)</text>
+  <text x="365" y="372" text-anchor="middle" font-size="11" fill="#595959">죽음 → 무거운 AI 통째 스킵</text>
+  <text x="365" y="392" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 오프라인 확정</text>
+  <text x="365" y="414" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" font-weight="bold" fill="#2E5395">ChatViewProvider · checkHealth L163</text>
+
+  <!-- ② 무슨 요청인지 분류 (규칙 + 임베딩) -->
+  <rect x="555" y="300" width="210" height="124" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="590" y="290" width="48" height="22" rx="11" fill="#2E5395"/>
+  <text x="614" y="305" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFFFFF">규칙</text>
+  <rect x="644" y="290" width="86" height="22" rx="11" fill="#ED7D31" filter="url(#aiGlow)"/>
+  <text x="687" y="305" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#FFFFFF">🤖 임베딩</text>
+  <text x="660" y="330" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1F3864">무슨 요청인지 분류</text>
+  <text x="660" y="354" text-anchor="middle" font-size="11" fill="#595959">규칙 + 작은 AI(임베딩)로</text>
+  <text x="660" y="372" text-anchor="middle" font-size="11" fill="#595959">질문·잡담·수정 구분 (둘 대조)</text>
+  <text x="660" y="392" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 의도 + 확신 강도</text>
+  <text x="660" y="414" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" font-weight="bold" fill="#2E5395">OfflineIntentResolver L54</text>
+
+  <!-- ③ 로컬 지식 문서 찾기 (임베딩) -->
+  <rect x="865" y="300" width="210" height="124" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
+  <rect x="955" y="290" width="90" height="22" rx="11" fill="#ED7D31" filter="url(#aiGlow)"/>
+  <text x="1000" y="305" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#FFFFFF">🤖 임베딩</text>
+  <text x="970" y="330" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1F3864">로컬 지식 문서 찾기</text>
+  <text x="970" y="354" text-anchor="middle" font-size="11" fill="#595959">knowledge/*.md 만 검색 (실소스 X)</text>
+  <text x="970" y="372" text-anchor="middle" font-size="11" fill="#595959">키워드 겹침 + 뜻 비슷함 채점</text>
+  <text x="970" y="392" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 고른 문서 1~2개 (선택은 규칙)</text>
+  <text x="970" y="414" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" font-weight="bold" fill="#2E5395">OfflineKnowledgeRetriever L159</text>
+
+  <!-- ④ 카드로 보여주기 (결과 · 모델 0회) -->
+  <rect x="1185" y="300" width="210" height="124" rx="8" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <rect x="1286" y="290" width="104" height="22" rx="11" fill="#2E7D32"/>
+  <text x="1338" y="305" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#FFFFFF">모델 호출 0회</text>
+  <text x="1290" y="330" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#2E7D32">카드로 보여주기</text>
+  <text x="1290" y="354" text-anchor="middle" font-size="11" fill="#595959">요약 안 함 — 문서 원문 그대로</text>
+  <text x="1290" y="372" text-anchor="middle" font-size="11" fill="#595959">출처 표시 · 없으면 폴백 안내</text>
+  <text x="1290" y="392" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 채팅 카드 (없으면 안 지어냄)</text>
+  <text x="1290" y="414" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" font-weight="bold" fill="#2E7D32">OfflineResponder · respond L80</text>
+
+  <!-- U-result 결과 확인 -->
+  <rect x="37" y="470" width="176" height="110" rx="8" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="125" y="500" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#2E7D32">✅ 답 확인</text>
+  <text x="125" y="526" text-anchor="middle" font-size="11" fill="#595959">출처와 함께 원문을</text>
+  <text x="125" y="544" text-anchor="middle" font-size="11" fill="#595959">채팅 카드로 읽음</text>
+  <text x="125" y="566" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 서버 없이 가이드 획득</text>
+
+  <!-- ═══ 메인 흐름 화살표 ═══ -->
+  <line x1="215" y1="362" x2="256" y2="362" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="472" y1="362" x2="551" y2="362" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="767" y1="362" x2="861" y2="362" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="1077" y1="362" x2="1181" y2="362" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar)"/>
+  <!-- ④ → 사용자 결과 (초록 복귀) -->
+  <path d="M1290,424 V525 H216" fill="none" stroke="#2E7D32" stroke-width="2" marker-end="url(#arG)"/>
+  <text x="720" y="516" text-anchor="middle" font-size="11" font-weight="bold" fill="#2E7D32">문서 카드가 채팅에 표시됨 — 서버 없이 답 완료</text>
+
+  <!-- 번호 원 -->
+  <g font-size="11.5" font-weight="bold">
+    <circle cx="220" cy="362" r="10" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.5"/>
+    <text x="220" y="366" text-anchor="middle" fill="#1F3864">1</text>
+    <circle cx="510" cy="362" r="10" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.5"/>
+    <text x="510" y="366" text-anchor="middle" fill="#1F3864">2</text>
+    <circle cx="810" cy="362" r="10" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.5"/>
+    <text x="810" y="366" text-anchor="middle" fill="#1F3864">3</text>
+    <circle cx="1130" cy="362" r="10" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.5"/>
+    <text x="1130" y="366" text-anchor="middle" fill="#1F3864">4</text>
+    <circle cx="1290" cy="448" r="10" fill="#FFFFFF" stroke="#2E7D32" stroke-width="1.5"/>
+    <text x="1290" y="452" text-anchor="middle" fill="#2E7D32">5</text>
+  </g>
+
+  <!-- ═══ 예외·되묻기 경로 (점선) ═══ -->
+  <!-- 온라인이면 08 본선으로 -->
+  <line x1="340" y1="300" x2="340" y2="264" stroke="#1F3864" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arN)"/>
+  <text x="348" y="278" font-size="10" fill="#1F3864">온라인이면 → 08 전체 흐름</text>
+  <!-- ② 잡담·애매 → 되묻기 -->
+  <line x1="660" y1="424" x2="660" y2="460" stroke="#C55A11" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arO)"/>
+  <text x="668" y="454" font-size="10" fill="#C55A11">잡담·애매하면 사용자에게 되묻기</text>
+
+  <!-- ═══════════ 실패 포집 밴드 ═══════════ -->
+  <rect x="30" y="624" width="1420" height="176" rx="10" fill="#FBFCFE" stroke="#8FAADC" stroke-width="2"/>
+  <text x="54" y="652" font-size="15" font-weight="bold" fill="#1F3864">＋ 실패 포집 — 나중에 개선할 재료 모으기 (몰래 보내는 텔레메트리 아님)</text>
+  <text x="1426" y="652" text-anchor="end" font-family="Consolas, monospace" font-size="11" fill="#7A8CA8">RegionCaptureRecorder.ts · _captureRegionCase (ChatViewProvider.ts L1016)</text>
+
+  <rect x="54" y="668" width="436" height="116" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
+  <text x="76" y="698" font-size="13.5" font-weight="bold" fill="#1F3864">① 포집할지 판정</text>
+  <text x="76" y="722" font-family="Consolas, monospace" font-size="11" fill="#2E5395">shouldCapture() L131</text>
+  <text x="76" y="746" font-size="12" fill="#595959">기본 꺼짐 — 설정으로 켜야 동작.</text>
+  <text x="76" y="766" font-size="12" fill="#595959">실패(끊김·오류) 사례만 대상</text>
+
+  <rect x="512" y="668" width="436" height="116" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
+  <text x="534" y="698" font-size="13.5" font-weight="bold" fill="#1F3864">② 민감정보 지우기 3단계</text>
+  <text x="534" y="722" font-family="Consolas, monospace" font-size="11" fill="#2E5395">CaptureRedaction L21 · skeletonizeSource L83</text>
+  <text x="534" y="746" font-size="12" fill="#595959">full / skeleton / meta 중 선택 —</text>
+  <text x="534" y="766" font-size="12" fill="#595959">코드 원문 빼고 뼈대만 남길 수 있음</text>
+
+  <rect x="970" y="668" width="436" height="116" rx="8" fill="#FFFFFF" stroke="#D9E2F3" stroke-width="1.5"/>
+  <text x="992" y="698" font-size="13.5" font-weight="bold" fill="#1F3864">③ 내 PC에 파일로만 저장</text>
+  <text x="992" y="722" font-family="Consolas, monospace" font-size="11" fill="#2E5395">serializeCaptureLine() L123</text>
+  <text x="992" y="746" font-size="12" fill="#595959">네트워크 전송 0 — 폐쇄망 안전.</text>
+  <text x="992" y="766" font-size="12" fill="#595959">포집 ≠ 반출 (반출은 별도 수동 절차)</text>
+
+  <!-- ═══ 요약 배너 ═══ -->
+  <rect x="30" y="818" width="1420" height="52" rx="10" fill="#1F3864"/>
+  <text x="740" y="850" text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">서버 끊김 = 고장이 아니라 정상 동작 모드 — 08 온라인 본선 ↔ 이 오프라인 갈래를 끊김 없이 오간다</text>
+
+  <!-- ═══ 실체 확인 푸터 (자동 테스트만) ═══ -->
+  <rect x="30" y="886" width="1420" height="58" rx="10" fill="#EAF4EB" stroke="#2E7D32" stroke-width="2"/>
+  <text x="54" y="912" font-size="13.5" font-weight="bold" fill="#2E7D32">✅ 자동 테스트로 검증됨</text>
+  <text x="54" y="933" font-size="12.5" fill="#333333">test:offline-intent (66건) · test:knowledge-routing · test:region-capture (16건) — 포집 기본 OFF · 네트워크 0 (폐쇄망 안전 설계)</text>
 </svg>

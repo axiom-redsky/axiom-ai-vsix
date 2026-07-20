@@ -1029,13 +1029,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * ⚠ 편집 흐름을 절대 막지 않는다 — 모든 예외를 삼킨다.
    */
   private _captureRegionCase(query: string, filePath: string, source: string, outcome: RegionEditOutcome): void {
+    if (!ExtensionConfig.isCaptureRegionCasesEnabled()) return;
+    if (!shouldCapture(outcome.status, ExtensionConfig.isCaptureRegionAppliedEnabled())) return;
+    const dir = this._captureDir;
+    if (!dir) return;
+
+    let entry;
     try {
-      if (!ExtensionConfig.isCaptureRegionCasesEnabled()) return;
-      if (!shouldCapture(outcome.status, ExtensionConfig.isCaptureRegionAppliedEnabled())) return;
-      const dir = this._captureDir;
-      if (!dir) return;
       const ux = outcome.status === 'fallback' ? classifyRegionDecline(query, source, outcome.reason ?? '') : undefined;
-      const entry = buildCaptureEntry(
+      entry = buildCaptureEntry(
         {
           query,
           filePath,
@@ -1051,19 +1053,52 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         new Date().toISOString(),
         ExtensionConfig.getCaptureRegionRedaction(),
       );
+    } catch {
+      return; // 엔트리 조립 실패는 조용히(편집을 막지 않는다)
+    }
+
+    try {
       fs.mkdirSync(dir, { recursive: true });
       fs.appendFileSync(path.join(dir, 'region-captures.jsonl'), serializeCaptureLine(entry), 'utf-8');
       this._corpusOutputChannel.appendLine(
-        `[Axiom AI] 실패 포집: ${entry.id} (${entry.status}/${entry.reason ?? '-'}, redaction=${entry.redaction})`,
+        `[Axiom AI] 실패 포집: ${entry.id} (${entry.status}/${entry.reason ?? '-'}, redaction=${entry.redaction}) → ${dir}`,
       );
-    } catch {
-      /* 포집 실패는 편집을 막지 않는다 */
+    } catch (e) {
+      // 폐쇄망(VDI·로밍 프로필·GPO 잠금)에서 저장 폴더 접근 불가(EACCES/EPERM/ENOENT 등)를 **조용히
+      // 삼키지 않는다** — 편집 흐름은 여전히 안 막되(모든 fs 예외 catch), 왜 파일이 안 생기는지
+      // 알 수 있게 Output 채널에 한 줄 남기고 접근 가능한 경로로 돌리는 설정을 안내한다.
+      this._corpusOutputChannel.appendLine(
+        `[Axiom AI] ⚠ 실패 포집 저장 불가: ${dir} — ${(e as Error)?.message ?? e}. ` +
+          `설정 'axiom-ai.experimental.captureRegionDir' 로 접근 가능한 경로를 지정하세요.`,
+      );
     }
   }
 
+  /**
+   * 실패 포집 JSONL 저장 디렉터리 결정(폐쇄망 대응 폴백 체인):
+   *  1) 설정 override(experimental.captureRegionDir) — 절대 경로면 그대로, 상대면 워크스페이스 기준.
+   *  2) 워크스페이스의 `<axiomFolder>/captures`(기본 `.axiom/captures`) — 개발자가 확실히 접근·반출
+   *     가능하고 코드와 같은 반출 심사를 그대로 탄다(폐쇄망 1순위 · 회수 문제도 함께 해결).
+   *  3) 확장 globalStorage — 워크스페이스가 없을 때의 최후 폴백(단일 파일 데스크톱 등).
+   * globalStorage(APPDATA)가 VDI·로밍 프로필로 접근 불가·초기화되는 SI 환경 때문에 워크스페이스를 기본으로 둔다.
+   */
+  private _resolveCaptureDir(context: vscode.ExtensionContext): string | undefined {
+    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const configured = ExtensionConfig.getCaptureRegionDir();
+    if (configured) {
+      return path.isAbsolute(configured) ? configured : wsRoot ? path.join(wsRoot, configured) : configured;
+    }
+    if (wsRoot) {
+      const axiomFolder = ExtensionConfig.getSddAxiomFolder() || '.axiom';
+      const base = path.isAbsolute(axiomFolder) ? axiomFolder : path.join(wsRoot, axiomFolder);
+      return path.join(base, 'captures');
+    }
+    return context.globalStorageUri?.fsPath;
+  }
+
   registerCorpusWatcher(context: vscode.ExtensionContext): void {
-    // 실패 자동 포집 저장 위치 = 확장 globalStorage(프로젝트 간 누적·미커밋·폐쇄망 로컬).
-    this._captureDir = context.globalStorageUri?.fsPath;
+    // 실패 자동 포집 저장 위치 — 기본은 워크스페이스(.axiom/captures), 설정으로 override, 최후는 globalStorage.
+    this._captureDir = this._resolveCaptureDir(context);
 
     const knowledgePath = ExtensionConfig.getKnowledgePath();
     const pattern = new vscode.RelativePattern(
@@ -1097,6 +1132,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._unregisterAxiomWatcher();
         this._registerAxiomWatcher(context);
         this._scaffoldBuilder.invalidateAndRebuild();
+      }
+      // 포집 저장 위치 override(또는 axiomFolder)가 바뀌면 리로드 없이 즉시 재계산한다.
+      if (e.affectsConfiguration('axiom-ai.experimental.captureRegionDir') || e.affectsConfiguration('axiom-ai.sdd.axiomFolder')) {
+        this._captureDir = this._resolveCaptureDir(context);
       }
       if (e.affectsConfiguration('axiom-ai.stubs')) {
         this._unregisterUserStubsWatcher();

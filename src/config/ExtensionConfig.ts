@@ -432,6 +432,16 @@ export class ExtensionConfig {
   }
 
   /**
+   * 포집 JSONL 저장 디렉터리 override(비우면 호출부가 워크스페이스 `<axiomFolder>/captures` → globalStorage
+   * 순으로 폴백). 폐쇄망 SI에서 VDI·로밍 프로필로 globalStorage(APPDATA)에 접근이 어렵거나 로그아웃 시
+   * 초기화될 때, 개발자가 확실히 접근·반출 가능한 위치로 돌리기 위한 설정. 절대 경로면 그대로 쓰고,
+   * 상대 경로면 워크스페이스 루트 기준으로 해석한다(해석은 호출부). captureRegionCases가 켜져 있을 때만 적용.
+   */
+  static getCaptureRegionDir(): string {
+    return ExtensionConfig._resolve<string>('experimental.captureRegionDir', '').trim();
+  }
+
+  /**
    * 실험: patch-우선 편집(Stage 1/경로 수렴). 현재 파일 in-place 수정 프롬프트에서 lines 모드를 빼고
    * patch(`<search>/<replace>` literal 정확매칭 = Claude Code Edit식)를 주력으로 제시한다. lines 앵커가
    * 드리프트로 자주 빗나가 grounded 재시도로 patch 전환되던 우회를 없애고, 약한 모델의 모드 선택 부담도
