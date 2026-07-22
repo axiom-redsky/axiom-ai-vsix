@@ -89,6 +89,13 @@
   <text x="125" y="378" text-anchor="middle" font-size="11" fill="#595959">순수 질문 · 코드 수정 아님</text>
   <text x="125" y="400" text-anchor="middle" font-size="10" font-style="italic" fill="#8C8C8C">▸ 자연어 한 문장</text>
 
+  <!-- ⓪ (08에서 이어짐) sLLM 분류를 먼저 시도 → 서버 꺼짐이면 무응답 : 문지기 위 2단 -->
+  <rect x="230" y="234" width="196" height="54" rx="8" fill="#F7F7F7" stroke="#A6A6A6" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="328" y="252" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#7F7F7F">⓪ 🤖 sLLM 분류 먼저 시도</text>
+  <text x="328" y="268" text-anchor="middle" font-size="9.5" fill="#7F7F7F">서버 꺼짐 → 무응답(null)</text>
+  <text x="328" y="282" text-anchor="middle" font-size="9.5" fill="#7F7F7F">→ ②는 임베딩이 다시 분류</text>
+  <line x1="328" y1="288" x2="328" y2="296" stroke="#A6A6A6" stroke-width="1.8" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+
   <!-- ① 서버 살아있나 (문지기) -->
   <rect x="260" y="300" width="210" height="124" rx="8" fill="#F2F6FC" stroke="#2E5395" stroke-width="2"/>
   <rect x="390" y="290" width="70" height="22" rx="11" fill="#2E5395"/>
@@ -163,8 +170,8 @@
 
   <!-- ═══ 예외·되묻기 경로 (점선) ═══ -->
   <!-- 온라인이면 08 본선으로 -->
-  <line x1="340" y1="300" x2="340" y2="264" stroke="#1F3864" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arN)"/>
-  <text x="348" y="278" font-size="10" fill="#1F3864">온라인이면 → 08 전체 흐름</text>
+  <line x1="440" y1="290" x2="440" y2="262" stroke="#1F3864" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arN)"/>
+  <text x="450" y="276" font-size="10" fill="#1F3864">온라인이면 → 08 전체 흐름</text>
   <!-- ② 잡담·애매 → 되묻기 -->
   <line x1="660" y1="424" x2="660" y2="460" stroke="#C55A11" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arO)"/>
   <text x="668" y="454" font-size="10" fill="#C55A11">잡담·애매하면 사용자에게 되묻기</text>
