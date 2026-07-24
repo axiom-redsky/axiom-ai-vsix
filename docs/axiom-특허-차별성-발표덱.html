@@ -500,14 +500,36 @@
           <tr><td>"그럼 지금 뭘 해야 하나요?"</td><td class="ok">기술 분석은 끝났습니다. 남은 건 <b>마감 시계 확인</b> 하나 — 이번 주 안에 변리사와 확정</td></tr>
         </table>
       </div>
-      <div class="notebox"><b>"Scaffold 자체는 특허가 안 되나요?"</b> — 폴더 구조·규칙·부품 목록 같은 것 자체는 특허 대상이 아닙니다(저작권과 영업비밀로 지키는 영역). 특허가 되는 건 <b>"그 규칙을 채점 정답지로 쓰는 Axiom의 방법"</b>이고, 그래서 출원은 2건이 아니라 <b>Scaffold와 Axiom을 하나로 묶은 1건</b>이 맞습니다.</div>
+      <div class="notebox"><b>"Scaffold 자체는 특허가 안 되나요?"</b> — 폴더 구조·규칙·부품 목록 그 자체는 특허 대상이 아닙니다(저작권과 영업비밀로 지키는 영역). 하지만 <b>"규칙을 가진 Scaffold + 그 규칙으로 채점하는 Axiom"을 한 몸의 시스템으로 청구</b>하면, Scaffold도 특허 문장 안의 구성요소로 들어옵니다. 그래서 출원은 2건이 아니라 <b>하나로 묶은 1건</b> — 구체적인 묶는 방법은 다음 장(출원 설계)에서.</div>
     </div>
   </section>
 
-  <!-- 18 · 마감 시계 -->
+  <!-- 출원 설계 · 결합 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">17 · 최우선 확인 사항</p>
+      <p class="eyebrow">17 · 출원 설계</p>
+      <h2>Scaffold와 Axiom을 "한 몸"으로 묶어서 출원합니다</h2>
+      <div class="quote">
+        "미리 정한 규칙을 가진 Scaffold" + "그 규칙으로 채점하는 Axiom"<br>
+        = 서로 맞물려야 돌아가는 <em>하나의 시스템</em>으로 청구합니다.
+        <small>이렇게 하면 Scaffold가 "특허가 안 되는 것"이 아니라 특허 문장 안의 구성요소로 들어옵니다. 그리고 파는 상품과 특허가 1:1로 일치해서 "우리 제품 그 자체가 특허 출원 중"이라는 말이 성립합니다. 정답지가 Scaffold에서 자동으로 만들어져 Axiom의 채점에 쓰이는 구조라, "부품을 나열한 게 아니라 맞물려 돌아간다"는 결합발명 논증도 자연스럽습니다.</small>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <tr><th>구성</th><th>내용</th><th>역할</th></tr>
+          <tr><td><b>독립항 1<br>결합 시스템</b></td><td>Scaffold(규칙 저장 + 정답지 자동 생성) + Axiom(조각 편집·실수 수리·컴파일러 검사)을 하나로 묶은 시스템</td><td class="ok">등록 확률 최대 — 안전한 본진. 상품과 1:1 일치</td></tr>
+          <tr><td><b>독립항 2<br>일반화 방법</b></td><td>Axiom의 동작 방법 — Scaffold를 "미리 정해진 규칙 집합"으로 넓혀서 기재</td><td class="mid">살아남으면 더 넓은 울타리. 심사에서 죽으면 독립항 1로 후퇴</td></tr>
+          <tr><td>종속항들</td><td>정답지 검증(⑤) · AI 없이도 가이드(⑥) · 규칙 카드(③) 등 세부 장치</td><td>후퇴 지점 확보</td></tr>
+        </table>
+      </div>
+      <p class="kicker"><b>주의 하나:</b> "상품 전체니까" 검색층·스토리북까지 다 넣으면 심사에서 "쪼개라"는 요구를 받습니다. 묶는 축은 <b>"규칙 → 채점" 하나</b>로 유지합니다. 은행 전용 검색은 예정대로 별도 건.</p>
+    </div>
+  </section>
+
+  <!-- 마감 시계 -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">18 · 최우선 확인 사항</p>
       <h2>마감 시계: 나라마다 다르게 돌아갑니다</h2>
       <div class="tablewrap">
         <table>
@@ -528,7 +550,7 @@
   <!-- 19 · 특허의 용도 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">18 · 기대치 조정</p>
+      <p class="eyebrow">19 · 기대치 조정</p>
       <h2>특허는 "울타리"가 아니라 "간판"입니다</h2>
       <div class="cardrow c2">
         <div class="card">
@@ -547,12 +569,12 @@
   <!-- 20 · 액션 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">19 · 해야 할 일</p>
+      <p class="eyebrow">20 · 해야 할 일</p>
       <h2>순서대로 일곱 가지</h2>
       <ul class="big">
         <li><span class="n">1</span><span><b>마감 시계 확인 (이번 주)</b> — GitHub 공개일 기준 12개월이 언제 끝나는지 변리사와 확정. <span class="why">모든 것이 이 답에 달려 있습니다.</span></span></li>
         <li><span class="n">2</span><span><b>큰 아이디어에 대한 미련 버리기</b> — 아이디어층 청구항은 쓰지 않습니다</span></li>
-        <li><span class="n">3</span><span><b>본진 1건 출원 준비</b> — 실수 자동수리(②) + 컴파일러 검사(④), "검사에 AI 추가 호출 없음" 명시, 조각편집(①)은 무대 설정으로</span></li>
+        <li><span class="n">3</span><span><b>본진 1건 출원 준비 — Scaffold+Axiom 결합 시스템(독립항 1) + 일반화 방법(독립항 2)의 2단 구조로</b> — 실수 자동수리(②)+컴파일러 검사(④) 중심, "검사에 AI 추가 호출 없음" 명시, 조각편집(①)은 무대 설정으로</span></li>
         <li><span class="n">4</span><span><b>정답지 검증(⑤)과 AI 없이도 가이드(⑥)는 덧붙이는 항목으로</b> 같이 넣기</span></li>
         <li><span class="n">5</span><span><b>은행 전용 검색은 2순위 별도 건</b>으로 검토</span></li>
         <li><span class="n">6</span><span><b>두 문헌 자료를 변리사에게 전달</b> — 날짜 관계 정리 포함, 미국 출원 시엔 미국 문헌을 심사관에게 의무적으로 제출(IDS)</span></li>
@@ -563,7 +585,7 @@
 </div>
 
 <nav class="nav">
-  <span class="counter" id="counter">1 / 20</span>
+  <span class="counter" id="counter">1 / 21</span>
   <span class="hint">← → 방향키 · 스페이스로 이동</span>
   <span class="btns">
     <button id="prev" aria-label="이전 슬라이드">← 이전</button>
