@@ -1,4 +1,4 @@
-<title>Axiom 특허 차별성 — 발표 덱</title>
+<title>Axiom 특허 차별성 — 발표 덱 (쉬운말)</title>
 <style>
   :root {
     --paper: #FAFBFC;
@@ -18,19 +18,10 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --paper: #14181F;
-      --panel: #1C222C;
-      --ink: #E8ECF2;
-      --ink-soft: #9AA7BB;
-      --line: #303947;
-      --accent: #7DA2F2;
-      --accent-soft: #212D45;
-      --amber: #E0A93E;
-      --amber-soft: #332A17;
-      --green: #58B383;
-      --green-soft: #17301F;
-      --red: #E07B72;
-      --red-soft: #38201E;
+      --paper: #14181F; --panel: #1C222C; --ink: #E8ECF2; --ink-soft: #9AA7BB;
+      --line: #303947; --accent: #7DA2F2; --accent-soft: #212D45;
+      --amber: #E0A93E; --amber-soft: #332A17; --green: #58B383; --green-soft: #17301F;
+      --red: #E07B72; --red-soft: #38201E;
     }
   }
   :root[data-theme="light"] {
@@ -53,7 +44,7 @@
     font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     background: var(--paper);
     color: var(--ink);
-    line-height: 1.6;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -79,10 +70,10 @@
     letter-spacing: -0.015em; margin: 0 0 10px; text-wrap: balance;
   }
   h2 {
-    font-size: clamp(24px, 3.2vw, 36px); font-weight: 800; line-height: 1.25;
-    letter-spacing: -0.01em; margin: 0 0 22px; text-wrap: balance;
+    font-size: clamp(24px, 3.2vw, 36px); font-weight: 800; line-height: 1.3;
+    letter-spacing: -0.01em; margin: 0 0 20px; text-wrap: balance;
   }
-  .sub { font-size: clamp(15px, 1.6vw, 19px); color: var(--ink-soft); margin: 0; max-width: 34em; }
+  .sub { font-size: clamp(15px, 1.6vw, 19px); color: var(--ink-soft); margin: 0; max-width: 36em; }
 
   .nav {
     flex: none; display: flex; align-items: center; justify-content: space-between;
@@ -101,8 +92,7 @@
   .nav .hint { display: none; }
   @media (min-width: 760px) { .nav .hint { display: block; } }
 
-  /* content blocks */
-  .cardrow { display: grid; gap: 14px; margin-top: 26px; }
+  .cardrow { display: grid; gap: 14px; margin-top: 24px; }
   @media (min-width: 760px) { .cardrow.c3 { grid-template-columns: 1fr 1fr 1fr; } .cardrow.c2 { grid-template-columns: 1fr 1fr; } }
   .card {
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
@@ -120,7 +110,7 @@
   .pill.live { background: var(--green-soft); color: var(--green); }
   .pill.info { background: var(--accent-soft); color: var(--accent); }
 
-  .tablewrap { overflow-x: auto; margin-top: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .tablewrap { overflow-x: auto; margin-top: 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
   table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
   th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
   tr:last-child td { border-bottom: none; }
@@ -132,7 +122,7 @@
   table.dense th, table.dense td { padding: 9px 13px; }
 
   .quote {
-    margin: 28px 0 0; padding: 22px 26px;
+    margin: 24px 0 0; padding: 22px 26px;
     border-left: 3px solid var(--accent); background: var(--accent-soft);
     border-radius: 0 10px 10px 0;
     font-size: clamp(17px, 2.1vw, 23px); font-weight: 700; line-height: 1.5;
@@ -145,7 +135,7 @@
     border-radius: 4px; padding: 1px 6px; white-space: nowrap;
   }
 
-  ul.big { margin: 22px 0 0; padding: 0 0 0 2px; list-style: none; display: grid; gap: 12px; }
+  ul.big { margin: 20px 0 0; padding: 0 0 0 2px; list-style: none; display: grid; gap: 12px; }
   ul.big li {
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 14px 18px; font-size: 15.5px; display: flex; gap: 14px; align-items: baseline;
@@ -157,19 +147,19 @@
   ul.big li b { font-weight: 700; }
   ul.big li .why { color: var(--ink-soft); font-size: 14px; display: block; margin-top: 3px; }
 
-  .kicker { margin-top: 26px; font-size: 14px; color: var(--ink-soft); }
+  .kicker { margin-top: 22px; font-size: 14.5px; color: var(--ink-soft); }
   .kicker b { color: var(--ink); }
 
   .titlemeta { margin-top: 46px; font-size: 13.5px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 6px 22px; }
   .titlemeta span { white-space: nowrap; }
 
   .warnbox {
-    margin-top: 26px; border: 1px solid var(--amber); background: var(--amber-soft);
+    margin-top: 22px; border: 1px solid var(--amber); background: var(--amber-soft);
     border-radius: 10px; padding: 16px 20px; font-size: 15px;
   }
   .warnbox b { color: var(--amber); }
   .notebox {
-    margin-top: 26px; border: 1px solid var(--line); background: var(--panel);
+    margin-top: 22px; border: 1px solid var(--line); background: var(--panel);
     border-radius: 10px; padding: 16px 20px; font-size: 14.5px; color: var(--ink-soft);
   }
   .notebox b { color: var(--ink); }
@@ -187,309 +177,393 @@
   <!-- 1 · 표지 -->
   <section class="slide active">
     <div class="slide-inner">
-      <p class="eyebrow">Axiom AI · 특허 전략 검토</p>
-      <h1>넓은 특허는 죽고,<br>좁은 특허는 산다</h1>
-      <p class="sub">중국 선행문헌 CN 122195419 A 청구항 정밀 대조와 Axiom 코드 실사를 바탕으로 한 차별성 분석 및 출원 전략</p>
+      <p class="eyebrow">Axiom AI · 특허 검토 보고</p>
+      <h1>우리 기술,<br>특허 받을 수 있을까?</h1>
+      <p class="sub">비슷한 특허 문헌 2건(중국·미국)을 실제로 뜯어본 결과와, 그래서 어디에 어떻게 걸어야 하는지에 대한 결론</p>
       <div class="titlemeta">
-        <span>2026. 07. 24</span>
-        <span>근거: CN 122195419 A 원문 + StructuralAnchor.ts 등 실제 구현 코드</span>
-        <span>※ 기술 분석 자료 — 법률 판단은 변리사 확인 필요</span>
+        <span>2026. 07. 24 · v5 (쉬운말판)</span>
+        <span>근거: 특허 문헌 2건 원문 + Axiom 실제 코드</span>
+        <span>※ 기술 분석 자료 — 최종 판단은 변리사 확인 필요</span>
       </div>
     </div>
   </section>
 
-  <!-- 2 · 결론 요약 -->
+  <!-- 2 · 오늘의 결론 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">01 · 결론 요약</p>
-      <h2>네 문장으로 정리하면</h2>
+      <p class="eyebrow">01 · 오늘의 결론</p>
+      <h2>먼저 결론부터 말씀드리면</h2>
       <ul class="big">
-        <li><span class="n">1</span><span><b>"Axiom 특허가 어렵다"가 아니다.</b><span class="why">넓은 컨셉 특허는 사실상 불가능하지만, 좁고 구체적인 특허는 충분히 가능하다.</span></span></li>
-        <li><span class="n">2</span><span><b>중국 문헌은 정밀 대조 결과 Axiom 본진과 접촉면이 0이다.</b><span class="why">CN 122195419 A는 OS 튜닝 Q&amp;A 도구 — 코드 적용(apply) 계층이 아예 없다. 침해 리스크도, 3층 인용 위험도 낮다.</span></span></li>
-        <li><span class="n">3</span><span><b>진짜 위험은 중국 문헌이 아니라 GitHub 공개다.</b><span class="why">공지예외 유예기간은 국가마다 다르고, 중국·유럽은 이미 닫혔다고 봐야 한다.</span></span></li>
-        <li><span class="n">4</span><span><b>본진은 StructuralAnchor 리전 편집.</b><span class="why">문제→수단→효과가 가장 깨끗하게 떨어지는 층. 예산과 시간을 여기에 집중한다.</span></span></li>
+        <li><span class="n">1</span><span><b>받을 수 있습니다. 단, "좁게" 쓸 때만.</b><span class="why">"AI로 코딩을 돕는다" 같은 큰 아이디어는 이미 전세계에 널려 있어 불가능. 우리만 가진 구체적인 장치에 걸면 승산이 있습니다.</span></span></li>
+        <li><span class="n">2</span><span><b>승산이 가장 높은 곳: "AI의 실수를 자동으로 잡아 고치는 장치" — 60~75%.</b><span class="why">검토한 두 문헌 어디에도 없는, 우리만의 영역입니다.</span></span></li>
+        <li><span class="n">3</span><span><b>지금 가장 급한 건 특허 내용이 아니라 "마감 시계"입니다.</b><span class="why">우리 코드가 GitHub에 공개된 날로부터 12개월 안에 출원해야 합니다. 남은 시간 확인이 최우선.</span></span></li>
       </ul>
     </div>
   </section>
 
-  <!-- 3 · 3층 구조 -->
+  <!-- 3 · 용어 안내판 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">02 · 층별 진단</p>
-      <h2>Axiom을 세 층으로 쪼개면 판정이 갈린다</h2>
+      <p class="eyebrow">02 · 용어 안내판</p>
+      <h2>이 발표에 나오는 말, 네 가지만 알면 됩니다</h2>
+      <div class="cardrow c2">
+        <div class="card">
+          <span class="pill info">선행기술</span>
+          <h3>"먼저 나온 비슷한 기술"</h3>
+          <p>우리보다 먼저 공개된 논문·특허·오픈소스 전부. 심사관은 이걸 찾아서 "이미 있던 거 아니냐"고 따집니다. 오늘 다룰 중국·미국 문헌이 바로 이것.</p>
+        </div>
+        <div class="card">
+          <span class="pill info">청구항</span>
+          <h3>"특허가 지켜주는 범위를 적은 문장"</h3>
+          <p>특허의 본체. 여기 적힌 문장이 넓으면 많이 지키지만 심사에서 죽기 쉽고, 좁으면 적게 지키지만 살아남기 쉽습니다.</p>
+        </div>
+        <div class="card">
+          <span class="pill info">공지예외 (마감 시계)</span>
+          <h3>"내가 먼저 공개했어도 봐주는 기간"</h3>
+          <p>원칙적으로 공개된 기술은 특허를 못 받습니다. 단, 한국·일본·미국은 <b>본인 공개 후 12개월 안</b>이면 출원을 받아줍니다. 중국·유럽은 안 봐줍니다(이미 닫힘).</p>
+        </div>
+        <div class="card">
+          <span class="pill info">넓은 특허 vs 좁은 특허</span>
+          <h3>"울타리 크기의 문제"</h3>
+          <p>넓은 특허 = 큰 울타리 = 남의 땅(선행기술)까지 들어가서 무너짐. 좁은 특허 = 작은 울타리 = 확실히 내 땅만 둘러서 튼튼함. <b>오늘의 전략은 "작고 튼튼한 울타리 1개".</b></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · 3층 진단 -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">03 · 우리 기술의 지도</p>
+      <h2>Axiom을 3층으로 나누면, 층마다 운명이 다릅니다</h2>
       <div class="cardrow c3">
         <div class="card">
-          <span class="pill dead">사실상 포기</span>
-          <h3>1층 · 컨셉층</h3>
-          <p>"폐쇄망 + 로컬 LLM + 벡터DB 코딩 보조." Continue, Tabby, PrivateGPT 계열 + 로컬 RAG 논문 더미 + <b>이번 중국 문헌</b>이 전부 선행기술. 청구항을 걸면 100% 거절.</p>
+          <span class="pill dead">포기</span>
+          <h3>1층 · 아이디어층</h3>
+          <p>"인터넷 없는 곳에서 내 컴퓨터의 AI로 코딩을 돕는다."<br><br>이 아이디어 자체는 이미 전세계 수십 개 제품·논문이 하고 있습니다. 여기 걸면 100% 거절.</p>
         </div>
         <div class="card">
-          <span class="pill cond">조건부 생존</span>
-          <h3>2층 · 리트리벌 파이프라인</h3>
-          <p>centroid 라우팅 + RRF + reranker — 각 요소는 전부 기성품. 단, <b>은행 표준단어·표준용어·표준도메인 데이터 구조에 결합</b>하면 인용문헌이 급감한다.</p>
+          <span class="pill cond">조건부</span>
+          <h3>2층 · 검색층</h3>
+          <p>"질문에 맞는 지식을 찾아 AI에게 준다."<br><br>부품이 전부 시중에 있는 기성품입니다. 다만 <b>은행 표준용어·표준도메인 데이터와 묶으면</b> "은행 전용 검색법"으로 살 길이 생깁니다.</p>
         </div>
         <div class="card">
-          <span class="pill live">특허 본진</span>
-          <h3>3층 · StructuralAnchor 리전 편집</h3>
-          <p>문제(소형모델은 파일 전체를 못 뱉는다) → 수단(구조 앵커로 구간만 교체) → 효과(토큰·실패율 측정 가능)가 딱 떨어진다.</p>
+          <span class="pill live">본진</span>
+          <h3>3층 · 편집층</h3>
+          <p>"AI가 만든 코드를 파일에 안전하게 적용한다."<br><br>문제도, 해결책도, 효과 수치도 우리 것입니다. <b>특허는 여기에 겁니다.</b></p>
         </div>
       </div>
-      <p class="kicker">특허 심사는 <b>문제 → 수단 → 효과</b>가 구체적으로 맞물릴 때 통과된다. 3층이 유일하게 이 요건을 자력으로 충족.</p>
+      <p class="kicker">특허 심사는 <b>"어떤 문제를 → 어떤 방법으로 → 얼마나 좋아졌나"</b>가 구체적일수록 통과됩니다. 3층만 이 셋을 다 갖췄습니다.</p>
     </div>
   </section>
 
-  <!-- 4 · 중국 문헌 정체 -->
+  <!-- 5 · 핵심 한 문장 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">03 · 중국 문헌 정밀 대조</p>
-      <h2>CN 122195419 A — 이 문헌의 정체</h2>
+      <p class="eyebrow">04 · 핵심 한 문장</p>
+      <h2>우리가 남들과 다른 점은, 출발하는 생각이 반대라는 것</h2>
+      <div class="quote">
+        남들: "AI는 똑똑하다. 믿고 맡기자."<br>
+        우리: "AI는 실수한다. 그러니 <em>정해진 규칙</em>으로 붙잡자."
+        <small>어디를 고칠지 정하는 것, 고친 결과를 검사하는 것, 틀린 걸 바로잡는 것 — 이 세 가지를 AI가 아니라 프로그램이 정해진 규칙대로 합니다. 은행 폐쇄망에서 쓸 수 있는 AI는 작고 약하기 때문에, 이 선택은 멋이 아니라 필연입니다.</small>
+      </div>
+      <p class="kicker">이 "반대 방향 출발"이 코드 곳곳에 장치로 구현되어 있고, 그 장치들이 곧 특허 재료입니다. 다음 장부터 하나씩 소개합니다.</p>
+    </div>
+  </section>
+
+  <!-- 6 · 재료 지도 -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">05 · 특허 재료 한눈에</p>
+      <h2>특허 재료는 모두 여섯 가지입니다</h2>
+      <div class="tablewrap">
+        <table>
+          <tr><th>번호</th><th>쉬운 이름</th><th>한 줄 설명</th></tr>
+          <tr><td>①</td><td><b>조각 편집</b></td><td>AI에게 파일 전체를 다시 쓰게 하지 않고, 딱 필요한 조각만 쓰게 한다</td></tr>
+          <tr><td>②</td><td><b>실수 자동수리</b> ⭐ 본진</td><td>작은 AI가 자주 하는 실수 목록을 만들고, 실수마다 자동 수리 도구를 붙였다</td></tr>
+          <tr><td>③</td><td><b>규칙 카드</b></td><td>프로젝트 규칙을 카드로 만들어, 관련 작업 때 AI에게 먼저 보여준다</td></tr>
+          <tr><td>④</td><td><b>컴파일러 검사</b> ⭐ 본진</td><td>적용하기 전에 컴파일러로 검사하고, 틀리면 한 번만 고치고, 안 되면 되돌린다</td></tr>
+          <tr><td>⑤</td><td><b>정답지 검증</b></td><td>Scaffold에 미리 정해둔 규칙(폴더·이름·부품 목록)을 "채점 기준"으로 쓴다</td></tr>
+          <tr><td>⑥</td><td><b>AI 없이도 가이드</b> 🆕</td><td>AI 서버가 꺼져 있어도, 정해진 규칙과 지식만으로 개발 가이드를 제공한다</td></tr>
+        </table>
+      </div>
+      <p class="kicker">⭐ 표시(②④)가 특허의 <b>몸통</b>, 나머지는 몸통을 두껍게 하는 <b>보강재</b>입니다.</p>
+    </div>
+  </section>
+
+  <!-- 7 · 재료 ① -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">06 · 재료 ① 조각 편집</p>
+      <h2>"파일 전체를 다시 쓰지 마. 이 조각만 써."</h2>
       <div class="cardrow c2">
         <div class="card">
-          <span class="pill info">서지 사항</span>
-          <p><b>출원인</b> 麒麟软件 (Kylin Software) — 중국 국산 OS 벤더<br>
-          <b>출원일</b> 2026. 03. 13 · <b>공개일</b> 2026. 06. 12<br>
-          <b>분류</b> G06F 8/35 · 기술분야를 "운영체제 기술"로 명시<br>
-          <b>법적 상태</b> A 공보 = <b>공개된 출원</b>, 등록특허 아님 — 심사에서 깎이거나 거절될 수 있음</p>
+          <span class="pill dead">문제</span>
+          <p>은행 폐쇄망의 작은 AI는 <b>긴 파일을 통째로 다시 쓰지 못합니다.</b> 중간에 끊기거나, 멀쩡한 부분까지 바꿔버립니다.</p>
         </div>
         <div class="card">
-          <span class="pill cond">본질</span>
-          <p>Kylin OS 개발·운영을 돕는 <b>터미널 Q&amp;A 도구 + OS 성능튜닝 호출기</b>.<br><br>
-          자체 파인튜닝 모델(kymodel, GGUF) + milvus RAG로 질문에 답하고, "튜닝" 의향이 감지되면 OS 모니터링 도구를 불러 병목 분석 HTML 리포트를 낸다.<br><br><b>IDE 코드 편집 도구가 아니다.</b></p>
+          <span class="pill live">우리의 해법</span>
+          <p>프로그램이 파일 구조를 먼저 분석해서 <b>"몇째 줄과 몇째 줄 사이"라고 위치를 정해주고</b>, AI는 그 자리에 들어갈 조각만 씁니다. 위치 결정에 AI가 관여하지 않으므로 빗나가지 않습니다.</p>
         </div>
       </div>
-      <p class="kicker">청구항 1은 S1+S2+S3+S4 <b>네 요소 전부</b>를 포함해야 성립 (all-elements rule) — 다음 장에서 요소별 대조.</p>
+      <p class="kicker"><b>효과가 숫자로 있습니다</b> — 편집 성공률 33% → 84%, AI에게 보내는 분량 73% 절감. 다만 "부분만 고친다"는 아이디어 자체는 미국 문헌에도 있어서, 이 재료는 특허의 몸통이 아니라 <b>무대 설정(전제)</b>으로 씁니다.</p>
     </div>
   </section>
 
-  <!-- 5 · 청구항 대조표 -->
+  <!-- 8 · 재료 ② -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">04 · 중국 문헌 정밀 대조</p>
-      <h2>청구항 요소별 실물 대조</h2>
+      <p class="eyebrow">07 · 재료 ② 실수 자동수리 — 특허의 본진 ⭐</p>
+      <h2>AI가 자주 하는 실수마다, 전담 수리 도구가 붙어 있습니다</h2>
       <div class="tablewrap">
         <table class="dense">
-          <tr><th>청구 요소</th><th>CN 122195419 A</th><th>Axiom</th><th>판정</th></tr>
-          <tr><td><b>S1 모델 구축</b></td><td>오픈소스 모델을 <b>직접 파인튜닝</b>(LLaMA-Factory/LoRA) → <b>GGUF 변환·양자화</b>로 자체 모델(kymodel) 제작</td><td><b>파인튜닝 안 함.</b> 기성 모델을 Ollama/LiteLLM로 그대로 사용 — 모델 불가지론</td><td class="no">불일치</td></tr>
-          <tr><td><b>S2 Q&amp;A 서비스</b></td><td>터미널 CLI, <b>단일턴 독립 대화</b>를 특징으로 주장</td><td>VSCode 확장, 에디터 상태·파일 컨텍스트·대화 이력 유지</td><td class="mid">표면 유사</td></tr>
-          <tr><td><b>S3 RAG</b></td><td>milvus 벡터DB + ANN 코사인 + Langchain 프롬프트 스티칭</td><td>로컬 md 지식문서 + 하이브리드 검색 + <b>트리거 기반 계약카드 주입</b></td><td class="mid">컨셉 겹침<br>수단 상이</td></tr>
-          <tr><td><b>S4 튜닝 호출</b></td><td>발화에서 "튜닝 의향" 탐지(키워드→임베딩 0.9) → <b>OS 모니터링 도구 호출</b> → 병목 분석 HTML 리포트</td><td>기능 자체가 없음. Axiom의 호출 대상은 OS가 아니라 <b>코드 편집 파이프라인</b></td><td class="no">완전 불일치</td></tr>
-          <tr><td>S5 민감어 필터<br>(종속항)</td><td><b>입력</b>을 CSV 민감어 목록과 부분문자열 대조해 사전 차단</td><td>입력 필터가 아니라 <b>출력 검증</b>(생성물 게이트·교정기) — 방향이 반대</td><td class="no">불일치</td></tr>
+          <tr><th>작은 AI가 자주 하는 실수</th><th>Axiom의 자동 수리</th></tr>
+          <tr><td>부품 선언(import)을 엉뚱한 자리에 끼워 넣음 → 프로그램이 안 돌아감</td><td>선언만 골라내서 파일 맨 위 제자리로 옮겨줌</td></tr>
+          <tr><td>이미 있는 변수를 또 만듦</td><td>중복을 찾아내 막음</td></tr>
+          <tr><td>만든 적 없는 이름을 갖다 씀</td><td>미리 만든 이름 사전에서 찾아 연결하거나 걸러냄</td></tr>
+          <tr><td>서버 주소를 마음대로 바꿔 씀 (환각)</td><td>주소가 진짜 같은 주소인지 대조해서 틀리면 거부</td></tr>
+          <tr><td>닫는 괄호·태그를 슬쩍 지워버림</td><td>지워진 걸 감지하면 적용을 멈추고 안전한 방식으로 후퇴</td></tr>
         </table>
+      </div>
+      <p class="kicker"><b>왜 이게 본진인가?</b> "AI를 믿는" 쪽에서는 이런 도구가 애초에 필요 없습니다. 그래서 검토한 <b>두 문헌 어디에도 이 장치가 없습니다.</b> 실수 목록도, 수리 도구도 전부 실제 코드로 존재합니다.</p>
+    </div>
+  </section>
+
+  <!-- 9 · 재료 ③④ -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">08 · 재료 ③ 규칙 카드 · ④ 컴파일러 검사 ⭐</p>
+      <h2>일 시키기 전엔 규칙 카드, 일 끝나면 컴파일러 검사</h2>
+      <div class="cardrow c2">
+        <div class="card">
+          <span class="pill info">③ 규칙 카드 — 사전 예방</span>
+          <p>프로젝트의 약속(데이터 불러오는 법, 화면 이동하는 법, 이름 짓는 법 등 11종)을 <b>카드로 만들어 두고</b>, 관련 작업이 감지되면 해당 카드를 AI에게 먼저 보여줍니다.<br><br>비유: 신입사원에게 일 시키기 전에 <b>업무 매뉴얼의 해당 페이지를 펴서 주는 것.</b></p>
+        </div>
+        <div class="card">
+          <span class="pill live">④ 컴파일러 검사 — 사후 확인 ⭐</span>
+          <p>AI가 고친 결과를 파일에 넣기 전에 <b>임시 사본을 만들어 컴파일러(문법 검사기)로 검사</b>합니다. 오류가 나오면 딱 한 번 고쳐보고, 그래도 안 되면 원래대로 되돌립니다.<br><br>핵심: <b>검사에 AI를 쓰지 않습니다.</b> 이 점이 미국 문헌(AI가 AI를 검사)과 정반대입니다.</p>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- 6 · 결정적 차이 -->
+  <!-- 10 · 재료 ⑤ -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">05 · 중국 문헌 정밀 대조</p>
-      <h2>결정적 차이 — 이 특허에는<br>"적용(apply) 계층"이 없다</h2>
+      <p class="eyebrow">09 · 재료 ⑤ 정답지 검증</p>
+      <h2>Scaffold의 규칙이 곧 "채점 정답지"가 됩니다</h2>
       <div class="quote">
-        모델 응답은 터미널에 출력되고 끝난다.<br>
-        이 특허의 세계는 <em>생성에서 끝나고</em>, Axiom의 세계는 <em>생성 이후부터 시작한다.</em>
-        <small>문헌 전체에 "생성된 코드를 파일에 적용하는 단계"가 단 한 줄도 없음 — 구조 앵커 편집·실패모드 교정·tsc 폐루프·정합성 보장 전부 무개시.</small>
+        Scaffold에는 업무별 폴더 구조, 이름 규칙, 쓸 수 있는 부품 53종이 <em>미리 정해져</em> 있습니다.<br>
+        그래서 "정답지에 없는 코드 = 오답"으로 <em>기계가 즉시 판정</em>할 수 있습니다.
+        <small>규칙이 미리 정해져 있지 않은 일반 프로젝트에서는 AI가 지어낸 가짜 코드와 진짜 코드를 구분할 방법 자체가 없습니다. 우리는 정답의 범위가 유한하니까 구분이 됩니다 — 이것이 Scaffold가 특허에 기여하는 방식입니다.</small>
+      </div>
+      <div class="tablewrap">
+        <table class="dense">
+          <tr><th>남들 (Aider·Copilot·미국 문헌)</th><th>Axiom</th></tr>
+          <tr><td>규칙을 <b>참고자료</b>로 AI에게 줌 — AI가 어기면 아무도 모름</td><td class="ok">같은 규칙을 <b>두 번</b> 씀 — 일 시키기 전엔 안내서로, 일 끝난 뒤엔 <b>채점 기준</b>으로</td></tr>
+          <tr><td>채점도 AI에게 시킴</td><td class="ok">채점은 AI 없이 기계적 대조로 — 정답지는 Scaffold에서 <b>자동 생성</b></td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 · 재료 ⑥ -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">10 · 재료 ⑥ AI 없이도 가이드 🆕</p>
+      <h2>AI 서버가 꺼져도, 가이드는 살아 있습니다</h2>
+      <div class="tablewrap">
+        <table>
+          <tr><th>상황</th><th>Axiom의 동작</th></tr>
+          <tr><td>서버 정상 + 지식이 확실할 때</td><td class="ok">AI를 <b>부르지 않고</b> 저장된 지식으로 바로 답합니다 (빠르고 정확)</td></tr>
+          <tr><td>서버 정상 + 지식이 부족할 때</td><td>그때만 AI를 부릅니다</td></tr>
+          <tr><td><b>서버가 죽었을 때</b></td><td class="ok">미리 감지해서 헛시도를 막고, <b>질문 의도 분석 + Scaffold 지식 검색</b>만으로 가이드를 계속 제공합니다</td></tr>
+        </table>
       </div>
       <div class="cardrow c2">
         <div class="card">
-          <span class="pill info">가장 가까운 접점 하나</span>
-          <p>S4의 "2차원 매칭"(키워드 실패 시 임베딩 폴백)이 Axiom 의도 라우팅과 표면 유사. 그러나 <b>목적이 다르고</b>(OS튜닝 이진 트리거 vs 다중 의도 분류→편집 라우팅) <b>수단이 다르다</b>(트리거 KB 코사인 임계값 vs LLM 위임 분류+정규식 폴백+되묻기).</p>
+          <span class="pill live">특허에서의 역할</span>
+          <p>단독 특허감은 아닙니다(오프라인 도움말은 옛날부터 있음). 대신 <b>덧붙이는 항목(종속항)</b>으로 걸고, 무엇보다 <b>"이 시스템은 AI를 필수품이 아니라 옵션으로 취급한다"</b>는 발명 전체의 일관성을 증명하는 재료가 됩니다.</p>
         </div>
         <div class="card">
-          <span class="pill cond">시간관계 부수사항</span>
-          <p>이 출원의 출원일은 <b>2026-03-13</b>. Axiom의 GitHub 공개가 그보다 앞선다면, 반대로 <b>Axiom 공개가 이 출원의 선행기술</b>이 되는 관계. 대리인에게 시간관계를 함께 전달할 가치가 있다.</p>
+          <span class="pill info">영업에서의 역할</span>
+          <p>은행 입장에서 강력한 한 마디: <b>"서버가 장애 나도 개발 가이드는 멈추지 않습니다."</b> 폐쇄망 가용성 스토리로 그대로 씁니다.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 7 · 종합 판정 -->
+  <!-- 12 · 중국 문헌 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">06 · 중국 문헌 정밀 대조</p>
-      <h2>종합 판정 — 두 관점</h2>
+      <p class="eyebrow">11 · 경쟁 문헌 검증 (1) 중국</p>
+      <h2>중국 문헌: 뜯어보니, 우리와 겹치지 않습니다</h2>
       <div class="cardrow c2">
         <div class="card">
-          <span class="pill live">① 침해 리스크: 매우 낮음</span>
-          <p>청구항 1의 필수 요소 S1(자체 파인튜닝+GGUF 제작)과 S4(OS 튜닝 도구 호출)를 Axiom은 수행하지 않음 → <b>all-elements 기준 미충족.</b><br><br>게다가 중국 출원이므로 효력 범위는 중국 내 — 한국 사업에는 애초에 미치지 않음.</p>
+          <span class="pill info">이 문헌의 정체</span>
+          <p>중국 국산 OS 회사(Kylin)가 낸 출원. 자기네 <b>운영체제의 성능 튜닝을 도와주는 터미널 문답 도구</b>입니다. 질문에 답하고, 성능 리포트를 만들어 주는 게 전부.</p>
         </div>
         <div class="card">
-          <span class="pill live">② 선행기술 영향: 3층 무접촉</span>
-          <p><b>1층</b> — "로컬 경량모델+RAG 개발보조" 공지 재확인, 사망 판정 유지.<br>
-          <b>2층</b> — 일반형 RAG(milvus+ANN+스티칭)가 공지됐으니 은행 메타데이터 결합 없는 일반 청구항은 더 위험.<br>
-          <b>3층</b> — 편집·적용·검증 영역 무개시. <b>"②+④ 뼈대 + ① 환경" 전략이 이 문헌으로 오히려 지지됨.</b></p>
+          <span class="pill live">왜 안 겹치나</span>
+          <p><b>코드를 고쳐서 파일에 적용하는 단계가 아예 없습니다.</b> 답변은 화면에 출력되고 끝.<br><br>비유하면: 그쪽은 <b>말로 알려주는 상담원</b>, 우리는 <b>직접 고치는 정비사</b>. 상담 특허로 정비 기술을 막을 수 없습니다.</p>
         </div>
       </div>
+      <p class="kicker">덤: 이 출원(2026년 3월)보다 우리 GitHub 공개가 빠르다면, 오히려 <b>우리 공개가 그쪽 심사에서 걸림돌</b>이 되는 관계입니다.</p>
     </div>
   </section>
 
-  <!-- 8 · 핵심 차별 명제 -->
+  <!-- 13 · 미국 문헌 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">07 · 핵심 차별 명제</p>
-      <h2>선행기술과 갈라지는 지점은<br>기능이 아니라 <em>전제</em>다</h2>
+      <p class="eyebrow">12 · 경쟁 문헌 검증 (2) 미국</p>
+      <h2>미국 문헌: 이건 무게가 다릅니다 — 조심해야 할 상대</h2>
+      <div class="cardrow c2">
+        <div class="card">
+          <span class="pill cond">이 문헌의 정체</span>
+          <p>미국 IT 대기업 Presidio의 출원. 요구사항 정리부터 코딩·테스트·반영까지 <b>개발 전 과정을 AI 요원(에이전트) 군단이 처리</b>하는 프레임워크입니다. 2024년 11월부터 권리 주장이 가능할 수 있습니다.</p>
+        </div>
+        <div class="card">
+          <span class="pill dead">우리에게 아픈 부분</span>
+          <p>"필요한 부분만 골라 고친다", "고친 걸 검토하고 테스트한다" — 이런 <b>뭉뚱그린 표현은 이미 이 문헌에 다 있습니다.</b><br><br>즉, 우리가 특허 문장을 넓게 쓰면 이 문헌에 걸려 죽습니다.</p>
+        </div>
+      </div>
+      <p class="kicker">침해 걱정은 낮습니다(그쪽 청구항은 "요구사항→작업지시서→빌드" 파이프라인이라 우리와 구성이 다름). 문제는 <b>우리 심사 때 인용될 수 있다</b>는 점입니다.</p>
+    </div>
+  </section>
+
+  <!-- 14 · 그래도 사는 이유 -->
+  <section class="slide">
+    <div class="slide-inner">
+      <p class="eyebrow">13 · 경쟁 문헌 검증 (3) 갈림길</p>
+      <h2>그래도 우리가 살아남는 이유: 가는 길이 정반대입니다</h2>
       <div class="quote">
-        "모델은 약하다. 그러므로 모델에게는 한 조각만 시키고,<br>
-        위치 결정·검증·교정은 확장이 결정론으로 수행한다."
-        <small>Continue·Tabby 계열은 정반대 — "모델은 강하다, 맡기고 결과를 받는다." 이 전도된 전제가 코드 전반에 일관되게 구현되어 있다.</small>
+        같은 문제(AI 코드를 어떻게 믿을 것인가)를 놓고 —<br>
+        Presidio는 <em>"AI를 더 붙여서"</em> 풀고, 우리는 <em>"AI를 빼고 규칙으로"</em> 풉니다.
+        <small>그쪽은 AI가 만든 코드를 또 다른 AI(검토 요원)가 검사하고, AI가 만든 테스트로 확인합니다. 우리는 검사에 AI를 한 번도 쓰지 않습니다 — 실수 수리 도구(②)와 컴파일러(④)가 합니다. 은행 폐쇄망의 작은 AI로는 "검사용 AI 군단"을 돌릴 수 없기 때문에, 우리 길은 필연입니다.</small>
       </div>
-      <div class="cardrow c2">
-        <div class="card">
-          <span class="pill dead">선행기술의 전제</span>
-          <p>강한 모델 → 파일/패치 통째 생성 → 품질은 모델에 의존 → 검증 장치가 애초에 불필요</p>
-        </div>
-        <div class="card">
-          <span class="pill live">Axiom의 전제</span>
-          <p>약한 로컬 소형모델 → 조각만 생성 → 실패모드를 열거하고 각각에 결정론 교정기 → 폐루프 검증</p>
-        </div>
-      </div>
+      <p class="kicker">이 갈림길 덕분에 특허 문장에 <b>"검사 단계에서 AI를 추가로 호출하지 않는다"</b>는 한 줄을 넣으면, 미국 문헌과 겹치지 않는 우리만의 울타리가 그려집니다.</p>
     </div>
   </section>
 
-  <!-- 9 · 기술수단 ① -->
+  <!-- 15 · 성적표 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">08 · 청구항 재료 ①</p>
-      <h2>구조적 앵커 기반 부분편집</h2>
-      <ul class="big">
-        <li><span class="n">a</span><span><b>소스를 결정론적으로 분해</b> — <code>splitTsSections</code>가 import / 컴포넌트 / 섹션 단위로 파일을 해부하고 <code>computeAnchors</code>가 삽입·교체 지점을 특정<span class="why">StructuralAnchor.ts:287 — 위치 결정은 100% 확장 몫</span></span></li>
-        <li><span class="n">b</span><span><b>모델은 조각(hookCode)만 생성</b> — 파일 전체 재출력을 요구하지 않음<span class="why">"소형모델은 파일 전체를 다시 뱉지 못한다"는 고유 문제의 직접 해법</span></span></li>
-        <li><span class="n">c</span><span><b>효과가 수치로 측정됨</b> — 토큰 소모, 적용률(33%→84%), 컨텍스트 초과 실패율<span class="why">eval 하니스로 재현 가능한 정량 효과 — 명세서 실시예 재료</span></span></li>
-      </ul>
-      <p class="kicker">⚠ 단독으로는 완전 신규가 아님 — LSP/AST·tree-sitter 기반 부분편집 선행기술 존재. <b>①은 뼈대가 아니라 실행환경으로 배치</b>하는 것이 안전.</p>
-    </div>
-  </section>
-
-  <!-- 10 · 기술수단 ② -->
-  <section class="slide">
-    <div class="slide-inner">
-      <p class="eyebrow">09 · 청구항 재료 ② — 가장 덜 밟힌 땅</p>
-      <h2>실패모드 열거 + 결정론 교정기</h2>
-      <p class="sub">모델 출력을 그대로 적용하지 않는다. 소형모델의 전형적 실패모드마다 전용 교정기가 붙어 있다 — 전부 실제 코드로 존재.</p>
+      <p class="eyebrow">14 · 종합 판정</p>
+      <h2>성적표: 어디에 걸면 몇 점인가</h2>
       <div class="tablewrap">
-        <table>
-          <tr><th>소형모델 실패모드</th><th>결정론 교정기 (실제 함수)</th></tr>
-          <tr><td>훅 조각 안에 import를 섞어 냄 → 함수 중간에 import 박힘</td><td><code>extractImportsFromHookCode</code> — 상단 채널로 hoist</td></tr>
-          <tr><td>이미 있는 state/훅을 중복 선언</td><td><code>findDuplicateDeclarations</code></td></tr>
-          <tr><td>선언 없는 심볼 참조</td><td><code>findUnresolvedReferences</code> + <code>resolveKnownImports</code></td></tr>
-          <tr><td>JSX 컴포넌트 import 누락</td><td><code>findUnresolvedJsxComponents</code> + <code>ensureUiComponentImports</code></td></tr>
-          <tr><td>엔드포인트를 별칭·환각으로 교체</td><td><code>normalizeEndpointExpr</code> — 별칭 해소 후 동일성 판정</td></tr>
-          <tr><td>닫는 태그를 조용히 삭제</td><td>closer-dropped 가드 → full 폴백</td></tr>
+        <table class="dense">
+          <tr><th>특허를 거는 대상</th><th>전망</th><th>이유</th></tr>
+          <tr><td>큰 아이디어 그대로 ("폐쇄망 AI 코딩 도우미")</td><td class="no">0%</td><td>전세계에 이미 널려 있음</td></tr>
+          <tr><td>뭉뚱그린 표현 ("부분만 고치고 검증한다")</td><td class="no">~20%</td><td>미국 문헌에 정면으로 걸림</td></tr>
+          <tr><td><b>좁힌 핵심: 실수 자동수리(②) + 컴파일러 검사(④) + "검사에 AI 추가 호출 없음" 명시</b></td><td class="ok"><b>60~75%</b></td><td>두 문헌 모두에 없는 유일한 영역 + 실제 코드와 효과 수치 보유</td></tr>
+          <tr><td>정답지 검증(⑤) · AI 없이도 가이드(⑥) — 덧붙이는 항목</td><td class="mid">~50%</td><td>단독은 약하지만 몸통에 얹으면 유효</td></tr>
+          <tr><td>은행 전용 검색(2층) — 별도 건</td><td class="mid">~40%</td><td>은행 표준 데이터와 얼마나 단단히 묶느냐에 달림</td></tr>
         </table>
       </div>
-      <p class="kicker">모델을 신뢰하는 전제에선 <b>애초에 필요가 없는 장치들</b> — 그래서 선행기술이 거의 갖고 있지 않다. 중국 문헌도 이 영역에 아무 개시가 없음.</p>
+      <p class="kicker">※ 한국 출원 기준의 기술적 판단이며 법률 자문은 아닙니다. 그리고 <b>이 숫자들은 전부 "마감 시계가 아직 살아있다면"이라는 전제가 붙어 있습니다.</b></p>
     </div>
   </section>
 
-  <!-- 11 · 기술수단 ③④ -->
+  <!-- 16 · 근거와 뒤집힐 조건 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">10 · 청구항 재료 ③ ④</p>
-      <h2>계약 자동주입 + 검증-교정 폐루프</h2>
+      <p class="eyebrow">15 · 종합 판정 — 근거와 조건</p>
+      <h2>왜 60~75%인가, 무엇이 뒤집을 수 있나</h2>
       <div class="cardrow c2">
         <div class="card">
-          <span class="pill info">③ ScaffoldContracts</span>
-          <h3>트리거 기반 계약 카드 자동주입</h3>
-          <p>스캐폴드 특유의 계약(useApi 봉투 구조, 라우터, 타입 규약)을 트리거 단어로 감지해 프롬프트에 카드로 주입. 11종 계약 카드 운용 중.<br><br><b>2층 전략과 맞물림</b> — 특정 스캐폴드/표준 구조에 묶을수록 인용문헌이 줄어든다.</p>
+          <span class="pill live">높게 보는 세 가지 이유</span>
+          <p><b>1.</b> 업계의 흐름이 "AI를 더 붙이는" 쪽임을 두 문헌이 보여줌 → 우리처럼 "AI를 빼는" 방향은 남들이 쉽게 가지 않는 길이라는 증거.<br><br>
+          <b>2.</b> "검사에 AI 호출 없음"이라는 조건이 억지가 아님 — 작은 AI라는 전제에서 자연스럽게 나오는 결론이라 심사관 설득이 쉬움.<br><br>
+          <b>3.</b> 말이 아니라 물건이 있음 — 1,700줄 실제 코드 + 성공률 33→84% 같은 재현 가능한 수치.</p>
         </div>
         <div class="card">
-          <span class="pill info">④ Verify-Correct Loop</span>
-          <h3>tsc 진단 기반 폐루프 교정</h3>
-          <p>편집 결과를 임시 형제파일로 tsc 검증(VSCode getDiagnostics) → 실패 시 앵커 기반 <code>&lt;replace&gt;</code> 교정 1회 → fail-open.<br><br>선행기술의 open-loop one-shot과 대비되는 <b>폐루프(closed-loop)</b> 구조.</p>
+          <span class="pill cond">뒤집힐 수 있는 세 가지 조건</span>
+          <p><b>1. 마감 시계 (치명적)</b> — GitHub 공개 후 12개월이 지났다면 위 숫자는 전부 0이 됩니다.<br><br>
+          <b>2. 속도전</b> — 이 분야에 지금 빠르게 울타리가 쳐지는 중(Presidio가 증거). 6개월 뒤엔 우리 본진을 밟는 문헌이 나올 수 있음.<br><br>
+          <b>3. SW 특허 문턱</b> — "그냥 규칙 몇 개 조합 아니냐"는 거절 가능성. 폐쇄망·작은 AI라는 자원 제약과 묶어 서술하면 방어 가능(변리사 역량 필요).</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 12 · 대비표 -->
+  <!-- 17 · 최종 문답 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">11 · 선행기술 대비</p>
-      <h2>4개 축에서 갈린다</h2>
+      <p class="eyebrow">16 · 종합 판정 — 최종 문답</p>
+      <h2>예상 질문 네 가지에 미리 답합니다</h2>
       <div class="tablewrap">
         <table>
-          <tr><th>축</th><th>중국 문헌 · Continue 계열</th><th>Axiom</th></tr>
-          <tr><td><b>모델 전제</b></td><td>강한 모델(또는 자체 파인튜닝 모델), 맡긴다</td><td class="ok">약한 모델, 조각만 시킨다</td></tr>
-          <tr><td><b>편집 단위</b></td><td>파일/패치 통째 생성 — 중국 문헌은 편집 자체가 없음</td><td class="ok">구조 앵커 구간 교체</td></tr>
-          <tr><td><b>신뢰성 확보</b></td><td>모델 품질에 의존</td><td class="ok">실패모드 열거 + 결정론 교정기</td></tr>
-          <tr><td><b>정합 검증</b></td><td>없거나 사람이 수행</td><td class="ok">tsc 폐루프 자동 교정</td></tr>
+          <tr><th>질문</th><th>답</th></tr>
+          <tr><td>"특허 받을 수 있어요?"</td><td class="ok">예 — 실수 자동수리+컴파일러 검사로 좁혀서 1건. 조건부 60~75%</td></tr>
+          <tr><td>"크게 못 받아요?"</td><td class="no">아니오 — 그 문은 미국 문헌이 닫았습니다</td></tr>
+          <tr><td>"특허가 경쟁사를 막아주나요?"</td><td class="no">아니오 — 실제 방어는 영업비밀+계약(EULA)이 합니다. 특허는 "자체 기술 보유"를 증명하는 <b>간판</b>이고, "출원 중" 한 줄은 은행 제안평가에서 실질적으로 작동합니다</td></tr>
+          <tr><td>"그럼 지금 뭘 해야 하나요?"</td><td class="ok">기술 분석은 끝났습니다. 남은 건 <b>마감 시계 확인</b> 하나 — 이번 주 안에 변리사와 확정</td></tr>
         </table>
       </div>
-      <p class="kicker">중국 문헌은 <b>1층(컨셉층)을 커버할 뿐</b> — ②·④의 영역에는 도달하지 않는다. 모델을 신뢰하면 필요 없는 장치이기 때문.</p>
+      <div class="notebox"><b>"Scaffold 자체는 특허가 안 되나요?"</b> — 폴더 구조·규칙·부품 목록 같은 것 자체는 특허 대상이 아닙니다(저작권과 영업비밀로 지키는 영역). 특허가 되는 건 <b>"그 규칙을 채점 정답지로 쓰는 Axiom의 방법"</b>이고, 그래서 출원은 2건이 아니라 <b>Scaffold와 Axiom을 하나로 묶은 1건</b>이 맞습니다.</div>
     </div>
   </section>
 
-  <!-- 13 · 청구항 전략 -->
+  <!-- 18 · 마감 시계 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">12 · 청구항 전략</p>
-      <h2>뼈대는 ②+④, ①은 실행환경으로</h2>
-      <ul class="big">
-        <li><span class="n">뼈대</span><span><b>②+④ — "약한 모델 출력의 실패모드별 결정론 교정 + 폐루프 검증"</b><span class="why">문제설정 자체가 덜 밟힌 땅. ① 단독이면 AST 편집 선행기술과 정면충돌하지만, 이 구성은 인용할 문헌이 드물다.</span></span></li>
-        <li><span class="n">환경</span><span><b>① 구조적 앵커 부분편집 — 청구항의 실행환경(전제부)으로 배치</b><span class="why">"로컬 소형모델 + 폐쇄망 제약 하에서"라는 한정과 함께 조합의 구체성을 만든다.</span></span></li>
-        <li><span class="n">2순위</span><span><b>③+은행 표준 메타데이터 — 도메인 결합형 리트리벌로 별건 검토</b><span class="why">메타데이터 필드 태깅을 라우팅 기준으로 쓰는 구조. 넓게 쓰면 죽고, 은행 데이터 구조에 묶으면 산다.</span></span></li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- 14 · 공지예외 -->
-  <section class="slide">
-    <div class="slide-inner">
-      <p class="eyebrow">13 · 최우선 리스크</p>
-      <h2>공지예외 유예는 국가마다 다르다</h2>
+      <p class="eyebrow">17 · 최우선 확인 사항</p>
+      <h2>마감 시계: 나라마다 다르게 돌아갑니다</h2>
       <div class="tablewrap">
         <table>
-          <tr><th>국가</th><th>GitHub 공개 후 구제</th><th>판정</th></tr>
-          <tr><td>한국</td><td>12개월 유예</td><td class="ok">가능 — 단, 기산점 확인 필요</td></tr>
-          <tr><td>일본</td><td>12개월 유예</td><td class="ok">가능</td></tr>
-          <tr><td>미국</td><td>12개월 유예</td><td class="ok">가능</td></tr>
-          <tr><td>중국</td><td>특정 전시회·학회 공개만 인정</td><td class="no">사실상 닫힘</td></tr>
-          <tr><td>유럽 (EPO)</td><td>사실상 없음</td><td class="no">사실상 닫힘</td></tr>
+          <tr><th>국가</th><th>우리가 먼저 공개한 것(GitHub)에 대해</th><th>판정</th></tr>
+          <tr><td>한국</td><td>공개 후 12개월 안이면 출원 가능</td><td class="ok">가능 — 단, 시계가 언제 시작됐는지 확인 필요</td></tr>
+          <tr><td>일본</td><td>공개 후 12개월 안이면 가능</td><td class="ok">가능</td></tr>
+          <tr><td>미국</td><td>공개 후 12개월 안이면 가능</td><td class="ok">가능</td></tr>
+          <tr><td>중국</td><td>거의 안 봐줌 (특정 전시회·학회만)</td><td class="no">사실상 닫힘</td></tr>
+          <tr><td>유럽</td><td>사실상 안 봐줌</td><td class="no">사실상 닫힘</td></tr>
         </table>
       </div>
       <div class="warnbox">
-        <b>지금 당장 확인할 것</b> — 한국의 12개월이 <b>언제 시작됐는가.</b> 최초 커밋 날짜인지, 해당 코드(StructuralAnchor 등)가 올라간 날짜인지에 따라 잔여 시간이 다르다. 이건 중국 문헌 분석보다 우선순위가 높다.
+        <b>이번 주에 확인할 것</b> — 시계의 시작점이 <b>"저장소를 처음 공개한 날"인지, "핵심 기술이 담긴 코드가 올라간 날"인지</b>에 따라 남은 시간이 다릅니다. 이 확인이 다른 모든 일보다 먼저입니다.
       </div>
     </div>
   </section>
 
-  <!-- 15 · 피치 관점 -->
+  <!-- 19 · 특허의 용도 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">14 · 영업 관점</p>
-      <h2>특허는 "울타리"가 아니라 "간판"이다</h2>
+      <p class="eyebrow">18 · 기대치 조정</p>
+      <h2>특허는 "울타리"가 아니라 "간판"입니다</h2>
       <div class="cardrow c2">
         <div class="card">
           <span class="pill cond">냉정한 현실</span>
-          <p>금융권 SI RFP에서 등록특허와 출원중의 실질 차이는 작다. "특허 출원 중" 한 줄이 평가표에서 하는 일은 <b>"자체 기술 보유"의 증명</b>이지, 경쟁사 차단이 아니다.</p>
+          <p>은행 사업 제안에서 "등록특허"와 "출원 중"의 점수 차이는 생각보다 작습니다. 평가표에서 특허 한 줄이 하는 일은 <b>"이 회사는 자기 기술이 있다"는 증명</b>이지, 경쟁사를 법적으로 막는 게 아닙니다.</p>
         </div>
         <div class="card">
-          <span class="pill live">실제 이기는 무기</span>
-          <p>Continue+Ollama 조합과 붙을 때 승부처는 특허가 아니라 <b>은행 표준 메타데이터 파이프라인</b>과 <b>폐쇄망 실증 레퍼런스</b>다.</p>
+          <span class="pill live">실제로 이기는 무기</span>
+          <p>경쟁 제품(무료 오픈소스 조합)과 붙었을 때 이기게 해주는 건 <b>은행 표준 데이터 파이프라인</b>과 <b>폐쇄망에서 실제로 돌아간 실적</b>입니다. 특허는 그 위에 얹는 신뢰 장치.</p>
         </div>
       </div>
-      <p class="kicker">실질 방어의 본체는 기존 결론대로 <b>영업비밀 + EULA 강화</b>. 특허는 그 위에 얹는 신뢰 장치.</p>
+      <p class="kicker">그래서 방어의 본체는 기존 결론대로 <b>영업비밀 + 계약(EULA)</b>이고, 특허는 딱 1건을 제대로 걸어 간판으로 씁니다.</p>
     </div>
   </section>
 
-  <!-- 16 · 액션 -->
+  <!-- 20 · 액션 -->
   <section class="slide">
     <div class="slide-inner">
-      <p class="eyebrow">15 · 액션 아이템</p>
-      <h2>순서대로 여섯 가지</h2>
+      <p class="eyebrow">19 · 해야 할 일</p>
+      <h2>순서대로 일곱 가지</h2>
       <ul class="big">
-        <li><span class="n">1</span><span><b>공지예외 잔여기간 즉시 확인</b> — GitHub 공개 시점 기산, 대리인과 확정. <span class="why">가장 급함. 모든 전략이 이 답에 종속된다.</span></span></li>
-        <li><span class="n">2</span><span><b>컨셉층 청구항 폐기</b> — 1층에 예산·미련 두지 않기</span></li>
-        <li><span class="n">3</span><span><b>②+④ 뼈대 + ① 환경으로 1건 제대로</b> — StructuralAnchor 계열 집중</span></li>
-        <li><span class="n">4</span><span><b>은행 메타데이터 RAG는 도메인 결합으로 2순위</b> 별건 검토</span></li>
-        <li><span class="n">5</span><span><b>CN 122195419 A와의 시간관계를 대리인에게 전달</b> — 출원일 2026-03-13 vs Axiom GitHub 공개일 선후 확인</span></li>
-        <li><span class="n">6</span><span><b>방어 본체는 영업비밀 + 계약(EULA)</b> — 특허는 간판으로 운용</span></li>
+        <li><span class="n">1</span><span><b>마감 시계 확인 (이번 주)</b> — GitHub 공개일 기준 12개월이 언제 끝나는지 변리사와 확정. <span class="why">모든 것이 이 답에 달려 있습니다.</span></span></li>
+        <li><span class="n">2</span><span><b>큰 아이디어에 대한 미련 버리기</b> — 아이디어층 청구항은 쓰지 않습니다</span></li>
+        <li><span class="n">3</span><span><b>본진 1건 출원 준비</b> — 실수 자동수리(②) + 컴파일러 검사(④), "검사에 AI 추가 호출 없음" 명시, 조각편집(①)은 무대 설정으로</span></li>
+        <li><span class="n">4</span><span><b>정답지 검증(⑤)과 AI 없이도 가이드(⑥)는 덧붙이는 항목으로</b> 같이 넣기</span></li>
+        <li><span class="n">5</span><span><b>은행 전용 검색은 2순위 별도 건</b>으로 검토</span></li>
+        <li><span class="n">6</span><span><b>두 문헌 자료를 변리사에게 전달</b> — 날짜 관계 정리 포함, 미국 출원 시엔 미국 문헌을 심사관에게 의무적으로 제출(IDS)</span></li>
+        <li><span class="n">7</span><span><b>방어의 본체는 계속 영업비밀 + 계약</b> — 특허는 간판으로 운용</span></li>
       </ul>
     </div>
   </section>
 </div>
 
 <nav class="nav">
-  <span class="counter" id="counter">1 / 16</span>
+  <span class="counter" id="counter">1 / 20</span>
   <span class="hint">← → 방향키 · 스페이스로 이동</span>
   <span class="btns">
     <button id="prev" aria-label="이전 슬라이드">← 이전</button>
