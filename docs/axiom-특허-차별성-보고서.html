@@ -1,0 +1,357 @@
+<title>Axiom 특허 차별성 분석 보고서</title>
+<style>
+  :root {
+    --paper: #FAFBFC;
+    --panel: #FFFFFF;
+    --ink: #1C2530;
+    --ink-soft: #55637A;
+    --line: #DCE2EB;
+    --accent: #2E5FD0;
+    --accent-soft: #EAF0FC;
+    --amber: #B47B12;
+    --amber-soft: #FBF3E1;
+    --green: #2A7D4F;
+    --green-soft: #E7F3EC;
+    --red: #B0433C;
+    --red-soft: #FBEBE9;
+    --mono: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14181F; --panel: #1C222C; --ink: #E8ECF2; --ink-soft: #9AA7BB;
+      --line: #303947; --accent: #7DA2F2; --accent-soft: #212D45;
+      --amber: #E0A93E; --amber-soft: #332A17; --green: #58B383; --green-soft: #17301F;
+      --red: #E07B72; --red-soft: #38201E;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #FAFBFC; --panel: #FFFFFF; --ink: #1C2530; --ink-soft: #55637A;
+    --line: #DCE2EB; --accent: #2E5FD0; --accent-soft: #EAF0FC;
+    --amber: #B47B12; --amber-soft: #FBF3E1; --green: #2A7D4F; --green-soft: #E7F3EC;
+    --red: #B0433C; --red-soft: #FBEBE9;
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181F; --panel: #1C222C; --ink: #E8ECF2; --ink-soft: #9AA7BB;
+    --line: #303947; --accent: #7DA2F2; --accent-soft: #212D45;
+    --amber: #E0A93E; --amber-soft: #332A17; --green: #58B383; --green-soft: #17301F;
+    --red: #E07B72; --red-soft: #38201E;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.75;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  .doc-eyebrow {
+    font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 12px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 38px); font-weight: 800; line-height: 1.28;
+    letter-spacing: -0.015em; margin: 0 0 14px; text-wrap: balance;
+  }
+  .meta {
+    font-size: 13.5px; color: var(--ink-soft);
+    display: flex; flex-wrap: wrap; gap: 4px 20px;
+    padding-bottom: 28px; border-bottom: 1px solid var(--line); margin-bottom: 36px;
+  }
+  .meta span { white-space: nowrap; }
+
+  h2 {
+    font-size: 23px; font-weight: 800; letter-spacing: -0.01em;
+    margin: 56px 0 16px; line-height: 1.3; text-wrap: balance;
+    padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  h2 .no { color: var(--accent); font-family: var(--mono); font-size: 16px; margin-right: 10px; }
+  h3 { font-size: 17.5px; font-weight: 700; margin: 32px 0 10px; }
+  p { margin: 0 0 16px; max-width: 46em; }
+  strong { font-weight: 700; }
+
+  .toc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 26px; margin-bottom: 8px; font-size: 14.5px;
+  }
+  .toc b { display: block; font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 10px; }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  .summary {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    border-radius: 0 10px 10px 0; padding: 18px 24px; margin: 24px 0;
+    font-size: 15.5px;
+  }
+  .summary p:last-child { margin-bottom: 0; }
+
+  .verdict { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; border-radius: 99px; padding: 2px 11px; vertical-align: 2px; margin-left: 8px; }
+  .verdict.dead { background: var(--red-soft); color: var(--red); }
+  .verdict.cond { background: var(--amber-soft); color: var(--amber); }
+  .verdict.live { background: var(--green-soft); color: var(--green); }
+
+  .tablewrap { overflow-x: auto; margin: 20px 0 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); font-weight: 700; white-space: nowrap; }
+  td.ok { color: var(--green); font-weight: 700; }
+  td.no { color: var(--red); font-weight: 700; }
+  td.mid { color: var(--amber); font-weight: 700; }
+  table.dense { font-size: 13.5px; }
+  table.dense th, table.dense td { padding: 9px 13px; }
+
+  code {
+    font-family: var(--mono); font-size: .85em;
+    background: var(--accent-soft); color: var(--accent);
+    border-radius: 4px; padding: 1px 6px;
+  }
+  .path { font-family: var(--mono); font-size: .85em; color: var(--ink-soft); }
+
+  .warnbox {
+    border: 1px solid var(--amber); background: var(--amber-soft);
+    border-radius: 10px; padding: 16px 22px; margin: 20px 0; font-size: 15px;
+  }
+  .warnbox b { color: var(--amber); }
+
+  ul { padding-left: 22px; margin: 0 0 16px; }
+  li { margin: 6px 0; }
+  ol.actions { padding-left: 0; margin: 20px 0; list-style: none; counter-reset: act; }
+  ol.actions li {
+    counter-increment: act; position: relative;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 18px 14px 56px; margin: 10px 0; font-size: 15px;
+  }
+  ol.actions li::before {
+    content: counter(act); position: absolute; left: 18px; top: 15px;
+    font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--accent);
+  }
+  .footnote { font-size: 13.5px; color: var(--ink-soft); border-top: 1px solid var(--line); margin-top: 56px; padding-top: 20px; }
+</style>
+
+<div class="page">
+  <p class="doc-eyebrow">Axiom AI · 특허 전략 검토 보고서</p>
+  <h1>중국 선행문헌 대응 — Axiom 차별성 분석 및 출원 전략</h1>
+  <div class="meta">
+    <span>작성일 2026. 07. 24 (v2 — CN 122195419 A 청구항 정밀 대조 반영)</span>
+    <span>근거 자료: CN 122195419 A 원문 + Axiom 구현 코드 실사</span>
+  </div>
+
+  <div class="toc">
+    <b>목차</b>
+    <ol>
+      <li><a href="#s1">결론 요약</a></li>
+      <li><a href="#s2">층별 진단 — 3층 구조 분석</a></li>
+      <li><a href="#s3">중국 문헌 정밀 대조 — CN 122195419 A</a></li>
+      <li><a href="#s4">핵심 차별 명제</a></li>
+      <li><a href="#s5">청구항 재료 — 구체 기술수단 4종</a></li>
+      <li><a href="#s6">선행기술 대비표</a></li>
+      <li><a href="#s7">청구항 전략 제안</a></li>
+      <li><a href="#s8">최우선 리스크 — 공지예외 유예기간</a></li>
+      <li><a href="#s9">영업(피치) 관점의 특허 포지셔닝</a></li>
+      <li><a href="#s10">액션 아이템</a></li>
+      <li><a href="#s11">부록 — 코드 근거 목록</a></li>
+    </ol>
+  </div>
+
+  <h2 id="s1"><span class="no">1</span>결론 요약</h2>
+  <div class="summary">
+    <p><strong>"Axiom 특허가 어렵다"는 결론이 아니다. "넓은 특허는 사실상 불가능하고, 좁은 특허는 충분히 가능하다"가 정확한 결론이다.</strong></p>
+    <p>중국 문헌 CN 122195419 A를 청구항 단위로 정밀 대조한 결과, <strong>이 문헌은 Axiom의 특허 본진(코드 적용·검증 계층)과 접촉면이 없다.</strong> 침해 리스크는 매우 낮고(all-elements 미충족 + 중국 내 효력), 3층 청구항의 인용문헌으로 쓰기도 어렵다.</p>
+    <p>진짜 위험 요소는 이 문헌이 아니라 <strong>GitHub 공개에 따른 공지예외 유예기간</strong>이다. 국가별로 유예 제도가 달라 중국·유럽 출원은 이미 닫혔다고 보아야 하며, 한국의 잔여 기간 확인이 가장 급하다.</p>
+    <p>특허로 살아남을 확률이 가장 높은 부분은 <strong>StructuralAnchor 기반 리전 편집 계층</strong>이며, 그중에서도 "약한 모델 출력의 실패모드별 결정론 교정 + 검증 폐루프"가 선행기술이 가장 덜 밟은 땅이다.</p>
+  </div>
+
+  <h2 id="s2"><span class="no">2</span>층별 진단 — 3층 구조 분석</h2>
+  <p>Axiom을 세 층으로 나누면 특허성 판정이 층마다 갈린다.</p>
+
+  <h3>1층 — 컨셉층 <span class="verdict dead">사실상 포기</span></h3>
+  <p>"폐쇄망에서 로컬 LLM + 벡터DB로 코딩을 보조한다"는 층이다. Continue, Tabby, PrivateGPT 계열과 로컬 RAG 논문 다수, 그리고 이번 중국 문헌까지 전부 선행기술이다. 이 층에 청구항을 걸면 거절이 확실하므로 예산과 미련을 두지 않는다.</p>
+
+  <h3>2층 — 리트리벌 파이프라인 <span class="verdict cond">조건부 생존</span></h3>
+  <p>centroid 라우팅 + RRF + reranker 게이팅. 각 요소는 전부 기성품이다(RRF는 논문 발표 후 20년 가까이 경과, reranker 게이팅도 일반적). <strong>조합만으로는 진보성이 약하다.</strong> 다만 은행 표준단어·표준용어·표준도메인이라는 <strong>특정 데이터 구조와 결합</strong>하면 — 예: "메타데이터 필드 태깅을 라우팅 기준으로 사용" — 심사관이 인용할 수 있는 문헌이 급감한다. 넓게 쓰면 죽고, 은행 메타데이터에 묶으면 산다.</p>
+
+  <h3>3층 — StructuralAnchor 리전 편집 <span class="verdict live">특허 본진</span></h3>
+  <p>특허 심사는 "문제 → 수단 → 효과"가 구체적으로 맞물릴 때 통과되는데, 이 층이 유일하게 세 요건을 자력으로 충족한다.</p>
+  <ul>
+    <li><strong>문제가 구체적</strong> — 로컬 소형 모델은 파일 전체를 다시 출력하지 못한다.</li>
+    <li><strong>수단이 구체적</strong> — 구조적 앵커로 편집 영역을 특정해 해당 구간만 교체한다.</li>
+    <li><strong>효과가 측정 가능</strong> — 토큰 소모, 적용률(계기판 기준 33%→84%), 컨텍스트 초과 실패율.</li>
+  </ul>
+  <p>약 1,700줄 규모의 <span class="path">src/ai/apply/StructuralAnchor.ts</span> 구현체가 그 자체로 실시 근거가 된다.</p>
+
+  <h2 id="s3"><span class="no">3</span>중국 문헌 정밀 대조 — CN 122195419 A</h2>
+
+  <h3>3.1 문헌의 정체</h3>
+  <div class="tablewrap">
+    <table>
+      <tr><th>항목</th><th>내용</th></tr>
+      <tr><td>출원인</td><td>麒麟软件 (Kylin Software Co., Ltd.) — 중국 국산 OS(Kylin OS) 벤더</td></tr>
+      <tr><td>출원일 / 공개일</td><td>2026. 03. 13 / 2026. 06. 12</td></tr>
+      <tr><td>분류</td><td>G06F 8/35 · 기술분야를 "운영체제 기술 분야"로 명시(【0001】)</td></tr>
+      <tr><td>법적 상태</td><td><strong>A 공보 = 공개된 출원</strong>이며 등록특허가 아님 — 심사에서 청구항이 깎이거나 거절될 수 있음</td></tr>
+      <tr><td>본질</td><td>Kylin OS 개발·운영을 돕는 <strong>터미널 Q&amp;A 도구 + OS 성능튜닝 호출기.</strong> 자체 파인튜닝 모델(kymodel, GGUF)과 milvus RAG로 질문에 답하고, "튜닝" 의향이 감지되면 OS 모니터링 도구를 호출해 병목 분석 HTML 리포트를 낸다. <strong>IDE 코드 편집 도구가 아니다.</strong></td></tr>
+    </table>
+  </div>
+
+  <h3>3.2 청구항 요소별 대조</h3>
+  <p>독립항(청구항 1)은 S1+S2+S3+S4 <strong>네 요소 전부를 포함해야</strong> 성립한다(all-elements rule). 요소별로 Axiom과 대조하면:</p>
+  <div class="tablewrap">
+    <table class="dense">
+      <tr><th>청구 요소</th><th>CN 122195419 A</th><th>Axiom</th><th>판정</th></tr>
+      <tr><td><strong>S1 모델 구축</strong></td><td>오픈소스 모델을 <strong>직접 도메인 파인튜닝</strong>(LLaMA-Factory/LoRA) → <strong>GGUF 변환·양자화</strong>로 자체 경량모델(kymodel) 제작</td><td><strong>파인튜닝 안 함.</strong> 기성 모델(qwen 등)을 Ollama/LiteLLM로 그대로 사용 — 모델 불가지론</td><td class="no">불일치</td></tr>
+      <tr><td><strong>S2 Q&amp;A 서비스</strong></td><td>로컬 모델 서비스 기동, <strong>터미널 CLI 단일턴 독립 대화</strong>를 특징으로 주장(【0045】)</td><td>VSCode 확장, 에디터 상태·파일 컨텍스트·대화 이력 유지</td><td class="mid">표면 유사</td></tr>
+      <tr><td><strong>S3 RAG</strong></td><td><strong>milvus 벡터DB</strong> + ANN 코사인 검색 + Langchain 구조화 프롬프트 스티칭</td><td>로컬 md 지식문서 + 어휘·의미 하이브리드 검색 + <strong>트리거 기반 계약카드(ScaffoldContracts) 주입</strong></td><td class="mid">컨셉 겹침, 수단 상이</td></tr>
+      <tr><td><strong>S4 튜닝 호출</strong></td><td>발화에서 "튜닝 의향" 탐지(키워드→임베딩 코사인 0.9) → 확인 후 <strong>OS 모니터링 도구 호출</strong> → CPU/디스크/네트워크 병목 분석 <strong>HTML 리포트</strong></td><td>이런 기능 자체가 없음. Axiom의 도구 호출 대상은 OS가 아니라 <strong>코드 편집 파이프라인</strong></td><td class="no">완전 불일치</td></tr>
+      <tr><td>S5 민감어 필터 (종속항)</td><td><strong>입력</strong>을 CSV 민감어 목록과 부분문자열 대조해 사전 차단</td><td>입력 필터가 아니라 <strong>출력 검증</strong>(생성물 게이트·교정기) — 방향이 반대</td><td class="no">불일치</td></tr>
+    </table>
+  </div>
+
+  <h3>3.3 결정적 차이 — "적용(apply) 계층"의 부재</h3>
+  <p>문헌 전체를 훑어도 <strong>생성된 코드를 파일에 적용하는 단계가 단 한 줄도 없다.</strong> 모델 응답은 터미널에 출력되고 끝난다(【0043】). 즉:</p>
+  <ul>
+    <li>구조적 앵커로 편집 영역을 특정하는 것 — <strong>없음</strong></li>
+    <li>모델 출력의 실패모드를 교정하는 것 — <strong>없음</strong></li>
+    <li>tsc 검증-교정 폐루프 — <strong>없음</strong></li>
+    <li>편집 결과의 정합성 보장 — <strong>개념 자체가 없음</strong></li>
+  </ul>
+  <p>Axiom의 본진(3층: StructuralAnchor + 결정론 교정기 + verify-correct 루프)은 이 문헌과 접촉면이 0이다. "코드 조각을 생성한다"까지는 같지만, <strong>이 특허의 세계는 생성에서 끝나고 Axiom의 세계는 생성 이후부터 시작한다.</strong></p>
+
+  <h3>3.4 가장 가까운 접점 — 그리고 왜 다른가</h3>
+  <p>유일하게 닮은 부분은 S4의 "2차원 매칭"(키워드 매칭 실패 시 임베딩 유사도 폴백)으로, Axiom의 의도 라우팅과 표면적으로 유사하다. 그러나:</p>
+  <ul>
+    <li><strong>목적이 다름</strong> — 저쪽은 "OS 튜닝 도구를 부를까 말까"의 이진 트리거, Axiom은 수정/생성/질문/페이지생성 등 <strong>다중 의도 분류 후 편집 파이프라인 라우팅</strong></li>
+    <li><strong>수단이 다름</strong> — 저쪽은 사전 구축된 트리거 KB와의 코사인 임계값(0.9), Axiom은 <strong>LLM 위임 분류(IntentClassifier) + 정규식 폴백 + 충돌 안전 되묻기</strong></li>
+  </ul>
+  <p>이 접점조차 청구항 1의 다른 필수 요소(S1의 파인튜닝·GGUF)가 Axiom에 없으므로 침해 구성이 되지 않는다.</p>
+
+  <h3>3.5 종합 판정 — 두 관점</h3>
+  <p><strong>① 침해 리스크 관점 (Axiom이 이 특허를 밟는가): 매우 낮음</strong></p>
+  <ul>
+    <li>청구항 1의 필수 요소 S1(자체 파인튜닝+GGUF 제작)과 S4(OS 튜닝 도구 호출)를 Axiom은 수행하지 않음 → all-elements 기준 미충족</li>
+    <li>중국 출원이므로 효력 범위는 중국 내 — 한국 사업에는 애초에 미치지 않음</li>
+  </ul>
+  <p><strong>② 선행기술 관점 (Axiom 출원 시 인용될 것인가):</strong></p>
+  <ul>
+    <li><strong>1층</strong> — "로컬 경량모델 + 로컬 RAG + 구조화 프롬프트로 개발 보조"의 공지 재확인. 사망 판정 유지</li>
+    <li><strong>2층</strong> — 일반형 RAG(milvus+ANN+스티칭)가 공지됐으니, 은행 표준 메타데이터 결합 없는 일반 청구항은 더 위험해짐</li>
+    <li><strong>3층</strong> — 편집·적용·검증 영역에 아무 개시가 없어 인용문헌으로 쓰기 어려움. <strong>"②+④ 뼈대 + ① 환경" 전략이 이 문헌으로 오히려 지지됨</strong></li>
+  </ul>
+  <div class="warnbox">
+    <b>시간관계 부수사항</b> — 이 출원의 출원일은 <b>2026-03-13.</b> 만약 Axiom의 GitHub 공개가 그보다 앞선다면, 반대로 <b>Axiom의 공개가 이 출원의 선행기술</b>이 되는 관계다(그들의 중국 심사에서). 공지예외 기산점 확인과 함께 시간관계를 대리인에게 전달할 가치가 있다.
+  </div>
+
+  <h2 id="s4"><span class="no">4</span>핵심 차별 명제</h2>
+  <p>차별점은 "무엇을 하느냐(what)"가 아니라 <strong>"어떻게 신뢰성을 확보하느냐(how)"</strong>에 있다. 한 문장으로 압축하면:</p>
+  <div class="summary">
+    <p><strong>약한 로컬 소형모델을 신뢰 가능한 코드 편집기로 만들기 위해, "결정론(확장) / 확률(모델)"을 특정 방식으로 분업시키는 아키텍처.</strong></p>
+  </div>
+  <p>Continue·Tabby·PrivateGPT 계열 선행기술은 전부 "모델에게 맡기고 결과를 받는" 구조로, 모델이 강하다는 전제 위에 서 있다. Axiom의 전제는 정반대다 — <strong>"모델은 약하다. 그러므로 모델이 하는 일을 한 조각으로 좁히고, 위치 결정·검증·교정은 확장이 결정론으로 처리한다."</strong> 이 전도된 전제가 코드 전반에 일관되게 구현되어 있으며, 이것이 선행기술과 갈라지는 지점이다. 모델을 신뢰하는 전제에서는 아래 5절의 장치들이 애초에 필요하지 않기 때문이다.</p>
+
+  <h2 id="s5"><span class="no">5</span>청구항 재료 — 구체 기술수단 4종</h2>
+  <p>추상 명제만으로는 청구항이 성립하지 않는다. 아래 구체 수단들이 실제 코드로 존재한다.</p>
+
+  <h3>① 구조적 앵커 기반 부분편집</h3>
+  <ul>
+    <li><code>splitTsSections</code>가 소스를 import / 컴포넌트 / 섹션 단위로 결정론적으로 분해하고, <code>computeAnchors</code>가 삽입·교체 지점을 특정한다 (<span class="path">StructuralAnchor.ts:287</span>).</li>
+    <li>모델은 그 안에 들어갈 조각(hookCode)만 생성한다 — 파일 전체 재출력을 요구하지 않는다.</li>
+    <li>"파일 전체 재출력 불가"라는 소형모델 고유 문제의 직접 해법이다.</li>
+  </ul>
+  <p><strong>주의:</strong> ① 단독은 완전 신규가 아니다. LSP/AST 기반 부분편집, tree-sitter 범위 편집 등의 선행기술이 존재한다. 따라서 ①은 청구항의 뼈대가 아니라 실행환경(전제부)으로 배치하는 것이 안전하다(7절).</p>
+
+  <h3>② 생성물의 결정론적 사후 정합 — 가장 덜 밟힌 땅</h3>
+  <p>모델 출력을 그대로 적용하지 않고, 소형모델의 전형적 실패모드를 열거한 뒤 각각에 전용 결정론 교정기를 붙였다. 이 "실패모드 열거 + 교정기" 구조는 좁은 청구항으로 쓰기에 적합하다. CN 122195419 A를 포함한 검토 선행기술 어디에도 이 영역의 개시가 없다.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>소형모델 실패모드</th><th>결정론 교정기</th></tr>
+      <tr><td>훅 조각 안에 import를 섞어 냄 → 함수 중간에 import가 박혀 컴파일 에러</td><td><code>extractImportsFromHookCode</code> — import를 파일 상단 채널로 hoist</td></tr>
+      <tr><td>이미 존재하는 state/훅을 중복 선언</td><td><code>findDuplicateDeclarations</code></td></tr>
+      <tr><td>선언되지 않은 심볼 참조</td><td><code>findUnresolvedReferences</code> + <code>resolveKnownImports</code></td></tr>
+      <tr><td>JSX 컴포넌트 import 누락</td><td><code>findUnresolvedJsxComponents</code> + <code>ensureUiComponentImports</code></td></tr>
+      <tr><td>API 엔드포인트를 별칭·환각으로 교체</td><td><code>normalizeEndpointExpr</code> — 별칭 해소 후 엔드포인트 동일성 판정</td></tr>
+      <tr><td>닫는 태그·괄호를 조용히 삭제</td><td>closer-dropped 가드 — 감지 시 full 폴백</td></tr>
+      <tr><td>삽입한 바인딩을 실제로 사용하지 않음</td><td><code>findUnusedInsertedBindings</code></td></tr>
+    </table>
+  </div>
+
+  <h3>③ 트리거 기반 계약 자동주입 (ScaffoldContracts)</h3>
+  <p>프로젝트 스캐폴드 특유의 계약(useApi 봉투 구조, 라우터, 타입 규약 등 11종 계약 카드)을 트리거 단어로 감지해 프롬프트에 자동 주입한다. 2층 전략의 "도메인 결합" 논리와 정확히 맞물린다 — 특정 스캐폴드/표준 구조에 묶을수록 인용문헌이 줄어든다.</p>
+
+  <h3>④ 검증-교정 폐루프 (Verify-Correct Loop)</h3>
+  <p>편집 결과를 임시 형제파일로 만들어 tsc 진단(VSCode getDiagnostics)으로 검증하고, 실패 시 앵커 기반 <code>&lt;replace&gt;</code> 교정을 1회 수행한 뒤 fail-open 한다. 선행기술의 open-loop one-shot 구조와 대비되는 <strong>폐루프(closed-loop)</strong>다.</p>
+
+  <h2 id="s6"><span class="no">6</span>선행기술 대비표</h2>
+  <div class="tablewrap">
+    <table>
+      <tr><th>축</th><th>중국 문헌 · Continue 계열</th><th>Axiom</th></tr>
+      <tr><td><strong>모델 전제</strong></td><td>강한 모델(또는 자체 파인튜닝 모델), 맡긴다</td><td class="ok">약한 모델, 조각만 시킨다</td></tr>
+      <tr><td><strong>편집 단위</strong></td><td>파일/패치 통째 생성 — 중국 문헌은 편집 자체가 없음</td><td class="ok">구조 앵커 구간 교체</td></tr>
+      <tr><td><strong>신뢰성 확보</strong></td><td>모델 품질에 의존</td><td class="ok">실패모드 열거 + 결정론 교정기</td></tr>
+      <tr><td><strong>정합 검증</strong></td><td>없거나 사람이 수행</td><td class="ok">tsc 폐루프 자동 교정</td></tr>
+    </table>
+  </div>
+  <p>검토된 중국 문헌은 1층(컨셉층)을 커버할 뿐, ②·④의 영역에는 도달하지 않는다. 모델을 신뢰하는 전제에서는 필요가 없는 장치들이기 때문이다.</p>
+
+  <h2 id="s7"><span class="no">7</span>청구항 전략 제안</h2>
+  <ul>
+    <li><strong>뼈대 = ②+④</strong> — "약한 모델 출력의 실패모드별 결정론 교정 + 폐루프 검증". ① 단독이면 AST 편집 선행기술과 정면충돌하지만, 이 문제설정은 덜 밟힌 땅이라 인용할 문헌이 드물다.</li>
+    <li><strong>① = 실행환경(전제부)으로 배치</strong> — "로컬 소형모델 + 폐쇄망 제약 하에서 구조적 앵커 부분편집을 수행하는 시스템에 있어서…" 형태로, 조합의 구체성을 만드는 한정 요소로 쓴다.</li>
+    <li><strong>2순위 = ③ + 은행 표준 메타데이터</strong> — 메타데이터 필드 태깅을 라우팅 기준으로 쓰는 도메인 결합형 리트리벌을 별건으로 검토한다.</li>
+  </ul>
+
+  <h2 id="s8"><span class="no">8</span>최우선 리스크 — 공지예외 유예기간</h2>
+  <p>공지예외(신규성 상실의 예외) 제도는 국가마다 다르며, GitHub 공개는 이미 발생한 사실이다.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>국가</th><th>GitHub 공개 후 구제</th><th>판정</th></tr>
+      <tr><td>한국</td><td>12개월 유예</td><td class="ok">가능 — 기산점 확인 필요</td></tr>
+      <tr><td>일본</td><td>12개월 유예</td><td class="ok">가능</td></tr>
+      <tr><td>미국</td><td>12개월 유예 (grace period)</td><td class="ok">가능</td></tr>
+      <tr><td>중국</td><td>특정 전시회·학회 공개만 인정</td><td class="no">사실상 닫힘</td></tr>
+      <tr><td>유럽 (EPO)</td><td>사실상 없음</td><td class="no">사실상 닫힘</td></tr>
+    </table>
+  </div>
+  <div class="warnbox">
+    <b>지금 당장 확인할 것</b> — 한국의 12개월 유예가 <b>언제 시작됐는가.</b> 최초 커밋 날짜 기준인지, 해당 기술(StructuralAnchor 등)이 포함된 코드가 공개된 날짜 기준인지에 따라 잔여 시간이 달라진다. 이 확인이 중국 문헌 분석보다 우선순위가 높으며, 대리인(변리사)과 즉시 확정해야 한다.
+  </div>
+
+  <h2 id="s9"><span class="no">9</span>영업(피치) 관점의 특허 포지셔닝</h2>
+  <p>금융권 SI RFP에서 등록특허와 출원중의 실질 차이는 크지 않다. "특허 출원 중" 한 줄이 평가표에서 수행하는 역할은 대부분 <strong>"자체 기술 보유"의 증명</strong>이지, 경쟁사 차단이 아니다.</p>
+  <p>Continue+Ollama 조합과 경쟁할 때 실제로 이기는 무기는 특허가 아니라 <strong>은행 표준 메타데이터 파이프라인</strong>과 <strong>폐쇄망 실증 레퍼런스</strong>다. 따라서 특허는 "울타리"가 아니라 <strong>"간판"</strong>으로 기대하는 것이 현실적이며, 실질 방어의 본체는 기존 결론대로 <strong>영업비밀 + EULA 강화</strong>다. 특허는 그 위에 얹는 신뢰 장치다.</p>
+
+  <h2 id="s10"><span class="no">10</span>액션 아이템</h2>
+  <ol class="actions">
+    <li><strong>공지예외 잔여기간 즉시 확인</strong> — GitHub 공개 시점 기산을 대리인과 확정. 모든 전략이 이 답에 종속된다. <strong>(최우선)</strong></li>
+    <li><strong>컨셉층(1층) 청구항 폐기</strong> — 예산과 미련을 두지 않는다.</li>
+    <li><strong>②+④ 뼈대 + ① 실행환경 구성으로 1건 제대로 출원</strong> — StructuralAnchor 계열에 집중.</li>
+    <li><strong>은행 메타데이터 RAG(②층+③)는 도메인 결합형으로 2순위 별건 검토.</strong></li>
+    <li><strong>CN 122195419 A와의 시간관계를 대리인에게 전달</strong> — 출원일 2026-03-13 vs Axiom GitHub 공개일의 선후 확인.</li>
+    <li><strong>방어 본체는 영업비밀 + 계약(EULA) 유지</strong> — 특허는 간판으로 운용.</li>
+  </ol>
+
+  <h2 id="s11"><span class="no">11</span>부록 — 코드 근거 목록</h2>
+  <div class="tablewrap">
+    <table>
+      <tr><th>구분</th><th>근거</th><th>위치</th></tr>
+      <tr><td>앵커 산출</td><td><code>computeAnchors</code>, <code>splitTsSections</code></td><td><span class="path">src/ai/apply/StructuralAnchor.ts:287</span></td></tr>
+      <tr><td>구조적 적용</td><td><code>applyStructuralEdit</code></td><td><span class="path">StructuralAnchor.ts:1047</span></td></tr>
+      <tr><td>import hoist</td><td><code>extractImportsFromHookCode</code></td><td><span class="path">StructuralAnchor.ts:331</span></td></tr>
+      <tr><td>중복선언 검출</td><td><code>findDuplicateDeclarations</code></td><td><span class="path">StructuralAnchor.ts:1431</span></td></tr>
+      <tr><td>미해소 참조 검출</td><td><code>findUnresolvedReferences</code>, <code>resolveKnownImports</code></td><td><span class="path">StructuralAnchor.ts:1489, 1556</span></td></tr>
+      <tr><td>JSX import 보정</td><td><code>findUnresolvedJsxComponents</code>, <code>ensureUiComponentImports</code></td><td><span class="path">StructuralAnchor.ts:1595, 1615</span></td></tr>
+      <tr><td>미사용 바인딩 검출</td><td><code>findUnusedInsertedBindings</code></td><td><span class="path">StructuralAnchor.ts:1401</span></td></tr>
+      <tr><td>구간 교체 적용</td><td><code>applyReplaceBlocks</code></td><td><span class="path">StructuralAnchor.ts:1775</span></td></tr>
+      <tr><td>계약 자동주입</td><td>ScaffoldContracts — 트리거 기반 계약 카드 11종</td><td><span class="path">src/ai (contracts 계층)</span></td></tr>
+      <tr><td>검증-교정 폐루프</td><td>regionVerify — tsc 임시 형제파일 진단 + 1회 교정</td><td><span class="path">experimental.regionVerify 플래그 경로</span></td></tr>
+    </table>
+  </div>
+
+  <p class="footnote">본 문서는 기술적 차별성 분석 자료이며 법률 자문이 아닙니다. 청구항 성립 여부·공지예외 적용·출원 전략의 최종 판단은 반드시 변리사 확인을 거쳐야 합니다. CN 122195419 A 인용 내용은 자동번역 공보 기준으로, 원문(중문) 청구항 확인은 대리인 검토 시 병행이 필요합니다.</p>
+</div>
