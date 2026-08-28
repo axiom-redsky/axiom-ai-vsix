@@ -38,8 +38,8 @@
   <text x="365"  y="108" text-anchor="middle" font-size="10.5" fill="#B4C7E7">ai/intent — 실행 권한 회수</text>
 
   <rect x="510"  y="64" width="320" height="54" fill="#C55A11"/>
-  <text x="670"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">🃏 추천 카드 (신규)</text>
-  <text x="670"  y="108" text-anchor="middle" font-size="10.5" fill="#F8CBAD">실행 전 버튼 한 장 — 채팅 카드</text>
+  <text x="670"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">🃏 계획 카드 (신규)</text>
+  <text x="670"  y="108" text-anchor="middle" font-size="10.5" fill="#F8CBAD">메뉴 아님 — 프리필된 작업 계획 한 장</text>
 
   <rect x="830"  y="64" width="300" height="54" fill="#1F3864"/>
   <text x="980"  y="90"  text-anchor="middle" font-size="15" font-weight="bold" fill="#FFFFFF">🪄 위저드</text>
@@ -66,27 +66,37 @@
   <line x1="490" y1="188" x2="528" y2="188" stroke="#C55A11" stroke-width="2" marker-end="url(#ar9O)"/>
   <text x="509" y="176" text-anchor="middle" font-size="9.5" fill="#C55A11">상위 N장</text>
 
-  <!-- 추천 카드 목업 -->
+  <!-- 계획 카드 목업 -->
   <rect x="530" y="136" width="280" height="180" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="2" filter="url(#cardGlow9)"/>
-  <text x="545" y="160" font-size="11" font-weight="bold" fill="#C55A11">⚡ 오프라인 — 이렇게 도와드릴 수 있어요</text>
-  <rect x="545" y="172" width="250" height="34" rx="5" fill="#FDF0E7" stroke="#E8B48D"/>
-  <text x="557" y="193" font-size="11" fill="#262626">📄 목록 페이지 위저드 (list 프리필)</text>
-  <text x="786" y="193" text-anchor="end" font-size="10" font-weight="bold" fill="#C55A11">[열기]</text>
-  <rect x="545" y="212" width="250" height="30" rx="5" fill="#FFFFFF" stroke="#D9D9D9"/>
-  <text x="557" y="231" font-size="11" fill="#404040">🔌 API → 테이블 바인딩 위저드</text>
-  <rect x="545" y="248" width="250" height="30" rx="5" fill="#FFFFFF" stroke="#D9D9D9"/>
-  <text x="557" y="267" font-size="11" fill="#404040">📚 관련 문서: list-page 가이드</text>
-  <text x="670" y="302" text-anchor="middle" font-size="10" fill="#7F7F7F">오분류해도 무해 — 다른 버튼 누르면 끝</text>
+  <text x="545" y="158" font-size="11" font-weight="bold" fill="#C55A11">📄 목록 페이지 생성   ("목록·페이지"에서)</text>
+  <rect x="545" y="168" width="70" height="22" rx="11" fill="#FDF0E7" stroke="#E8B48D"/>
+  <text x="580" y="183" text-anchor="middle" font-size="10" fill="#262626">main ▾</text>
+  <rect x="621" y="168" width="112" height="22" rx="11" fill="#FDF0E7" stroke="#E8B48D"/>
+  <text x="677" y="183" text-anchor="middle" font-size="10" fill="#262626">EmployeeList ✎</text>
+  <rect x="739" y="168" width="56" height="22" rx="11" fill="#FDF0E7" stroke="#E8B48D"/>
+  <text x="767" y="183" text-anchor="middle" font-size="10" fill="#262626">list ▾</text>
+  <text x="545" y="212" font-size="10.5" font-weight="bold" fill="#404040">만들어질 것:</text>
+  <text x="557" y="230" font-size="10.5" font-family="Consolas, monospace" fill="#2E7D32">+ pages/EmployeeList.tsx (신규)</text>
+  <text x="557" y="247" font-size="10.5" font-family="Consolas, monospace" fill="#C55A11">± router/index.tsx (경로 추가)</text>
+  <rect x="545" y="258" width="136" height="26" rx="6" fill="#C55A11"/>
+  <text x="613" y="275" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFFFFF">⏎ 이대로 만들기</text>
+  <rect x="691" y="258" width="104" height="26" rx="6" fill="#FFFFFF" stroke="#D9D9D9"/>
+  <text x="743" y="275" text-anchor="middle" font-size="11" fill="#595959">다른 작업 ▾</text>
+  <text x="670" y="302" text-anchor="middle" font-size="10" fill="#7F7F7F">확신 낮으면 컴팩트 리스트 · 오분류=칩 수정이면 끝</text>
+
+  <!-- Enter 즉시 실행 경로 (위저드 생략) -->
+  <path d="M810,146 L826,146 L826,128 L1290,128 L1290,142" fill="none" stroke="#2E7D32" stroke-width="2" marker-end="url(#ar9G)"/>
+  <text x="1055" y="124" text-anchor="middle" font-size="10" fill="#2E7D32">⏎ 프리필 다 맞으면 위저드 생략, 즉시 실행</text>
 
   <line x1="810" y1="200" x2="848" y2="200" stroke="#8FAADC" stroke-width="2" marker-end="url(#ar9)"/>
-  <text x="829" y="188" text-anchor="middle" font-size="9.5" fill="#595959">클릭</text>
+  <text x="829" y="188" text-anchor="middle" font-size="9.5" fill="#595959">칩 클릭</text>
 
   <!-- 위저드 -->
   <rect x="850" y="146" width="260" height="150" rx="8" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.5"/>
-  <text x="980" y="170" text-anchor="middle" font-size="12" font-weight="bold" fill="#1F3864">QuickPick 3단 (네이티브 UI)</text>
-  <text x="868" y="194" font-size="11" fill="#404040">1/3  도메인 선택 (main·example…)</text>
-  <text x="868" y="214" font-size="11" fill="#404040">2/3  페이지 유형 — list 프리필</text>
-  <text x="868" y="234" font-size="11" fill="#404040">3/3  이름 입력 — EmployeeList</text>
+  <text x="980" y="170" text-anchor="middle" font-size="12" font-weight="bold" fill="#1F3864">QuickPick = 칩 편집기</text>
+  <text x="868" y="194" font-size="11" fill="#404040">· 칩 클릭 → 그 슬롯만 고침</text>
+  <text x="868" y="214" font-size="11" fill="#404040">· 프리필 다 맞으면 통째 생략</text>
+  <text x="868" y="234" font-size="11" fill="#404040">· 맨땅 진입(/메뉴)만 순차 3단</text>
   <text x="980" y="262" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#2E7D32">여기부터 자연어 해석 0</text>
   <text x="980" y="280" text-anchor="middle" font-size="10" fill="#7F7F7F">모델의 "판단 한 조각"을 사람이 대신</text>
 
@@ -188,6 +198,6 @@
   <text x="1285" y="910" text-anchor="middle" font-size="10.5" fill="#7F7F7F">지원은 React scaffold 전용 유지 · 미래 = 카드 팩</text>
 
   <!-- ═══ 푸터 ═══ -->
-  <text x="30" y="990" font-size="11.5" fill="#595959">💡 오분류=사고 → 오분류=엉뚱한 버튼 하나. 정규식 두더지잡기가 "추천 품질"이라는 저위험 문제로 격하된다.</text>
+  <text x="30" y="990" font-size="11.5" fill="#595959">💡 오분류=사고 → 칩 하나 고치기. 경험은 "명령→메뉴"가 아니라 "명령→계획 확인" — 잘 맞으면 클릭 1번(Enter), 미리보기가 곧 사람 눈 검증 게이트.</text>
   <text x="1450" y="990" text-anchor="end" font-size="11" fill="#7F7F7F">상세: docs/offline-action-cards-plan.md</text>
 </svg>
