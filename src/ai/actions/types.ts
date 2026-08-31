@@ -52,6 +52,14 @@ export interface IActionCardSlot {
   options?: string[];
   /** 'query'면 사용자 문장에서 결정론 추출기로 프리필을 시도한다. */
   prefillFrom?: 'query';
+  /**
+   * 자유 입력 검증 정규식(source 문자열). 카드가 자기 슬롯의 규칙을 스스로 선언한다 —
+   * 엔진에 슬롯별 규칙을 하드코딩하지 않기 위해(§2-3 "카탈로그는 코드가 아니라 데이터").
+   * 미선언 시 source별 기본 규칙(엔드포인트 경로 형식 등)이 적용된다.
+   */
+  pattern?: string;
+  /** 검증 실패 시 사용자에게 보여줄 안내. pattern과 짝으로 쓴다. */
+  hint?: string;
 }
 
 /** template 액션이 만들/고칠 파일 하나 (계획 카드 미리보기의 원천). */

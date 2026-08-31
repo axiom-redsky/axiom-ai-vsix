@@ -3,7 +3,7 @@ schemaVersion: 1
 id: create-page
 title: 페이지 생성
 icon: 📄
-triggers: [페이지, 화면 만들, 화면 생성, 화면 추가, 목록 페이지, 리스트 페이지, 폼 페이지, 상세 페이지, page]
+triggers: [페이지, 화면 만들, 화면 생성, 화면 추가, 화면 개발, 목록 페이지, 리스트 페이지, 폼 페이지, 상세 페이지, page]
 preconditions: [scaffold-detected]
 slots:
   - name: domain
@@ -14,6 +14,8 @@ slots:
     label: 이름
     source: text
     prefillFrom: query
+    pattern: "^[A-Za-z][A-Za-z0-9 _-]*$"
+    hint: "영문으로 시작하는 이름만 입력하세요 — 확장자(.tsx)·특수문자는 빼주세요. 예: EmployeeList, employee-list"
   - name: pageType
     label: 유형
     source: enum

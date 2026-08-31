@@ -95,6 +95,7 @@ interface Props {
   onConfirm?: (actionId: string, approved: boolean) => void;
   onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
   onCardChip?: (requestId: string, cardId: string, slotName: string) => void;
+  onCardSlotSet?: (requestId: string, cardId: string, slotName: string, value: string) => void;
   onCardExecute?: (requestId: string, cardId: string) => void;
 }
 
@@ -301,7 +302,7 @@ function FileResultCard({
   );
 }
 
-export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, onCardExecute }: Props): React.ReactElement {
+export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, onCardSlotSet, onCardExecute }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
@@ -314,6 +315,7 @@ export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, o
             payload={message.actionCards}
             executedCardId={message.executedCardId}
             onChip={(r, c, s) => onCardChip?.(r, c, s)}
+            onSlotSet={(r, c, s, v) => onCardSlotSet?.(r, c, s, v)}
             onExecute={(r, c) => onCardExecute?.(r, c)}
           />
         </div>

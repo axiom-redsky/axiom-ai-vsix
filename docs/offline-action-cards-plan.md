@@ -441,6 +441,15 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
     덮어쓰기 가드(파일 존재 시 실행 거부 + 이름 칩 안내) 포함. `test:action-cards` 112/0.
 - **Phase 2 — API 바인딩 위저드 (A1)**
   compose binding 오프라인 변형: 필드 매핑 테이블 UI.
+  - 진행 (2026-08-31): **계획 계산기 완료** — `ai/actions/OfflineApiBinding.ts`
+    (`buildBindingPlan`: 테이블 컬럼 ↔ 응답 스키마 대조 → exact/fuzzy는 채우고 애매한 행만
+    `choose`로 남김 + `needsChoiceCount` = 사람이 클릭할 횟수, `pickSpecDoc`: 파일명이 아니라
+    **내용**으로 스펙 문서 선택). 모델 호출 0회 — ApiBindingRecipe 결정론 재사용.
+    ⚠ `pickResponseSchema`의 문서 전체 폴백은 **틀린 엔드포인트 스키마를 그럴듯하게** 채우므로
+    오프라인에서는 `containsExactApiPath` 선확인으로 차단(카드는 사용자가 보고 승인하는 물건이라
+    조용한 오바인딩이 최악의 실패). 막힘은 조용한 빈 결과가 아니라 `blocked` 사유로 노출.
+    `test:offline-api-binding` 20/0 · 온라인 `test:api-binding` 69/0 무회귀.
+    남은 것 = 매핑 테이블 카드 렌더(애매 행 인라인 드롭다운) → 결정론 적용(buildBindingCode).
 - **Phase 3 — 카탈로그 3계층 + 관리 패널**
   `.axiom/actions/` 핫리로드, 목록/토글/새 카드/lint/드라이런 패널.
 - **Phase 4 — 확장**

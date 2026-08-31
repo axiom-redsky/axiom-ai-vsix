@@ -28,7 +28,7 @@ const KNOWN_TOP_KEYS = new Set([
   'schemaVersion', 'id', 'title', 'icon', 'triggers', 'preconditions', 'slots', 'action', 'priority',
 ]);
 const KNOWN_ACTION_KEYS = new Set(['type', 'template', 'outputs', 'doc', 'command']);
-const KNOWN_SLOT_KEYS = new Set(['name', 'label', 'source', 'options', 'prefillFrom']);
+const KNOWN_SLOT_KEYS = new Set(['name', 'label', 'source', 'options', 'prefillFrom', 'pattern', 'hint']);
 
 const ID_RE = /^[a-z][a-z0-9-]*$/;
 const SLOT_NAME_RE = /^[A-Za-z_][\w-]*$/;
@@ -208,6 +208,20 @@ export function parseActionCard(raw: string, opts: IParseCardOptions = {}): IPar
           if (s.prefillFrom === 'query') slot.prefillFrom = 'query';
           else warn(`슬롯 "${name}": 알 수 없는 prefillFrom "${String(s.prefillFrom)}" — 프리필 생략`, `${f}.prefillFrom`);
         }
+        const pattern = asTrimmedString(s.pattern);
+        if (pattern) {
+          // 깨진 정규식이 런타임(입력 검증)에서 터지지 않도록 로드 시점에 컴파일해 본다.
+          try {
+            new RegExp(pattern);
+            slot.pattern = pattern;
+          } catch (e) {
+            err(`슬롯 "${name}"의 pattern이 올바른 정규식이 아님: ${e instanceof Error ? e.message : String(e)}`, `${f}.pattern`);
+            return;
+          }
+        }
+        const hint = asTrimmedString(s.hint);
+        if (hint) slot.hint = hint;
+        if (hint && !pattern) warn(`슬롯 "${name}": hint는 pattern과 함께 쓸 때만 표시됨`, `${f}.hint`);
         slots.push(slot);
       });
     }

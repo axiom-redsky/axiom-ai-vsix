@@ -4,7 +4,7 @@
  */
 import { parseMiniYaml } from '../src/ai/actions/MiniYaml';
 import { parseActionCard, findTriggerCollisions, splitCardFrontmatter } from '../src/ai/actions/CardParser';
-import { matchCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
+import { matchCards, listApplicableCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
 import { loadCardsFromDir, finalizeCatalog } from '../src/ai/actions/CardCatalog';
 import { buildCardsPayload, buildOutputViews, buildSlotViews, missingSlots, substituteSlots } from '../src/ai/actions/CardPlanView';
 import type { IActionCard } from '../src/ai/actions/types';
@@ -354,6 +354,16 @@ const CTX: ICardMatchContext = { fileOpen: true, scaffoldDetected: true };
   eq(dup.matches[0]?.score, 6, 'G10: 압축 동형 트리거 이중 가산 방지');
 }
 {
+  // 어절 단위 매칭 — 조사·어미·어순이 끼어도 걸린다(붙어 있을 필요 없음)
+  const card = [mkCard('t-card', ['화면 만들'], 'builtin')];
+  eq(matchCards('화면을 만들어줘', card, CTX).mode, 'plan', 'G14: 조사(을)가 껴도 매칭');
+  eq(matchCards('화면 만들어주세요', card, CTX).mode, 'plan', 'G15: 어미 변화 흡수');
+  eq(matchCards('목록 화면 하나 만들래', card, CTX).mode, 'plan', 'G16: 어절 사이 다른 말이 껴도 매칭');
+  eq(matchCards('화면 보여줘', card, CTX).mode, 'none', 'G17: 어절 하나만 있으면 매칭 아님(전부 포함 필요)');
+  eq(matchCards('만들어줘', card, CTX).mode, 'none', 'G18: 나머지 어절 없으면 매칭 아님');
+  eq(matchCards('화면 만들어줘', [mkCard('u-card', ['화 면'], 'builtin')], CTX).mode, 'none', 'G19: 한 글자 어절 트리거는 무시(오탐원)');
+}
+{
   // 한 글자 트리거 무시 + precondition 필터 + topN 상한
   eq(matchCards('플랫폼 정리', [mkCard('f-card', ['폼'], 'builtin')], CTX).mode, 'none', 'G11: 한 글자 트리거 무시("플랫폼" 오탐 차단)');
   const pre = matchCards('가나 해줘', [
@@ -427,6 +437,19 @@ console.log('\n── I. 내장 카드 ──');
   // 시나리오 5 — doc 카드·무매칭
   eq(matchCards('useApi 사용법이 궁금해', cards, CTX).matches[0]?.card.id, 'use-api-doc', 'I15: doc 카드 매칭');
   eq(matchCards('안녕하세요', cards, CTX).mode, 'none', 'I16: 잡담 → none(기존 폴백으로)');
+
+  // 시나리오 6 — 한국어 조사·어미가 붙어도 같은 요청은 같게 인식해야 한다(라이브에서 발각된 비대칭).
+  // "페이지 만들어줘"는 뜨는데 "화면을 만들어줘"는 안 뜨던 문제의 회귀 가드.
+  for (const q of [
+    '직원 목록 화면을 만들어줘',
+    '직원 목록 화면 만들어줘',
+    '직원 목록 페이지를 만들어주세요',
+    '직원 목록 페이지 만들어줘',
+    '직원 목록 화면 생성해줘',
+  ]) {
+    const r = matchCards(q, cards, { fileOpen: false, scaffoldDetected: true });
+    ok(r.matches[0]?.card.id === 'create-page', `I17: "${q}" → 페이지 생성 카드`);
+  }
 }
 
 // ═══ J. 계획 카드 뷰 변환 (Phase 1) ═════════════════════════════════════════
@@ -499,6 +522,127 @@ console.log('\n── K. 출력 미리보기 해석기 ──');
   // 해석기 미주입(테스트·미래 호출부)도 종전과 동일
   const none = buildCardsPayload('req-k3', 'x', 'plan', [match], values);
   eq(none.cards[0].outputs.length, 2, 'K5: 해석기 없으면 종전 동작(회귀 0)');
+}
+
+// ═══ L. 슬롯 인라인 편집 재료 ═══════════════════════════════════════════════
+// "카드 안에서 바로 고르기"(§3.6 칩 편집기) — 후보가 적으면 인라인, 많으면 QuickPick 위임.
+console.log('\n── L. 슬롯 편집기 ──');
+{
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const page = cards.find((c) => c.id === 'create-page')!;
+
+  // 해석기 미주입 = 전부 호스트 위임(종전 동작)
+  eq(buildSlotViews(page, {}).map((s) => s.inline), [false, false, false], 'L1: 해석기 없으면 전부 QuickPick 위임');
+
+  // 호스트 정책 시뮬레이션: 후보 12개 이하만 인라인
+  const LIMIT = 12;
+  const domains = ['admin', 'auth', 'dashboard', 'employee', 'example', 'main'];
+  const many = Array.from({ length: 53 }, (_, i) => `Comp${i}`);
+  const resolver = (_card: IActionCard, slot: IActionCard['slots'][number]) => {
+    // 카드가 스스로 선언한 규칙이 source 기본값을 이긴다(운영 _slotEditor와 동일 정책).
+    if (slot.pattern) {
+      return { inline: true, options: [], allowCustom: true, pattern: slot.pattern, patternHint: slot.hint };
+    }
+    if (slot.source === 'enum') return { inline: true, options: slot.options ?? [], allowCustom: false };
+    if (slot.source === 'domain-list') {
+      return domains.length <= LIMIT
+        ? { inline: true, options: domains, allowCustom: true, pattern: '^[a-z][a-z0-9-]*$' }
+        : { inline: false };
+    }
+    if (slot.source === 'component-list') {
+      return many.length <= LIMIT ? { inline: true, options: many } : { inline: false };
+    }
+    return { inline: true, options: [], allowCustom: true, placeholder: slot.label };
+  };
+
+  const views = buildSlotViews(page, { pageType: '목록' }, resolver);
+  eq(views.map((s) => s.inline), [true, true, true], 'L2: 도메인(6)·이름(text)·유형(enum) 모두 인라인');
+  eq(views[0].options, domains, 'L3: 도메인 후보 전달');
+  eq(views[0].allowCustom, true, 'L4: 새 도메인 직접 입력 허용');
+  eq(views[1].options, [], 'L5: 자유 입력은 후보 없음');
+  eq(views[2].options, ['목록', '폼', '상세'], 'L6: enum 후보는 카드 선언 그대로');
+  eq(views[2].allowCustom, false, 'L7: enum은 후보 밖 값 금지');
+  eq(views[2].value, '목록', 'L8: 값은 편집 재료와 무관하게 유지');
+
+  // 항목이 많은 목록은 인라인 대신 QuickPick(검색 필요)
+  const compCard: IActionCard = {
+    ...page, id: 'c', slots: [{ name: 'comp', label: '컴포넌트', source: 'component-list' }],
+  };
+  eq(buildSlotViews(compCard, {}, resolver)[0].inline, false, 'L9: 53종 컴포넌트는 QuickPick 위임');
+
+  // 카드가 선언한 pattern/hint가 슬롯 뷰까지 전달된다(이름 칸 확장자 입력 차단의 근거).
+  const nameView = views[1];
+  ok(!!nameView.pattern, 'L10: 카드 선언 pattern 전달');
+  ok(!!nameView.patternHint, 'L11: 카드 선언 hint 전달');
+  const nameRe = new RegExp(nameView.pattern!);
+  ok(!nameRe.test('Employ.tsx'), 'L12: 확장자 포함 이름 거부');
+  ok(!nameRe.test('직원목록'), 'L13: 한글 이름 거부(영문 식별자 필요)');
+  ok(nameRe.test('EmployeeList') && nameRe.test('employee-list'), 'L14: PascalCase·kebab 허용(정규화로 흡수)');
+}
+
+// ═══ M. 슬롯 pattern/hint 스키마 (카드가 자기 규칙을 선언) ═══════════════════
+console.log('\n── M. 슬롯 검증 선언 ──');
+{
+  const withPattern = PAGE_CARD.replace(
+    '    source: text\n    prefillFrom: query',
+    '    source: text\n    prefillFrom: query\n    pattern: "^[A-Za-z][A-Za-z0-9]*$"\n    hint: "영문만"',
+  );
+  const { card, issues } = parseActionCard(withPattern, { expectedId: 'create-list-page' });
+  eq(issues, [], 'M1: pattern/hint는 유효 필드');
+  eq(card?.slots[1].pattern, '^[A-Za-z][A-Za-z0-9]*$', 'M2: pattern 파싱');
+  eq(card?.slots[1].hint, '영문만', 'M3: hint 파싱');
+
+  const badRe = PAGE_CARD.replace(
+    '    source: text\n    prefillFrom: query',
+    '    source: text\n    prefillFrom: query\n    pattern: "^[unclosed"',
+  );
+  const bad = parseActionCard(badRe, { expectedId: 'create-list-page' });
+  ok(bad.card === null && bad.issues.some((i) => i.field?.includes('pattern')), 'M4: 깨진 정규식 → 카드 비활성(로드 시점 차단)');
+
+  const hintOnly = PAGE_CARD.replace(
+    '    source: text\n    prefillFrom: query',
+    '    source: text\n    prefillFrom: query\n    hint: "짝 없는 힌트"',
+  );
+  const ho = parseActionCard(hintOnly, { expectedId: 'create-list-page' });
+  ok(ho.card !== null && ho.issues.some((i) => i.severity === 'warning' && i.field?.includes('hint')), 'M5: pattern 없는 hint는 경고');
+
+  // 실제 내장 카드도 규칙을 선언하고 있어야 한다(이번 수정의 회귀 가드).
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const realName = cards.find((c) => c.id === 'create-page')!.slots.find((s) => s.name === 'pageName')!;
+  ok(!!realName.pattern && !!realName.hint, 'M6: create-page 카드가 이름 규칙을 선언');
+}
+
+// ═══ N. 카탈로그 안전망 — 매칭 0일 때 절벽 대신 계단 ═════════════════════════
+// 정확도와 별개의 축: 트리거가 안 걸려도 "다른 파이프라인으로 이동"이 아니라 "메뉴가 뜬다"로 끝나야 한다.
+console.log('\n── N. 카탈로그 안전망 ──');
+{
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+
+  // 트리거가 하나도 안 걸리는 행동 요청(말투가 카드 어휘와 어긋난 경우)
+  const q = '직원 뭐시기 하나 뚝딱 뽑아줘';
+  eq(matchCards(q, cards, CTX).mode, 'none', 'N1: 트리거 매칭은 0');
+
+  const safety = listApplicableCards(q, cards, CTX);
+  eq(safety.mode, 'list', 'N2: 안전망은 항상 리스트(계획 카드로 단정하지 않음)');
+  eq(safety.matches.length, 4, 'N3: 상황에 맞는 카드 전부 노출');
+  eq(safety.matches.every((m) => m.matchedTriggers.length === 0), true, 'N4: 근거 없음을 그대로 표기(꾸미지 않음)');
+  eq(safety.matches.every((m) => m.score === 0), true, 'N5: 점수 0');
+
+  // precondition은 안전망에서도 지켜진다 — 파일이 없으면 파일 편집 카드는 빼야 한다.
+  const noFile = listApplicableCards(q, cards, { fileOpen: false, scaffoldDetected: true });
+  eq(noFile.matches.some((m) => m.card.id === 'insert-date-picker'), false, 'N6: file-open 미충족 카드 제외');
+  eq(noFile.matches.some((m) => m.card.id === 'create-page'), true, 'N7: 조건 맞는 카드는 유지');
+
+  // 정렬은 계층 → priority → id (결정론)
+  eq(noFile.matches.map((m) => m.card.id), ['create-page', 'use-api-doc'], 'N8: priority 내림차순 결정론 정렬');
+
+  // 스캐폴드가 아니면 안전망도 비어야 한다(엉뚱한 워크스페이스에서 메뉴만 띄우지 않음)
+  eq(listApplicableCards(q, cards, { fileOpen: true, scaffoldDetected: false }).mode, 'none', 'N9: 조건 맞는 카드 없으면 none');
+
+  // 프리필은 안전망에서도 동작 — 고른 뒤 계획 카드로 펼치면 이미 채워져 있다.
+  const pre = listApplicableCards('account 도메인에 목록 페이지', cards, CTX);
+  const page = pre.matches.find((m) => m.card.id === 'create-page')!;
+  eq(page.prefill, { domain: 'account', pageType: '목록' }, 'N10: 안전망도 슬롯 프리필 수행');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

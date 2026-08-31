@@ -372,9 +372,14 @@ export function useChat() {
     if (action === 'retry') setIsWaiting(true);
   }, []);
 
-  /** 행동 카드 칩 클릭 — 호스트가 QuickPick을 열고 actionCardSlots로 회신한다. */
+  /** 행동 카드 칩 클릭 — 호스트가 QuickPick을 열고 actionCardSlots로 회신한다(인라인 불가 슬롯). */
   const sendCardChip = useCallback((requestId: string, cardId: string, slotName: string) => {
     vscode.postMessage({ type: 'actionCardChip', requestId, cardId, slotName });
+  }, []);
+
+  /** 카드 안에서 인라인으로 고른/입력한 값 — 호스트가 검증 후 actionCardSlots로 되돌려준다. */
+  const sendCardSlot = useCallback((requestId: string, cardId: string, slotName: string, value: string) => {
+    vscode.postMessage({ type: 'actionCardSlotSet', requestId, cardId, slotName, value });
   }, []);
 
   /** 행동 카드 실행 — 이중 클릭 방지를 위해 로컬에서 즉시 "실행됨"으로 표시한다. */
@@ -402,7 +407,7 @@ export function useChat() {
   return {
     messages, status, progressSteps, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
-    sendCardChip, sendCardExecute,
+    sendCardChip, sendCardSlot, sendCardExecute,
     selectionContext, dismissSelection,
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop,
     attachReference, attachText, consumeAttach,

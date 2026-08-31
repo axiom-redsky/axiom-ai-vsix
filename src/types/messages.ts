@@ -121,6 +121,22 @@ export interface ActionCardSlotView {
   label: string;
   /** 프리필/편집된 값. null이면 미정 — 칩이 "선택"으로 표시되고 실행 시 되묻는다. */
   value: string | null;
+  /**
+   * true면 웹뷰가 카드 안에서 바로 편집한다(창 전환 없음). false면 칩 클릭이 호스트의
+   * QuickPick으로 위임된다 — 항목이 많아 검색이 필요한 목록(컴포넌트 53종 등)이 그 경우.
+   * 정책 판단은 호스트가 하고 웹뷰는 이 플래그만 따른다.
+   */
+  inline: boolean;
+  /** 인라인 편집 시 고를 후보. 비어 있으면 자유 입력 전용. */
+  options?: string[];
+  /** true면 후보에 없는 값도 직접 입력할 수 있다(예: 새 도메인). */
+  allowCustom?: boolean;
+  /** 자유 입력 칸의 placeholder. */
+  placeholder?: string;
+  /** 자유 입력 검증 정규식(source 문자열). 호스트가 소유하는 규칙을 그대로 내려보낸다. */
+  pattern?: string;
+  /** 검증 실패 시 보여줄 안내. */
+  patternHint?: string;
 }
 
 export interface ActionCardOutputView {
@@ -154,6 +170,11 @@ export interface ActionCardsPayload {
   /** plan = 계획 카드 1장(확신 높음) / list = 컴팩트 리스트(애매). */
   mode: 'plan' | 'list';
   query: string;
+  /**
+   * 리스트 위에 보여줄 안내 — 매칭 없이 카탈로그 안전망으로 뜬 경우 그 사실을 밝힌다.
+   * "왜 이게 떴는지"를 숨기지 않기 위한 것(§3.6 원칙 3 — 근거를 보여줘라).
+   */
+  note?: string;
   /** 점수순. mode='plan'이면 [0]이 계획 카드, 나머지는 "다른 작업 ▾" 뒤에. */
   cards: ActionCardView[];
 }
@@ -195,8 +216,9 @@ export type WebviewToHostMessage =
   | { type: 'runLocateProbe'; query: string; filePath: string; forcedStart: number; forcedEnd: number }
   | { type: 'contractsProbeUseActiveFile' }
   | { type: 'runContractsProbe'; query: string; filePath: string; selStart: number; selEnd: number }
-  // 오프라인 행동 카드: 칩 클릭(슬롯 하나 QuickPick 편집) / 실행 버튼
+  // 오프라인 행동 카드: 칩 클릭(호스트 QuickPick 위임) / 카드 안 인라인 편집 결과 / 실행 버튼
   | { type: 'actionCardChip'; requestId: string; cardId: string; slotName: string }
+  | { type: 'actionCardSlotSet'; requestId: string; cardId: string; slotName: string; value: string }
   | { type: 'actionCardExecute'; requestId: string; cardId: string }
   | { type: 'openGuide' }
   | { type: 'guideReady' }

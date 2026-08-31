@@ -3,7 +3,7 @@ schemaVersion: 1
 id: api-table-binding
 title: API → 테이블 바인딩
 icon: 🔌
-triggers: [바인딩, 연동, api 연결, api 적용, api 붙여, 테이블에 api, 데이터 연결, binding]
+triggers: [바인딩, 연동, api 연결, api 적용, api 붙여, 테이블 api, 데이터 연결, binding]
 preconditions: [file-open, scaffold-detected]
 slots:
   - name: endpoint

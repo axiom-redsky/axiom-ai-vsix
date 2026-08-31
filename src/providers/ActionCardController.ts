@@ -15,7 +15,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadCardsFromDir, finalizeCatalog } from '../ai/actions/CardCatalog';
-import { matchCards, type ICardMatchContext } from '../ai/actions/CardMatcher';
+import { matchCards, listApplicableCards, type ICardMatchContext } from '../ai/actions/CardMatcher';
 import {
   buildCardsPayload, buildOutputViews, buildSlotViews, substituteSlots,
 } from '../ai/actions/CardPlanView';
@@ -23,7 +23,9 @@ import type { IActionCard, ICardMatch } from '../ai/actions/types';
 import { COMPONENT_PROPS_INDEX } from '../ai/contracts/generated/componentPropsIndex';
 import { splitFrontmatter } from '../ai/retrieval/KnowledgeDoc';
 import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
-import type { ActionCardOutputView, ActionCardsPayload, HostToWebviewMessage } from '../types/messages';
+import type {
+  ActionCardOutputView, ActionCardSlotView, ActionCardsPayload, HostToWebviewMessage,
+} from '../types/messages';
 
 /** ChatViewProvider가 구현하는 호스트 접점. */
 export interface IActionCardHost {
@@ -42,6 +44,12 @@ export interface IActionCardHost {
    * 게이트 속성이 깨진다. null이면 카드 파일의 정적 outputs를 쓴다.
    */
   previewTemplateOutputs(templateId: string, values: Record<string, string>): ActionCardOutputView[] | null;
+  /**
+   * 슬롯 값을 **실행이 실제로 쓸 형태**로 정규화한다(예: 페이지 이름 → PascalCase, 확장자 제거).
+   * 정규화 없이 원문을 칩에 남기면 칩·미리보기·생성 파일명이 갈라진다. 쓸 수 없는 값이면 null.
+   * 해당 슬롯에 정규화 규칙이 없으면 입력을 그대로 돌려준다.
+   */
+  normalizeTemplateSlot(templateId: string, slotName: string, raw: string): string | null;
   scanDomains(): string[];
   workspaceRoot(): string | null;
 }
@@ -53,6 +61,19 @@ interface ICardSession {
   /** cardId → slotName → 값 (프리필로 초기화, 칩 편집으로 갱신). */
   values: Map<string, Record<string, string>>;
 }
+
+/**
+ * 인라인 편집으로 감당할 후보 개수 상한. 넘으면 호스트 QuickPick으로 위임한다 —
+ * 많은 항목은 퍼지 검색·키보드 이동이 필요한데 그건 QuickPick이 훨씬 낫다(예: 컴포넌트 53종).
+ */
+const INLINE_OPTION_LIMIT = 12;
+
+/** 도메인 이름 규칙 — 인라인 입력·QuickPick 입력·호스트 검증이 같은 규칙을 쓴다. */
+const DOMAIN_PATTERN = '^[a-z][a-z0-9-]*$';
+const DOMAIN_HINT = '소문자·숫자·하이픈만 (예: account)';
+/** API 경로 규칙. */
+const ENDPOINT_PATTERN = '^/[\\w:-]+(?:/[\\w:-]+)*$';
+const ENDPOINT_HINT = '/segment/segment 형식의 경로 (예: /api/employees)';
 
 let seq = 0;
 
@@ -98,12 +119,24 @@ export class ActionCardController {
   /**
    * 행동성 요청에 대해 추천 카드를 렌더한다. 매칭이 없으면 false — 호출부가 기존
    * 오프라인 지식 응답으로 폴백한다(카드는 보조이지 관문이 아니다).
+   *
+   * @param fallbackToCatalog true면 트리거 매칭이 0일 때 **카탈로그 전체를 컴팩트 리스트로**
+   *   보여준다. 실패해도 "다른 파이프라인으로 이동"이 아니라 "메뉴가 뜬다"로 끝나게 하는 안전망 —
+   *   말투 차이로 경로가 갈리는 체감(실측: "페이지 만들어줘" vs "화면을 만들어줘")을 없앤다.
+   *   호출부가 이미 "행동 요청"이라고 판단한 지점에서만 켠다.
    */
-  recommend(query: string, fileOpen: boolean): boolean {
+  recommend(query: string, fileOpen: boolean, fallbackToCatalog = false): boolean {
     const cards = this._loadCatalog();
     if (cards.length === 0) return false;
-    const rec = matchCards(query, cards, this._matchContext(fileOpen));
-    if (rec.mode === 'none' || rec.matches.length === 0) return false;
+    const ctx = this._matchContext(fileOpen);
+    let rec = matchCards(query, cards, ctx);
+    let note: string | undefined;
+    if (rec.mode === 'none' || rec.matches.length === 0) {
+      if (!fallbackToCatalog) return false;
+      rec = listApplicableCards(query, cards, ctx);
+      if (rec.mode === 'none' || rec.matches.length === 0) return false;
+      note = '요청과 정확히 맞는 작업을 찾지 못했어요. 아래에서 골라주시거나, 조금 더 구체적으로 다시 말씀해주세요.';
+    }
 
     const requestId = `ac-${Date.now().toString(36)}-${++seq}`;
     const values = new Map<string, Record<string, string>>();
@@ -113,6 +146,8 @@ export class ActionCardController {
     const payload: ActionCardsPayload = buildCardsPayload(
       requestId, query, rec.mode === 'plan' ? 'plan' : 'list', rec.matches, values,
       (card, v) => this._resolveOutputs(card, v),
+      (c, slot) => this._slotEditor(c, slot),
+      note,
     );
     this._host.post({ type: 'actionCards', payload });
     return true;
@@ -139,13 +174,100 @@ export class ActionCardController {
     if (picked === undefined) return; // 사용자 취소 — 상태 유지
     values[slotName] = picked;
     this._session!.values.set(cardId, values);
+    this._postSlots(requestId, cardId, card, values);
+  }
+
+  /** 갱신된 슬롯 + 재계산한 출력 미리보기를 웹뷰로 되돌린다(인라인·QuickPick 공통 출구). */
+  private _postSlots(
+    requestId: string, cardId: string, card: IActionCard, values: Record<string, string>,
+  ): void {
     this._host.post({
       type: 'actionCardSlots',
       requestId,
       cardId,
-      slots: buildSlotViews(card, values),
+      slots: buildSlotViews(card, values, (c, slot) => this._slotEditor(c, slot)),
       outputs: this._resolveOutputs(card, values) ?? buildOutputViews(card, values),
     });
+  }
+
+  /**
+   * 슬롯의 인라인 편집 재료를 만든다 — 후보 목록·자유 입력 허용 여부·검증 규칙.
+   *
+   * 정책(어디서 편집할지)은 **호스트가 정하고** 웹뷰는 따르기만 한다: 후보가 적으면 카드 안에서
+   * 바로(창 전환 없음, §3.6 "위저드 = 칩 편집기"), 많으면 검색이 되는 QuickPick으로 위임.
+   */
+  private _slotEditor(card: IActionCard, slot: IActionCard['slots'][number]): Pick<
+    ActionCardSlotView, 'inline' | 'options' | 'allowCustom' | 'placeholder' | 'pattern' | 'patternHint'
+  > {
+    const base = this._slotEditorBase(slot);
+    // 카드가 스스로 선언한 규칙이 source 기본값을 이긴다(§2-3 — 규칙은 코드가 아니라 카드 데이터).
+    if (slot.pattern) {
+      return { ...base, pattern: slot.pattern, ...(slot.hint ? { patternHint: slot.hint } : {}) };
+    }
+    void card;
+    return base;
+  }
+
+  private _slotEditorBase(slot: IActionCard['slots'][number]): Pick<
+    ActionCardSlotView, 'inline' | 'options' | 'allowCustom' | 'placeholder' | 'pattern' | 'patternHint'
+  > {
+    switch (slot.source) {
+      case 'enum':
+        return { inline: true, options: slot.options ?? [], allowCustom: false };
+      case 'domain-list': {
+        const domains = this._host.scanDomains();
+        // 새 도메인 생성이 정당한 경우가 있으므로 직접 입력을 함께 허용한다.
+        return domains.length <= INLINE_OPTION_LIMIT
+          ? { inline: true, options: domains, allowCustom: true, placeholder: '새 도메인 이름', pattern: DOMAIN_PATTERN, patternHint: DOMAIN_HINT }
+          : { inline: false };
+      }
+      case 'component-list': {
+        const components = Object.keys(COMPONENT_PROPS_INDEX);
+        // 53종 — 검색 없이는 못 고른다 → QuickPick.
+        return components.length <= INLINE_OPTION_LIMIT
+          ? { inline: true, options: components.sort(), allowCustom: false }
+          : { inline: false };
+      }
+      case 'endpoint-list':
+        return { inline: true, options: [], allowCustom: true, placeholder: '/api/…', pattern: ENDPOINT_PATTERN, patternHint: ENDPOINT_HINT };
+      case 'text':
+      default:
+        return { inline: true, options: [], allowCustom: true, placeholder: slot.label };
+    }
+  }
+
+  /**
+   * 카드 안 인라인 편집 결과를 반영한다. 웹뷰가 값을 만들지만 **진실의 원천은 호스트**다 —
+   * 여기서 검증·정규화한 뒤 슬롯 상태를 되돌려줘야 출력 미리보기 재계산이 항상 실제와 맞는다.
+   */
+  setSlotValue(requestId: string, cardId: string, slotName: string, raw: string): void {
+    const found = this._findCard(requestId, cardId);
+    if (!found) return;
+    const { card } = found;
+    const slot = card.slots.find((s) => s.name === slotName);
+    if (!slot) return;
+    const value = raw.trim();
+    if (!value) return;
+
+    const editor = this._slotEditor(card, slot);
+    const known = (editor.options ?? []).includes(value);
+    if (!known) {
+      if (!editor.allowCustom) return; // 후보 밖 값 거부(enum 등)
+      if (editor.pattern && !new RegExp(editor.pattern).test(value)) return; // 형식 위반 거부
+    }
+
+    // 실행 시 적용될 정규화(예: 페이지 이름 → PascalCase)를 **여기서 미리 적용**해 저장한다.
+    // 칩에 원문이 남으면 칩·미리보기·실제 파일명이 갈라져("employee-list" 칩 ↔ EmployeeList.tsx),
+    // 앞서 고친 출력 미리보기 문제와 같은 종류의 불일치가 다시 생긴다.
+    const canonical = card.action.type === 'template' && card.action.template
+      ? this._host.normalizeTemplateSlot(card.action.template, slotName, value)
+      : value;
+    if (!canonical) return; // 정규화 불가(쓸 수 있는 이름을 못 뽑음) → 값 유지, 재입력 유도
+
+    const values = this._session!.values.get(cardId) ?? {};
+    values[slotName] = canonical;
+    this._session!.values.set(cardId, values);
+    this._postSlots(requestId, cardId, card, values);
   }
 
   /** 실행기 파생 미리보기(가능하면) — 실패·미지원이면 null로 정적 outputs에 양보한다. */
@@ -241,9 +363,20 @@ export class ActionCardController {
 
     let pageName = values.pageName ?? '';
     if (!pageName) {
+      // 카드가 선언한 규칙을 InputBox에도 그대로 적용 — 인라인 칩과 맨땅 진입의 검증을 일치시킨다.
+      const nameSlot = card.slots.find((s) => s.name === 'pageName');
+      const editor = nameSlot ? this._slotEditor(card, nameSlot) : { pattern: undefined, patternHint: undefined };
       const raw = await vscode.window.showInputBox({
         prompt: '페이지 이름 (PascalCase, 예: EmployeeListPage)',
         placeHolder: 'EmployeeListPage',
+        validateInput: (v) => {
+          const t = v.trim();
+          if (!t) return null;
+          if (editor.pattern && !new RegExp(editor.pattern).test(t)) {
+            return editor.patternHint ?? '이름 형식이 올바르지 않습니다.';
+          }
+          return null;
+        },
       });
       if (raw === undefined || !raw.trim()) return;
       pageName = raw.trim();

@@ -158,6 +158,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       },
       createPageFromTemplate: (name, domain) => this._createPageFromTemplate(name, domain, 'action-card'),
       previewTemplateOutputs: (templateId, values) => this._previewTemplateOutputs(templateId, values),
+      normalizeTemplateSlot: (templateId, slotName, raw) =>
+        templateId === 'page' && slotName === 'pageName'
+          // 실행(_executeTemplate)·미리보기와 같은 정규화를 칩 값에도 적용해 셋이 항상 일치하게 한다.
+          ? this._pageCreationDetector.normalizeName(raw)
+          : raw,
       scanDomains: () => this._scanWorkspaceDomains(),
       workspaceRoot: () => this._getWorkspaceRoot(),
     });
@@ -322,7 +327,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 역할을 "실행"에서 "추천"으로(offline-action-cards-plan §2-1). 실행은 카드 버튼 →
     // QuickPick(결정론)이 이어받고, 매칭이 없으면 기존 지식 응답으로 폴백(카드는 관문이 아니다).
     if (intent.intent === 'create_page' || intent.intent === 'modify_file') {
-      if (this._actionCards.recommend(text, !!editorCtx.filePath)) {
+      // create_page는 "새로 만들겠다"는 확정 신호라, 카드가 안 잡혀도 카탈로그를 보여주는 편이
+      // 지식 문서보다 낫다. modify_file은 계약 카드+RAG 응답이 실제로 유용하므로 폴백 유지.
+      const fallbackToCatalog = intent.intent === 'create_page';
+      if (this._actionCards.recommend(text, !!editorCtx.filePath, fallbackToCatalog)) {
         this._history.push({ role: 'assistant', content: this._actionCards.historySummary() });
         this._post({ type: 'done' });
         this._postStatus('⚠️ 오프라인 모드');
@@ -495,6 +503,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'actionCardChip':
           await this._actionCards.handleChip(msg.requestId, msg.cardId, msg.slotName);
+          break;
+        case 'actionCardSlotSet':
+          this._actionCards.setSlotValue(msg.requestId, msg.cardId, msg.slotName, msg.value);
           break;
         case 'actionCardExecute':
           await this._actionCards.handleExecute(msg.requestId, msg.cardId);
@@ -1294,7 +1305,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (this._pageCreationDetector.detect(text).isPageCreation) {
       if (!(await this._isLlmOnline(ExtensionConfig.getEffectiveLlmConfig()))) {
         const offlineCtx = this._editorCollector.collect(overrideSelection);
-        if (this._actionCards.recommend(text, !!offlineCtx.filePath)) {
+        // 여기까지 왔으면 "행동 요청"임은 이미 확정 — 트리거가 안 걸려도 옛 대화로 떨어뜨리지 말고
+        // 카탈로그 리스트로 받아낸다(빗나감을 절벽이 아니라 계단으로).
+        if (this._actionCards.recommend(text, !!offlineCtx.filePath, true)) {
           this._postOfflineTurn();
           this._history.push({ role: 'user', content: text });
           this._history.push({ role: 'assistant', content: this._actionCards.historySummary() });
@@ -4793,6 +4806,15 @@ import 변경 또는 2곳 이상 수정이면:
 
     const pageName = this._pageCreationDetector.normalizeName(input);
     if (!pageName) {
+      // 되묻기가 대화를 가두지 않게 한다: 영문 식별자가 하나도 없는데 **생성 요청 문장**이면
+      // 사용자는 이 질문에 답한 게 아니라 새 요청을 한 것이다("직원 메인 화면 만들어"). 그대로
+      // 되물으면 무슨 말을 해도 이름 질문만 반복되는 함정에 빠진다(실측). 새 요청으로 재라우팅한다.
+      // (정상 답변은 영문 이름이라 normalizeName이 성공하므로 이 분기에 오지 않는다 — 충돌 없음.)
+      if (this._pageCreationDetector.detect(input).isPageCreation) {
+        this._pageCreationState = null;
+        await this._handleMessage(input);
+        return;
+      }
       this._post({
         type: 'token',
         content:
@@ -4837,6 +4859,13 @@ import 변경 또는 2곳 이상 수정이면:
     }
 
     if (!resolvedDomain) {
+      // 이름 되묻기와 같은 함정 방지 — 답변이 아니라 새 생성 요청이면 재라우팅한다.
+      // (정상 답변은 번호·영문 도메인명이라 위에서 이미 해석돼 여기 오지 않는다.)
+      if (this._pageCreationDetector.detect(input).isPageCreation) {
+        this._pageCreationState = null;
+        await this._handleMessage(input);
+        return;
+      }
       this._post({
         type: 'token',
         content: `입력을 인식하지 못했습니다. 번호(예: \`1\`) 또는 도메인명(예: \`account\`)을 입력해주세요. (취소: \`/cancel\`)`,

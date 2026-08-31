@@ -2526,12 +2526,27 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
 }
 
+/* 매칭 없이 카탈로그 안전망으로 뜬 경우의 안내 — 왜 이게 떴는지 숨기지 않는다. */
+.action-cards__note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: 6px 9px;
+  border-left: 2px solid var(--vscode-editorWarning-foreground, #cca700);
+  background: rgba(127, 127, 127, 0.07);
+  border-radius: 0 4px 4px 0;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+}
+
 .action-card {
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
   border-left: 3px solid var(--vscode-button-background, #0e639c);
   border-radius: 6px;
   padding: 10px 12px;
-  background: var(--vscode-editor-background);
+  /* 채팅 배경(--vscode-editor-background)과 같은 색을 쓰면 카드가 배경에 묻힌다.
+     반투명 회색을 얹으면 테마·명암 무관하게 항상 한 단계 떠 보인다(밝은 테마는 살짝 어둡게,
+     어두운 테마는 살짝 밝게). 고정 색이 아니라 합성이라 어느 테마에서도 어색하지 않다. */
+  background: rgba(127, 127, 127, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2560,6 +2575,11 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   flex-wrap: wrap;
   gap: 6px;
 }
+/* 인라인 편집기(팝오버)의 위치 기준 — 칩 바로 아래에 붙는다. */
+.action-chip-wrap {
+  position: relative;
+  display: inline-flex;
+}
 .action-chip {
   display: inline-flex;
   align-items: center;
@@ -2583,6 +2603,76 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
 }
 .action-chip__caret { font-size: 9px; opacity: 0.7; }
+.action-chip--editing {
+  background: var(--vscode-list-activeSelectionBackground, rgba(14, 99, 156, 0.25));
+}
+
+/* ── 칩 인라인 편집기(카드 안에서 바로 고르기 — 창 전환 없음) ── */
+.chip-editor {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 6px;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.chip-editor__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 7px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  outline: none;
+}
+.chip-editor__input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+.chip-editor__hint {
+  font-size: 10.5px;
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-descriptionForeground, #cca700));
+}
+.chip-editor__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.chip-editor__row {
+  padding: 4px 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip-editor__row--active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(14, 99, 156, 0.35));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+.chip-editor__row--custom {
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+}
+.chip-editor__row--custom strong { color: var(--vscode-foreground); font-weight: 600; }
+.chip-editor__custom-mark { opacity: 0.8; }
+.chip-editor__empty {
+  padding: 4px 7px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+}
 
 .action-card__outputs {
   display: flex;
@@ -2667,6 +2757,7 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
   border-radius: 6px;
   overflow: hidden;
+  background: rgba(127, 127, 127, 0.06);
 }
 .action-cards__row {
   display: flex;

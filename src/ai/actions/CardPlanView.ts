@@ -23,8 +23,27 @@ export function substituteSlots(tpl: string, values: Record<string, string>): st
   return tpl.replace(/\{\{\s*([A-Za-z_][\w-]*)\s*\}\}/g, (m, name: string) => values[name] ?? m);
 }
 
-export function buildSlotViews(card: IActionCard, values: Record<string, string>): ActionCardSlotView[] {
-  return card.slots.map((s) => ({ name: s.name, label: s.label, value: values[s.name] ?? null }));
+/**
+ * 슬롯 하나의 **인라인 편집 재료**(후보 목록·자유 입력 허용·검증 규칙)를 해석한다.
+ * 워크스페이스 스캔이 필요하므로(도메인·컴포넌트) 호스트가 주입한다. 미주입이면 전부
+ * 호스트 QuickPick 위임(`inline: false`) — 종전 동작.
+ */
+export type TSlotEditorResolver = (
+  card: IActionCard,
+  slot: IActionCard['slots'][number],
+) => Pick<ActionCardSlotView, 'inline' | 'options' | 'allowCustom' | 'placeholder' | 'pattern' | 'patternHint'>;
+
+export function buildSlotViews(
+  card: IActionCard,
+  values: Record<string, string>,
+  resolveEditor?: TSlotEditorResolver,
+): ActionCardSlotView[] {
+  return card.slots.map((s) => ({
+    name: s.name,
+    label: s.label,
+    value: values[s.name] ?? null,
+    ...(resolveEditor ? resolveEditor(card, s) : { inline: false }),
+  }));
 }
 
 export function buildOutputViews(card: IActionCard, values: Record<string, string>): ActionCardOutputView[] {
@@ -52,6 +71,7 @@ export function buildCardView(
   match: ICardMatch,
   values: Record<string, string>,
   resolveOutputs?: TOutputsResolver,
+  resolveEditor?: TSlotEditorResolver,
 ): ActionCardView {
   return {
     cardId: card.id,
@@ -60,7 +80,7 @@ export function buildCardView(
     actionType: card.action.type,
     description: card.description,
     matchedTriggers: match.matchedTriggers,
-    slots: buildSlotViews(card, values),
+    slots: buildSlotViews(card, values, resolveEditor),
     outputs: resolveOutputs?.(card, values) ?? buildOutputViews(card, values),
     ...(card.skeleton !== undefined ? { skeleton: card.skeleton } : {}),
     executeLabel: EXECUTE_LABEL[card.action.type],
@@ -75,12 +95,17 @@ export function buildCardsPayload(
   matches: ICardMatch[],
   values: Map<string, Record<string, string>>,
   resolveOutputs?: TOutputsResolver,
+  resolveEditor?: TSlotEditorResolver,
+  note?: string,
 ): ActionCardsPayload {
   return {
     requestId,
     mode,
     query,
-    cards: matches.map((m) => buildCardView(m.card, m, values.get(m.card.id) ?? {}, resolveOutputs)),
+    ...(note ? { note } : {}),
+    cards: matches.map((m) =>
+      buildCardView(m.card, m, values.get(m.card.id) ?? {}, resolveOutputs, resolveEditor),
+    ),
   };
 }
 

@@ -4,6 +4,8 @@ id: use-api-doc
 title: useApi 사용 가이드
 icon: 📚
 triggers: [useapi, use api, api 사용법, api 호출 방법, 봉투 계약, 응답 구조, 응답 타입]
+# scaffold 공통 훅의 계약을 설명하는 문서라, scaffold 워크스페이스가 아니면 의미가 없다.
+preconditions: [scaffold-detected]
 action:
   type: doc
   doc: scaffold-docs/use-api

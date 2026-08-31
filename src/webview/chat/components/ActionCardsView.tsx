@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ActionCardsPayload, ActionCardView } from '../../../types/messages';
+import { ChipEditor } from './ChipEditor';
 
 /**
  * 오프라인 행동 카드 — "메뉴"가 아니라 "계획 카드"(§3.6 원칙 3가지):
@@ -13,21 +14,27 @@ interface Props {
   payload: ActionCardsPayload;
   /** 실행 버튼을 누른 카드 id — 있으면 전체 카드 비활성 + "실행됨" 표시. */
   executedCardId?: string;
+  /** 인라인 편집이 불가한 슬롯(후보 다수) — 호스트 QuickPick으로 위임. */
   onChip: (requestId: string, cardId: string, slotName: string) => void;
+  /** 카드 안에서 고른 값 — 호스트가 검증 후 슬롯 상태를 되돌려준다. */
+  onSlotSet: (requestId: string, cardId: string, slotName: string, value: string) => void;
   onExecute: (requestId: string, cardId: string) => void;
 }
 
 function PlanCard({
-  card, requestId, executed, disabled, onChip, onExecute,
+  card, requestId, executed, disabled, onChip, onSlotSet, onExecute,
 }: {
   card: ActionCardView;
   requestId: string;
   executed: boolean;
   disabled: boolean;
   onChip: Props['onChip'];
+  onSlotSet: Props['onSlotSet'];
   onExecute: Props['onExecute'];
 }): React.ReactElement {
   const [showCode, setShowCode] = useState(false);
+  // 지금 열려 있는 인라인 편집기의 슬롯 이름(한 번에 하나만).
+  const [editingSlot, setEditingSlot] = useState<string | null>(null);
   return (
     <div className="action-card">
       <div className="action-card__header">
@@ -43,17 +50,31 @@ function PlanCard({
       {card.slots.length > 0 && (
         <div className="action-card__chips">
           {card.slots.map((s) => (
-            <button
-              key={s.name}
-              className={`action-chip${s.value ? '' : ' action-chip--empty'}`}
-              disabled={disabled}
-              title={`${s.label} 변경`}
-              onClick={() => onChip(requestId, card.cardId, s.name)}
-            >
-              <span className="action-chip__label">{s.label}</span>
-              <span className="action-chip__value">{s.value ?? '선택'}</span>
-              <span className="action-chip__caret" aria-hidden>▾</span>
-            </button>
+            <div key={s.name} className="action-chip-wrap">
+              <button
+                className={`action-chip${s.value ? '' : ' action-chip--empty'}${editingSlot === s.name ? ' action-chip--editing' : ''}`}
+                disabled={disabled}
+                title={`${s.label} 변경`}
+                onClick={() => {
+                  if (s.inline) setEditingSlot((cur) => (cur === s.name ? null : s.name));
+                  else onChip(requestId, card.cardId, s.name);
+                }}
+              >
+                <span className="action-chip__label">{s.label}</span>
+                <span className="action-chip__value">{s.value ?? '선택'}</span>
+                <span className="action-chip__caret" aria-hidden>▾</span>
+              </button>
+              {editingSlot === s.name && !disabled && (
+                <ChipEditor
+                  slot={s}
+                  onCommit={(value) => {
+                    setEditingSlot(null);
+                    onSlotSet(requestId, card.cardId, s.name, value);
+                  }}
+                  onCancel={() => setEditingSlot(null)}
+                />
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -99,7 +120,7 @@ function PlanCard({
   );
 }
 
-export function ActionCardsView({ payload, executedCardId, onChip, onExecute }: Props): React.ReactElement {
+export function ActionCardsView({ payload, executedCardId, onChip, onSlotSet, onExecute }: Props): React.ReactElement {
   // plan 모드면 top1이 펼쳐진 채 시작, list 모드면 전부 접힌 리스트로 시작.
   const [expandedId, setExpandedId] = useState<string | null>(
     payload.mode === 'plan' ? payload.cards[0]?.cardId ?? null : null,
@@ -113,6 +134,7 @@ export function ActionCardsView({ payload, executedCardId, onChip, onExecute }: 
   return (
     <div className="action-cards">
       <div className="action-cards__banner">⚡ 오프라인 모드 — 이렇게 도와드릴 수 있어요</div>
+      {payload.note && <div className="action-cards__note">{payload.note}</div>}
 
       {expanded && (
         <PlanCard
@@ -121,6 +143,7 @@ export function ActionCardsView({ payload, executedCardId, onChip, onExecute }: 
           executed={executedCardId === expanded.cardId}
           disabled={anyExecuted}
           onChip={onChip}
+          onSlotSet={onSlotSet}
           onExecute={onExecute}
         />
       )}

@@ -51,6 +51,29 @@ function compact(s: string): string {
   return s.toLowerCase().replace(/\s+/g, '');
 }
 
+/** 토큰 하나로 인정할 최소 길이 — 1글자 토큰은 아무 데나 걸려 오탐원이 된다. */
+const MIN_TOKEN_LEN = 2;
+
+/**
+ * 트리거가 질문에 걸리는지 판정한다 — **어절 단위 전부 포함**(붙어 있을 필요 없음).
+ *
+ * 트리거를 통째 부분문자열로 찾으면 한국어 **조사**가 매칭을 깨뜨린다:
+ * 트리거 `화면 만들` vs 입력 "화면**을** 만들어줘" → 압축해도 `화면만들` ≠ `화면을만들` → 불일치.
+ * 실측으로 "직원 목록 페이지 만들어줘"는 카드가 뜨고 "직원 목록 **화면을** 만들어줘"는 안 뜨는
+ * 비대칭이 나왔다. 트리거를 계속 늘리는 건 두더지잡기이므로(계획서 §2-1의 경고와 같은 함정),
+ * 트리거를 어절로 쪼개 **각 어절이 질문 어딘가에 있으면** 매칭으로 본다. 조사·어미 변화·어순이
+ * 자연히 흡수된다("만들어줘"·"만들래"·"만들 화면" 모두 `만들` 포함).
+ *
+ * 느슨해지는 대신 오탐이 늘 수 있지만, 카드의 오분류 비용은 "엉뚱한 카드가 한 장 보일 뿐"이라
+ * 이 트레이드오프가 성립한다(§2-1). 정밀도는 확신도 게이트와 드라이런으로 관리한다.
+ */
+function matchesTrigger(compactQuery: string, trigger: string): boolean {
+  const tokens = trigger.trim().split(/\s+/).map(compact).filter(Boolean);
+  if (tokens.length === 0) return false;
+  if (tokens.some((tok) => tok.length < MIN_TOKEN_LEN)) return false;
+  return tokens.every((tok) => compactQuery.includes(tok));
+}
+
 function meetsPreconditions(card: IActionCard, ctx: ICardMatchContext): boolean {
   for (const p of card.preconditions) {
     if (p === 'file-open' && !ctx.fileOpen) return false;
@@ -127,9 +150,9 @@ export function matchCards(
       const ct = compact(t);
       if (ct.length < 2) continue; // 한 글자 트리거 무시(오탐원)
       if (seenCompact.has(ct)) continue;
-      if (cq.includes(ct)) {
+      if (matchesTrigger(cq, t)) {
         seenCompact.add(ct);
-        score += ct.length;
+        score += ct.length; // 가중치는 여전히 압축 길이 — 복합 트리거가 더 무겁다
         matchedTriggers.push(t);
       }
     }
@@ -154,4 +177,46 @@ export function matchCards(
     mode = gap >= planGapRatio ? 'plan' : 'list';
   }
   return { mode, matches };
+}
+
+/**
+ * 트리거가 하나도 안 걸렸을 때의 **안전망** — 상황에 맞는 카드 전체를 컴팩트 리스트로 낸다.
+ *
+ * 왜 필요한가: 계획 카드의 안전 전제는 "오분류가 무해하다 — 틀려도 엉뚱한 카드가 하나 보일 뿐"
+ * (§2-1)이다. 그런데 매칭이 **0**이면 카드가 아예 안 뜨고 호출부가 전혀 다른 파이프라인(기존
+ * 페이지 생성 대화)으로 흘러가, 말투가 조금 달라진 것뿐인데 "다른 세계로 이동"하는 체감을 준다
+ * (실측: "페이지 만들어줘"는 카드, "화면을 만들어줘"는 대화). 빗나감을 절벽이 아니라 계단으로
+ * 만들려면 **최악의 경우도 "메뉴가 뜬다"** 로 끝나야 한다.
+ *
+ * 트리거 매칭의 정밀도를 높이는 것과는 별개의 축이다 — 정확도를 아무리 올려도 남은 실패가
+ * 절벽이면 체감은 그대로이므로, 이 안전망이 먼저다.
+ */
+export function listApplicableCards(
+  query: string,
+  cards: IActionCard[],
+  ctx: ICardMatchContext,
+  opts: IMatcherOptions = {},
+): IRecommendation {
+  const topN = opts.topN ?? 5; // 안전망은 조금 더 넉넉히 — "뭘 할 수 있는지" 보여주는 목적
+  const applicable = cards
+    .filter((card) => meetsPreconditions(card, ctx))
+    .sort(
+      (a, b) =>
+        LAYER_RANK[b.layer] - LAYER_RANK[a.layer] ||
+        b.priority - a.priority ||
+        a.id.localeCompare(b.id),
+    )
+    .slice(0, topN);
+
+  if (applicable.length === 0) return { mode: 'none', matches: [] };
+  return {
+    // 근거 없는 목록이므로 항상 리스트 — 계획 카드로 단정하지 않는다(확신이 없다는 걸 그대로 표현).
+    mode: 'list',
+    matches: applicable.map((card) => ({
+      card,
+      score: 0,
+      matchedTriggers: [], // 매칭 근거 없음 — 카드가 "왜 떴는지" 거짓으로 꾸미지 않는다
+      prefill: prefillSlots(query, card.slots, ctx),
+    })),
+  };
 }

@@ -19,12 +19,13 @@ interface Props {
   onConfirm?: (actionId: string, approved: boolean) => void;
   onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
   onCardChip?: (requestId: string, cardId: string, slotName: string) => void;
+  onCardSlotSet?: (requestId: string, cardId: string, slotName: string, value: string) => void;
   onCardExecute?: (requestId: string, cardId: string) => void;
 }
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery, onCardChip, onCardExecute }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery, onCardChip, onCardSlotSet, onCardExecute }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -102,7 +103,7 @@ export function MessageList({ messages, isStreaming, isWaiting, status, progress
         </div>
       )}
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} onCardChip={onCardChip} onCardExecute={onCardExecute} />
+        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} onCardChip={onCardChip} onCardSlotSet={onCardSlotSet} onCardExecute={onCardExecute} />
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">
