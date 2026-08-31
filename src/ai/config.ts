@@ -164,6 +164,17 @@ export const AI_DEFAULTS = {
     anchorSearchRadius: 3,
   },
   /**
+   * Scaffold 린트(C1) 기본값. react-app-scaffold 고유 계약(전역 $router·$ui, UI 배럴 경로,
+   * useApi 봉투, T/I 접두사 …)을 VSCode Diagnostics로 노출한다. ESLint·tsc가 모르는 규칙만 본다.
+   * 모델 호출이 0이라 오프라인에서도 그대로 도는 검사 축이다.
+   */
+  lint: {
+    /** 진단 발행 여부. off면 컬렉션을 비우고 아무것도 하지 않는다. */
+    enabled: true,
+    /** 끌 규칙 id 목록(`ai/lint/ScaffoldLint`의 SCAFFOLD_LINT_RULES 참조). */
+    disabledRules: [] as string[],
+  },
+  /**
    * Q&A(조회·설명형) 응답의 반복(degenerate repetition) 억제 튜닝.
    * 약한 sLLM이 자유 산문 답변에서 같은 문단을 num_predict 한도까지 무한 반복하는 실패를 줄인다.
    * ⚠ 이 튜닝은 호출자가 Q&A 경로(isQnAGated)에서만 주입한다. 코드 편집(region/patch/full)·스펙·eval

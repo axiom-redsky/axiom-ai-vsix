@@ -9,6 +9,7 @@ import { ContractsProbePanel } from './providers/ContractsProbePanel';
 import { GuidePanel } from './providers/GuidePanel';
 import { ActionCardsPanel } from './providers/ActionCardsPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
+import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -119,6 +120,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   registerCommands(context, launcherProvider, chatProvider);
+
+  // Scaffold 린트(C1) — scaffold 고유 계약을 Problems 패널 진단 + Quick Fix로. 모델 호출 0(오프라인 동작).
+  new ScaffoldLintProvider().register(context);
 
   // corpus 파일 변경 감시 등록
   chatProvider.registerCorpusWatcher(context);

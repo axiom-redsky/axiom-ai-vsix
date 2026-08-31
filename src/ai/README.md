@@ -34,10 +34,15 @@
 | [apply/](apply/) | 응답 게이트·결정론 적용 | 게이트·적용 (sLLM 후) |
 | [pipeline/](pipeline/) | 전 단계를 지휘하는 오케스트레이터 | 관통 |
 | [retrieval/](retrieval/) | 지식문서(루트 `knowledge/`) 검색·RAG | 보조 (Q&A·오프라인) |
+| [actions/](actions/) | 오프라인 행동 카드(스키마·매칭·계획·결정론 적용) | 보조 (오프라인) |
+| [lint/](lint/) | scaffold 계약 정적 검사 → VSCode Diagnostics·Quick Fix | 보조 (파이프라인 밖) |
 
 ## 주의
 
 - 루트의 `knowledge/` 폴더는 RAG가 읽는 **데이터**(md 문서)이고, 그것을 검색하는 **코드**가 `retrieval/`이다. 서로 다른 것.
+- `lint/`는 위 5단 흐름 **바깥**이다 — sLLM 콜이 없는 정적 검사이며, `contracts/`가 모델에게 *가르치던*
+  같은 계약을 사람의 코드에 *알려준다*. 판정기가 갈라지지 않게 편집 게이트와 탐지기를 공유한다
+  (`lint/ReactHookScan` ↔ `pipeline/FileCreatorService.detectModuleScopeHookViolation`).
 - 이관은 점진적으로 진행 중이다. 아직 `src/ai/` 바로 아래 남아 있는 파일은 미이관 상태이거나
   여러 층에 걸쳐 있어 분할이 필요한 파일(예: ScaffoldContextBuilder, StructuralAnchor)이다.
 - 이관 원칙: **이동 먼저(로직 무변경, import 경로만), 거대 파일 쪼개기는 나중에.**

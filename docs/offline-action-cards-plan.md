@@ -1,10 +1,67 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 착수(A3 레시피 실행기 완료) — 전부 F5 라이브 검증 통과** (2026-08-31, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 레시피 실행기 ✅ / C1 Scaffold 린트 ✅ — 둘 다 F5 라이브 검증 통과)** (2026-08-31, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
 > 관련 메모리: [offline-mode-enhancement], [offline-intent-responder], [intent-routing-collision-safety], [region-disambiguation], [recipe-contract-cards], [region-failure-capture]
+
+---
+
+## ▶ RESUME — 다른 PC에서 이어서 하기 (2026-08-31 갱신)
+
+> 이 절만 읽으면 맥락 없이도 이어갈 수 있게 쓴다. Claude 메모리는 PC 로컬이라 다른 기기에서는 안 보인다 —
+> **이 문서가 유일한 진실원**이다. 이어서 작업한 뒤에는 이 절도 함께 갱신할 것.
+
+### 지금 어디까지 왔나
+Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)** 까지 완료. 전부 F5 라이브 검증 통과, 전 게이트 green.
+상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
+
+### 다음에 할 일 = 아래 셋 중 택1 (전부 독립 트랙, 순서 무관)
+
+| 후보 | 무게 | 시작점 |
+|---|---|---|
+| **B1 컴포넌트 카탈로그 패널** (§7 B1) | 가벼움 — 데이터는 이미 다 있고 UI만 없다 | `ai/contracts/generated/componentPropsIndex.ts`(53종) + `knowledge/components/`. 패널 패턴은 `providers/ActionCardsPanel.ts` + `webview/actionCards/` 를 그대로 베낀다 |
+| **형태 B — 입력창 위 실시간 추천** (§3.5) | 중간 — 매칭 엔진은 완성돼 있고 표시 컴포넌트만 | `ai/actions/CardMatcher.ts` 를 그대로 호출. 붙일 곳은 `webview/chat/components/` 의 InputBar. `/` 슬래시 메뉴와 **표시 컴포넌트를 공유**할 것 |
+| **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **설계 결정이 먼저** |
+
+### 개발 환경 되살리기
+```bash
+npm install          # 새 PC라면
+npm run compile      # dist/ 빌드
+```
+F5(Run Extension) → 새 창에서 **대상 워크스페이스 폴더를 직접 연다**(launch.json이 폴더를 안 열어준다).
+대상 = react-app-scaffold 소스. 이 PC 경로는 `C:\redsky\work\react\single_react_new_nicfirst\react-app-scaffold`.
+
+### 게이트 (뭘 건드리든 이건 다 통과해야 함)
+```bash
+npm run typecheck && npm run compile
+npm run test:scaffold-lint      # 64   ← C1
+npm run test:action-cards       # 222  ← 카드 엔진 전체
+npm run test:offline-recipe     # 81   ← A3
+npm run test:offline-api-binding # 96  ← Phase 2
+npm run test:react-rules        # 39   ← 훅 탐지기(ReactHookScan 공유)
+npm run test:region-edit        # 243  ← 온라인 편집 무회귀
+npm run test:offline-intent     # 73
+npm run test:api-binding        # 75
+npm run test:knowledge-routing  # 80
+npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기판
+```
+
+### F5로 눈으로 확인하는 법
+- **행동 카드(Phase 1~3, A3)** = **오프라인 전용**. LLM 엔드포인트를 비우거나 서버를 내려야 뜬다.
+  채팅 토큰 메터가 "오프라인 · 토큰 미사용"이면 오프라인 진입 성공.
+- **Scaffold 린트(C1)** = 온·오프라인 무관하게 항상 동작. 스캐폴드 폴더를 열고 아무 `.tsx`나 보면 된다.
+  Problems 패널(Ctrl+Shift+M) 필터에 `Axiom` 을 치면 tsc·eslint를 걸러내고 린트만 본다.
+  확실히 걸리는 곳: `domains/example/components/ui-components/checkbox/CheckboxGroupDemo.tsx:3`(import 경로),
+  `.../common/SectionNav.tsx:4`(타입 접두사), `domains/example/pages/ui-components/SelectComponent.tsx:586`(alert).
+
+### ⚠ 매번 걸리는 함정 (전부 실제로 시간 날린 것들)
+1. **Extension Host를 완전히 껐다 켤 것.** `npm run compile` 해도 살아 있는 호스트는 옛 번들 + 옛 세션 상태를 쓴다. "안 고쳐졌다"의 1순위 원인.
+2. **webview 번들 format은 `iife` 유지.** esm으로 바꾸면 전 웹뷰가 빈 화면이 된다(vfile-location 전역 충돌).
+3. **"카드가 안 뜬다" 신고는 순서대로**: ① `dryrun:cards` 로 매처 확인 → ② 그 앞의 **의도 라우팅** 확인. 실제 두 번 다 원인은 매처가 아니라 앞단이었다.
+4. **오프라인 개선 시 공유 어휘스코어러 `buildContext` 절대 수정 금지**(온라인 회귀).
+5. 린트 Quick Fix는 **스캐폴드 소스를 실제로 고친다.** 검증 후 그 저장소에 변경이 남지 않았는지 확인할 것.
 
 ---
 
@@ -383,7 +440,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 ### C. 검사·교정 — 기존 게이트를 Diagnostics로 노출
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
-| ★C1 | **Scaffold 린트** | 모듈스코프 훅, 봉투 언랩 누락(`data?.data`), I/T 접두사, refetch 무인자, import 규칙 → VSCode Diagnostics + Quick Fix. ESLint가 못 잡는 프로젝트 고유 계약. "추가 LLM 호출 없는 검증" 특허 서사와 일치 | 편집 파이프라인 거부 게이트 탐지기들(react-rules 등) |
+| ★C1 | **Scaffold 린트** ✅(2026-08-31) | 모듈스코프 훅, 봉투 언랩 누락(`data?.data`), I/T 접두사, refetch 무인자, import 규칙 → VSCode Diagnostics + Quick Fix. ESLint가 못 잡는 프로젝트 고유 계약. "추가 LLM 호출 없는 검증" 특허 서사와 일치 | 편집 파이프라인 거부 게이트 탐지기들(react-rules 등) |
 | C2 | 결정론 Quick Fix | import hoist, 엔드포인트 별칭 정규화, 정적배열→API 교체 채널을 code action으로 | 기존 변환기들 |
 
 ### D. 워크플로우 — 폐쇄망 팀 현실
@@ -565,9 +622,10 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       채팅 경로는 종전대로 매 턴 로드(공짜 핫리로드).
     - 게이트: `test:action-cards` 210/0(Q·R 섹션 신설) · typecheck · compile ·
       무회귀(offline-api-binding 96/0 · offline-intent 73/0 · api-binding 75/0 · region-edit 243/0 · knowledge-routing 80/0).
-- **Phase 4 — 확장**
+- **Phase 4 — 확장** (택1로 진행중)
   입력창 위 실시간 추천 리스트(형태 B, §3.5 — `/` 슬래시 메뉴와 표시 컴포넌트 공유),
-  Scaffold 린트(C1, 독립 트랙으로 병행 가능), 카탈로그 패널(B1), 채집 플라이휠(§6).
+  ~~Scaffold 린트(C1, 독립 트랙으로 병행 가능)~~ ✅, 컴포넌트 카탈로그 패널(B1), 채집 플라이휠(§6).
+  → **남은 후보 = 형태 B · B1 · 플라이휠**
   - **A3 레시피 실행기 (2026-08-31): 완료 · F5 라이브 검증 통과**(자동 위치 제안 → 커서 추적 →
     결정론 삽입 → 확인 카드 diff → 적용까지 실측 확인).
     Phase 3가 팀 레시피 카드 저작을 열었는데 실행이 *"골격을 복사해 붙여넣으세요"*에 멈춰 있어
@@ -650,6 +708,73 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
     - 게이트: `test:offline-recipe` 81/0(신설) · `test:action-cards` 222/0(S 섹션 신설) ·
       typecheck · compile · 무회귀(region-edit 243/0 · react-rules 39/0 · offline-api-binding 96/0 ·
       offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
+  - **C1 Scaffold 린트 (2026-08-31): 완료 · F5 라이브 검증 통과**
+    (실 scaffold 워크스페이스에서 `ui-import-path`·`type-naming`·`window-dialog`·`module-scope-hook`·
+    `router-hook` 진단 표시 + 호버 메시지 + Quick Fix 진입까지 실측 확인)
+    §7의 ★우선순위 넷 중 마지막 미착수 항목. A1(Phase 2)·A2(Phase 1)·A3가 전부 "만들기"였다면
+    이건 **검사** 축이고, 카드 흐름과 독립이라 언제 넣어도 되는 트랙이었다.
+    - **왜 지금 값어치가 있나 — 계약이 두 곳에만 살아 있었다**: scaffold 고유 계약(전역 `$router`·`$ui`,
+      UI 배럴 단일 경로, `useApi` 봉투, T/I 접두사)은 지금까지 ①**편집 파이프라인 거부 게이트**(모델
+      산출물에만 적용) ②**프롬프트 계약카드**(모델에게 가르치는 글)로만 존재했다. **사람이 직접 쓴 코드에는
+      아무 신호가 없었다.** 같은 계약을 읽기 전용 진단으로 노출해 모델이 있든 없든 같은 판정을 받게 한다.
+      모델콜 0 → 폐쇄망에서도 그대로 도는 검사 축이고, "추가 LLM 호출 없는 검증" 서사와 정확히 겹친다.
+    - 구성 = `ai/lint/ScaffoldLint.ts`(순수 규칙 엔진 + 자동 수정 편집 생성) +
+      `ai/lint/ReactHookScan.ts`(모듈스코프 훅 스캐너) + `providers/ScaffoldLintProvider.ts`
+      (DiagnosticCollection·디바운스 재검사·CodeActionProvider) + 설정 2종(`lint.enabled`·`lint.disabledRules`).
+    - **규칙은 발명하지 않았다** — 전부 `ScaffoldContracts` 계약카드와 knowledge 문서가 이미 주장하던 것이다.
+      v1 8종: `module-scope-hook`·`refetch-args`·`ui-import-path`·`router-hook`(error) /
+      `envelope-unwrap`·`raw-http`·`window-dialog`·`type-naming`(warning).
+      **ESLint·tsc가 이미 잡는 것은 넣지 않는다**(scaffold의 eslint.config.js는 react-hooks 권장 세트를
+      켜므로 중첩 훅·async effect는 ESLint 몫). 겹치는 건 모듈스코프 훅 하나뿐인데, 이건 편집 게이트가
+      같은 판정을 하고 있어 **탐지기 공유**의 이유가 된다.
+      (F5에서 실제로 `Axiom(module-scope-hook)`과 ESLint `react-hooks/rules-of-hooks`가 같은 줄에
+      나란히 떴다 — 의도된 중복이고, 거슬리면 `lint.disabledRules`에 이 규칙만 넣으면 된다.
+      게이트는 `ReactHookScan`을 직접 부르므로 설정과 무관하게 그대로 돈다.)
+    - ★**탐지기를 두 벌 만들지 않는다**: `FileCreatorService.detectModuleScopeHookViolation`의 본체를
+      `ai/lint/ReactHookScan`(순수)으로 끌어내고 게이트는 첫 위반만 종전 메시지로 포장하게 했다.
+      두 벌이면 "AI가 만들면 막히는데 손으로 쓰면 안 잡힌다"는 비대칭이 생긴다(A3의 "어휘는 locate와
+      공유, 스캔은 이 층에서"와 같은 원칙). 게이트 = `test:react-rules` 39/0 무회귀.
+    - **오탐이 곧 기능 수명**: 진단은 코드를 막지 않지만 소음이 한 번 쌓이면 개발자가 전체를 끈다. 그래서
+      ①문자열·주석 내용을 마스킹해서 보고(`maskNonCode`, 오프셋·줄 수 보존) ②규칙마다 정상 코드 사례를
+      테스트 D 섹션에 고정 ③Quick Fix에 **"이 규칙만 끄기"**(`axiom-ai.lint.disableRule` → 워크스페이스 설정)를
+      함께 낸다 — 규칙 하나 때문에 린트 전체를 끄는 것보다 낫다.
+    - **자동 수정은 정답이 하나일 때만**: `refetch()` 정리 · 배럴 경로 교체 · `data?.<key>` 봉투 열기 ·
+      타입 rename(선언+파일 안 참조) · `$router` 전환(선언 삭제+호출부 push/replace/back+import 정리) ·
+      `$ui.alert`. 반대로 `fetch`→훅 이동(위치·상태·에러 처리까지 함께 옮겨야 함), `confirm`→`await $ui.confirm`
+      (동기 boolean → Promise라 호출부가 async가 돼야 함), `navigate(path, { state })`(기계가 옮길 수 없음)는
+      **판정만 하고 사람에게 넘긴다**. 모듈스코프 훅 교정은 범위 편집으로 표현이 안 돼 파이프라인의
+      `hoistModuleScopeHooks`를 그대로 재사용한다(안전하게 못 옮기면 Quick Fix를 아예 안 낸다).
+      테스트 E 섹션이 **왕복**을 고정한다 — 고친 결과를 다시 린트하면 0건.
+      (한 번 잡힌 함정: 봉투 수정 `data?.data`가 다시 자기 자신을 위반으로 잡아 왕복이 안 끝났다 →
+      whole-word 판정에서 **프로퍼티 접근**(`.` 선행)을 제외.)
+    - **스캐폴드 워크스페이스에서만**(`src/domains` 존재 = 행동 카드 `scaffold-detected`와 같은 신호):
+      이 계약은 scaffold 밖에서는 전부 오탐이므로 조용히 아무것도 하지 않는다.
+    - ★**실 scaffold 269개 파일 스모크 — 단위 테스트가 못 보던 오탐 5종을 잡았다.** 합성 케이스만으로는
+      "실제 코드가 어떻게 생겼는지"를 모른다. 실 `react-app-scaffold/src` 전체에 돌려보니 첫 판이 **132건**
+      이었고, 그중 대부분이 오탐이었다(최종 55건, 전부 진짜 위반). 고친 다섯:
+      1. **계약을 적용받는 쪽 ≠ 구현하는 쪽** — `raw-http` 7건이 전부 `core/hooks/use-api.ts`(= `useApi`의
+         **구현체**라 `useQuery`를 직접 쓰는 게 당연)와 `core/api/api-client.ts`(= axios 그 자체)에서 나왔다.
+         → 프로바이더가 `src/core`·`src/config`·`src/types`·`src/shared/lib`·`shadcn`을 제외(CLAUDE.md의
+         "core = 업무 개발자 미작업 영역" 정의 그대로).
+      2. **데모 페이지가 화면에 보여주는 코드 예시** — `const CODE = \`const [v] = useState()…\`` 템플릿
+         리터럴 때문에 모듈스코프 훅 9건 중 7건, UI import 2건이 유령이었다. → 린트는 훅 스캐너에
+         **마스킹본**을 넘긴다(오프셋 보존이라 스퀴글 위치는 그대로). 쓰기 전 게이트는 종전대로 원문을
+         본다 — 모델이 방금 만든 코드엔 이런 예시가 없고, 게이트 의미를 바꾸지 않기 위해.
+      3. **여러 줄 import 의 타입 지정자** — `import axios, {⏎  type AxiosInstance,` 가 줄머리에서
+         `type\s+Name` 에 걸려 남의 라이브러리 타입에 접두사를 요구했다. → **선언만** 잡도록 이름 뒤에
+         `=`(type) / `{`·`extends`(interface)를 요구.
+      4. **JSX 산문** — `<code>useQuery</code>` 가 제네릭 호출로 오인됐다. → 호출 괄호까지 있어야 매칭.
+      5. **코드베이스가 이미 정착시킨 스타일은 뒤집지 않는다** — 계약카드는 "Props 타입은 `type`, 접두사
+         없음"이라지만 실 scaffold는 `interface IXxxProps` 를 **91곳**에서 쓴다. 규칙의 목적은 접두사
+         **누락**을 잡는 것이지 스타일 중재가 아니다(91건을 띄우면 팀은 린트 전체를 끈다).
+         → 이름이 `Props`로 끝나면 type·interface 모두 비대상.
+      - 다섯 전부 테스트 D 섹션(D8~D11)에 회귀로 고정. **교훈: 린트 규칙은 합성 케이스로 만들되
+        반드시 실 코드베이스 전량에 한 번 돌려야 한다 — "무엇이 위반인가"보다 "무엇이 위반이 아닌가"를
+        실제 코드가 더 많이 알려준다.**
+    - 게이트: `test:scaffold-lint` 64/0(신설) · typecheck · compile ·
+      무회귀(react-rules 39/0 · region-edit 243/0 · action-cards 222/0 · offline-recipe 81/0 ·
+      offline-api-binding 96/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0 ·
+      line-edits 15/0 · code-slice 26/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).

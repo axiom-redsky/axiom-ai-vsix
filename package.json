@@ -397,6 +397,29 @@
           "minimum": 0,
           "maximum": 20,
           "description": "anchor가 지정 라인번호와 일치하지 않을 때 기준 라인 주변 ±N줄까지 탐색해 위치를 자동 보정합니다. 0이면 보정 없이 정확한 라인번호만 허용합니다."
+        },
+        "axiom-ai.lint.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scaffold 린트: react-app-scaffold 고유 계약(전역 $router·$ui, UI 배럴 import 경로, useApi 봉투 계약, T/I 접두사 등)을 Problems 패널에 진단으로 표시합니다. ESLint·TypeScript가 모르는 규칙만 봅니다. 모델 호출이 없어 오프라인에서도 동작합니다."
+        },
+        "axiom-ai.lint.disabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "module-scope-hook",
+              "refetch-args",
+              "envelope-unwrap",
+              "raw-http",
+              "router-hook",
+              "window-dialog",
+              "ui-import-path",
+              "type-naming"
+            ]
+          },
+          "default": [],
+          "description": "끌 Scaffold 린트 규칙 id 목록. 진단의 Quick Fix \"Axiom 규칙 끄기\"가 여기에 추가합니다."
         }
       }
     },
@@ -481,6 +504,7 @@
     "dryrun:cards": "node scripts/run-dryrun-cards.mjs",
     "test:offline-api-binding": "node scripts/run-test-offline-api-binding.mjs",
     "test:offline-recipe": "node scripts/run-test-offline-recipe.mjs",
+    "test:scaffold-lint": "node scripts/run-test-scaffold-lint.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",

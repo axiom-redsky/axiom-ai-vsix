@@ -28,6 +28,8 @@ const PROJECT_CONFIG_KEYS = new Set<string>([
   'multiPatch.groundedRetry', 'multiPatch.fuzzyLocateThreshold', 'multiPatch.rippleGuard',
   'multiPatch.autoFullFallback',
   'lineEdit.enabled', 'lineEdit.requireAnchor', 'lineEdit.anchorSearchRadius',
+  // ⚠ `lint.*`는 일부러 여기 없다 — Quick Fix "규칙 끄기"가 VSCode 설정에 직접 쓰는데,
+  //   통합 설정 파일이 우선 순위를 가지면 방금 끈 규칙이 다시 살아나 보인다(행동 카드 토글과 같은 규약).
   'llm.qnaAntiRepeat.enabled', 'llm.qnaAntiRepeat.repeatPenalty',
   'llm.qnaAntiRepeat.frequencyPenalty', 'llm.qnaAntiRepeat.presencePenalty',
 ]);
@@ -362,6 +364,23 @@ export class ExtensionConfig {
   /** 시스템 프롬프트 전문을 'axiom-ai: Prompt' 출력 채널에 기록할지 여부(디버그). */
   static isLogSystemPromptEnabled(): boolean {
     return ExtensionConfig._resolve<boolean>('debug.logSystemPrompt', AI_DEFAULTS.debug.logSystemPrompt);
+  }
+
+  /**
+   * Scaffold 린트(C1) — react-app-scaffold 고유 계약을 Diagnostics로 노출할지 여부. 기본 on.
+   * 모델 호출이 없는 정적 검사라 오프라인에서도 그대로 돈다.
+   */
+  static isLintEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('lint.enabled', AI_DEFAULTS.lint.enabled);
+  }
+
+  /**
+   * 끌 린트 규칙 id 목록. 규칙 하나가 소음이라고 린트 전체를 끄는 것보다 그 규칙만 빼는 편이 낫다
+   * (Quick Fix "Axiom 규칙 끄기"가 여기에 추가한다).
+   */
+  static getLintDisabledRules(): string[] {
+    const raw = ExtensionConfig._resolve<string[]>('lint.disabledRules', AI_DEFAULTS.lint.disabledRules as string[]);
+    return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : [];
   }
 
   /**
