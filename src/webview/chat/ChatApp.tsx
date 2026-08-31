@@ -6,7 +6,7 @@ import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach } = useChat();
+  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach } = useChat();
   const totalChars = useMemo(
     () => messages.reduce((sum, m) => sum + m.content.length, 0),
     [messages],
@@ -49,7 +49,7 @@ export function ChatApp(): React.ReactElement {
         </div>
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} progressSteps={progressSteps} pinQuestionTop={pinQuestionTop} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} />
+      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} progressSteps={progressSteps} pinQuestionTop={pinQuestionTop} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} onCardChip={sendCardChip} onCardExecute={sendCardExecute} />
       <ClearWarningBanner
         messages={messages}
         isStreaming={isStreaming}

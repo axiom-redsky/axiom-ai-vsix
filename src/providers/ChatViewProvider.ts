@@ -47,6 +47,7 @@ import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
 import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult, type IntentKind, type IntentContext } from '../ai/intent/IntentClassifier';
 import { FALLBACK_HINT } from '../ai/retrieval/OfflineKnowledgeRetriever';
 import { OfflineResponder } from '../ai/retrieval/OfflineResponder';
+import { ActionCardController } from './ActionCardController';
 import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/retrieval/OfflineTransplant';
 import { IntentExampleStore } from '../ai/intent/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/intent/IntentEmbeddingClassifier';
@@ -55,7 +56,7 @@ import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from
 import { fillSlots, classifyOfflineIntent } from '../ai/intent/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
-import type { WebviewToHostMessage, HostToWebviewMessage, PageCreationState, DiffLine } from '../types/messages';
+import type { WebviewToHostMessage, HostToWebviewMessage, PageCreationState, DiffLine, ActionCardOutputView } from '../types/messages';
 
 /**
  * grounded bounded retry에서 모델에 돌려주는 "실제 코드 영역" 1건.
@@ -96,6 +97,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly _editorCollector: EditorContextCollector;
   private readonly _scaffoldBuilder: ScaffoldContextBuilder;
   private readonly _offline: OfflineResponder;
+  /** 오프라인 행동 카드 컨트롤러 — 추천·칩 편집·실행(생성자에서 초기화). */
+  private readonly _actionCards: ActionCardController;
   private readonly _intentExamples: IntentExampleStore;
   private readonly _intentClassifier: IntentEmbeddingClassifier;
   /** 오프라인 의도 되묻기 대기 상태 — 사용자가 번호로 의도를 고르면 해소. */
@@ -142,6 +145,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       userIntents,
     );
     this._intentClassifier = new IntentEmbeddingClassifier(this._intentExamples);
+    // 오프라인 행동 카드(계획 카드) — 행동성 요청의 직접 실행을 추천+클릭 실행으로 치환.
+    this._actionCards = new ActionCardController(_extensionUri, {
+      post: (msg) => this._post(msg),
+      renderMarkdown: (md, pin) => {
+        this._postOfflineTurn();
+        if (pin) this._post({ type: 'pinQuestion' });
+        this._post({ type: 'token', content: md });
+        this._history.push({ role: 'assistant', content: md });
+        this._post({ type: 'done' });
+        this._postStatus('⚠️ 오프라인 모드');
+      },
+      createPageFromTemplate: (name, domain) => this._createPageFromTemplate(name, domain, 'action-card'),
+      previewTemplateOutputs: (templateId, values) => this._previewTemplateOutputs(templateId, values),
+      scanDomains: () => this._scanWorkspaceDomains(),
+      workspaceRoot: () => this._getWorkspaceRoot(),
+    });
   }
 
   /**
@@ -153,9 +172,70 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (this._healthCache && now - this._healthCache.at < 10_000) {
       return this._healthCache.online;
     }
-    const online = await this._llm.checkHealth(config);
+    // 헬스체크는 어떤 이유로도 throw해선 안 된다 — 여기서 예외가 새면 호출부(_handleMessage)가
+    // done/error를 못 보내 채팅이 "생각 중…"에서 영구히 멈춘다. 실패는 전부 "오프라인"으로 접는다.
+    let online = false;
+    try {
+      online = await this._llm.checkHealth(config);
+    } catch (err) {
+      console.warn(`[Axiom AI] 헬스체크 예외 → 오프라인으로 간주: ${(err as Error).message}`);
+      online = false;
+    }
     this._healthCache = { at: now, online };
     return online;
+  }
+
+  /** 명령 팔레트 맨땅 진입 — 페이지 생성 위저드(순차 QuickPick, 카드 경유와 동일 실행기). */
+  runCreatePageWizard(): Promise<void> {
+    return this._actionCards.runPageWizard();
+  }
+
+  /**
+   * 계획 카드의 "만들어질 것" 미리보기를 **실행이 실제로 만들 액션 목록에서 그대로 파생**한다.
+   *
+   * 페이지 생성의 출력은 워크스페이스 상태에 갈린다 — 기존 도메인이면 2개(페이지 + 라우터 경로 추가),
+   * **새 도메인이면 3개**(페이지 + 도메인 라우터 신규 + `src/shared/router/index.tsx` 루트 등록).
+   * 카드 파일의 정적 outputs는 그 분기를 표현할 수 없어 실제보다 적게 말했다(실측: 루트 라우터
+   * 누락 + 신규 생성을 '수정'으로 표기). 미리보기가 실제와 갈라지면 "미리보기 = 사람 눈 검증
+   * 게이트"라는 계획 카드의 안전 속성이 무너지므로, 실행기와 **같은 함수**(_buildOfflinePageActions)
+   * 에서 파생해 구조적으로 갈라질 수 없게 한다.
+   *
+   * 도메인이 아직 미정이면 null → 카드의 정적 선언(플레이스홀더 경로)으로 양보한다.
+   */
+  private _previewTemplateOutputs(
+    templateId: string,
+    values: Record<string, string>,
+  ): ActionCardOutputView[] | null {
+    if (templateId !== 'page') return null;
+    const domain = values.domain?.trim();
+    if (!domain) return null;
+
+    const wsRoot = this._getWorkspaceRoot();
+    const domainExists = wsRoot ? fs.existsSync(path.join(wsRoot, 'src', 'domains', domain)) : false;
+    // 이름 미정이어도 경로 형태는 보여준다 — 실행 시 적용될 정규화를 여기서도 똑같이 적용해
+    // 카드에 적힌 경로와 실제 생성 경로가 어긋나지 않게 한다.
+    const pageName = values.pageName?.trim()
+      ? (this._pageCreationDetector.normalizeName(values.pageName) ?? values.pageName.trim())
+      : '{{pageName}}';
+
+    const actions = this._buildOfflinePageActions(
+      pageName, domain, this._toRoutePath(pageName), domainExists, wsRoot,
+    );
+    return actions
+      .filter((a) => !!a.filePath)
+      .map((a) => {
+        const filePath = a.filePath!;
+        const note = filePath.includes('shared/router')
+          ? '루트 라우터에 도메인 등록'
+          : a.templateType === 'router'
+            ? (a.action === 'createFile' ? '도메인 라우터 신규' : '경로 추가')
+            : undefined;
+        return {
+          kind: (a.action === 'createFile' ? 'create' : 'modify') as ActionCardOutputView['kind'],
+          path: filePath,
+          ...(note ? { note } : {}),
+        };
+      });
   }
 
   /** 의도 라벨(한국어) — 되묻기 선택지 표기용. */
@@ -237,6 +317,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (intent.intent !== 'smalltalk') {
       this._post({ type: 'token', content: `\n> ${formatIntentForChat(intent)}\n` });
     }
+
+    // 행동성 요청(생성·수정)은 직접 실행/안내 대신 **추천 카드**를 먼저 시도한다 — 자연어의
+    // 역할을 "실행"에서 "추천"으로(offline-action-cards-plan §2-1). 실행은 카드 버튼 →
+    // QuickPick(결정론)이 이어받고, 매칭이 없으면 기존 지식 응답으로 폴백(카드는 관문이 아니다).
+    if (intent.intent === 'create_page' || intent.intent === 'modify_file') {
+      if (this._actionCards.recommend(text, !!editorCtx.filePath)) {
+        this._history.push({ role: 'assistant', content: this._actionCards.historySummary() });
+        this._post({ type: 'done' });
+        this._postStatus('⚠️ 오프라인 모드');
+        return;
+      }
+    }
+
     let markdown: string;
     try {
       markdown = await this._offline.respond(
@@ -399,6 +492,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'pickReferenceFile':
           await this._pickReferenceFile();
+          break;
+        case 'actionCardChip':
+          await this._actionCards.handleChip(msg.requestId, msg.cardId, msg.slotName);
+          break;
+        case 'actionCardExecute':
+          await this._actionCards.handleExecute(msg.requestId, msg.cardId);
           break;
       }
     });
@@ -1183,6 +1282,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (this._pageCreationState.waitingForDomain) {
         await this._handlePageCreationDomainInput(text.trim());
         return;
+      }
+    }
+
+    // ── 오프라인 계획 카드 선차단 ──────────────────────────────────────────────
+    // 페이지 생성 인터셉트(_startPageCreation)와 의도 분류기 호출은 아래 사전 헬스체크보다 **앞**에
+    // 있어, 서버가 죽어 있어도 곧장 "영문명 입력 대기" 실행 대화로 들어간다(= 직접 실행). 오프라인에서
+    // 행동성 요청은 실행이 아니라 **추천**이어야 하므로(offline-action-cards-plan §2-1) 여기서 계획
+    // 카드를 먼저 시도한다. 매칭이 없으면 종전 흐름 그대로 진행한다(카드는 관문이 아니다).
+    // 온라인은 무영향 — 헬스체크가 살아 있으면 이 블록을 통째로 건너뛴다(§10.1: 카드는 오프라인 선행 실험).
+    if (this._pageCreationDetector.detect(text).isPageCreation) {
+      if (!(await this._isLlmOnline(ExtensionConfig.getEffectiveLlmConfig()))) {
+        const offlineCtx = this._editorCollector.collect(overrideSelection);
+        if (this._actionCards.recommend(text, !!offlineCtx.filePath)) {
+          this._postOfflineTurn();
+          this._history.push({ role: 'user', content: text });
+          this._history.push({ role: 'assistant', content: this._actionCards.historySummary() });
+          this._lastUserQuery = text;
+          this._post({ type: 'done' });
+          this._postStatus('⚠️ 오프라인 모드');
+          return;
+        }
       }
     }
 
@@ -4877,7 +4997,7 @@ import 변경 또는 2곳 이상 수정이면:
       if (wasFallback) {
         // 스트리밍 도중 폴백 발생 → 오프라인 템플릿으로 재시도
         this._post({ type: 'token', content: '\n\n⚠️ LLM 연결이 끊겼습니다. 오프라인 템플릿으로 생성합니다.\n\n' });
-        await this._createPageFromTemplate(pageName, domain, true);
+        await this._createPageFromTemplate(pageName, domain, 'offline-fallback');
         return;
       }
 
@@ -4947,15 +5067,18 @@ import 변경 또는 2곳 이상 수정이면:
    * 존재하지 않는 타입을 지어내 컴파일 불가 코드를 박는 문제를 원천 차단한다.
    * 도메인 존재 여부에 따라 시나리오 A(2개 액션) / B(3개 액션)를 적용한다.
    *
-   * @param offlineFallback true면 vLLM 연결 실패로 인한 폴백(경고 헤더), false면 의도된 템플릿 모드.
+   * @param mode 'intended'=의도된 템플릿 모드 / 'offline-fallback'=vLLM 연결 실패 폴백(경고 헤더) /
+   *             'action-card'=사용자가 오프라인 계획 카드에서 직접 실행(승인된 행동 — 경고 아님).
    */
   private async _createPageFromTemplate(
     pageName: string,
     domain: string,
-    offlineFallback = false,
+    mode: 'intended' | 'offline-fallback' | 'action-card' = 'intended',
   ): Promise<void> {
-    if (offlineFallback) this._postOfflineTurn();
-    this._postStatus(offlineFallback ? '오프라인 모드 — 템플릿 생성 중…' : '템플릿 생성 중…');
+    const offlineFallback = mode === 'offline-fallback';
+    const offlineTurn = mode !== 'intended';
+    if (offlineTurn) this._postOfflineTurn();
+    this._postStatus(offlineTurn ? '오프라인 모드 — 템플릿 생성 중…' : '템플릿 생성 중…');
 
     const wsRoot = this._getWorkspaceRoot();
     const domainExists = wsRoot
@@ -4968,7 +5091,9 @@ import 변경 또는 2곳 이상 수정이면:
 
     const header = offlineFallback
       ? `> ⚠️ **오프라인 모드** — vLLM 서버에 연결할 수 없어 기본 템플릿으로 생성합니다.`
-      : `> 🧩 **기본 템플릿** — 최소 스켈레톤 페이지를 생성합니다. 화면 내용은 이후 수정 요청으로 채우세요.`;
+      : mode === 'action-card'
+        ? `> 🧩 **계획대로 생성합니다** — 템플릿 기반 결정론 생성(LLM 미사용). 화면 내용은 이후 수정 요청으로 채우세요.`
+        : `> 🧩 **기본 템플릿** — 최소 스켈레톤 페이지를 생성합니다. 화면 내용은 이후 수정 요청으로 채우세요.`;
 
     const templateMsg = [
       header,
@@ -4987,7 +5112,7 @@ import 변경 또는 2곳 이상 수정이면:
 
     this._history.push({ role: 'assistant', content: templateMsg });
     this._post({ type: 'done' });
-    this._postStatus(offlineFallback ? '⚠️ 오프라인 모드' : ExtensionConfig.getLlmConfig().model);
+    this._postStatus(offlineTurn ? '⚠️ 오프라인 모드' : ExtensionConfig.getLlmConfig().model);
 
     for (const action of actions) {
       const result = await this._fileCreator.createFile(action);

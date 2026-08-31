@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0 완료** (2026-08-31 — 스키마·파서·내장 카드 4장·매칭 엔진·드라이런, §9 진행표) → 다음 Phase 1
+> 상태: **Phase 0 완료 · Phase 1 코드 완료(F5 수동 검증 대기)** (2026-08-31, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -430,6 +430,15 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
   미리보기·근거 하이라이트) → 칩 편집(단일 슬롯 QuickPick) → 템플릿 생성.
   기존 오프라인 실행 경로는 카드 뒤로 이동(직접 실행 제거). 맨땅 진입용 순차
   QuickPick 병행. 코드 미리보기 접힘·높이 상한 포함.
+  - 진행 (2026-08-31): **코드 완료·F5 수동 검증 대기**. 구성 =
+    `providers/ActionCardController.ts`(카탈로그 로드·세션·칩 QuickPick·유형별 실행) +
+    `ai/actions/CardPlanView.ts`(순수 뷰 변환) + `webview/chat/components/ActionCardsView.tsx`
+    (계획 카드/컴팩트 리스트·칩·출력 미리보기·골격 접기) + 메시지 4종
+    (`actionCards`/`actionCardSlots` ↔ `actionCardChip`/`actionCardExecute`).
+    배선: `_streamOfflineFor`에서 create_page·modify_file이면 추천 먼저 시도(무매칭이면
+    기존 지식 응답으로 폴백 — 카드는 관문이 아니다). 실행기 = 기존 `_createPageFromTemplate`
+    재사용(mode='action-card' 추가). 맨땅 진입 = `axiom-ai.createPageWizard` 명령.
+    덮어쓰기 가드(파일 존재 시 실행 거부 + 이름 칩 안내) 포함. `test:action-cards` 112/0.
 - **Phase 2 — API 바인딩 위저드 (A1)**
   compose binding 오프라인 변형: 필드 매핑 테이블 UI.
 - **Phase 3 — 카탈로그 3계층 + 관리 패널**

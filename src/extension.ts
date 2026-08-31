@@ -102,6 +102,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('axiom-ai.reseedGuide', () => {
       void GuidePanel.reseedInteractive(context.extensionUri);
     }),
+
+    // 오프라인 행동 카드의 맨땅 진입(자연어 없이) — 순차 QuickPick 페이지 생성 위저드.
+    vscode.commands.registerCommand('axiom-ai.createPageWizard', () => {
+      void chatProvider.runCreatePageWizard();
+    }),
   );
 
   registerCommands(context, launcherProvider, chatProvider);

@@ -18,11 +18,13 @@ interface Props {
   pinQuestionTop?: boolean;
   onConfirm?: (actionId: string, approved: boolean) => void;
   onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
+  onCardChip?: (requestId: string, cardId: string, slotName: string) => void;
+  onCardExecute?: (requestId: string, cardId: string) => void;
 }
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery, onCardChip, onCardExecute }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -100,7 +102,7 @@ export function MessageList({ messages, isStreaming, isWaiting, status, progress
         </div>
       )}
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} />
+        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} onCardChip={onCardChip} onCardExecute={onCardExecute} />
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">

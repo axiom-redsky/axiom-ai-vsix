@@ -6,6 +6,7 @@ import { parseMiniYaml } from '../src/ai/actions/MiniYaml';
 import { parseActionCard, findTriggerCollisions, splitCardFrontmatter } from '../src/ai/actions/CardParser';
 import { matchCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
 import { loadCardsFromDir, finalizeCatalog } from '../src/ai/actions/CardCatalog';
+import { buildCardsPayload, buildOutputViews, buildSlotViews, missingSlots, substituteSlots } from '../src/ai/actions/CardPlanView';
 import type { IActionCard } from '../src/ai/actions/types';
 
 let pass = 0;
@@ -426,6 +427,78 @@ console.log('\n── I. 내장 카드 ──');
   // 시나리오 5 — doc 카드·무매칭
   eq(matchCards('useApi 사용법이 궁금해', cards, CTX).matches[0]?.card.id, 'use-api-doc', 'I15: doc 카드 매칭');
   eq(matchCards('안녕하세요', cards, CTX).mode, 'none', 'I16: 잡담 → none(기존 폴백으로)');
+}
+
+// ═══ J. 계획 카드 뷰 변환 (Phase 1) ═════════════════════════════════════════
+console.log('\n── J. 계획 카드 뷰 ──');
+{
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const page = cards.find((c) => c.id === 'create-page')!;
+
+  eq(substituteSlots('src/domains/{{domain}}/pages/{{pageName}}.tsx', { domain: 'main' }),
+    'src/domains/main/pages/{{pageName}}.tsx', 'J1: 미정 슬롯은 {{…}}로 남는다(미정 가시화)');
+
+  const partial = { pageType: '목록' };
+  eq(buildSlotViews(page, partial).map((s) => [s.label, s.value]),
+    [['도메인', null], ['이름', null], ['유형', '목록']], 'J2: 슬롯 칩 — 미정은 null');
+  eq(missingSlots(page, partial), ['domain', 'pageName'], 'J3: 실행 시 되물을 슬롯만 남는다');
+
+  const full = { domain: 'main', pageName: 'EmployeeListPage', pageType: '목록' };
+  eq(buildOutputViews(page, full), [
+    { kind: 'create', path: 'src/domains/main/pages/EmployeeListPage.tsx' },
+    { kind: 'modify', path: 'src/domains/main/router/index.tsx', note: '경로 추가' },
+  ], 'J4: 칩이 다 차면 출력 미리보기가 실제 경로로 확정');
+  eq(missingSlots(page, full), [], 'J5: 프리필 완전 → 되묻기 0(클릭 1번 실행)');
+
+  const rec = matchCards('직원 목록 페이지 만들어줘', cards, { fileOpen: false, scaffoldDetected: true });
+  const values = new Map(rec.matches.map((m) => [m.card.id, { ...m.prefill }]));
+  const payload = buildCardsPayload('req-1', '직원 목록 페이지 만들어줘', 'plan', rec.matches, values);
+  eq(payload.mode, 'plan', 'J6: 페이로드 모드');
+  eq(payload.cards[0].cardId, 'create-page', 'J7: 계획 카드 = top1');
+  eq(payload.cards[0].executeLabel, '⏎ 이대로 만들기', 'J8: template 실행 라벨');
+  ok(payload.cards[0].matchedTriggers.length > 0, 'J9: 근거 트리거 전달');
+  eq(payload.cards[0].slots.find((s) => s.name === 'pageType')?.value, '목록', 'J10: 프리필이 칩 값으로');
+
+  const recipe = cards.find((c) => c.id === 'insert-date-picker')!;
+  const rv = buildCardsPayload('req-2', 'x', 'plan', [{ card: recipe, score: 1, matchedTriggers: ['달력'], prefill: {} }], new Map());
+  eq(rv.cards[0].executeLabel, '골격 안내 보기', 'J11: recipe 실행 라벨');
+  ok(!!rv.cards[0].skeleton, 'J12: recipe 골격 전달(코드 미리보기)');
+  eq(rv.cards[0].outputs, [], 'J13: recipe는 출력 행 없음');
+
+  const docCard = cards.find((c) => c.id === 'use-api-doc')!;
+  const dv = buildCardsPayload('req-3', 'x', 'plan', [{ card: docCard, score: 1, matchedTriggers: ['useapi'], prefill: {} }], new Map());
+  eq(dv.cards[0].executeLabel, '문서 보기', 'J14: doc 실행 라벨');
+  eq(dv.cards[0].slots, [], 'J15: doc은 슬롯 없음');
+}
+
+// ═══ K. 출력 미리보기 해석기 — 실행기 파생(정적 선언 오버라이드) ═════════════
+// 실제 출력이 워크스페이스 상태로 갈리는 카드(새 도메인이면 루트 라우터까지 3개)를
+// 정적 outputs로는 표현 못 해 미리보기가 실제보다 적게 말하던 결함(라이브 검증에서 발각)의 회귀 가드.
+console.log('\n── K. 출력 미리보기 해석기 ──');
+{
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const page = cards.find((c) => c.id === 'create-page')!;
+  const match = { card: page, score: 8, matchedTriggers: ['페이지'], prefill: {} };
+  const values = new Map([['create-page', { domain: 'employee', pageName: 'EmployeeList', pageType: '목록' }]]);
+
+  // 새 도메인 시나리오(B) — 실행기가 3개 액션을 만든다고 보고하는 상황
+  const newDomainRows = [
+    { kind: 'create' as const, path: 'src/domains/employee/pages/EmployeeList.tsx' },
+    { kind: 'create' as const, path: 'src/domains/employee/router/index.tsx', note: '도메인 라우터 신규' },
+    { kind: 'modify' as const, path: 'src/shared/router/index.tsx', note: '루트 라우터에 도메인 등록' },
+  ];
+  const withResolver = buildCardsPayload('req-k1', 'x', 'plan', [match], values, () => newDomainRows);
+  eq(withResolver.cards[0].outputs, newDomainRows, 'K1: 해석기가 정적 선언을 오버라이드(루트 라우터 행 포함)');
+  eq(withResolver.cards[0].outputs.length, 3, 'K2: 새 도메인이면 3행 — 실행 결과와 일치');
+
+  // 해석기가 null(도메인 미정·미지원 템플릿) → 카드의 정적 선언으로 양보
+  const fallback = buildCardsPayload('req-k2', 'x', 'plan', [match], values, () => null);
+  eq(fallback.cards[0].outputs, buildOutputViews(page, values.get('create-page')!), 'K3: null이면 정적 outputs로 양보');
+  eq(fallback.cards[0].outputs.length, 2, 'K4: 정적 선언은 기존 도메인 기준 2행');
+
+  // 해석기 미주입(테스트·미래 호출부)도 종전과 동일
+  const none = buildCardsPayload('req-k3', 'x', 'plan', [match], values);
+  eq(none.cards[0].outputs.length, 2, 'K5: 해석기 없으면 종전 동작(회귀 0)');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

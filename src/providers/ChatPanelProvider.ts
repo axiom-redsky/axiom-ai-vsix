@@ -383,8 +383,25 @@ tags: [예시키워드, example, 샘플, 작성예시]
 `;
 
   private async _handleTestConnection(llm: AxiomSettings['llm']): Promise<void> {
-    const modelsUrl = new URL('/v1/models', llm.endpoint).toString();
-    const chatUrl = new URL('/v1/chat/completions', llm.endpoint).toString();
+    // 엔드포인트가 비었거나 URL 형식이 아니면 `new URL(path, base)`가 TypeError를 던진다.
+    // 이 계산이 try 밖이라 예외가 그대로 새면 connectionTestResult를 못 보내 UI가 "테스트 중…"에서
+    // 영구히 멈춘다(실측). 사용자가 고칠 수 있도록 실패 결과로 회신한다.
+    const base = llm.endpoint?.trim() ?? '';
+    let modelsUrl: string;
+    let chatUrl: string;
+    try {
+      if (!base) throw new Error('엔드포인트 URL이 비어 있습니다.');
+      modelsUrl = new URL('/v1/models', base).toString();
+      chatUrl = new URL('/v1/chat/completions', base).toString();
+    } catch {
+      this._post({
+        type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
+        detail: base
+          ? `엔드포인트 URL 형식이 올바르지 않습니다: '${base}' (예: http://127.0.0.1:11434)`
+          : '엔드포인트 URL이 비어 있습니다. 비워 두면 오프라인 모드로 동작합니다(로컬 지식·추천 카드).',
+      });
+      return;
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
 

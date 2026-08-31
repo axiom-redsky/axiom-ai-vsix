@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
-import type { HostToWebviewMessage, DiffLine, ContextBreakdown } from '../../../types/messages';
+import type { HostToWebviewMessage, DiffLine, ContextBreakdown, ActionCardsPayload } from '../../../types/messages';
 
 export interface ContextUsage {
   promptTokens?: number;
@@ -24,7 +24,7 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
-  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed';
+  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed' | 'action-cards';
   diff?: DiffLine[];
   actionId?: string;
   confirmPending?: boolean;
@@ -36,6 +36,10 @@ export interface Message {
   recoveryPending?: boolean;
   /** 회복 카드 종류 — patch 매칭 실패인지 React 규칙 위반인지 구분 */
   failureKind?: 'patch-mismatch' | 'react-violation';
+  /** 오프라인 행동 카드(계획 카드/컴팩트 리스트) 페이로드 — subtype 'action-cards' 전용 */
+  actionCards?: ActionCardsPayload;
+  /** 실행 버튼을 누른 카드 id — 이중 실행 방지·"실행됨" 표시용 */
+  executedCardId?: string;
 }
 
 export function useChat() {
@@ -265,6 +269,37 @@ export function useChat() {
           // 온라인 지식·가이드 전문 렌더 — 정독용으로 질문을 상단 고정(토큰 메터는 건드리지 않음).
           setPinQuestionTop(true);
           break;
+        case 'actionCards':
+          // 오프라인 추천 카드 — 계획 카드는 위에서 읽으므로 상단 고정하지 않는다(짧은 카드).
+          setIsWaiting(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              subtype: 'action-cards',
+              content: '',
+              actionCards: msg.payload,
+            },
+          ]);
+          break;
+        case 'actionCardSlots':
+          // 칩 편집 결과 반영 — 해당 카드의 슬롯·출력 미리보기만 교체.
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.subtype !== 'action-cards' || m.actionCards?.requestId !== msg.requestId) return m;
+              return {
+                ...m,
+                actionCards: {
+                  ...m.actionCards,
+                  cards: m.actionCards.cards.map((c) =>
+                    c.cardId === msg.cardId ? { ...c, slots: msg.slots, outputs: msg.outputs } : c,
+                  ),
+                },
+              };
+            }),
+          );
+          break;
       }
     };
 
@@ -337,6 +372,23 @@ export function useChat() {
     if (action === 'retry') setIsWaiting(true);
   }, []);
 
+  /** 행동 카드 칩 클릭 — 호스트가 QuickPick을 열고 actionCardSlots로 회신한다. */
+  const sendCardChip = useCallback((requestId: string, cardId: string, slotName: string) => {
+    vscode.postMessage({ type: 'actionCardChip', requestId, cardId, slotName });
+  }, []);
+
+  /** 행동 카드 실행 — 이중 클릭 방지를 위해 로컬에서 즉시 "실행됨"으로 표시한다. */
+  const sendCardExecute = useCallback((requestId: string, cardId: string) => {
+    vscode.postMessage({ type: 'actionCardExecute', requestId, cardId });
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.subtype === 'action-cards' && m.actionCards?.requestId === requestId
+          ? { ...m, executedCardId: cardId }
+          : m,
+      ),
+    );
+  }, []);
+
   const dismissSelection = useCallback(() => setSelectionContext(null), []);
 
   /** 파일 피커를 열어 참조 파일을 첨부한다(호스트가 `@경로`를 referenceAttached로 회신). */
@@ -350,6 +402,7 @@ export function useChat() {
   return {
     messages, status, progressSteps, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
+    sendCardChip, sendCardExecute,
     selectionContext, dismissSelection,
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop,
     attachReference, attachText, consumeAttach,

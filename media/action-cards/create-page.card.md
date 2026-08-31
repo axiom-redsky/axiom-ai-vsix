@@ -29,3 +29,4 @@ priority: 20
 ## 설명
 스캐폴드 규약(도메인 구조·라우터 배선)에 맞는 페이지를 템플릿으로 생성합니다.
 page.template.txt + router.template.txt 결정론 생성 — 자연어 해석 없이 항상 같은 결과가 나옵니다.
+도메인이 **새로 생기는 경우**에는 도메인 라우터가 신규 생성되고 루트 라우터(src/shared/router/index.tsx)에도 등록됩니다.

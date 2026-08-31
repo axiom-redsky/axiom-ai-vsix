@@ -2511,3 +2511,192 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   border-color: rgba(218, 54, 51, 0.5);
   background: rgba(218, 54, 51, 0.08);
 }
+
+/* ═══ 오프라인 행동 카드 (계획 카드 / 컴팩트 리스트) ═══ */
+
+.action-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.action-cards__banner {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+}
+
+.action-card {
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  border-left: 3px solid var(--vscode-button-background, #0e639c);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--vscode-editor-background);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-card__header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.action-card__icon { font-size: 14px; }
+.action-card__title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+.action-card__evidence {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+}
+
+.action-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 11px;
+  border: 1px solid var(--vscode-button-background, #0e639c);
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 11.5px;
+  cursor: pointer;
+  line-height: 18px;
+}
+.action-chip:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
+.action-chip:disabled { opacity: 0.55; cursor: default; }
+.action-chip__label { color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9)); }
+.action-chip__value { font-weight: 600; }
+.action-chip--empty .action-chip__value {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+}
+.action-chip__caret { font-size: 9px; opacity: 0.7; }
+
+.action-card__outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.action-card__outputs-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  margin-bottom: 2px;
+}
+.action-output {
+  display: flex;
+  gap: 6px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.action-output--create { color: var(--vscode-gitDecoration-addedResourceForeground, #2e7d32); }
+.action-output--modify { color: var(--vscode-gitDecoration-modifiedResourceForeground, #c55a11); }
+.action-output__marker { width: 10px; flex: none; }
+.action-output__note {
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+  font-family: var(--vscode-font-family);
+}
+
+.action-card__desc {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+  white-space: pre-line;
+}
+
+.action-card__code-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+}
+.action-card__code-pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  border-radius: 4px;
+  white-space: pre;
+}
+
+.action-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.action-card__execute {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.action-card__execute:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, #1177bb); }
+.action-card__execute:disabled { opacity: 0.55; cursor: default; }
+.action-card__executed {
+  font-size: 12px;
+  color: var(--vscode-gitDecoration-addedResourceForeground, #2e7d32);
+}
+
+.action-cards__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px;
+  overflow: hidden;
+}
+.action-cards__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.action-cards__row:last-child { border-bottom: none; }
+.action-cards__row:hover:not(:disabled) { background: var(--vscode-list-hoverBackground); }
+.action-cards__row:disabled { opacity: 0.55; cursor: default; }
+.action-cards__row-title { flex: 1; }
+.action-cards__row-open {
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.action-cards__others-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  cursor: pointer;
+}
+.action-cards__others-toggle:hover:not(:disabled) { color: var(--vscode-foreground); }
+.action-cards__others { display: flex; flex-direction: column; gap: 6px; }

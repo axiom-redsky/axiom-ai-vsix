@@ -416,6 +416,10 @@
         "icon": "$(book)"
       },
       {
+        "command": "axiom-ai.createPageWizard",
+        "title": "Axiom AI: 페이지 생성 위저드"
+      },
+      {
         "command": "axiom-ai.reseedGuide",
         "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }

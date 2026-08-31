@@ -42,15 +42,31 @@ export class LlmService {
    * /v1/models가 막힌 OpenAI-compatible proxy도 있어 실제 생성 라우트까지 확인한다.
    */
   async checkHealth(config: LlmConfig): Promise<boolean> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    // 엔드포인트 미설정·형식 오류는 **예외가 아니라 오프라인**이다.
+    // `new URL(path, '')`는 TypeError를 던지는데, 이 계산이 try 밖에 있으면 호출부까지 새어
+    // 채팅이 아무 응답도 못 보낸 채 "생각 중…"으로 멈춘다(실측). 폐쇄망에선 "서버를 아예 설정하지
+    // 않음"이 정상 상태이므로, 여기서 즉시 오프라인으로 확정해 오프라인 경로가 살아나게 한다.
+    const base = config.endpoint?.trim() ?? '';
+    if (!base) {
+      console.log('[Axiom AI] 헬스체크 생략 — LLM 엔드포인트 미설정 → 오프라인 모드');
+      return false;
+    }
 
     // 서버 종류별 헬스체크 엔드포인트 우선순위
     // GET 요청만 사용: POST /v1/chat/completions 는 인증 정책이 엔드포인트마다 달라 오탐 발생
-    const probeUrls = [
-      new URL('/v1/models', config.endpoint).toString(),  // OpenAI 호환 (LM Studio, vLLM, LocalAI, Ollama)
-      new URL('/api/tags', config.endpoint).toString(),   // Ollama 네이티브
-    ];
+    let probeUrls: string[];
+    try {
+      probeUrls = [
+        new URL('/v1/models', base).toString(),  // OpenAI 호환 (LM Studio, vLLM, LocalAI, Ollama)
+        new URL('/api/tags', base).toString(),   // Ollama 네이티브
+      ];
+    } catch {
+      console.warn(`[Axiom AI] 헬스체크 생략 — 엔드포인트 URL 형식 오류: ${base} → 오프라인 모드`);
+      return false;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
 
     try {
       const headers = this._buildAuthHeaders(config);
@@ -95,10 +111,18 @@ export class LlmService {
   ): AsyncGenerator<string> {
     // Ollama 네이티브는 /api/chat(줄단위 JSON), OpenAI 호환은 /v1/chat/completions(SSE).
     const isOllama = config.provider === 'ollama';
-    const url = new URL(
-      isOllama ? '/api/chat' : '/v1/chat/completions',
-      config.endpoint,
-    ).toString();
+    // 엔드포인트 미설정/형식 오류는 여기서 원인이 드러나는 메시지로 실패시킨다(호출부가 잡아 표시).
+    // 그냥 두면 `new URL`의 "Invalid URL" TypeError만 남아 사용자가 원인을 알 수 없다.
+    // (정상 흐름에선 사전 헬스체크가 오프라인으로 걸러 여기까지 오지 않는다.)
+    if (!config.endpoint?.trim()) {
+      throw new Error('LLM 엔드포인트가 설정되지 않았습니다. 설정에서 엔드포인트 URL을 입력하거나, 비워 두면 오프라인 모드로 사용하세요.');
+    }
+    let url: string;
+    try {
+      url = new URL(isOllama ? '/api/chat' : '/v1/chat/completions', config.endpoint).toString();
+    } catch {
+      throw new Error(`LLM 엔드포인트 URL 형식이 올바르지 않습니다: '${config.endpoint}' (예: http://127.0.0.1:11434)`);
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

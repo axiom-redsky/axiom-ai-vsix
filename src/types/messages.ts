@@ -113,6 +113,51 @@ export interface PageCreationState {
   explicitDomain?: string | null;
 }
 
+// ── 오프라인 행동 카드(계획 카드) — ChatViewProvider ↔ 채팅 webview 슬림 뷰 셰이프 ──
+// (웹뷰 타입 계층이 ai 계층(IActionCard 등)에 의존하지 않도록 여기 별도 정의)
+
+export interface ActionCardSlotView {
+  name: string;
+  label: string;
+  /** 프리필/편집된 값. null이면 미정 — 칩이 "선택"으로 표시되고 실행 시 되묻는다. */
+  value: string | null;
+}
+
+export interface ActionCardOutputView {
+  /** create = `+ 신규` / modify = `± 수정` 행. */
+  kind: 'create' | 'modify';
+  /** 슬롯 값이 치환된 표시용 경로(미정 슬롯은 {{name}} 그대로). */
+  path: string;
+  note?: string;
+}
+
+export interface ActionCardView {
+  cardId: string;
+  icon: string;
+  title: string;
+  actionType: 'template' | 'recipe' | 'doc' | 'command';
+  description: string;
+  /** 사용자 문장에서 실제로 맞은 트리거 — 근거 하이라이트 표시용. */
+  matchedTriggers: string[];
+  slots: ActionCardSlotView[];
+  /** template: "만들어질 것" 미리보기 행들. */
+  outputs: ActionCardOutputView[];
+  /** recipe: 삽입될 골격(기본 접힘 렌더). */
+  skeleton?: string;
+  /** 실행 버튼 라벨(유형별: 이대로 만들기/골격 보기/문서 보기/위저드 열기). */
+  executeLabel: string;
+}
+
+export interface ActionCardsPayload {
+  /** 이 추천 턴의 상태 키 — 칩 편집·실행 라운드트립에 사용. */
+  requestId: string;
+  /** plan = 계획 카드 1장(확신 높음) / list = 컴팩트 리스트(애매). */
+  mode: 'plan' | 'list';
+  query: string;
+  /** 점수순. mode='plan'이면 [0]이 계획 카드, 나머지는 "다른 작업 ▾" 뒤에. */
+  cards: ActionCardView[];
+}
+
 // WebView → Extension Host
 export type WebviewToHostMessage =
   | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number } }
@@ -150,6 +195,9 @@ export type WebviewToHostMessage =
   | { type: 'runLocateProbe'; query: string; filePath: string; forcedStart: number; forcedEnd: number }
   | { type: 'contractsProbeUseActiveFile' }
   | { type: 'runContractsProbe'; query: string; filePath: string; selStart: number; selEnd: number }
+  // 오프라인 행동 카드: 칩 클릭(슬롯 하나 QuickPick 편집) / 실행 버튼
+  | { type: 'actionCardChip'; requestId: string; cardId: string; slotName: string }
+  | { type: 'actionCardExecute'; requestId: string; cardId: string }
   | { type: 'openGuide' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
@@ -199,6 +247,9 @@ export type HostToWebviewMessage =
   // 이번 턴은 "정독용"(scaffold 지식·가이드 전문 렌더)임을 알린다 — webview는 답변 바닥을 쫓지 않고
   // 이번 질문을 뷰포트 맨 위에 고정해 위→아래로 읽게 한다. 온라인/오프라인 무관하며 토큰 메터와 별개다.
   | { type: 'pinQuestion' }
+  // 오프라인 행동 카드: 추천 렌더 / 칩 편집 후 슬롯 상태 갱신(경로 미리보기 재치환 포함)
+  | { type: 'actionCards'; payload: ActionCardsPayload }
+  | { type: 'actionCardSlots'; requestId: string; cardId: string; slots: ActionCardSlotView[]; outputs: ActionCardOutputView[] }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

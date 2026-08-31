@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js';
 import type { Message } from '../hooks/useChat';
 import type { DiffLine } from '../../../types/messages';
+import { ActionCardsView } from './ActionCardsView';
 
 /**
  * react-markdown의 code 컴포넌트를 직접 교체한다.
@@ -93,6 +94,8 @@ interface Props {
   message: Message;
   onConfirm?: (actionId: string, approved: boolean) => void;
   onPatchRecovery?: (recoveryId: string, action: 'retry' | 'cancel') => void;
+  onCardChip?: (requestId: string, cardId: string, slotName: string) => void;
+  onCardExecute?: (requestId: string, cardId: string) => void;
 }
 
 const ACTION_BLOCK_COMPLETE_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
@@ -298,11 +301,24 @@ function FileResultCard({
   );
 }
 
-export function MessageItem({ message, onConfirm, onPatchRecovery }: Props): React.ReactElement {
+export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, onCardExecute }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
   if (isSystem) {
+    // 오프라인 행동 카드(계획 카드/컴팩트 리스트) — 파일 결과 카드와 별도 인터랙티브 렌더.
+    if (message.subtype === 'action-cards' && message.actionCards) {
+      return (
+        <div className="message message--system">
+          <ActionCardsView
+            payload={message.actionCards}
+            executedCardId={message.executedCardId}
+            onChip={(r, c, s) => onCardChip?.(r, c, s)}
+            onExecute={(r, c) => onCardExecute?.(r, c)}
+          />
+        </div>
+      );
+    }
     return (
       <div className="message message--system">
         <FileResultCard message={message} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} />
