@@ -48,6 +48,10 @@ import { buildIntentPrompt, parseIntent, formatIntentForChat, type IntentResult,
 import { FALLBACK_HINT } from '../ai/retrieval/OfflineKnowledgeRetriever';
 import { OfflineResponder } from '../ai/retrieval/OfflineResponder';
 import { ActionCardController } from './ActionCardController';
+import {
+  buildBindingApply, buildBindingPlan, pickSpecDoc, rankByPathAffinity, type IBindingPlan,
+} from '../ai/actions/OfflineApiBinding';
+import { scanSpecDocs, listEndpoints, type ISpecDoc } from '../ai/actions/SpecDocScanner';
 import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/retrieval/OfflineTransplant';
 import { IntentExampleStore } from '../ai/intent/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/intent/IntentEmbeddingClassifier';
@@ -56,6 +60,7 @@ import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from
 import { fillSlots, classifyOfflineIntent } from '../ai/intent/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
+import { ENVELOPE_CHOICE_KEY, TARGET_FILE_CHOICE_KEY } from '../types/messages';
 import type { WebviewToHostMessage, HostToWebviewMessage, PageCreationState, DiffLine, ActionCardOutputView } from '../types/messages';
 
 /**
@@ -164,8 +169,206 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           ? this._pageCreationDetector.normalizeName(raw)
           : raw,
       scanDomains: () => this._scanWorkspaceDomains(),
+      scanEndpoints: () => listEndpoints(this._specDocs()),
+      currentCodeFile: () => this._currentCodeFilePath(),
+      buildBindingPlan: (bindingId, values) => this._buildCardBindingPlan(bindingId, values),
+      applyBinding: (bindingId, values, choices) => this._applyCardBinding(bindingId, values, choices),
       workspaceRoot: () => this._getWorkspaceRoot(),
     });
+  }
+
+  /**
+   * 워크스페이스 스펙 후보 문서 — 짧게 캐시한다. 카드 한 장을 그리는 데 칩·계획·엔드포인트 목록이
+   * 각각 스캔을 부르므로(한 턴에 여러 번) 매번 파일시스템을 훑으면 체감이 나빠진다.
+   */
+  private _specDocsCache: { at: number; docs: ISpecDoc[] } | null = null;
+
+  private _specDocs(): ISpecDoc[] {
+    const now = Date.now();
+    if (this._specDocsCache && now - this._specDocsCache.at < 15_000) return this._specDocsCache.docs;
+    const docs = scanSpecDocs(this._getWorkspaceRoot());
+    this._specDocsCache = { at: now, docs };
+    return docs;
+  }
+
+  /**
+   * 계획 카드용 API→테이블 바인딩 계획 — 현재 파일(디스크 원문) + 스펙 문서로 매핑 테이블을 만든다.
+   *
+   * 원문을 에디터 버퍼가 아니라 디스크에서 읽는 이유는 region 편집과 같다: 적용도 디스크 기준이라
+   * 계획과 적용이 같은 텍스트를 봐야 "카드에서 본 것 = 적용된 것"이 유지된다.
+   */
+  private _buildCardBindingPlan(
+    bindingId: string,
+    values: Record<string, string>,
+    /** 이미 읽어 둔 원문(적용 경로) — 계획과 적용이 **같은 텍스트**를 보게 하려고 넘긴다. */
+    preread?: { path: string; content: string },
+  ): IBindingPlan | null {
+    if (bindingId !== 'api-table') return null;
+    // 대상 파일은 **카드가 들고 있는 값**이 우선이다. 매번 "지금 활성 편집기"를 다시 읽으면 사용자가
+    // 스펙 문서를 열어보는 것만으로 카드가 .md를 보고 "테이블 없음"으로 잠긴다(실측).
+    const file = preread ?? this._readCardFile(values[TARGET_FILE_CHOICE_KEY]);
+    const endpoint = (values.endpoint ?? '').trim();
+    const docs = this._specDocs();
+    // 엔드포인트가 정해져야 스펙 문서를 고를 수 있다 — 미정이면 buildBindingPlan이 사유를 채워 돌려준다.
+    const spec = endpoint ? pickSpecDoc(docs, endpoint) : null;
+    return buildBindingPlan({
+      // 파일을 못 읽어도 계획은 만든다 — null을 돌려주면 카드 본문이 통째로 사라져 이유가 안 보인다.
+      source: file?.content ?? '',
+      specText: spec?.text ?? null,
+      endpoint,
+      lookup: {
+        docsScanned: docs.length,
+        pathMentioned: !!endpoint && docs.some((d) => containsExactApiPath(d.text, endpoint)),
+      },
+      ...(file ? { targetFile: file.path } : {}),
+      targetFileChoices: this._listOpenCodeFiles(),
+      // 배선 전용 모드에서 사용자가 카드에서 고른 봉투 키(스펙이 있으면 무시된다).
+      ...(values[ENVELOPE_CHOICE_KEY] ? { envelopeOverride: values[ENVELOPE_CHOICE_KEY] } : {}),
+      ...(spec ? {} : { suggestions: this._suggestBindableEndpoints(docs, endpoint) }),
+    });
+  }
+
+  /** 지정된 경로(없으면 현재 코드 파일)를 디스크에서 읽는다. */
+  private _readCardFile(preferred?: string): { path: string; content: string } | null {
+    const rel = (preferred ?? '').trim();
+    if (rel) {
+      try {
+        return { path: rel, content: fs.readFileSync(this._resolveWorkspacePath(rel), 'utf-8') };
+      } catch {
+        return null; // 파일이 사라졌거나 경로가 깨짐 → 계획이 사유를 말한다
+      }
+    }
+    return this._currentFileForCard();
+  }
+
+  /**
+   * 편집기에 **열려 있는 코드 파일** 목록(활성 탭 우선). 계획 카드의 "대상 파일" 후보다.
+   *
+   * 워크스페이스 전체를 뒤지지 않는 이유: 지금 작업 중인 화면은 거의 항상 열려 있고, 수백 개
+   * 목록은 고르기 더 어렵다. 열린 탭이 곧 "지금 하는 일"의 범위다.
+   */
+  private _listOpenCodeFiles(): string[] {
+    const out: string[] = [];
+    const add = (uri: vscode.Uri | undefined): void => {
+      if (!uri || uri.scheme !== 'file' || !/\.(tsx|ts|jsx|js)$/.test(uri.fsPath)) return;
+      const rel = this._toWorkspaceRelative(uri.fsPath);
+      if (rel && !out.includes(rel)) out.push(rel);
+    };
+    add(vscode.window.activeTextEditor?.document.uri);
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const input = tab.input as { uri?: vscode.Uri } | undefined;
+        add(input?.uri);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 막혔을 때 제시할 **실제로 바인딩 가능한** 경로들.
+   *
+   * "스펙에 없다"로 끝내면 막다른 길이다(실측: `/api/courses/:courseId/lessons`는 스펙에 있었지만
+   * POST뿐이라 목록 스키마가 없었고, 사용자는 클릭할 것이 없었다). 스펙에서 이미 54개 경로를 알고
+   * 있으므로, 요청과 가까운 순으로 몇 개만 **스키마가 실제로 나오는지 확인해** 후보로 준다
+   * (전부 확인하면 큰 문서에서 비싸므로 상위 몇 개만 — 막힌 순간에만 도는 경로다).
+   */
+  private _suggestBindableEndpoints(docs: ISpecDoc[], endpoint: string): string[] {
+    const ranked = rankByPathAffinity(listEndpoints(docs), endpoint).slice(0, 8);
+    const out: string[] = [];
+    for (const path of ranked) {
+      if (out.length >= 4) break;
+      if (pickSpecDoc(docs, path)) out.push(path);
+    }
+    return out;
+  }
+
+  /**
+   * 계획 카드가 편집할 **코드 파일**(디스크 원문). 없으면 null.
+   *
+   * 편집 대상은 코드 파일이어야 한다 — 활성 편집기가 스펙 문서(.md)면 그건 "지금 보고 있는 문서"일 뿐
+   * 편집 대상이 아니다. 그 경우 열린 탭의 코드 파일로 내려간다(사용자가 카드에서 바꿀 수도 있다).
+   */
+  private _currentFileForCard(): { path: string; content: string } | null {
+    const ctx = this._editorCollector.collect();
+    const candidates = [
+      ...(ctx.available && ctx.filePath && /\.(tsx|ts|jsx|js)$/.test(ctx.filePath) ? [ctx.filePath] : []),
+      ...this._listOpenCodeFiles(),
+    ];
+    for (const rel of candidates) {
+      try {
+        return { path: rel, content: fs.readFileSync(this._resolveWorkspacePath(rel), 'utf-8') };
+      } catch {
+        /* 다음 후보 */
+      }
+    }
+    return null;
+  }
+
+  /** 카드 세션이 붙잡을 대상 파일(워크스페이스 상대 경로). 없으면 null. */
+  private _currentCodeFilePath(): string | null {
+    return this._currentFileForCard()?.path ?? null;
+  }
+
+  /**
+   * 확정된 매핑 테이블을 결정론 적용한다(모델 0회) — 조립은 온라인 조립 바인딩과 같은 순수 함수를 쓰고,
+   * 결과 텍스트는 기존 확인 카드·파일 쓰기 경로(_handleAxiomAction)에 그대로 흘려보낸다.
+   */
+  private async _applyCardBinding(
+    bindingId: string, values: Record<string, string>, choices: Record<string, string>,
+  ): Promise<string | null> {
+    // 원문은 한 번만 읽고 계획·적용이 같은 텍스트를 쓰게 한다(두 번 읽으면 그 사이 편집으로 갈릴 수 있다).
+    // 대상은 **카드가 들고 있던 파일** — 실행 순간의 활성 편집기가 아니다.
+    const file = this._readCardFile(values[TARGET_FILE_CHOICE_KEY]);
+    if (!file) return '대상 파일을 읽지 못했습니다. 카드에서 대상 파일을 다시 골라주세요.';
+    const plan = this._buildCardBindingPlan(bindingId, values, file);
+    if (!plan) return `지원하지 않는 바인딩입니다: ${bindingId}`;
+
+    const result = buildBindingApply({ source: file.content, plan, choices });
+    if (result.blocked || !result.text) return result.blocked ?? '적용할 내용을 만들지 못했습니다.';
+
+    const notice = [
+      `> 🔌 **API 바인딩 적용** — \`${plan.endpoint}\` 스펙으로 \`${result.typeName}\` 타입 생성 + ` +
+        `\`useApi\` 연결 + 테이블 셀 재바인딩을 **결정론으로 조립**했습니다(LLM 미사용).`,
+      result.renames.some((r) => r.from !== r.to)
+        ? `>\n> 🔁 필드 교체: ${result.renames.filter((r) => r.from !== r.to).map((r) => `\`${r.from}\` → \`${r.to}\``).join(', ')}`
+        : '',
+      result.removedLabels.length > 0
+        ? `>\n> 🧹 \`${plan.endpoint}\`에 없는 컬럼 제거: ${result.removedLabels.join(', ')}`
+        : '',
+    ].filter(Boolean).join('\n');
+
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🔌 카드 바인딩 적용 (${file.path}): endpoint=${plan.endpoint} type=${result.typeName} ` +
+        `매핑=${result.renames.map((r) => `${r.from}→${r.to}`).join(', ') || '(정확일치만)'} ` +
+        `제거=${result.removedLabels.join(', ') || '없음'}`,
+    );
+
+    await this._applyCardFileEdit(file.path, file.content, result.text, notice);
+    return null;
+  }
+
+  /**
+   * 카드가 만든 최종 파일 텍스트를 기존 확인·적용 경로로 흘려보낸다(오프라인 턴 프레이밍 포함).
+   * diff는 호출부가 디스크 원문으로 계산해 넘긴다 — 에디터 버퍼와의 정규화 차이로 확인 카드에서
+   * diff가 통째로 사라지는 것을 막기 위한 기존 규약(precomputedDiff)을 그대로 따른다.
+   */
+  private async _applyCardFileEdit(
+    filePath: string, originalContent: string, finalText: string, notice: string,
+  ): Promise<void> {
+    this._postOfflineTurn();
+    this._postStatus('오프라인 모드 — 결정론 적용 중…');
+    this._post({ type: 'token', content: notice });
+    this._history.push({ role: 'assistant', content: notice });
+
+    const diff = computeDiffHunks(originalContent, finalText);
+    const wrapped = this._wrapCodeBlockAsAxiomAction('```tsx\n' + finalText + '\n```', filePath);
+    if (!wrapped) {
+      this._post({ type: 'token', content: '\n\n> ⚠️ 적용 블록을 만들지 못했습니다.' });
+    } else {
+      await this._handleAxiomAction(wrapped, false, false, undefined, diff);
+    }
+    this._post({ type: 'done' });
+    this._postStatus('⚠️ 오프라인 모드');
   }
 
   /**
@@ -506,6 +709,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'actionCardSlotSet':
           this._actionCards.setSlotValue(msg.requestId, msg.cardId, msg.slotName, msg.value);
+          break;
+        case 'actionCardBindingChoice':
+          this._actionCards.setBindingChoice(msg.requestId, msg.cardId, msg.field, msg.value);
           break;
         case 'actionCardExecute':
           await this._actionCards.handleExecute(msg.requestId, msg.cardId);
@@ -5625,6 +5831,14 @@ export default routes;`;
     if (path.isAbsolute(relOrAbsPath)) return relOrAbsPath;
     const wsRoot = this._getWorkspaceRoot();
     return wsRoot ? path.join(wsRoot, relOrAbsPath) : relOrAbsPath;
+  }
+
+  /** 절대 경로 → 워크스페이스 상대 경로(POSIX 구분자). 워크스페이스 밖이면 null. */
+  private _toWorkspaceRelative(absPath: string): string | null {
+    const wsRoot = this._getWorkspaceRoot();
+    if (!wsRoot) return null;
+    const rel = path.relative(wsRoot, absPath);
+    return !rel || rel.startsWith('..') || path.isAbsolute(rel) ? null : rel.replace(/\\/g, '/');
   }
 
   private _getWorkspaceRoot(): string | null {

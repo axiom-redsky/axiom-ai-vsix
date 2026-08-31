@@ -46,6 +46,12 @@ export interface IResponseSchema {
    * useApi 제네릭(`useApi<{ [key]: T[] }>`)·파생 const(`data?.[key] ?? []`) 생성에 쓴다.
    */
   envelopeKey: string | null;
+  /**
+   * 행 컨테이너가 **배열**이었는지(= 목록 응답). false면 단건 응답에서 뽑은 스키마다.
+   * 테이블 바인딩은 목록이 원천이라, 오프라인 계획 카드는 이걸로 "목록 예시가 없음"을 판별한다
+   * (예: `POST /api/courses/:courseId/lessons`의 201 단건 응답을 목록으로 착각해 바인딩하는 사고 방지).
+   */
+  isList: boolean;
 }
 
 /** 한 컬럼과 매핑된 API 필드. */
@@ -176,6 +182,7 @@ export function extractResponseSchema(specText: string): IResponseSchema | null 
     rowFields: Object.keys(rowJson as Record<string, unknown>),
     rowJson: rowJson as Record<string, unknown>,
     envelopeKey,
+    isList: Array.isArray(rowContainer),
   };
 }
 
@@ -207,8 +214,12 @@ export function detectEnvelopeKey(obj: Record<string, unknown>): string | null {
   if (objKnown) return objKnown;
   const arrayKeys = Object.keys(obj).filter((k) => Array.isArray(obj[k]));
   if (arrayKeys.length === 1) {
+    // 형제가 **없으면**(`{ "courses": [...] }`) 그 배열이 곧 페이로드다 — 리소스 이름을 봉투로 쓰는
+    // 아주 흔한 스타일(실측: nicify api-spec.md 전 구간). 종전엔 형제가 1개 이상일 때만 인정해
+    // 이런 문서의 목록 응답을 통째로 "행 객체 {courses: […]}"로 오해했다.
+    // 형제가 있으면 종전 규칙 그대로: 전부 메타 키일 때만 봉투(행의 배열 필드 `skills` 오탐 방지).
     const siblings = Object.keys(obj).filter((k) => k !== arrayKeys[0]);
-    if (siblings.length > 0 && siblings.every((k) => ENVELOPE_META_KEYS.has(k.toLowerCase()))) {
+    if (siblings.every((k) => ENVELOPE_META_KEYS.has(k.toLowerCase()))) {
       return arrayKeys[0];
     }
   }
@@ -218,7 +229,9 @@ export function detectEnvelopeKey(obj: Record<string, unknown>): string | null {
 /** "Response" 라벨 뒤의 첫 ```json 블록을 파싱. 없으면 아무 ```json 블록. 파싱 실패 시 null. */
 function parseResponseJson(specText: string): unknown {
   const blocks: Array<{ at: number; body: string }> = [];
-  const re = /```json\s*\n([\s\S]*?)```/g;
+  // 실측(nicify api-spec.md): 주석 달린 예시는 ```jsonc / ```json5로 표기하는 관례가 흔하다.
+  // ```json만 보면 그런 문서의 응답 예시를 통째로 놓쳐 "스펙에 스키마가 없다"로 오판한다(주석은 아래에서 제거).
+  const re = /```json(?:c|5)?\s*\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(specText)) !== null) blocks.push({ at: m.index, body: m[1] });
   if (blocks.length === 0) return null;
@@ -312,6 +325,11 @@ export interface IBindingCodeInput {
   rootName: string;
   /** 목록 파생 const 이름 — 기존 더미 배열과 **같은 이름**이라야 structural이 더미를 자동 제거한다. */
   collectionVar: string;
+  /**
+   * useApi 줄 끝에 남길 한 줄 메모(선택). 스펙 없이 추정으로 만든 타입·봉투 키처럼
+   * **사람이 확인해야 하는 가정**을 코드 안에 남겨 둘 때 쓴다(카드 밖으로 나가도 근거가 따라가게).
+   */
+  typeNote?: string;
 }
 
 /** buildBindingCode 결과 — structural 삽입 채널(hookCode/imports)에 그대로 넣는다. */
@@ -330,7 +348,7 @@ export interface IBindingCode {
  * 본문에 삽입되며, `collectionVar`가 기존 더미와 같은 이름이라 더미 선언은 자동 제거된다.
  */
 export function buildBindingCode(input: IBindingCodeInput): IBindingCode {
-  const { schema, endpoint, rootName, collectionVar } = input;
+  const { schema, endpoint, rootName, collectionVar, typeNote } = input;
   const typeCode = generateTypeFromJson({
     json: schema.rowJson,
     rootName,
@@ -351,7 +369,7 @@ export function buildBindingCode(input: IBindingCodeInput): IBindingCode {
   const hookCode = [
     typeCode.trim(),
     '',
-    `const { data, isPending, error } = useApi<${listType}>('${endpoint}');`,
+    `const { data, isPending, error } = useApi<${listType}>('${endpoint}');${typeNote ? ` // ${typeNote}` : ''}`,
     derived,
     `if (isPending) {`,
     `  return <div className="p-5 text-muted-foreground">불러오는 중…</div>;`,

@@ -247,6 +247,29 @@ eq(detectEnvelopeKey({ success: true, data: { id: 1, name: 'A' } }), 'data', '�
 eq(detectEnvelopeKey({ id: 1, name: 'A', department: 'dev' }), null, '단건 행(배열/봉투 없음) → null');
 // ⚠️ 오탐 방지 핵심: 단건 행이 배열 필드(skills)를 가져도 봉투로 오인 금지(id·name은 메타 아님)
 eq(detectEnvelopeKey({ id: 1, name: 'A', skills: ['Java', 'AWS'] }), null, '행의 배열 필드(skills)는 봉투 아님');
+// 리소스 이름을 봉투로 쓰는 흔한 스타일 — 형제가 아예 없으면 그 배열이 곧 페이로드다.
+// (실측 회귀: nicify api-spec.md가 전 구간 이 스타일이라 목록 응답을 통째로 못 읽었다.)
+eq(detectEnvelopeKey({ courses: [{ id: 1, title: 'A' }] }), 'courses', '형제 없는 단일 배열 키 → 봉투');
+eq(detectEnvelopeKey({ lessons: [{ id: 62 }] }), 'lessons', '리소스 이름 봉투(lessons)');
+
+// ── A2′: 실전 스펙 표기 흔들림(jsonc 펜스·주석) + 목록/단건 구분 ─────────────────
+console.log('\napi-binding A2′ — jsonc 펜스 · isList:');
+{
+  // 주석 있는 예시는 ```jsonc로 표기하는 관례가 흔하다 — 종전엔 ```json만 봐서 통째로 놓쳤다.
+  const jsoncSpec = [
+    '### `GET /api/courses`', '', '**Response `200`**', '```jsonc', '{',
+    '  "courses": [', '    { "id": 2, "title": "Practice", "sortOrder": 2 }  // 정렬 순서',
+    '  ]', '}', '```',
+  ].join('\n');
+  const s = extractResponseSchema(jsoncSpec);
+  eq(s?.envelopeKey, 'courses', 'jsonc 펜스 + 주석 → 봉투 감지');
+  eq(s?.rowFields, ['id', 'title', 'sortOrder'], 'jsonc 행 필드 추출');
+  eq(s?.isList, true, '배열 컨테이너 → isList=true');
+
+  // 단건 응답: 행 컨테이너가 배열이 아니면 isList=false (테이블 바인딩의 원천이 아님을 호출부가 판별)
+  const single = extractResponseSchema('**Response**\n```json\n{ "data": { "id": 1, "name": "A" } }\n```');
+  eq(single?.isList, false, '단건 봉투 → isList=false');
+}
 
 console.log('\napi-binding A2 — 사이트별 봉투로 extractResponseSchema + buildBindingCode:');
 // result 래퍼 사이트

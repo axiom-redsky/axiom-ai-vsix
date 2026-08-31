@@ -147,11 +147,75 @@ export interface ActionCardOutputView {
   note?: string;
 }
 
+/**
+ * 봉투 키 선택을 나르는 **예약 필드명**. 매핑 테이블의 행 선택(`actionCardBindingChoice`)과 같은
+ * 통로를 쓰되, 이 키는 행이 아니라 계획 자체의 입력이라 호스트가 값 저장소로 라우팅한다.
+ * 표의 셀이 읽는 필드명과 겹치지 않도록 언더스코어를 쓴다.
+ */
+export const ENVELOPE_CHOICE_KEY = '__envelope__';
+
+/**
+ * 편집 대상 파일을 나르는 예약 필드명. 계획 카드는 **요청 시점의 대상 파일**을 붙잡아야 한다 —
+ * 매번 "지금 활성 편집기"를 다시 읽으면, 사용자가 스펙 문서를 열어보는 것만으로 카드가 엉뚱한
+ * 파일(.md)을 보고 "테이블을 못 찾았다"며 잠긴다(실측).
+ */
+export const TARGET_FILE_CHOICE_KEY = '__file__';
+
+/** 매핑 테이블 한 행 — API 바인딩 카드의 본문(§3.6 "매핑 테이블 자체가 카드"). */
+export interface ActionCardBindingRowView {
+  /** 테이블 헤더 라벨(예: "부서"). */
+  label: string;
+  /** 지금 셀이 읽는 필드(예: "dept"). 필드를 안 읽는 컬럼이면 null. */
+  currentField: string | null;
+  /** 확정된 API 필드(또는 사용자가 고른 "(컬럼 제거)"). 미정이면 null. */
+  apiField: string | null;
+  /** exact=그대로 · fuzzy=이름 교체 · choose=사람이 선택 · static=바인딩 대상 아님. */
+  how: 'exact' | 'fuzzy' | 'choose' | 'static';
+  /** choose 행 전용 드롭다운 후보 — 다른 행이 가져간 필드는 빠진다(중복 배정 불가). */
+  candidates?: string[];
+}
+
+/** API 바인딩 카드의 계획 — 카드가 표로 렌더하고, 실행은 이 표대로 결정론 적용한다. */
+export interface ActionCardBindingView {
+  /** 계획을 세울 수 없는 이유(테이블 없음·GET 목록 없음 등). null이면 rows가 계획. */
+  blocked: string | null;
+  /** mapped=스펙과 대조한 매핑 / wiring-only=응답을 몰라 배선만(표 필드는 그대로). */
+  mode: 'mapped' | 'wiring-only';
+  /** 사용자가 알아야 할 전제(배선 전용 모드의 가정). 없으면 null. */
+  notice: string | null;
+  /** 스펙에서 읽은 응답 필드 전부 — 표와 맞는지 눈으로 바로 확인하라고 그대로 보여준다. */
+  apiFields: string[];
+  /**
+   * 봉투 키를 고를 수 있으면 그 선택지(배선 전용 모드). 비어 있으면 칩을 그리지 않는다
+   * — 스펙에서 감지한 경우엔 문서가 진실의 원천이라 고를 일이 없다.
+   */
+  envelopeChoices: string[];
+  /** 이 계획이 편집할 파일(워크스페이스 상대 경로). 카드가 칩으로 보여주고 바꿀 수 있게 한다. */
+  targetFile: string | null;
+  /** 대상 파일 후보(열려 있는 코드 파일들). 비어 있으면 칩을 그리지 않는다. */
+  targetFileChoices: string[];
+  endpoint: string;
+  /** 생성될 행 타입 이름(예: "TEmployee"). */
+  typeName: string;
+  /** 응답 봉투 키 — `useApi<{ data: T[] }>` 표시에 쓴다. null이면 최상위가 배열. */
+  envelopeKey: string | null;
+  rows: ActionCardBindingRowView[];
+  /** 아직 정하지 않은 행 수. 0보다 크면 실행 버튼이 잠긴다(추측 금지). */
+  pendingCount: number;
+  /**
+   * 막혔을 때 대신 고를 수 있는 경로(스펙에서 실제로 목록 스키마가 나오는 것만).
+   * 클릭하면 `suggestionSlot` 슬롯에 넣어 계획을 다시 세운다 — 막힘이 막다른 길이 되지 않게.
+   */
+  suggestions: string[];
+  /** 제안을 넣을 슬롯 이름(카드가 선언한 endpoint-list 슬롯). 없으면 제안을 클릭할 수 없다. */
+  suggestionSlot?: string;
+}
+
 export interface ActionCardView {
   cardId: string;
   icon: string;
   title: string;
-  actionType: 'template' | 'recipe' | 'doc' | 'command';
+  actionType: 'template' | 'recipe' | 'doc' | 'command' | 'binding';
   description: string;
   /** 사용자 문장에서 실제로 맞은 트리거 — 근거 하이라이트 표시용. */
   matchedTriggers: string[];
@@ -160,6 +224,8 @@ export interface ActionCardView {
   outputs: ActionCardOutputView[];
   /** recipe: 삽입될 골격(기본 접힘 렌더). */
   skeleton?: string;
+  /** binding: 매핑 테이블(계획). 호스트가 현재 파일·스펙으로 계산해 내려보낸다. */
+  binding?: ActionCardBindingView;
   /** 실행 버튼 라벨(유형별: 이대로 만들기/골격 보기/문서 보기/위저드 열기). */
   executeLabel: string;
 }
@@ -177,6 +243,11 @@ export interface ActionCardsPayload {
   note?: string;
   /** 점수순. mode='plan'이면 [0]이 계획 카드, 나머지는 "다른 작업 ▾" 뒤에. */
   cards: ActionCardView[];
+  /**
+   * 매칭되진 않았지만 지금 상황에서 할 수 있는 카드들 — `[다른 작업 ▾]` 뒤에 놓인다.
+   * 추천이 빗나가거나 막혀도 **카드 안에서** 다른 작업으로 갈 수 있게 하는 탈출구(§3.6 장면 2).
+   */
+  moreCards?: ActionCardView[];
 }
 
 // WebView → Extension Host
@@ -219,6 +290,7 @@ export type WebviewToHostMessage =
   // 오프라인 행동 카드: 칩 클릭(호스트 QuickPick 위임) / 카드 안 인라인 편집 결과 / 실행 버튼
   | { type: 'actionCardChip'; requestId: string; cardId: string; slotName: string }
   | { type: 'actionCardSlotSet'; requestId: string; cardId: string; slotName: string; value: string }
+  | { type: 'actionCardBindingChoice'; requestId: string; cardId: string; field: string; value: string }
   | { type: 'actionCardExecute'; requestId: string; cardId: string }
   | { type: 'openGuide' }
   | { type: 'guideReady' }
@@ -271,7 +343,15 @@ export type HostToWebviewMessage =
   | { type: 'pinQuestion' }
   // 오프라인 행동 카드: 추천 렌더 / 칩 편집 후 슬롯 상태 갱신(경로 미리보기 재치환 포함)
   | { type: 'actionCards'; payload: ActionCardsPayload }
-  | { type: 'actionCardSlots'; requestId: string; cardId: string; slots: ActionCardSlotView[]; outputs: ActionCardOutputView[] }
+  | {
+      type: 'actionCardSlots';
+      requestId: string;
+      cardId: string;
+      slots: ActionCardSlotView[];
+      outputs: ActionCardOutputView[];
+      /** binding 카드면 재계산된 매핑 테이블(엔드포인트 칩·행 선택이 바뀌면 계획이 바뀐다). */
+      binding?: ActionCardBindingView;
+    }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

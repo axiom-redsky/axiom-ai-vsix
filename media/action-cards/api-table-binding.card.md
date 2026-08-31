@@ -11,13 +11,13 @@ slots:
     source: endpoint-list
     prefillFrom: query
 action:
-  type: command
-  command: axiom.wizard.apiBinding
+  type: binding
+  binding: api-table
 priority: 15
 ---
 
 ## 설명
 현재 파일의 테이블에 API 응답을 바인딩합니다. 스펙에서 응답 타입을 만들고,
-useApi 봉투 계약(`useApi<{ data: T[] }>` + `data?.data ?? []`)에 맞는 훅과 필드 매핑을
-매핑 테이블 UI에서 확정합니다 — 정확·유사 이름은 자동 프리필, 애매한 행만 드롭다운
-(compose binding의 오프라인 변형, 위저드는 Phase 2).
+useApi 봉투 계약(`useApi<{ data: T[] }>` + `data?.data ?? []`)에 맞는 훅과 로딩·에러 가드를
+결정론으로 조립합니다(LLM 미사용). 이름이 같거나 비슷한 필드는 아래 표에 미리 채워두었고,
+애매한 행만 드롭다운으로 고르면 됩니다 — API에 없는 컬럼은 `(컬럼 제거)`를 고르세요.

@@ -17,12 +17,14 @@ import * as path from 'path';
 import { loadCardsFromDir, finalizeCatalog } from '../ai/actions/CardCatalog';
 import { matchCards, listApplicableCards, type ICardMatchContext } from '../ai/actions/CardMatcher';
 import {
-  buildCardsPayload, buildOutputViews, buildSlotViews, substituteSlots,
+  buildBindingView, buildCardsPayload, buildOutputViews, buildSlotViews, substituteSlots,
 } from '../ai/actions/CardPlanView';
+import type { IBindingPlan } from '../ai/actions/OfflineApiBinding';
 import type { IActionCard, ICardMatch } from '../ai/actions/types';
 import { COMPONENT_PROPS_INDEX } from '../ai/contracts/generated/componentPropsIndex';
 import { splitFrontmatter } from '../ai/retrieval/KnowledgeDoc';
 import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
+import { ENVELOPE_CHOICE_KEY, TARGET_FILE_CHOICE_KEY } from '../types/messages';
 import type {
   ActionCardOutputView, ActionCardSlotView, ActionCardsPayload, HostToWebviewMessage,
 } from '../types/messages';
@@ -51,15 +53,45 @@ export interface IActionCardHost {
    */
   normalizeTemplateSlot(templateId: string, slotName: string, raw: string): string | null;
   scanDomains(): string[];
+  /**
+   * 워크스페이스 스펙 문서에서 뽑은 API 경로 목록(`endpoint-list` 슬롯의 선택지, §4.5).
+   * 없으면 빈 배열 — 칩은 자유 입력으로 남는다.
+   */
+  scanEndpoints(): string[];
+  /**
+   * 지금 편집 중인 **코드 파일**의 워크스페이스 상대 경로. 카드는 이 값을 세션에 붙잡아 두고
+   * 이후 계획·적용에 계속 쓴다 — 매번 활성 편집기를 다시 읽으면 사용자가 스펙 문서를 열어보는
+   * 것만으로 대상이 바뀌어 카드가 잠긴다(실측).
+   */
+  currentCodeFile(): string | null;
+  /**
+   * binding 카드의 계획(매핑 테이블)을 계산한다 — 현재 파일 원문과 스펙 문서가 필요하므로
+   * 워크스페이스 I/O를 아는 호스트 몫이다. 지원하지 않는 id·현재 파일 없음이면 null.
+   * 막힘(테이블 없음·스펙 없음)은 null이 아니라 `plan.blocked` 사유로 돌려준다 — 카드가
+   * 조용히 비지 않고 "왜 못 하는지"를 말하게 하기 위해서다.
+   */
+  buildBindingPlan(bindingId: string, values: Record<string, string>): IBindingPlan | null;
+  /**
+   * 확정된 계획을 결정론 적용한다(확인 카드·파일 쓰기는 기존 경로 재사용).
+   * @returns null=적용 흐름 진입 / 문자열=실패 사유(카드가 그대로 안내)
+   */
+  applyBinding(
+    bindingId: string, values: Record<string, string>, choices: Record<string, string>,
+  ): Promise<string | null>;
   workspaceRoot(): string | null;
 }
 
 interface ICardSession {
   requestId: string;
   query: string;
+  /** 이 턴에 살아 있는 카드 전부(추천 + `[다른 작업 ▾]`) — 칩 편집·실행 조회 대상. */
   matches: ICardMatch[];
+  /** 그중 실제로 **추천된** 카드 — 히스토리 한 줄 요약에 쓴다(카탈로그 전부를 적으면 잡음). */
+  primary: ICardMatch[];
   /** cardId → slotName → 값 (프리필로 초기화, 칩 편집으로 갱신). */
   values: Map<string, Record<string, string>>;
+  /** cardId → 테이블 컬럼 필드 → 사용자가 고른 API 필드(또는 REMOVE_COLUMN). binding 카드 전용. */
+  choices: Map<string, Record<string, string>>;
 }
 
 /**
@@ -111,6 +143,7 @@ export class ActionCardController {
       scaffoldDetected: !!wsRoot && fs.existsSync(path.join(wsRoot, 'src', 'domains')),
       domains: this._host.scanDomains(),
       components: Object.keys(COMPONENT_PROPS_INDEX),
+      endpoints: this._host.scanEndpoints(),
     };
   }
 
@@ -138,16 +171,35 @@ export class ActionCardController {
       note = '요청과 정확히 맞는 작업을 찾지 못했어요. 아래에서 골라주시거나, 조금 더 구체적으로 다시 말씀해주세요.';
     }
 
+    // `[다른 작업 ▾]`의 내용물 — 지금 상황에서 할 수 있는 나머지 카드(§3.6 장면 2).
+    // 매칭이 한 장뿐이어도 탈출구가 있어야 한다: 계획 카드가 빗나가거나 막혔을 때(스펙에 없는
+    // 엔드포인트 등) 다시 타이핑하는 것 말고는 할 게 없으면, 그게 바로 "빗나감이 절벽"이다.
+    const shown = new Set(rec.matches.map((m) => m.card.id));
+    const more = listApplicableCards(query, cards, ctx).matches.filter((m) => !shown.has(m.card.id));
+
     const requestId = `ac-${Date.now().toString(36)}-${++seq}`;
     const values = new Map<string, Record<string, string>>();
-    for (const m of rec.matches) values.set(m.card.id, { ...m.prefill });
-    this._session = { requestId, query, matches: rec.matches, values };
+    const all = [...rec.matches, ...more];
+    // 요청 시점의 대상 파일을 **붙잡아** 둔다(이후 활성 편집기가 바뀌어도 카드는 이 파일을 본다).
+    const targetFile = this._host.currentCodeFile();
+    for (const m of all) {
+      values.set(m.card.id, { ...m.prefill, ...(targetFile ? { [TARGET_FILE_CHOICE_KEY]: targetFile } : {}) });
+    }
+    // 세션엔 둘 다 담는다 — [다른 작업]에서 펼친 카드도 칩 편집·실행이 되어야 한다.
+    this._session = { requestId, query, matches: all, primary: rec.matches, values, choices: new Map() };
 
     const payload: ActionCardsPayload = buildCardsPayload(
       requestId, query, rec.mode === 'plan' ? 'plan' : 'list', rec.matches, values,
-      (card, v) => this._resolveOutputs(card, v),
-      (c, slot) => this._slotEditor(c, slot),
-      note,
+      {
+        hooks: {
+          outputs: (card, v) => this._resolveOutputs(card, v),
+          editor: (c, slot) => this._slotEditor(c, slot),
+          binding: (card, v) => this._resolveBindingPlan(card, v),
+          choices: this._session.choices,
+        },
+        ...(note ? { note } : {}),
+        more,
+      },
     );
     this._host.post({ type: 'actionCards', payload });
     return true;
@@ -156,7 +208,7 @@ export class ActionCardController {
   /** 추천 세션의 히스토리 기록용 한 줄 요약(카드는 구조 메시지라 그대로 히스토리에 못 넣는다). */
   historySummary(): string {
     if (!this._session) return '[오프라인 추천 카드]';
-    const titles = this._session.matches.map((m) => m.card.title).join(', ');
+    const titles = this._session.primary.map((m) => m.card.title).join(', ');
     return `[오프라인 추천 카드: ${titles}]`;
   }
 
@@ -174,20 +226,84 @@ export class ActionCardController {
     if (picked === undefined) return; // 사용자 취소 — 상태 유지
     values[slotName] = picked;
     this._session!.values.set(cardId, values);
+    this._invalidateChoices(card);
     this._postSlots(requestId, cardId, card, values);
   }
 
-  /** 갱신된 슬롯 + 재계산한 출력 미리보기를 웹뷰로 되돌린다(인라인·QuickPick 공통 출구). */
+  /**
+   * 슬롯이 바뀌면 그 카드의 행 선택을 버린다 — 엔드포인트가 바뀌면 후보 필드 자체가 달라지므로,
+   * 낡은 선택이 남으면 "다른 API의 필드"가 조용히 실려 갈 수 있다(계획 카드 최악의 실패).
+   */
+  private _invalidateChoices(card: IActionCard): void {
+    if (card.action.type === 'binding') this._session?.choices.delete(card.id);
+  }
+
+  /**
+   * 갱신된 슬롯 + 재계산한 출력 미리보기/매핑 테이블을 웹뷰로 되돌린다
+   * (인라인 칩·QuickPick·바인딩 행 선택의 공통 출구 — 카드에 보이는 것은 항상 호스트가 계산한 것).
+   */
   private _postSlots(
     requestId: string, cardId: string, card: IActionCard, values: Record<string, string>,
   ): void {
+    const plan = this._resolveBindingPlan(card, values);
     this._host.post({
       type: 'actionCardSlots',
       requestId,
       cardId,
       slots: buildSlotViews(card, values, (c, slot) => this._slotEditor(c, slot)),
       outputs: this._resolveOutputs(card, values) ?? buildOutputViews(card, values),
+      ...(plan
+        ? {
+            binding: buildBindingView(
+              plan,
+              this._session?.choices.get(cardId) ?? {},
+              card.slots.find((s) => s.source === 'endpoint-list')?.name,
+            ),
+          }
+        : {}),
     });
+  }
+
+  /** binding 카드의 계획을 호스트에서 계산한다. 실패는 카드 없음(null)으로 접는다 — 카탈로그는 산다. */
+  private _resolveBindingPlan(card: IActionCard, values: Record<string, string>): IBindingPlan | null {
+    if (card.action.type !== 'binding' || !card.action.binding) return null;
+    try {
+      return this._host.buildBindingPlan(card.action.binding, values);
+    } catch (err) {
+      console.warn(`[Axiom AI] 바인딩 계획 계산 실패: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 매핑 테이블의 한 행(애매한 컬럼)에 대한 사용자 선택을 반영한다.
+   * 값 검증은 계획 재계산이 대신한다 — 후보 밖 값이면 `decorateBindingRows`가 미정으로 되돌려
+   * 카드가 "아직 안 정해짐"으로 정직하게 표시한다(호스트가 진실의 원천).
+   *
+   * `field`가 예약키 `ENVELOPE_CHOICE_KEY`면 행이 아니라 **봉투 키 선택**이다: 이건 행 매핑이 아니라
+   * 계획 자체의 입력이라 값 저장소(values)에 넣어 계획 재계산에 그대로 반영시킨다.
+   */
+  setBindingChoice(requestId: string, cardId: string, field: string, value: string): void {
+    const found = this._findCard(requestId, cardId);
+    if (!found || found.card.action.type !== 'binding') return;
+    const key = field.trim();
+    const picked = value.trim();
+    if (!key || !picked) return;
+
+    if (key === ENVELOPE_CHOICE_KEY || key === TARGET_FILE_CHOICE_KEY) {
+      const values = this._session!.values.get(cardId) ?? {};
+      values[key] = picked;
+      this._session!.values.set(cardId, values);
+      // 대상 파일이 바뀌면 표 자체가 달라진다 — 이전 표에 대한 행 선택은 버린다.
+      if (key === TARGET_FILE_CHOICE_KEY) this._invalidateChoices(found.card);
+      this._postSlots(requestId, cardId, found.card, values);
+      return;
+    }
+
+    const choices = this._session!.choices.get(cardId) ?? {};
+    choices[key] = picked;
+    this._session!.choices.set(cardId, choices);
+    this._postSlots(requestId, cardId, found.card, this._session!.values.get(cardId) ?? {});
   }
 
   /**
@@ -228,8 +344,18 @@ export class ActionCardController {
           ? { inline: true, options: components.sort(), allowCustom: false }
           : { inline: false };
       }
-      case 'endpoint-list':
-        return { inline: true, options: [], allowCustom: true, placeholder: '/api/…', pattern: ENDPOINT_PATTERN, patternHint: ENDPOINT_HINT };
+      case 'endpoint-list': {
+        // 스펙 문서에서 실제로 발견된 경로를 후보로 준다(§4.5 스캔 계약). 스펙이 없거나 못 찾으면
+        // 자유 입력만 — 폐쇄망에선 "스펙 문서가 아직 없음"이 흔한 정상 상태다.
+        // 후보가 많으면 편집은 QuickPick에 위임하되(inline=false) **후보 목록 자체는 함께 내려보낸다**:
+        // 계획 카드의 "대체 경로" 칩이 값을 되돌려 보낼 때 호스트가 그 값을 알아야 통과시킨다.
+        const endpoints = this._host.scanEndpoints();
+        return {
+          inline: endpoints.length <= INLINE_OPTION_LIMIT,
+          options: endpoints, allowCustom: true, placeholder: '/api/…',
+          pattern: ENDPOINT_PATTERN, patternHint: ENDPOINT_HINT,
+        };
+      }
       case 'text':
       default:
         return { inline: true, options: [], allowCustom: true, placeholder: slot.label };
@@ -267,6 +393,7 @@ export class ActionCardController {
     const values = this._session!.values.get(cardId) ?? {};
     values[slotName] = canonical;
     this._session!.values.set(cardId, values);
+    this._invalidateChoices(card);
     this._postSlots(requestId, cardId, card, values);
   }
 
@@ -308,12 +435,21 @@ export class ActionCardController {
         return vscode.window.showQuickPick(Object.keys(COMPONENT_PROPS_INDEX).sort(), { placeHolder: `${label} 선택` });
       }
       case 'endpoint-list': {
-        return vscode.window.showInputBox({
-          prompt: `${label} (API 경로)`,
-          value: current ?? '',
-          placeHolder: '/api/…',
-          validateInput: (v) => (/^\/[\w:-]+(?:\/[\w:-]+)*$/.test(v.trim()) ? null : '/segment/segment 형식의 경로를 입력하세요'),
+        const ask = (): Thenable<string | undefined> =>
+          vscode.window.showInputBox({
+            prompt: `${label} (API 경로)`,
+            value: current ?? '',
+            placeHolder: '/api/…',
+            validateInput: (v) => (/^\/[\w:-]+(?:\/[\w:-]+)*$/.test(v.trim()) ? null : '/segment/segment 형식의 경로를 입력하세요'),
+          });
+        const endpoints = this._host.scanEndpoints();
+        if (endpoints.length === 0) return ask();
+        const CUSTOM = '$(edit) 직접 입력…';
+        const picked = await vscode.window.showQuickPick([...endpoints, CUSTOM], {
+          placeHolder: `${label} 선택 (스펙 문서에서 찾은 경로)`,
         });
+        if (picked === undefined) return undefined;
+        return picked === CUSTOM ? ask() : picked;
       }
       case 'text':
       default: {
@@ -347,6 +483,27 @@ export class ActionCardController {
       case 'command':
         await this._executeCommand(card);
         return;
+      case 'binding':
+        await this._executeBinding(card, values);
+        return;
+    }
+  }
+
+  /**
+   * binding 실행 — 카드에 보이는 매핑 테이블 그대로 결정론 적용(모델 0회).
+   * 실패는 조용히 삼키지 않고 사유를 채팅에 남긴다(카드가 약속한 계획이 왜 안 됐는지 보이게).
+   */
+  private async _executeBinding(card: IActionCard, values: Record<string, string>): Promise<void> {
+    const bindingId = card.action.binding ?? '';
+    const choices = { ...(this._session!.choices.get(card.id) ?? {}) };
+    let reason: string | null;
+    try {
+      reason = await this._host.applyBinding(bindingId, values, choices);
+    } catch (err) {
+      reason = (err as Error).message;
+    }
+    if (reason) {
+      this._host.renderMarkdown(`> ⚠️ **${card.title}** 적용을 하지 못했습니다 — ${reason}`);
     }
   }
 

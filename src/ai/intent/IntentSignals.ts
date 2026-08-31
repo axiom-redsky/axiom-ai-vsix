@@ -182,6 +182,36 @@ const STRONG_EDIT_VERBS = /수정|고쳐|고치|바꿔|바꾸|변경|삭제|제�
 const STRONG_QNA_MARKERS = /방법|방식|절차|는\s*법(?![가-힣])/;
 
 /**
+ * 명령형 **요청 어미** — "~해줘 / 해주세요 / 해줄래 / 해라 / 부탁".
+ * 한국어에서 이 꼬리는 질문이 아니라 **행위 요청**을 뜻한다. 모호 동사(적용·연동·바인딩)라도
+ * 이 꼬리가 붙으면 "지금 해달라"는 뜻이 흔들리지 않는다.
+ */
+const REQUEST_IMPERATIVE = /해\s*줘|해\s*주세요|해\s*줄래|해\s*주라|해\s*주시|해라|부탁/;
+
+/**
+ * 요청 안의 정확한 API 경로(`/api/courses/:courseId/lessons`) — **무엇에** 적용할지까지 특정한
+ * 실행 요청의 신호다. 설명을 원하는 사람은 보통 경로를 통째로 적지 않는다.
+ */
+const EXPLICIT_API_PATH = /\/[a-zA-Z][\w-]*(?:\/[\w:-]+)+/;
+
+/**
+ * 편집 신호의 정밀도. 고정밀 동사가 없어도 **명령형 요청 어미**나 **정확한 API 경로**가 있으면
+ * 행위 요청이 분명하므로 strong으로 본다.
+ *
+ * 왜 필요한가(실측 2026-08-31): "테이블에 `/api/courses/:courseId/lessons` 바인딩해줘"에서
+ * 정규식은 modify(weak) · 임베딩은 qna(확신)라 리졸버 3단계가 임베딩을 채택 → 행동 요청이 지식
+ * 문서(useApi 가이드) 답변으로 샜다. 모호 동사('바인딩·연동·적용')는 여전히 단독으로는 약하지만,
+ * 요청 형태가 확실하면 약한 추측이 아니다.
+ *
+ * 질문 신호가 섞이면("…어떻게 연결해?") 양보한다 — 그건 Q&A 소관이고, 오답 비용도 0이다.
+ */
+function editSignalStrength(query: string): TIntentStrength {
+  if (STRONG_EDIT_VERBS.test(query)) return 'strong';
+  if (isQnAQuery(query)) return 'weak';
+  return REQUEST_IMPERATIVE.test(query) || EXPLICIT_API_PATH.test(query) ? 'strong' : 'weak';
+}
+
+/**
  * 모델 없이(결정론) 입력을 IntentResult 그룹으로 분류한다 — 임베딩 분류기의 폴백.
  *
  * 우선순위는 온라인 게이팅(isQnAGated)과 일치시킨다:
@@ -201,9 +231,10 @@ export function classifyOfflineIntent(query: string, ctx: IntentContext): Intent
   if (/처음부터|신규|새로\s|from\s+scratch|scratch/i.test(query) && /만들|생성|짜|create|make|build/i.test(query)) {
     return tag(fillSlots(query, ctx, 'create_page'), 'strong');
   }
-  // 3. 명시적 편집/생성. 고정밀 편집 동사(수정·바꿔·삭제…)면 strong, 모호 동사(적용·넣어…)면 weak.
+  // 3. 명시적 편집/생성. 고정밀 편집 동사(수정·바꿔·삭제…)나 확실한 요청 형태(해줘·정확한 API 경로)면
+  //    strong, 그 외 모호 동사(적용·넣어…)만 있으면 weak.
   if (isExplicitEditOrCreate(query)) {
-    return tag(fillSlots(query, ctx, 'modify_file'), STRONG_EDIT_VERBS.test(query) ? 'strong' : 'weak');
+    return tag(fillSlots(query, ctx, 'modify_file'), editSignalStrength(query));
   }
   // 4. 잡담(인사·맞장구 키워드) → strong(비교적 명확).
   if (isSmalltalk(query)) return tag(fillSlots(query, ctx, 'smalltalk'), 'strong');

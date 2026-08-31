@@ -293,7 +293,10 @@ export function useChat() {
                 actionCards: {
                   ...m.actionCards,
                   cards: m.actionCards.cards.map((c) =>
-                    c.cardId === msg.cardId ? { ...c, slots: msg.slots, outputs: msg.outputs } : c,
+                    c.cardId === msg.cardId
+                      // binding 미포함(비-binding 카드)이면 기존 표를 그대로 둔다 — 부분 갱신 메시지다.
+                      ? { ...c, slots: msg.slots, outputs: msg.outputs, ...(msg.binding ? { binding: msg.binding } : {}) }
+                      : c,
                   ),
                 },
               };
@@ -382,6 +385,14 @@ export function useChat() {
     vscode.postMessage({ type: 'actionCardSlotSet', requestId, cardId, slotName, value });
   }, []);
 
+  /** 매핑 테이블 행 선택 — 호스트가 계획을 재계산해 actionCardSlots로 되돌려준다. */
+  const sendCardBindingChoice = useCallback(
+    (requestId: string, cardId: string, field: string, value: string) => {
+      vscode.postMessage({ type: 'actionCardBindingChoice', requestId, cardId, field, value });
+    },
+    [],
+  );
+
   /** 행동 카드 실행 — 이중 클릭 방지를 위해 로컬에서 즉시 "실행됨"으로 표시한다. */
   const sendCardExecute = useCallback((requestId: string, cardId: string) => {
     vscode.postMessage({ type: 'actionCardExecute', requestId, cardId });
@@ -407,7 +418,7 @@ export function useChat() {
   return {
     messages, status, progressSteps, isStreaming, isWaiting,
     sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery,
-    sendCardChip, sendCardSlot, sendCardExecute,
+    sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute,
     selectionContext, dismissSelection,
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop,
     attachReference, attachText, consumeAttach,

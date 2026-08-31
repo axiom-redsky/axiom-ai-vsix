@@ -27,7 +27,7 @@ export interface IParseCardOptions {
 const KNOWN_TOP_KEYS = new Set([
   'schemaVersion', 'id', 'title', 'icon', 'triggers', 'preconditions', 'slots', 'action', 'priority',
 ]);
-const KNOWN_ACTION_KEYS = new Set(['type', 'template', 'outputs', 'doc', 'command']);
+const KNOWN_ACTION_KEYS = new Set(['type', 'template', 'outputs', 'doc', 'command', 'binding']);
 const KNOWN_SLOT_KEYS = new Set(['name', 'label', 'source', 'options', 'prefillFrom', 'pattern', 'hint']);
 
 const ID_RE = /^[a-z][a-z0-9-]*$/;
@@ -244,6 +244,7 @@ export function parseActionCard(raw: string, opts: IParseCardOptions = {}): IPar
       if (a.template !== undefined) action.template = asTrimmedString(a.template) ?? undefined;
       if (a.doc !== undefined) action.doc = asTrimmedString(a.doc) ?? undefined;
       if (a.command !== undefined) action.command = asTrimmedString(a.command) ?? undefined;
+      if (a.binding !== undefined) action.binding = asTrimmedString(a.binding) ?? undefined;
       if (a.outputs !== undefined) {
         const arr = asStringArray(a.outputs);
         if (!arr) {
@@ -264,6 +265,8 @@ export function parseActionCard(raw: string, opts: IParseCardOptions = {}): IPar
       // type별 요구 필드
       if (type === 'doc' && !action.doc) err('doc 카드는 action.doc(문서 id) 필요', 'action.doc');
       if (type === 'command' && !action.command) err('command 카드는 action.command(명령 id) 필요', 'action.command');
+      // binding 카드의 미리보기·실행은 전부 호스트가 id로 해석한다 — id가 없으면 아무 것도 못 한다.
+      if (type === 'binding' && !action.binding) err('binding 카드는 action.binding(바인딩 레시피 id) 필요', 'action.binding');
       if (type === 'template' && (!action.outputs || action.outputs.length === 0)) {
         warn('template 카드에 action.outputs 없음 — 계획 카드 미리보기가 비게 됨', 'action.outputs');
       }

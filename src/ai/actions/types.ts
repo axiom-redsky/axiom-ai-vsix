@@ -9,9 +9,16 @@
  * frontmatter = 기계용 메타데이터(이 모듈의 타입), 본문 = 사람용 설명 + 코드 골격.
  */
 
-/** 행동 종류 — 카드가 실행을 위임하는 결정론 실행기의 유형. */
-export type TActionType = 'template' | 'recipe' | 'doc' | 'command';
-export const ACTION_TYPES: readonly TActionType[] = ['template', 'recipe', 'doc', 'command'];
+/**
+ * 행동 종류 — 카드가 실행을 위임하는 결정론 실행기의 유형.
+ *
+ * `binding`(2026-08-31, Phase 2)은 "현재 파일 + 워크스페이스 상태를 읽어 계산한 계획"을 카드 본문에
+ * 표로 보여주고 확정된 계획을 결정론 적용하는 유형이다(API→테이블 바인딩의 매핑 테이블, §3.6 표).
+ * recipe(고정 골격)와 달리 미리보기가 정적 선언으로 표현되지 않으므로 실행기 파생이 필수 —
+ * 계산은 호스트가, 엔진은 `action.binding` id를 그대로 넘길 뿐 내용은 모른다(§2-3).
+ */
+export type TActionType = 'template' | 'recipe' | 'doc' | 'command' | 'binding';
+export const ACTION_TYPES: readonly TActionType[] = ['template', 'recipe', 'doc', 'command', 'binding'];
 
 /**
  * 슬롯 소스 v1 — "위저드가 자동으로 채워줄 수 있는 것"의 유한 어휘 (§4 규칙 2).
@@ -82,6 +89,8 @@ export interface IActionSpec {
   doc?: string;
   /** command: 호출할 명령 id (VSCode command 또는 내부 위저드 id). */
   command?: string;
+  /** binding: 결정론 바인딩 레시피 id (v1: 'api-table'). 해석은 호스트 몫. */
+  binding?: string;
 }
 
 /** 파싱·검증을 통과한 카드 한 장. */

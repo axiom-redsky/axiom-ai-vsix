@@ -7,6 +7,7 @@ import { parseActionCard, findTriggerCollisions, splitCardFrontmatter } from '..
 import { matchCards, listApplicableCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
 import { loadCardsFromDir, finalizeCatalog } from '../src/ai/actions/CardCatalog';
 import { buildCardsPayload, buildOutputViews, buildSlotViews, missingSlots, substituteSlots } from '../src/ai/actions/CardPlanView';
+import { buildBindingPlan } from '../src/ai/actions/OfflineApiBinding';
 import type { IActionCard } from '../src/ai/actions/types';
 
 let pass = 0;
@@ -510,12 +511,12 @@ console.log('\n── K. 출력 미리보기 해석기 ──');
     { kind: 'create' as const, path: 'src/domains/employee/router/index.tsx', note: '도메인 라우터 신규' },
     { kind: 'modify' as const, path: 'src/shared/router/index.tsx', note: '루트 라우터에 도메인 등록' },
   ];
-  const withResolver = buildCardsPayload('req-k1', 'x', 'plan', [match], values, () => newDomainRows);
+  const withResolver = buildCardsPayload('req-k1', 'x', 'plan', [match], values, { hooks: { outputs: () => newDomainRows } });
   eq(withResolver.cards[0].outputs, newDomainRows, 'K1: 해석기가 정적 선언을 오버라이드(루트 라우터 행 포함)');
   eq(withResolver.cards[0].outputs.length, 3, 'K2: 새 도메인이면 3행 — 실행 결과와 일치');
 
   // 해석기가 null(도메인 미정·미지원 템플릿) → 카드의 정적 선언으로 양보
-  const fallback = buildCardsPayload('req-k2', 'x', 'plan', [match], values, () => null);
+  const fallback = buildCardsPayload('req-k2', 'x', 'plan', [match], values, { hooks: { outputs: () => null } });
   eq(fallback.cards[0].outputs, buildOutputViews(page, values.get('create-page')!), 'K3: null이면 정적 outputs로 양보');
   eq(fallback.cards[0].outputs.length, 2, 'K4: 정적 선언은 기존 도메인 기준 2행');
 
@@ -643,6 +644,97 @@ console.log('\n── N. 카탈로그 안전망 ──');
   const pre = listApplicableCards('account 도메인에 목록 페이지', cards, CTX);
   const page = pre.matches.find((m) => m.card.id === 'create-page')!;
   eq(page.prefill, { domain: 'account', pageType: '목록' }, 'N10: 안전망도 슬롯 프리필 수행');
+}
+
+// ═══ O. binding 카드 — 매핑 테이블이 카드 본문 ═══════════════════════════════
+// 계획이 워크스페이스 상태(현재 파일·스펙)로 갈리므로 정적 선언이 아니라 **호스트 파생**이다.
+// K(출력 미리보기)와 같은 원칙: 카드 파일에 조건 문법을 넣지 않고 해석기로 푼다.
+console.log('\n── O. binding 카드 ──');
+{
+  const raw = [
+    '---', 'id: x-bind', 'title: 바인딩', 'triggers: [바인딩]',
+    'action:', '  type: binding', '  binding: api-table', '---', '', '## 설명', '표에 API 연결',
+  ].join('\n');
+  const parsed = parseActionCard(raw, { expectedId: 'x-bind' });
+  eq(parsed.card?.action.type, 'binding', 'O1: binding 액션 타입 파싱');
+  eq(parsed.card?.action.binding, 'api-table', 'O2: 바인딩 레시피 id 보존');
+
+  const noId = parseActionCard(raw.replace('  binding: api-table\n', ''), { expectedId: 'x-bind' });
+  eq(noId.card, null, 'O3: binding id 없으면 비활성(호스트가 해석할 대상이 없음)');
+
+  // 내장 카드가 실제로 binding으로 선언돼 있는지(카드 파일 ↔ 실행기 계약)
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const bind = cards.find((c) => c.id === 'api-table-binding')!;
+  eq(bind.action.type, 'binding', 'O4: 내장 api-table-binding 카드가 binding 유형');
+  eq(bind.action.binding, 'api-table', 'O5: 내장 카드의 레시피 id');
+
+  // 계획 → 카드 뷰: 확신한 행은 채워서, 애매한 행만 후보와 함께 남는다.
+  const plan = buildBindingPlan({
+    source: [
+      'export default function P() {',
+      '  const rows = [];',
+      '  return (<table><thead><tr><th>이름</th><th>부서</th></tr></thead>',
+      '    <tbody>{rows.map((r) => (<tr key={r.id}><td>{r.name}</td><td>{r.dept}</td></tr>))}</tbody></table>);',
+      '}',
+    ].join('\n'),
+    specText: '### GET `/api/employees`\n\n**Response**\n```json\n{ "data": [{ "id": 1, "name": "김", "department": "개발" }] }\n```',
+    endpoint: '/api/employees',
+  });
+  const match = { card: bind, score: 6, matchedTriggers: ['바인딩'], prefill: { endpoint: '/api/employees' } };
+  const values = new Map([['api-table-binding', { endpoint: '/api/employees' }]]);
+  const payload = buildCardsPayload('req-o1', 'x', 'plan', [match], values, { hooks: { binding: () => plan } });
+  const view = payload.cards[0].binding!;
+  eq(view.rows.map((r) => r.how), ['exact', 'choose'], 'O6: 확신한 행/애매한 행 구분해 렌더');
+  eq(view.rows[0].apiField, 'name', 'O7: 확신한 행은 채워진 채로');
+  eq(view.pendingCount, 1, 'O8: 미정 행 수 = 실행 잠금 근거');
+  eq(view.typeName, 'TEmployee', 'O9: 만들어질 타입 이름 노출');
+  eq(view.envelopeKey, 'data', 'O10: 봉투 키 노출(useApi 제네릭 표시용)');
+  ok((view.rows[1].candidates ?? []).includes('department'), 'O11: 애매한 행에 후보 제공');
+
+  // 선택을 반영하면 그 자리가 채워지고 잠금이 풀린다(호스트가 진실의 원천).
+  const chosen = buildCardsPayload('req-o2', 'x', 'plan', [match], values, {
+    hooks: { binding: () => plan, choices: new Map([['api-table-binding', { dept: 'department' }]]) },
+  }).cards[0].binding!;
+  eq(chosen.rows[1].apiField, 'department', 'O12: 선택이 카드에 반영');
+  eq(chosen.pendingCount, 0, 'O13: 다 정하면 실행 가능');
+
+  // 해석기 미주입(비-binding 카드·테스트)은 종전과 동일 — binding 필드 자체가 없다.
+  const bare = buildCardsPayload('req-o3', 'x', 'plan', [match], values);
+  eq(bare.cards[0].binding, undefined, 'O14: 해석기 없으면 본문 없음(회귀 0)');
+  eq(bare.cards[0].executeLabel, '⏎ 이 매핑대로 적용', 'O15: 유형별 실행 라벨');
+}
+
+// ═══ P. [다른 작업 ▾] — 계획 카드의 탈출구 ═══════════════════════════════════
+// §3.6 장면 2: "틀려도 칩을 고치거나 [다른 작업 ▾]을 열면 그만". 매칭이 **한 장뿐일 때도**
+// 다른 작업으로 갈 수 있어야 한다 — 라이브에서 계획 카드가 막히자(스펙에 목록 응답 없음)
+// 클릭할 것이 하나도 없었다(= 빗나감이 절벽).
+console.log('\n── P. 다른 작업(카탈로그 탈출구) ──');
+{
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const ctx: ICardMatchContext = { fileOpen: true, scaffoldDetected: true, domains: ['main'] };
+  const rec = matchCards('테이블에 /api/employees 바인딩해줘', cards, ctx);
+  eq(rec.mode, 'plan', 'P1: 확신 매칭 = 계획 카드 1장');
+  eq(rec.matches.length, 1, 'P2: 매칭은 한 장뿐');
+
+  const shown = new Set(rec.matches.map((m) => m.card.id));
+  const more = listApplicableCards('테이블에 /api/employees 바인딩해줘', cards, ctx)
+    .matches.filter((m) => !shown.has(m.card.id));
+  const values = new Map(rec.matches.concat(more).map((m) => [m.card.id, { ...m.prefill }]));
+  const payload = buildCardsPayload('req-p1', 'x', 'plan', rec.matches, values, { more });
+
+  eq(payload.cards.length, 1, 'P3: 계획 카드는 그대로 한 장');
+  ok((payload.moreCards ?? []).length > 0, 'P4: 매칭이 한 장이어도 다른 작업이 딸려온다');
+  ok(!(payload.moreCards ?? []).some((c) => c.cardId === payload.cards[0].cardId), 'P5: 추천 카드는 중복되지 않는다');
+  ok((payload.moreCards ?? []).every((c) => c.matchedTriggers.length === 0), 'P6: 근거 없음 표기 유지(꾸미지 않음)');
+  ok((payload.moreCards ?? []).some((c) => c.cardId === 'create-page'), 'P7: 상황에 맞는 카드가 포함');
+
+  // 전제조건은 다른 작업 목록에도 적용된다 — 파일이 없으면 파일 편집 카드는 안 나온다.
+  const noFileCtx: ICardMatchContext = { fileOpen: false, scaffoldDetected: true, domains: ['main'] };
+  const noFileMore = listApplicableCards('x', cards, noFileCtx).matches;
+  ok(!noFileMore.some((m) => m.card.id === 'insert-date-picker'), 'P8: 전제조건 미충족 카드는 제외');
+
+  // more 미주입(구 호출부·테스트) → 종전 동작
+  eq(buildCardsPayload('req-p2', 'x', 'plan', rec.matches, values).moreCards, undefined, 'P9: 미주입이면 필드 없음(회귀 0)');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

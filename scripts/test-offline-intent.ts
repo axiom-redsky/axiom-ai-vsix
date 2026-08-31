@@ -98,6 +98,30 @@ check('"회원가입 방법 페이지 만들어줘" → create_page',
 check('"버튼 색 바꿔줘"(현재파일) → modify_file',
   classifyOfflineIntent('버튼 색 바꿔줘', withFile('src/domains/main/pages/MainPage.tsx')).intent === 'modify_file');
 
+// ─── 편집 신호 정밀도(strength) — 리졸버가 "정규식을 임베딩보다 믿을지" 판단하는 재료 ────────
+// 실측 회귀(2026-08-31): "테이블에 /api/… 바인딩해줘"가 정규식 modify(weak) vs 임베딩 qna(확신)에서
+// 임베딩에 밀려 행동 요청이 지식 문서(useApi 가이드) 답변으로 샜다. 모호 동사라도 **요청 형태**가
+// 확실하면(명령형 어미·정확한 API 경로) 약한 추측이 아니다.
+{
+  const cur = withFile('src/domains/dashboard/pages/Dashboard.tsx');
+  const bind = classifyOfflineIntent('테이블에 /api/courses/:courseId/lessons 바인딩해줘', cur);
+  check('"테이블에 /api/… 바인딩해줘" → modify_file', bind.intent === 'modify_file', `got ${bind.intent}`);
+  check('"…바인딩해줘" → strong(임베딩 qna 오분류를 이긴다)', bind.strength === 'strong', `got ${bind.strength}`);
+
+  check('명령형 어미만 있어도 strong ("이 테이블에 API 연동해줘")',
+    classifyOfflineIntent('이 테이블에 API 연동해줘', cur).strength === 'strong');
+  check('정확한 API 경로만 있어도 strong ("테이블에 /api/employees 연결")',
+    classifyOfflineIntent('테이블에 /api/employees 연결', cur).strength === 'strong');
+
+  // 질문 신호가 섞이면 양보한다 — Q&A는 직행(오답 비용 0)이 원칙.
+  const howto = classifyOfflineIntent('/api/employees 어떻게 연결해?', cur);
+  check('"…어떻게 연결해?" → weak(질문에 양보)', howto.strength === 'weak', `got ${howto.strength}`);
+  check('모호 동사만 있으면 종전대로 weak ("이 부분 적용")',
+    classifyOfflineIntent('이 부분 적용', cur).strength === 'weak');
+  check('고정밀 편집 동사는 종전대로 strong ("버튼 색 바꿔줘")',
+    classifyOfflineIntent('버튼 색 바꿔줘', cur).strength === 'strong');
+}
+
 // ─── 코드 요소 "만들기"는 페이지 생성이 아니다(온라인 create_page 오분류 버그 대응) ───────────
 // 버그: LLM 분류기가 "getArr 함수를 하나 만들고…"를 '만들'만 보고 create_page로 오분류 → 영문명 되묻기 루프.
 // (a) 결정론 PageCreationDetector = 온라인 충돌 안전 가드의 결정론 arm — 페이지/화면 신호 없으면 false.
