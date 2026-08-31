@@ -462,6 +462,7 @@
     "test:knowledge-routing": "node scripts/run-test-knowledge-routing.mjs",
     "test:guide": "node scripts/run-test-guide.mjs",
     "test:action-cards": "node scripts/run-test-action-cards.mjs",
+    "dryrun:cards": "node scripts/run-dryrun-cards.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",

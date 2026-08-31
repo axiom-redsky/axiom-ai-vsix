@@ -1,0 +1,157 @@
+/**
+ * CardMatcher — 질문 → 행동 카드 top-N + 확신도 게이트 (§3.6 계획 카드/컴팩트 리스트).
+ *
+ * 순수·동기 모듈. 슬롯 프리필용 목록(도메인·엔드포인트·컴포넌트)은 호출부가
+ * ISlotSourceProviders로 미리 수집해 ICardMatchContext로 넘긴다 — 여기서는 스캔하지 않는다.
+ *
+ * 매칭 전략 (offline-retrieval-ranking 교훈 적용):
+ *  - 한글에 정규식 `\b`가 안 먹으므로 **소문자·공백 압축 후 포함(includes)** 매칭.
+ *  - 복합(긴) 트리거가 자연히 더 무겁게: 트리거 가중치 = 압축 길이 (복합키워드 정밀).
+ *  - 한 글자 트리거는 그리디 단일어 오탐원 → 무시 (파서가 저작 시점에 경고).
+ *
+ * 오분류 비용이 낮다는 전제(§2-1: 틀려도 엉뚱한 카드가 보일 뿐, 실행은 사용자 클릭)가
+ * 이 단순한 결정론 매칭을 정당화한다 — 정밀도 튜닝은 드라이런 하니스로.
+ */
+
+import { extractDomainFromQuery } from '../intent/IntentSignals';
+import { extractApiPaths } from '../decompose/SectionExtractor';
+import type {
+  IActionCard, IActionCardSlot, ICardMatch, IRecommendation, TRecommendMode,
+} from './types';
+
+/** 매칭·프리필에 필요한 상황 정보 — 호출부(ChatViewProvider 등)가 수집해 전달. */
+export interface ICardMatchContext {
+  /** 도메인 파일이 열려 있는가 (precondition `file-open`). */
+  fileOpen: boolean;
+  /** react-app-scaffold 워크스페이스인가 (precondition `scaffold-detected`). */
+  scaffoldDetected: boolean;
+  /** ISlotSourceProviders.listDomains() 결과 — 프리필 검증·보조용(선택). */
+  domains?: string[];
+  /** ISlotSourceProviders.listEndpoints() 결과(선택). */
+  endpoints?: string[];
+  /** ISlotSourceProviders.listComponents() 결과(선택). */
+  components?: string[];
+}
+
+export interface IMatcherOptions {
+  /** 노출 상한. 기본 3 (§4 — 상위 2~3장만). */
+  topN?: number;
+  /**
+   * 확신도 게이트: (top1−top2)/top1 이 이 값 이상이면 'plan'(계획 카드 1장).
+   * 기본 0.5 — §10.6 "초기엔 보수적으로(애매하면 리스트)" 원칙. 드라이런으로 튜닝.
+   */
+  planGapRatio?: number;
+}
+
+/** 계층 정렬 가점 — 동점일 때 상위 계층(개인>프로젝트>내장)이 앞선다 (§4.5 충돌 정책). */
+const LAYER_RANK: Record<IActionCard['layer'], number> = { builtin: 0, project: 1, personal: 2 };
+
+/** 소문자화 + 공백 제거 — 한글 `\b` 함정·공백변형("검색 조건"/"검색조건")을 함께 흡수. */
+function compact(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, '');
+}
+
+function meetsPreconditions(card: IActionCard, ctx: ICardMatchContext): boolean {
+  for (const p of card.preconditions) {
+    if (p === 'file-open' && !ctx.fileOpen) return false;
+    if (p === 'scaffold-detected' && !ctx.scaffoldDetected) return false;
+  }
+  return true;
+}
+
+/** 쿼리 속 파일 경로 참조(원본 소스 지목)는 이름 추출 대상이 아니다 — IntentSignals와 동일 관행. */
+const FILE_REF_RE = /[\w./\\-]+\.(?:tsx?|jsx?|md|json|ya?ml|css)\b/gi;
+/** 두 험프 이상의 PascalCase 식별자 (예: EmployeeList). 단일 대문자 단어(API 등) 오탐 방지. */
+const PASCAL_RE = /\b([A-Z][a-z0-9]+(?:[A-Z][a-zA-Z0-9]*)+)\b/;
+
+/**
+ * `prefillFrom: query` 슬롯들을 결정론 추출기로 채운다. 실패한 슬롯은 키를 만들지 않는다.
+ * 틀린 프리필은 사고가 아니다 — 칩 하나 고치면 끝(§3.6 원칙 2). 그래서 과감히 채운다.
+ */
+export function prefillSlots(
+  query: string,
+  slots: IActionCardSlot[],
+  ctx: ICardMatchContext,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const cleaned = query.replace(FILE_REF_RE, ' ');
+  const cq = compact(query);
+  for (const slot of slots) {
+    if (slot.prefillFrom !== 'query') continue;
+    let value: string | undefined;
+    switch (slot.source) {
+      case 'text':
+        value = cleaned.match(PASCAL_RE)?.[1];
+        break;
+      case 'enum':
+        value = slot.options?.find((o) => cq.includes(compact(o)));
+        break;
+      case 'domain-list':
+        // 목록 밖 값도 채운다 — "새 도메인" 생성이 정당한 경우가 있고, 칩은 편집 가능.
+        value = extractDomainFromQuery(query) ?? undefined;
+        break;
+      case 'endpoint-list':
+        value = extractApiPaths(query)[0]
+          ?? (ctx.endpoints ?? []).find((e) => query.includes(e));
+        break;
+      case 'component-list':
+        value = (ctx.components ?? []).find((c) => new RegExp(`\\b${c}\\b`).test(query));
+        break;
+    }
+    if (value) out[slot.name] = value;
+  }
+  return out;
+}
+
+/**
+ * 활성 카드들에 대해 질문을 매칭해 추천을 만든다.
+ * 반환 matches는 점수 내림차순, 동점은 계층 → priority → id 순(결정론 정렬).
+ */
+export function matchCards(
+  query: string,
+  cards: IActionCard[],
+  ctx: ICardMatchContext,
+  opts: IMatcherOptions = {},
+): IRecommendation {
+  const topN = opts.topN ?? 3;
+  const planGapRatio = opts.planGapRatio ?? 0.5;
+  const cq = compact(query);
+
+  const scored: ICardMatch[] = [];
+  for (const card of cards) {
+    if (!meetsPreconditions(card, ctx)) continue;
+    let score = 0;
+    const matchedTriggers: string[] = [];
+    const seenCompact = new Set<string>(); // 공백변형 쌍("use api"/"useapi")의 이중 가산 방지
+    for (const t of card.triggers) {
+      const ct = compact(t);
+      if (ct.length < 2) continue; // 한 글자 트리거 무시(오탐원)
+      if (seenCompact.has(ct)) continue;
+      if (cq.includes(ct)) {
+        seenCompact.add(ct);
+        score += ct.length;
+        matchedTriggers.push(t);
+      }
+    }
+    if (score === 0) continue;
+    scored.push({ card, score, matchedTriggers, prefill: prefillSlots(query, card.slots, ctx) });
+  }
+
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      LAYER_RANK[b.card.layer] - LAYER_RANK[a.card.layer] ||
+      b.card.priority - a.card.priority ||
+      a.card.id.localeCompare(b.card.id),
+  );
+
+  const matches = scored.slice(0, topN);
+  let mode: TRecommendMode = 'none';
+  if (matches.length === 1) {
+    mode = 'plan';
+  } else if (matches.length >= 2) {
+    const gap = (matches[0].score - matches[1].score) / matches[0].score;
+    mode = gap >= planGapRatio ? 'plan' : 'list';
+  }
+  return { mode, matches };
+}

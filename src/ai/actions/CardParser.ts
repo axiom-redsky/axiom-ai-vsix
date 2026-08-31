@@ -144,7 +144,14 @@ export function parseActionCard(raw: string, opts: IParseCardOptions = {}): IPar
       for (const t of arr) {
         const key = t.toLowerCase();
         if (seen.has(key)) warn(`카드 내 중복 트리거 "${t}" — 하나만 유지`, 'triggers');
-        else { seen.add(key); triggers.push(t); }
+        else {
+          seen.add(key);
+          triggers.push(t);
+          // 한 글자 트리거는 그리디 단일어 오탐원([offline-retrieval-ranking] 교훈) — 매칭기가 무시한다.
+          if (t.replace(/\s+/g, '').length < 2) {
+            warn(`한 글자 트리거 "${t}"는 오탐 위험으로 매칭에서 무시됨 — 복합어로 바꾸세요`, 'triggers');
+          }
+        }
       }
     }
   }

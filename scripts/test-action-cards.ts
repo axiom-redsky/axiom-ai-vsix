@@ -4,6 +4,8 @@
  */
 import { parseMiniYaml } from '../src/ai/actions/MiniYaml';
 import { parseActionCard, findTriggerCollisions, splitCardFrontmatter } from '../src/ai/actions/CardParser';
+import { matchCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
+import { loadCardsFromDir, finalizeCatalog } from '../src/ai/actions/CardCatalog';
 import type { IActionCard } from '../src/ai/actions/types';
 
 let pass = 0;
@@ -270,10 +272,10 @@ function parseErr(raw: string, expectedId?: string) {
 
 // ═══ E. 카탈로그 트리거 충돌 ════════════════════════════════════════════════
 console.log('\n── E. 트리거 충돌 ──');
-function mkCard(id: string, triggers: string[], layer: IActionCard['layer']): IActionCard {
+function mkCard(id: string, triggers: string[], layer: IActionCard['layer'], extra: Partial<IActionCard> = {}): IActionCard {
   return {
     schemaVersion: 1, id, title: id, icon: '🃏', triggers, preconditions: [], slots: [],
-    action: { type: 'command', command: 'noop' }, priority: 10, description: '', layer,
+    action: { type: 'command', command: 'noop' }, priority: 10, description: '', layer, ...extra,
   };
 }
 {
@@ -293,6 +295,137 @@ function mkCard(id: string, triggers: string[], layer: IActionCard['layer']): IA
 }
 {
   eq(findTriggerCollisions([mkCard('a-card', ['목록'], 'builtin'), mkCard('b-card', ['조회'], 'builtin')]), [], 'E4: 충돌 없음');
+}
+
+// ═══ F. 파서 — 한 글자 트리거 경고 ══════════════════════════════════════════
+console.log('\n── F. 한 글자 트리거 ──');
+{
+  const single = PAGE_CARD.replace('[목록, 리스트', '[폼, 목록, 리스트');
+  const { card, issues } = parseActionCard(single, { expectedId: 'create-list-page' });
+  ok(card !== null, 'F1: 한 글자 트리거는 warning — 카드 생존');
+  ok(issues.some((i) => i.severity === 'warning' && i.message.includes('한 글자')), 'F2: 경고 발생');
+}
+
+// ═══ G. CardMatcher — 매칭·정렬·확신도 게이트 ═══════════════════════════════
+console.log('\n── G. 매칭 엔진 ──');
+const CTX: ICardMatchContext = { fileOpen: true, scaffoldDetected: true };
+{
+  // 복합(긴) 트리거가 더 무겁다 + 확신도 게이트 plan
+  const rec = matchCards('가나다라마바 해줘', [
+    mkCard('long-card', ['가나다라마바'], 'builtin'),
+    mkCard('short-card', ['가나'], 'builtin'),
+  ], CTX);
+  eq(rec.matches.map((m) => m.card.id), ['long-card', 'short-card'], 'G1: 긴 트리거 우선 정렬');
+  eq(rec.matches[0].score, 6, 'G2: 가중치 = 압축 길이');
+  eq(rec.mode, 'plan', 'G3: 격차 (6-2)/6=0.67 ≥ 0.5 → plan');
+}
+{
+  // 애매하면 list (보수적 시작)
+  const rec = matchCards('가나다 해줘', [
+    mkCard('a-card', ['가나다'], 'builtin'),
+    mkCard('b-card', ['나다'], 'builtin'),
+  ], CTX);
+  eq(rec.mode, 'list', 'G4: 격차 (3-2)/3=0.33 < 0.5 → list');
+  const strict = matchCards('가나다 해줘', [
+    mkCard('a-card', ['가나다'], 'builtin'),
+    mkCard('b-card', ['나다'], 'builtin'),
+  ], CTX, { planGapRatio: 0.3 });
+  eq(strict.mode, 'plan', 'G5: 임계 옵션 조정 반영');
+}
+{
+  // 단독 매칭 = plan / 무매칭 = none
+  eq(matchCards('가나 해줘', [mkCard('a-card', ['가나'], 'builtin')], CTX).mode, 'plan', 'G6: 단독 매칭 → plan');
+  eq(matchCards('안녕', [mkCard('a-card', ['가나'], 'builtin')], CTX).mode, 'none', 'G7: 무매칭 → none');
+}
+{
+  // 동점 계층 가점: project > builtin
+  const rec = matchCards('가나 해줘', [
+    mkCard('b-builtin', ['가나'], 'builtin'),
+    mkCard('p-project', ['가나'], 'project'),
+  ], CTX);
+  eq(rec.matches[0].card.id, 'p-project', 'G8: 동점이면 상위 계층 우선');
+}
+{
+  // 공백변형 매칭 + 이중 가산 방지
+  const rec = matchCards('검색조건 넣어줘', [mkCard('s-card', ['검색 조건'], 'builtin')], CTX);
+  eq(rec.matches[0]?.score, 4, 'G9: "검색 조건" ↔ "검색조건" 공백변형 매칭');
+  const dup = matchCards('useapi 알려줘', [mkCard('d-card', ['useapi', 'use api'], 'builtin')], CTX);
+  eq(dup.matches[0]?.score, 6, 'G10: 압축 동형 트리거 이중 가산 방지');
+}
+{
+  // 한 글자 트리거 무시 + precondition 필터 + topN 상한
+  eq(matchCards('플랫폼 정리', [mkCard('f-card', ['폼'], 'builtin')], CTX).mode, 'none', 'G11: 한 글자 트리거 무시("플랫폼" 오탐 차단)');
+  const pre = matchCards('가나 해줘', [
+    mkCard('needs-file', ['가나'], 'builtin', { preconditions: ['file-open'] }),
+  ], { fileOpen: false, scaffoldDetected: true });
+  eq(pre.mode, 'none', 'G12: precondition 미충족 카드 제외');
+  const many = matchCards('가나 해줘', [
+    mkCard('c1', ['가나'], 'builtin'), mkCard('c2', ['가나'], 'builtin'),
+    mkCard('c3', ['가나'], 'builtin'), mkCard('c4', ['가나'], 'builtin'),
+  ], CTX);
+  eq(many.matches.length, 3, 'G13: topN 기본 3 상한');
+}
+
+// ═══ H. 슬롯 프리필 ═════════════════════════════════════════════════════════
+console.log('\n── H. 프리필 ──');
+{
+  const slots: IActionCard['slots'] = [
+    { name: 'domain', label: '도메인', source: 'domain-list', prefillFrom: 'query' },
+    { name: 'pageName', label: '이름', source: 'text', prefillFrom: 'query' },
+    { name: 'pageType', label: '유형', source: 'enum', options: ['목록', '폼', '상세'], prefillFrom: 'query' },
+  ];
+  eq(prefillSlots('account 도메인에 EmployeeList 목록 페이지 만들어줘', slots, CTX),
+    { domain: 'account', pageName: 'EmployeeList', pageType: '목록' }, 'H1: 도메인+PascalCase 이름+enum 동시 프리필');
+  eq(prefillSlots('직원 목록 페이지 만들어줘', slots, CTX),
+    { pageType: '목록' }, 'H2: 없는 것은 채우지 않음(실패 슬롯 키 없음)');
+  eq(prefillSlots('src/EmployeeList.tsx 참고해서 폼 페이지', slots, CTX),
+    { pageType: '폼' }, 'H3: 파일 경로 참조는 이름 후보에서 제외');
+}
+{
+  const slots: IActionCard['slots'] = [
+    { name: 'endpoint', label: '엔드포인트', source: 'endpoint-list', prefillFrom: 'query' },
+    { name: 'comp', label: '컴포넌트', source: 'component-list', prefillFrom: 'query' },
+  ];
+  const ctx: ICardMatchContext = { ...CTX, components: ['SmartTable', 'Button'] };
+  eq(prefillSlots('/api/employees 를 SmartTable로 바인딩', slots, ctx),
+    { endpoint: '/api/employees', comp: 'SmartTable' }, 'H4: API 경로 리터럴+컴포넌트 목록 프리필');
+  eq(prefillSlots('테이블 바인딩 해줘', slots, ctx), {}, 'H5: 신호 없으면 빈 프리필');
+}
+
+// ═══ I. 실 내장 카드 카탈로그 + 시나리오 드라이런 ═══════════════════════════
+console.log('\n── I. 내장 카드 ──');
+{
+  const loaded = loadCardsFromDir('media/action-cards', 'builtin');
+  eq(loaded.issues.filter((i) => i.severity === 'error'), [], 'I1: 내장 카드 4장 전부 검증 통과');
+  eq(loaded.cards.map((c) => c.id).sort(), ['api-table-binding', 'create-page', 'insert-date-picker', 'use-api-doc'], 'I2: 카드 id 목록');
+  const { cards, issues } = finalizeCatalog(loaded.cards);
+  eq(issues.filter((i) => i.severity === 'error'), [], 'I3: 트리거 충돌 없음');
+  eq(cards.length, 4, 'I4: 전원 생존');
+
+  // 시나리오 1 — 계획서 장면 2: 행동성 요청 → 계획 카드
+  const s1 = matchCards('직원 목록 페이지 만들어줘', cards, { fileOpen: false, scaffoldDetected: true });
+  eq(s1.mode, 'plan', 'I5: "직원 목록 페이지 만들어줘" → plan');
+  eq(s1.matches[0].card.id, 'create-page', 'I6: create-page 선정');
+  eq(s1.matches[0].prefill, { pageType: '목록' }, 'I7: 유형 칩 프리필');
+  ok(s1.matches[0].matchedTriggers.includes('목록 페이지'), 'I8: 근거 하이라이트용 트리거 기록');
+
+  // 시나리오 2 — 파일 열림 여부가 recipe 노출을 가른다
+  eq(matchCards('달력으로 바꿔줘', cards, CTX).matches[0]?.card.id, 'insert-date-picker', 'I9: 달력 → recipe 카드');
+  eq(matchCards('달력으로 바꿔줘', cards, { fileOpen: false, scaffoldDetected: true }).mode, 'none', 'I10: 파일 안 열림 → recipe 제외');
+
+  // 시나리오 3 — 바인딩 + 엔드포인트 프리필
+  const s3 = matchCards('테이블에 /api/employees 바인딩해줘', cards, CTX);
+  eq(s3.matches[0].card.id, 'api-table-binding', 'I11: 바인딩 카드 선정');
+  eq(s3.matches[0].prefill, { endpoint: '/api/employees' }, 'I12: 엔드포인트 칩 프리필');
+
+  // 시나리오 4 — 애매하면 컴팩트 리스트 (장면 2′)
+  const s4 = matchCards('페이지 api 연동', cards, CTX);
+  eq(s4.mode, 'list', 'I13: 신호 갈림 → list');
+  ok(s4.matches.length >= 2, 'I14: 후보 2장 이상');
+
+  // 시나리오 5 — doc 카드·무매칭
+  eq(matchCards('useApi 사용법이 궁금해', cards, CTX).matches[0]?.card.id, 'use-api-doc', 'I15: doc 카드 매칭');
+  eq(matchCards('안녕하세요', cards, CTX).mode, 'none', 'I16: 잡담 → none(기존 폴백으로)');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

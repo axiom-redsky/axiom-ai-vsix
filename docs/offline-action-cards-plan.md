@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: Phase 0 진행 중 (2026-08-31 착수 — 스키마 타입·MiniYaml·CardParser·`test:action-cards` 완료, §9 진행표 참조)
+> 상태: **Phase 0 완료** (2026-08-31 — 스키마·파서·내장 카드 4장·매칭 엔진·드라이런, §9 진행표) → 다음 Phase 1
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -418,9 +418,13 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
   카드 타입 정의, 내장 카드 3~4장(수기), 트리거 매칭·정렬 + **확신도 게이트**
   (top1–top2 격차, §3.6). 테스트: 카드 드라이런 하니스(질문 → 뜨는 카드 top-N +
   계획카드/리스트 모드 스냅샷, eval:region 계기판과 동형 철학).
-  - 진행: ① 스키마 타입+슬롯 소스 계약(§4.5) ✅ · ② MiniYaml+CardParser(fail-open 검증,
-    `test:action-cards` 61/0) ✅ (2026-08-31, `src/ai/actions/`) — 남은 것: ③ 내장 카드
-    수기 3~4장 · ④ 매칭 엔진+확신도 게이트 · ⑤ 드라이런 하니스
+  - 진행 (2026-08-31, `src/ai/actions/`): ① 스키마 타입+슬롯 소스 계약(§4.5) ✅ ·
+    ② MiniYaml+CardParser(fail-open 검증) ✅ · ③ 내장 카드 4장(`media/action-cards/`:
+    create-page[template]·api-table-binding[command]·use-api-doc[doc]·insert-date-picker[recipe]) ✅ ·
+    ④ CardMatcher(압축 포함 매칭·가중치=압축길이·계층 가점·확신도 게이트 기본 0.5)+
+    CardCatalog(디렉터리 로드·충돌 정책) ✅ · ⑤ 드라이런(`test:action-cards` 97/0 +
+    `npm run dryrun:cards -- "질문"` CLI) ✅ — **Phase 0 완료**. 다음 = Phase 1
+    (계획 카드 UI 형태 A + 페이지 위저드 A2, 오프라인 직접 실행 경로를 카드 뒤로 이동)
 - **Phase 1 — 계획 카드 UI(형태 A) + 페이지 위저드 (A2)**
   오프라인 행동성 요청 → 계획 카드/컴팩트 리스트 렌더(§3.6, 프리필 칩·파일 diff
   미리보기·근거 하이라이트) → 칩 편집(단일 슬롯 QuickPick) → 템플릿 생성.
