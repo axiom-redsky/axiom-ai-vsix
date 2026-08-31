@@ -1,0 +1,158 @@
+<svg width="100%" viewBox="0 0 720 550" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ddd-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Title Bar -->
+<rect x="10" y="8" width="700" height="34" rx="6" style="fill:rgb(50,47,90);stroke:none;"/>
+<text x="360" y="25" text-anchor="middle" dominant-baseline="central" style="fill:rgb(255,255,255);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;font-weight:600;text-anchor:middle;dominant-baseline:central;">DDD (Domain Driven Design) - Frontend &#xD3F4;&#xB354; &#xAD6C;&#xC870;</text>
+
+<!-- App outer container src/ -->
+<rect x="10" y="52" width="700" height="482" rx="10" style="fill:rgb(238,237,254);stroke:rgb(83,74,183);stroke-width:1px;"/>
+<text x="360" y="72" text-anchor="middle" dominant-baseline="central" style="fill:rgb(60,52,137);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;font-weight:600;text-anchor:middle;dominant-baseline:central;">src/ ( Application )</text>
+
+<!-- core section -->
+<rect x="22" y="85" width="88" height="436" rx="8" style="fill:rgb(241,239,232);stroke:rgb(95,94,90);stroke-width:0.8px;"/>
+<text x="66" y="106" text-anchor="middle" dominant-baseline="central" style="fill:rgb(68,68,65);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;font-weight:600;text-anchor:middle;dominant-baseline:central;">core/</text>
+
+<rect x="30" y="120" width="72" height="22" rx="4" style="fill:rgb(229,228,225);stroke:rgb(150,148,143);stroke-width:0.5px;"/>
+<text x="66" y="131" text-anchor="middle" dominant-baseline="central" style="fill:rgb(95,94,90);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">router</text>
+
+<rect x="30" y="148" width="72" height="22" rx="4" style="fill:rgb(229,228,225);stroke:rgb(150,148,143);stroke-width:0.5px;"/>
+<text x="66" y="159" text-anchor="middle" dominant-baseline="central" style="fill:rgb(95,94,90);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">layout</text>
+
+<rect x="30" y="176" width="72" height="22" rx="4" style="fill:rgb(229,228,225);stroke:rgb(150,148,143);stroke-width:0.5px;"/>
+<text x="66" y="187" text-anchor="middle" dominant-baseline="central" style="fill:rgb(95,94,90);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">providers</text>
+
+<!-- core badge -->
+<rect x="24" y="378" width="84" height="50" rx="5" style="fill:rgb(255,243,205);stroke:rgb(200,160,0);stroke-width:0.6px;"/>
+<text x="66" y="391" text-anchor="middle" dominant-baseline="central" style="fill:rgb(130,90,0);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:9px;font-weight:600;text-anchor:middle;dominant-baseline:central;">&#xD504;&#xB860;&#xD2B8;&#xC564;&#xB4DC; &#xACF5;&#xD1B5;</text>
+<text x="66" y="404" text-anchor="middle" dominant-baseline="central" style="fill:rgb(130,90,0);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:9px;font-weight:600;text-anchor:middle;dominant-baseline:central;">&#xB2F4;&#xB2F9;&#xC790;&#xB9CC;</text>
+<text x="66" y="417" text-anchor="middle" dominant-baseline="central" style="fill:rgb(130,90,0);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:9px;font-weight:400;text-anchor:middle;dominant-baseline:central;">&#xC791;&#xC5C5; &#xAC00;&#xB2A5;</text>
+
+<!-- shared section -->
+<rect x="119" y="85" width="579" height="112" rx="8" style="fill:rgb(250,238,218);stroke:rgb(133,79,11);stroke-width:0.8px;"/>
+<text x="408" y="106" text-anchor="middle" dominant-baseline="central" style="fill:rgb(100,58,8);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;font-weight:600;text-anchor:middle;dominant-baseline:central;">shared/ - &#xC804;&#xC5ED; &#xACF5;&#xC720; &#xCF54;&#xB4DC; (&#xC571; &#xB0B4; &#xACF5;&#xD1B5;)</text>
+
+<rect x="130" y="119" width="120" height="26" rx="4" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.5px;"/>
+<text x="190" y="132" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:400;text-anchor:middle;dominant-baseline:central;">components/</text>
+
+<rect x="259" y="119" width="90" height="26" rx="4" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.5px;"/>
+<text x="304" y="132" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:400;text-anchor:middle;dominant-baseline:central;">config/</text>
+
+<rect x="358" y="119" width="90" height="26" rx="4" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.5px;"/>
+<text x="403" y="132" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:400;text-anchor:middle;dominant-baseline:central;">context/</text>
+
+<rect x="457" y="119" width="80" height="26" rx="4" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.5px;"/>
+<text x="497" y="132" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:400;text-anchor:middle;dominant-baseline:central;">router/</text>
+
+<rect x="546" y="119" width="65" height="26" rx="4" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.5px;"/>
+<text x="578" y="132" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:400;text-anchor:middle;dominant-baseline:central;">styles/</text>
+
+<text x="408" y="165" text-anchor="middle" dominant-baseline="central" style="fill:rgb(150,95,20);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;font-style:italic;text-anchor:middle;dominant-baseline:central;">&#xB2E4;&#xB978; &#xB3C4;&#xBA54;&#xC778; &#xAC1C;&#xBC1C;&#xC790;&#xC640; &#xD611;&#xC5C5; &#xAC00;&#xB2A5; - &#xACF5;&#xD1B5; &#xCEF4;&#xD3EC;&#xB10C;&#xD2B8;, Context, &#xB77C;&#xC6B0;&#xD130; &#xB4F1; &#xACF5;&#xC720;</text>
+
+<!-- domains container -->
+<rect x="119" y="207" width="579" height="318" rx="8" style="fill:rgb(225,245,238);stroke:rgb(15,110,86);stroke-width:0.8px;"/>
+<text x="408" y="228" text-anchor="middle" dominant-baseline="central" style="fill:rgb(8,80,65);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;font-weight:600;text-anchor:middle;dominant-baseline:central;">domains/ - &#xBE44;&#xC988;&#xB2C8;&#xC2A4; &#xB3C4;&#xBA54;&#xC778; &#xBD84;&#xB9AC; (&#xC5C5;&#xBB34; &#xAC1C;&#xBC1C;&#xC790; &#xC791;&#xC5C5; &#xACF5;&#xAC04;)</text>
+
+<!-- domain1 box Blue -->
+<rect x="130" y="242" width="177" height="270" rx="6" style="fill:rgb(230,241,251);stroke:rgb(24,95,165);stroke-width:0.8px;"/>
+<rect x="130" y="242" width="177" height="28" rx="6" style="fill:rgb(24,95,165);stroke:none;"/>
+<rect x="130" y="256" width="177" height="14" style="fill:rgb(24,95,165);stroke:none;"/>
+<text x="218" y="256" text-anchor="middle" dominant-baseline="central" style="fill:rgb(255,255,255);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;font-weight:600;text-anchor:middle;dominant-baseline:central;">domain1/</text>
+
+<rect x="140" y="278" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="288" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">api/</text>
+
+<rect x="140" y="302" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="312" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">components/</text>
+
+<rect x="140" y="326" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="336" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">common/</text>
+
+<rect x="140" y="350" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="360" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">pages/</text>
+
+<rect x="140" y="374" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="384" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">router/</text>
+
+<rect x="140" y="398" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="408" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">store/</text>
+
+<rect x="140" y="422" width="157" height="20" rx="3" style="fill:rgb(210,228,248);stroke:rgb(100,160,220);stroke-width:0.4px;"/>
+<text x="218" y="432" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">types/</text>
+
+<text x="218" y="470" text-anchor="middle" dominant-baseline="central" style="fill:rgb(24,95,165);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;font-style:italic;text-anchor:middle;dominant-baseline:central;">&#xC5C5;&#xBB34; &#xAC1C;&#xBC1C;&#xC790; A</text>
+
+<!-- domain2 box Green -->
+<rect x="319" y="242" width="177" height="270" rx="6" style="fill:rgb(234,243,222);stroke:rgb(59,109,17);stroke-width:0.8px;"/>
+<rect x="319" y="242" width="177" height="28" rx="6" style="fill:rgb(59,109,17);stroke:none;"/>
+<rect x="319" y="256" width="177" height="14" style="fill:rgb(59,109,17);stroke:none;"/>
+<text x="407" y="256" text-anchor="middle" dominant-baseline="central" style="fill:rgb(255,255,255);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;font-weight:600;text-anchor:middle;dominant-baseline:central;">domain2/</text>
+
+<rect x="329" y="278" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="288" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">api/</text>
+
+<rect x="329" y="302" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="312" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">components/</text>
+
+<rect x="329" y="326" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="336" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">common/</text>
+
+<rect x="329" y="350" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="360" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">pages/</text>
+
+<rect x="329" y="374" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="384" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">router/</text>
+
+<rect x="329" y="398" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="408" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">store/</text>
+
+<rect x="329" y="422" width="157" height="20" rx="3" style="fill:rgb(215,238,200);stroke:rgb(100,175,60);stroke-width:0.4px;"/>
+<text x="407" y="432" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">types/</text>
+
+<text x="407" y="470" text-anchor="middle" dominant-baseline="central" style="fill:rgb(59,109,17);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;font-style:italic;text-anchor:middle;dominant-baseline:central;">&#xC5C5;&#xBB34; &#xAC1C;&#xBC1C;&#xC790; B</text>
+
+<!-- domain3 box Orange dashed -->
+<rect x="508" y="242" width="177" height="270" rx="6" style="fill:rgb(250,238,218);stroke:rgb(133,79,11);stroke-width:0.8px;stroke-dasharray:6,3;"/>
+<rect x="508" y="242" width="177" height="28" rx="6" style="fill:rgb(133,79,11);stroke:none;opacity:0.75;"/>
+<rect x="508" y="256" width="177" height="14" style="fill:rgb(133,79,11);stroke:none;opacity:0.75;"/>
+<text x="596" y="256" text-anchor="middle" dominant-baseline="central" style="fill:rgb(255,255,255);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;font-weight:600;text-anchor:middle;dominant-baseline:central;">domain3/</text>
+
+<rect x="518" y="278" width="157" height="20" rx="3" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.4px;"/>
+<text x="596" y="288" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">api/</text>
+
+<rect x="518" y="302" width="157" height="20" rx="3" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.4px;"/>
+<text x="596" y="312" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">components/</text>
+
+<rect x="518" y="326" width="157" height="20" rx="3" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.4px;"/>
+<text x="596" y="336" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">common/</text>
+
+<rect x="518" y="350" width="157" height="20" rx="3" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.4px;"/>
+<text x="596" y="360" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">pages/</text>
+
+<rect x="518" y="374" width="157" height="20" rx="3" style="fill:rgb(255,248,235);stroke:rgb(180,120,20);stroke-width:0.4px;"/>
+<text x="596" y="384" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;text-anchor:middle;dominant-baseline:central;">router/</text>
+
+<text x="596" y="418" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:20px;font-weight:700;text-anchor:middle;dominant-baseline:central;">&#xB7;&#xB7;&#xB7;</text>
+
+<text x="596" y="448" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;font-style:italic;text-anchor:middle;dominant-baseline:central;">&#xC5C5;&#xBB34; &#xCD94;&#xAC00; &#xC2DC; &#xACC4;&#xC18D; &#xD655;&#xC7A5; &#xAC00;&#xB2A5;</text>
+
+<text x="596" y="470" text-anchor="middle" dominant-baseline="central" style="fill:rgb(133,79,11);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:400;font-style:italic;text-anchor:middle;dominant-baseline:central;">&#xC5C5;&#xBB34; &#xAC1C;&#xBC1C;&#xC790; C</text>
+
+<!-- arrows domain to shared -->
+<line x1="218" y1="242" x2="218" y2="197" stroke="rgb(24,95,165)" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ddd-arrow)" opacity="0.7" style="fill:none;"/>
+<line x1="407" y1="242" x2="407" y2="197" stroke="rgb(59,109,17)" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ddd-arrow)" opacity="0.7" style="fill:none;"/>
+<line x1="596" y1="242" x2="596" y2="197" stroke="rgb(133,79,11)" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ddd-arrow)" opacity="0.7" style="fill:none;"/>
+
+<!-- isolation dividers between domains -->
+<line x1="307" y1="260" x2="307" y2="500" stroke="rgb(15,110,86)" stroke-width="0.6" stroke-dasharray="3,4" opacity="0.4" style="fill:none;"/>
+<line x1="496" y1="260" x2="496" y2="500" stroke="rgb(15,110,86)" stroke-width="0.6" stroke-dasharray="3,4" opacity="0.4" style="fill:none;"/>
+
+<!-- bottom note badge -->
+<rect x="270" y="489" width="276" height="22" rx="5" style="fill:rgb(225,245,238);stroke:rgb(15,110,86);stroke-width:0.6px;"/>
+<text x="408" y="500" text-anchor="middle" dominant-baseline="central" style="fill:rgb(8,80,65);stroke:none;font-family:&quot;Segoe UI&quot;,-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:500;text-anchor:middle;dominant-baseline:central;">&#xAC01; &#xB3C4;&#xBA54;&#xC778;&#xC740; &#xB3C5;&#xB9BD;&#xC801; - &#xC0C1;&#xD638; &#xC9C1;&#xC811; &#xC758;&#xC874; &#xAE08;&#xC9C0;</text>
+
+</svg>

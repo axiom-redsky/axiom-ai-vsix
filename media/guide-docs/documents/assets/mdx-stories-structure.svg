@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 480" font-family="'Segoe UI', Arial, sans-serif">
+
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#00000018"/>
+    </filter>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#868e96"/>
+    </marker>
+    <marker id="arr-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#e07b4a"/>
+    </marker>
+    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#4a9e5c"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="790" height="480" fill="#eef0f4" rx="14"/>
+
+  <!-- Title -->
+  <text x="395" y="36" text-anchor="middle" font-size="17" font-weight="bold" fill="#1e2030">Button &#xC2A4;&#xD1A0;&#xB9AC; &#xD30C;&#xC77C; &#xAD6C;&#xC870;</text>
+  <text x="395" y="54" text-anchor="middle" font-size="10.5" fill="#868e96">Docs &#xB808;&#xC774;&#xC544;&#xC6C3; (.mdx) + &#xC2A4;&#xD1A0;&#xB9AC; &#xB370;&#xC774;&#xD130; (.stories.tsx) &#xC5ED;&#xD560; &#xBD84;&#xB9AC;</text>
+
+  <!-- ===================== LEFT BOX: Button.mdx ===================== -->
+  <rect x="28" y="68" width="336" height="296" fill="#fff9f5" rx="12" stroke="#fab38766" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="28" y="68" width="336" height="5" fill="#fab387" rx="12"/>
+  <rect x="28" y="71" width="336" height="2" fill="#fab387"/>
+
+  <!-- MDX header -->
+  <text x="48" y="97" font-size="14" font-weight="bold" fill="#1e2030" font-family="monospace">Button.mdx</text>
+  <rect x="48" y="104" width="118" height="17" fill="#fab38733" rx="8"/>
+  <text x="107" y="116" text-anchor="middle" font-size="8.5" fill="#7c3311">&#xBB38;&#xC11C; &#xB808;&#xC774;&#xC544;&#xC6C3; &#xB2F4;&#xB2F9;</text>
+  <line x1="42" y1="128" x2="350" y2="128" stroke="#fab38744" stroke-width="1"/>
+
+  <!-- MDX items -->
+  <circle cx="56" cy="148" r="3.5" fill="#fab387"/>
+  <text x="68" y="152" font-size="9.5" fill="#495057" font-family="monospace">&lt;Meta of={ButtonStories} /&gt;</text>
+  <text x="68" y="165" font-size="8.5" fill="#868e96">&#xC0AC;&#xC774;&#xB4DC;&#xBC14; &#xC704;&#xCE58; &amp; Docs &#xD398;&#xC774;&#xC9C0; &#xC5F0;&#xACB0;</text>
+
+  <circle cx="56" cy="185" r="3.5" fill="#fab387"/>
+  <text x="68" y="189" font-size="9.5" fill="#495057" font-family="monospace">&lt;Canvas of={Primary} /&gt;</text>
+  <text x="68" y="202" font-size="9.5" fill="#495057" font-family="monospace">&lt;Controls of={Primary} /&gt;</text>
+  <text x="68" y="215" font-size="8.5" fill="#868e96">Props &#xCEE8;&#xD2B8;&#xB864; &#xC601;&#xC5ED; (&#xC0C1;&#xB2E8;&#xC5D0;&#xB9CC; &#xD45C;&#xC2DC;)</text>
+
+  <circle cx="56" cy="234" r="3.5" fill="#fab387"/>
+  <text x="68" y="238" font-size="9.5" fill="#495057" font-family="monospace">&lt;ArgTypes of={ButtonStories} /&gt;</text>
+  <text x="68" y="251" font-size="8.5" fill="#868e96">Props &#xD14C;&#xC774;&#xBE14;</text>
+
+  <circle cx="56" cy="271" r="3.5" fill="#fab387"/>
+  <text x="68" y="275" font-size="9.5" fill="#495057" font-family="monospace">&lt;Canvas of={InteractiveExample} /&gt;</text>
+  <text x="68" y="290" font-size="9.5" fill="#495057" font-family="monospace">&lt;Canvas of={AllVariants} /&gt;</text>
+  <text x="68" y="305" font-size="9.5" fill="#495057" font-family="monospace">&lt;Canvas of={AllSizes} /&gt;</text>
+  <text x="68" y="320" font-size="8.5" fill="#868e96">&#xC608;&#xC2DC; &#xC601;&#xC5ED; (Primary &#xC81C;&#xC678;)</text>
+
+  <rect x="42" y="337" width="296" height="18" fill="#fab38711" rx="4" stroke="#fab38733" stroke-width="0.8"/>
+  <text x="190" y="349" text-anchor="middle" font-size="8.5" fill="#7c3311">Docs &#xD398;&#xC774;&#xC9C0; &#xB808;&#xC774;&#xC544;&#xC6C3; &amp; &#xD45C;&#xC2DC; &#xC21C;&#xC11C; &#xC81C;&#xC5B4;</text>
+
+  <!-- ===================== RIGHT BOX: Button.stories.tsx ===================== -->
+  <rect x="426" y="68" width="336" height="296" fill="#f8fff8" rx="12" stroke="#a6e3a166" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="426" y="68" width="336" height="5" fill="#a6e3a1" rx="12"/>
+  <rect x="426" y="71" width="336" height="2" fill="#a6e3a1"/>
+
+  <!-- stories header -->
+  <text x="446" y="97" font-size="14" font-weight="bold" fill="#1e2030" font-family="monospace">Button.stories.tsx</text>
+  <rect x="446" y="104" width="130" height="17" fill="#a6e3a133" rx="8"/>
+  <text x="511" y="116" text-anchor="middle" font-size="8.5" fill="#1a5e1a">&#xB370;&#xC774;&#xD130; &amp; &#xB85C;&#xC9C1; &#xB2F4;&#xB2F9;</text>
+  <line x1="440" y1="128" x2="748" y2="128" stroke="#a6e3a144" stroke-width="1"/>
+
+  <!-- stories items -->
+  <circle cx="454" cy="148" r="3.5" fill="#a6e3a1"/>
+  <text x="466" y="152" font-size="9.5" fill="#495057" font-family="monospace">export default meta &#x7B; ... &#x7D;</text>
+  <text x="466" y="165" font-size="8.5" fill="#868e96">title, component, argTypes, args, tags</text>
+
+  <circle cx="454" cy="185" r="3.5" fill="#a6e3a1"/>
+  <text x="466" y="189" font-size="9.5" fill="#495057" font-family="monospace">export const Primary: Story</text>
+  <text x="466" y="202" font-size="8.5" fill="#868e96">args: &#x7B; variant: 'default', ... &#x7D;</text>
+
+  <circle cx="454" cy="222" r="3.5" fill="#a6e3a1"/>
+  <text x="466" y="226" font-size="9.5" fill="#495057" font-family="monospace">export const InteractiveExample: Story</text>
+  <text x="466" y="239" font-size="8.5" fill="#868e96">render: (args) =&gt; &#x7B; ... &#x7D; &#xCEE4;&#xC2A4;&#xD140; &#xB80C;&#xB354;</text>
+
+  <circle cx="454" cy="259" r="3.5" fill="#a6e3a1"/>
+  <text x="466" y="263" font-size="9.5" fill="#495057" font-family="monospace">export const AllVariants: Story</text>
+  <text x="466" y="278" font-size="9.5" fill="#495057" font-family="monospace">export const AllSizes: Story</text>
+  <text x="466" y="293" font-size="9.5" fill="#495057" font-family="monospace">export const DisabledVariants: Story</text>
+  <text x="466" y="306" font-size="8.5" fill="#868e96">render() &#xC73C;&#xB85C; &#xBCC4;&#xB3C4; &#xB80C;&#xB354; &#xD568;&#xC218; &#xC815;&#xC758;</text>
+
+  <rect x="440" y="337" width="296" height="18" fill="#a6e3a111" rx="4" stroke="#a6e3a133" stroke-width="0.8"/>
+  <text x="588" y="349" text-anchor="middle" font-size="8.5" fill="#1a5e1a">&#xC2E4;&#xC81C; &#xC2A4;&#xD1A0;&#xB9AC; &#xC815;&#xC758; &amp; args / render &#xC81C;&#xACF5;</text>
+
+  <!-- ===================== CENTER ARROW: import ===================== -->
+  <line x1="366" y1="210" x2="424" y2="210" stroke="#868e96" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+  <text x="395" y="203" text-anchor="middle" font-size="8" fill="#868e96">import * as</text>
+  <text x="395" y="222" text-anchor="middle" font-size="8" fill="#868e96">ButtonStories</text>
+
+  <!-- ===================== DOWN ARROWS to result ===================== -->
+  <line x1="196" y1="366" x2="268" y2="394" stroke="#e07b4a" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-orange)"/>
+  <line x1="594" y1="366" x2="522" y2="394" stroke="#4a9e5c" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-green)"/>
+
+  <!-- ===================== BOTTOM: Storybook result ===================== -->
+  <rect x="148" y="396" width="494" height="68" fill="#fff" rx="10" stroke="#dee2e688" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="148" y="396" width="494" height="4" fill="#89dceb" rx="10"/>
+
+  <text x="395" y="416" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#1e2030">Storybook &#xACB0;&#xACFC;</text>
+  <text x="175" y="434" font-size="9.5" fill="#495057">Components / Button</text>
+  <text x="192" y="449" font-size="9.5" fill="#fab387">&#x251C;&#x2500; Docs</text>
+  <text x="252" y="449" font-size="8.5" fill="#868e96">&#x2190; Button.mdx &#xB80C;&#xB354;&#xB9C1; (&#xB808;&#xC774;&#xC544;&#xC6C3; &#xC81C;&#xC5B4;)</text>
+  <text x="192" y="457" font-size="9.5" fill="#a6e3a1">&#x2514;&#x2500; Primary / InteractiveExample / AllVariants ...</text>
+  <text x="484" y="457" font-size="8.5" fill="#868e96">&#x2190; .tsx exports</text>
+
+</svg>

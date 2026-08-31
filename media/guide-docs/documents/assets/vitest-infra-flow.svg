@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="772" viewBox="0 0 960 772" role="img" aria-label="npm test 실행이 vite.config, setup.ts, 테스트 파일을 거쳐 검증에 도달하는 흐름도">
+	<defs>
+		<style>
+			text { font-family: 'Cascadia Code','JetBrains Mono','Consolas','Malgun Gothic',monospace; }
+			.box{fill:#ffffff;stroke:#d6e0d8;stroke-width:1.5}
+			.box-a{fill:#ffffff;stroke:#2f9e5f;stroke-width:2}
+			.box-amber{fill:#ffffff;stroke:#b6741c;stroke-width:2;stroke-dasharray:7 5}
+			.s-ink{fill:#17201a}
+			.s-muted{fill:#5c6c61}
+			.s-accent{fill:#2f9e5f}
+			.s-amber{fill:#b6741c}
+			.flow{stroke:#2f9e5f;stroke-width:2;fill:none}
+			.flow-a{stroke:#b6741c;stroke-width:2;fill:none}
+			.side{stroke:#5c6c61;stroke-width:1.5;fill:none;stroke-dasharray:5 5;opacity:.75}
+			.divider{stroke:#d6e0d8;stroke-width:1}
+			.fill-accsoft{fill:rgba(47,158,95,0.12)}
+			.fill-ambsoft{fill:rgba(182,116,28,0.14)}
+			.tab-accent{fill:#2f9e5f}
+			.tab-mute{fill:#5c6c61}
+			.b{font-weight:680}
+		</style>
+		<marker id="ar" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" refX="8" refY="5" viewBox="0 0 10 10" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" class="tab-accent" />
+		</marker>
+		<marker id="arA" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" refX="8" refY="5" viewBox="0 0 10 10" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" fill="#b6741c" />
+		</marker>
+		<marker id="arM" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8" refY="5" viewBox="0 0 10 10" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" fill="#5c6c61" />
+		</marker>
+		<pattern id="gridA" width="32" height="32" patternUnits="userSpaceOnUse">
+			<path d="M32 0 H0 V32" fill="none" stroke="rgba(23,32,26,0.055)" stroke-width="1" />
+		</pattern>
+		<clipPath id="clipA">
+			<rect x="8" y="8" width="944" height="756" rx="18" />
+		</clipPath>
+	</defs>
+
+	<rect x="8" y="8" width="944" height="756" rx="18" fill="#f5f8f3" stroke="#d6e0d8" />
+	<rect x="8" y="8" width="944" height="756" fill="url(#gridA)" clip-path="url(#clipA)" />
+
+	<!-- trigger -->
+	<rect x="380" y="26" width="200" height="46" rx="23" class="box-a" />
+	<text x="480" y="55" text-anchor="middle" font-size="15" class="s-ink b">$ npm test (watch)</text>
+	<path d="M480 72 L480 106" class="flow" marker-end="url(#ar)" />
+
+	<!-- node 1 : vite.config -->
+	<rect x="250" y="110" width="460" height="238" rx="14" class="box-a" />
+	<text x="272" y="141" font-size="16" class="s-ink b">&#9312; vite.config.ts</text>
+	<text x="430" y="141" font-size="12.5" class="s-muted">test.projects 설정</text>
+	<rect x="610" y="123" width="82" height="26" rx="13" class="fill-accsoft" />
+	<text x="651" y="141" text-anchor="middle" font-size="12" class="s-accent b">관제탑</text>
+	<line x1="250" y1="158" x2="710" y2="158" class="divider" />
+	<text x="274" y="194" font-size="13.5" class="s-ink">projects: unit · browser</text>
+	<text x="486" y="194" font-size="13" class="s-muted">jsdom + 실제 Chromium</text>
+	<text x="274" y="232" font-size="13.5" class="s-ink">globals: true</text>
+	<text x="486" y="232" font-size="13" class="s-muted">import 없이 test·expect</text>
+	<text x="274" y="270" font-size="13.5" class="s-accent b">setupFiles &#8595;</text>
+	<text x="486" y="270" font-size="13" class="s-muted">&#9313; 파일을 자동 실행</text>
+	<text x="274" y="308" font-size="13.5" class="s-ink">exclude</text>
+	<text x="486" y="308" font-size="13" class="s-muted">*.stories 는 제외</text>
+
+	<!-- side 3 : package.json -->
+	<rect x="24" y="150" width="200" height="174" rx="12" class="box" />
+	<text x="42" y="180" font-size="13.5" class="s-ink b">&#9314; package.json</text>
+	<text x="42" y="212" font-size="12.5" class="s-muted">test → watch</text>
+	<text x="42" y="236" font-size="12.5" class="s-muted">test:run → 1회</text>
+	<text x="42" y="260" font-size="12.5" class="s-muted">coverage → 리포트</text>
+	<text x="42" y="300" font-size="12" class="s-accent b">실행 명령 3개</text>
+	<path d="M224 236 L248 236" class="side" marker-end="url(#arM)" />
+
+	<!-- side 4 : tsconfig -->
+	<rect x="736" y="150" width="200" height="174" rx="12" class="box" />
+	<text x="754" y="180" font-size="13.5" class="s-ink b">&#9315; tsconfig.app.json</text>
+	<text x="754" y="212" font-size="12.5" class="s-muted">"vitest/globals"</text>
+	<text x="754" y="236" font-size="12.5" class="s-muted">"jest-dom"</text>
+	<text x="754" y="290" font-size="12" class="s-accent b">타입 인식</text>
+	<text x="754" y="310" font-size="11.5" class="s-muted">(빨간 줄 방지)</text>
+	<path d="M736 236 L712 236" class="side" marker-end="url(#arM)" />
+
+	<!-- branch -->
+	<path d="M410 348 C 370 392 330 402 302 430" class="flow" marker-end="url(#ar)" />
+	<text x="316" y="392" font-size="11.5" class="s-accent">setupFiles</text>
+	<path d="M556 348 C 596 392 636 402 662 430" class="flow" marker-end="url(#ar)" />
+	<text x="596" y="392" font-size="11.5" class="s-muted">파일 탐색</text>
+
+	<!-- node 2 : setup.ts -->
+	<rect x="110" y="432" width="380" height="158" rx="14" class="box-a" />
+	<text x="130" y="463" font-size="15" class="s-ink b">&#9313; src/test/setup.ts</text>
+	<rect x="372" y="445" width="104" height="24" rx="12" class="fill-accsoft" />
+	<text x="424" y="462" text-anchor="middle" font-size="11" class="s-accent b">매 테스트 前</text>
+	<text x="130" y="502" font-size="12.5" class="s-accent">import '@testing-library/jest-dom'</text>
+	<text x="130" y="530" font-size="12.5" class="s-muted">→ toBeInTheDocument() 등</text>
+	<text x="130" y="556" font-size="12.5" class="s-muted">&#160;&#160; DOM 매처를 전역 expect에 등록</text>
+
+	<!-- test files -->
+	<rect x="530" y="432" width="380" height="158" rx="14" class="box-amber" />
+	<text x="550" y="463" font-size="15" class="s-ink b">*.test.tsx</text>
+	<rect x="766" y="445" width="94" height="24" rx="12" class="fill-ambsoft" />
+	<text x="813" y="462" text-anchor="middle" font-size="11" class="s-amber b">예시 2개</text>
+	<text x="550" y="502" font-size="12.5" class="s-ink">render() → screen.getBy…()</text>
+	<text x="550" y="530" font-size="12.5" class="s-ink">&#160;&#160;&#160;&#160;&#160;&#160; → expect(…)</text>
+	<text x="550" y="556" font-size="12.5" class="s-muted">또는 *.browser.test.tsx (브라우저)</text>
+
+	<!-- converge -->
+	<path d="M300 590 C 344 620 402 632 452 648" class="flow" marker-end="url(#ar)" />
+	<path d="M720 590 C 676 620 600 632 548 648" class="flow-a" marker-end="url(#arA)" />
+	<rect x="340" y="650" width="280" height="64" rx="32" class="fill-accsoft" stroke="#2f9e5f" stroke-width="2" />
+	<text x="480" y="689" text-anchor="middle" font-size="15" class="s-accent b">테스트 실행 · 검증 &#10003;</text>
+</svg>

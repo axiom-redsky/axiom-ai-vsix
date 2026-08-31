@@ -43,6 +43,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         case 'clearHistory':
           vscode.commands.executeCommand('axiom-ai.clearHistory');
           break;
+        case 'openGuide':
+          vscode.commands.executeCommand('axiom-ai.openGuide');
+          break;
         case 'getSettings':
           this._handleGetSettings();
           break;

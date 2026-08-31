@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 54 790 726" font-family="'Segoe UI', Arial, sans-serif">
+
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#00000018"/>
+    </filter>
+    <filter id="label-shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#00000025"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="790" height="780" fill="#eef0f4" rx="14"/>
+
+  <!-- ===================== BROWSER WINDOW ===================== -->
+  <rect x="120" y="68" width="660" height="692" fill="#fff" rx="12" filter="url(#shadow)"/>
+
+  <!-- Browser chrome bar -->
+  <rect x="120" y="68" width="660" height="36" fill="#e2e5ea" rx="12"/>
+  <rect x="120" y="86" width="660" height="18" fill="#e2e5ea"/>
+  <circle cx="144" cy="86" r="6" fill="#ff5f57"/>
+  <circle cx="164" cy="86" r="6" fill="#febc2e"/>
+  <circle cx="184" cy="86" r="6" fill="#28c840"/>
+  <rect x="206" y="76" width="428" height="20" fill="#fff" rx="10"/>
+  <text x="420" y="90" text-anchor="middle" font-size="10" fill="#868e96">localhost:6006</text>
+
+  <!-- Breadcrumb bar -->
+  <rect x="120" y="104" width="660" height="26" fill="#f8f9fa"/>
+  <text x="132" y="121" font-size="10" fill="#868e96">Docs  &gt;  Components  &gt;  Button</text>
+  <line x1="120" y1="130" x2="780" y2="130" stroke="#dee2e6" stroke-width="0.8"/>
+
+  <!-- ===================== SECTION A: Description ===================== -->
+  <rect x="132" y="138" width="636" height="86" fill="#fff9f5" rx="8" stroke="#fab38766" stroke-width="1.5"/>
+  <text x="150" y="158" font-size="15" font-weight="bold" fill="#1e2030">Button</text>
+  <text x="150" y="175" font-size="10.5" fill="#495057">`@axiom/mfe-lib-shared`&#xC5D0;&#xC11C; &#xC81C;&#xACF5;&#xD558;&#xB294; `Button` &#xCEF4;&#xD3EC;&#xB10C;&#xD2B8;&#xC785;&#xB2C8;&#xB2E4;.</text>
+  <text x="150" y="193" font-size="10" fill="#6c757d">### &#xC784;&#xD3EC;&#xD2B8;</text>
+  <text x="150" y="208" font-size="9.5" fill="#868e96" font-family="monospace">import { Button } from '@axiom/mfe-lib-shared/components/ui';</text>
+
+  <!-- Section A top bar accent -->
+  <rect x="132" y="138" width="636" height="4" fill="#fab387" rx="8"/>
+  <rect x="132" y="140" width="636" height="2" fill="#fab387"/>
+
+  <!-- ===================== SECTION B: Canvas ===================== -->
+  <rect x="132" y="238" width="636" height="98" fill="#f6feff" rx="8" stroke="#89dceb66" stroke-width="1.5"/>
+  <rect x="132" y="238" width="636" height="4" fill="#89dceb" rx="8"/>
+  <rect x="132" y="240" width="636" height="2" fill="#89dceb"/>
+  <text x="144" y="254" font-size="9.5" fill="#868e96">Canvas</text>
+
+  <!-- Rendered button inside canvas -->
+  <rect x="350" y="260" width="96" height="34" fill="#3451b2" rx="7"/>
+  <text x="398" y="282" text-anchor="middle" font-size="12" fill="#fff">Button</text>
+
+  <!-- Controls tab bar -->
+  <rect x="132" y="308" width="636" height="24" fill="#f0f2f5" rx="0"/>
+  <rect x="132" y="308" width="636" height="4" fill="#f0f2f5"/>
+  <line x1="132" y1="308" x2="768" y2="308" stroke="#dee2e6" stroke-width="0.5"/>
+  <text x="147" y="324" font-size="9.5" fill="#868e96">Controls  |  Actions  |  A11y</text>
+  <text x="580" y="324" font-size="8" fill="#9370db">&#x2190; argTypes.control / .options</text>
+
+  <!-- ===================== SECTION C: Props Table ===================== -->
+  <rect x="132" y="346" width="636" height="126" fill="#faf8ff" rx="8" stroke="#cba6f766" stroke-width="1.5"/>
+  <rect x="132" y="346" width="636" height="4" fill="#cba6f7" rx="8"/>
+  <rect x="132" y="348" width="636" height="2" fill="#cba6f7"/>
+
+  <!-- Table header -->
+  <rect x="132" y="350" width="636" height="24" fill="#ede9fe" rx="0"/>
+  <text x="150" y="366" font-size="9.5" font-weight="bold" fill="#6d28d9">Name</text>
+  <text x="290" y="366" font-size="9.5" font-weight="bold" fill="#6d28d9">Description</text>
+  <text x="640" y="366" font-size="9.5" font-weight="bold" fill="#6d28d9">Default</text>
+  <line x1="132" y1="374" x2="768" y2="374" stroke="#cba6f7" stroke-width="0.5"/>
+
+  <!-- Row: variant -->
+  <text x="150" y="390" font-size="9.5" fill="#1e2030" font-family="monospace">variant</text>
+  <text x="290" y="390" font-size="9" fill="#495057">&#xBC84;&#xD2BC;&#xC758; &#xC2DC;&#xAC01;&#xC801; &#xC2A4;&#xD0C0;&#xC77C; (default / outline / secondary / ghost...)</text>
+  <text x="640" y="390" font-size="9" fill="#6c757d">"default"</text>
+  <line x1="132" y1="396" x2="768" y2="396" stroke="#ede9fe" stroke-width="0.8"/>
+
+  <!-- Row: size -->
+  <text x="150" y="412" font-size="9.5" fill="#1e2030" font-family="monospace">size</text>
+  <text x="290" y="412" font-size="9" fill="#495057">&#xBC84;&#xD2BC;&#xC758; &#xD06C;&#xAE30; (default / xs / sm / lg / icon...)</text>
+  <text x="640" y="412" font-size="9" fill="#6c757d">"default"</text>
+  <line x1="132" y1="418" x2="768" y2="418" stroke="#ede9fe" stroke-width="0.8"/>
+
+  <!-- Row: disabled -->
+  <text x="150" y="434" font-size="9.5" fill="#1e2030" font-family="monospace">disabled</text>
+  <text x="290" y="434" font-size="9" fill="#495057">&#xBE44;&#xD65C;&#xC131;&#xD654; &#xC5EC;&#xBD80;</text>
+  <text x="640" y="434" font-size="9" fill="#6c757d">false</text>
+  <line x1="132" y1="440" x2="768" y2="440" stroke="#ede9fe" stroke-width="0.8"/>
+
+  <!-- Row: onClick -->
+  <text x="150" y="456" font-size="9.5" fill="#1e2030" font-family="monospace">onClick</text>
+  <text x="290" y="456" font-size="9" fill="#495057">&#xD074;&#xB9AD; &#xC774;&#xBCA4;&#xD2B8; &#xD578;&#xB4E4;&#xB7EC;</text>
+  <text x="640" y="456" font-size="9" fill="#6c757d">-</text>
+
+  <!-- ===================== SECTION D: Story Cards ===================== -->
+  <rect x="132" y="488" width="636" height="5" fill="#a6e3a1" rx="2"/>
+
+  <!-- Card: Primary -->
+  <rect x="132" y="500" width="200" height="80" fill="#f8fff8" rx="8" stroke="#a6e3a166" stroke-width="1.5"/>
+  <text x="148" y="518" font-size="9.5" font-weight="bold" fill="#2d7a2d">Primary</text>
+  <rect x="186" y="528" width="76" height="28" fill="#3451b2" rx="6"/>
+  <text x="224" y="546" text-anchor="middle" font-size="11" fill="#fff">&#xAE30;&#xBCF8; &#xBC84;&#xD2BC;</text>
+  <text x="148" y="573" font-size="8.5" fill="#868e96">args: { variant: 'default' }</text>
+
+  <!-- Card: Secondary -->
+  <rect x="344" y="500" width="200" height="80" fill="#f8fff8" rx="8" stroke="#a6e3a166" stroke-width="1.5"/>
+  <text x="360" y="518" font-size="9.5" font-weight="bold" fill="#2d7a2d">Secondary</text>
+  <rect x="390" y="528" width="88" height="28" fill="#e9ecef" rx="6" stroke="#ced4da" stroke-width="1"/>
+  <text x="434" y="546" text-anchor="middle" font-size="11" fill="#495057">&#xBCF4;&#xC870; &#xBC84;&#xD2BC;</text>
+  <text x="360" y="573" font-size="8.5" fill="#868e96">args: { variant: 'secondary' }</text>
+
+  <!-- Card: Interactive Example -->
+  <rect x="556" y="500" width="212" height="80" fill="#f8fff8" rx="8" stroke="#a6e3a166" stroke-width="1.5"/>
+  <text x="572" y="518" font-size="9.5" font-weight="bold" fill="#2d7a2d">&#xC778;&#xD130;&#xB799;&#xD2F0;&#xBE0C; &#xC608;&#xC2DC;</text>
+  <text x="572" y="534" font-size="8.5" fill="#868e96">render: (args) =&gt; { ... }</text>
+  <rect x="590" y="544" width="40" height="22" fill="#3451b2" rx="4"/>
+  <text x="610" y="559" text-anchor="middle" font-size="9.5" fill="#fff">+1</text>
+  <rect x="640" y="544" width="48" height="22" fill="#e9ecef" rx="4" stroke="#ced4da" stroke-width="1"/>
+  <text x="664" y="559" text-anchor="middle" font-size="9.5" fill="#495057">&#xCD08;&#xAE30;&#xD654;</text>
+  <text x="572" y="573" font-size="8.5" fill="#868e96">&#xCEE4;&#xC2A4;&#xD140; render &#xD568;&#xC218;</text>
+
+  <!-- More stories hint -->
+  <text x="450" y="606" text-anchor="middle" font-size="9.5" fill="#adb5bd">... AllVariants / AllSizes / DisabledVariants &#xB4F1; &#xB098;&#xBA38;&#xC9C0; Story &#xCE74;&#xB4DC;&#xB4E4; ...</text>
+
+  <!-- ===================== ANNOTATION LABELS (left side) ===================== -->
+
+  <!-- Label A -->
+  <rect x="10" y="148" width="102" height="52" fill="#fab387" rx="8" filter="url(#label-shadow)"/>
+  <text x="61" y="165" text-anchor="middle" font-size="9" font-weight="bold" fill="#7c3311">meta.parameters</text>
+  <text x="61" y="178" text-anchor="middle" font-size="9" font-weight="bold" fill="#7c3311">.docs.description</text>
+  <text x="61" y="191" text-anchor="middle" font-size="8.5" fill="#8a3d14">(markdown &#xD14D;&#xC2A4;&#xD2B8;)</text>
+  <line x1="112" y1="174" x2="132" y2="174" stroke="#fab387" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Label B -->
+  <rect x="10" y="256" width="102" height="52" fill="#89dceb" rx="8" filter="url(#label-shadow)"/>
+  <text x="61" y="273" text-anchor="middle" font-size="9" font-weight="bold" fill="#0e6874">meta.component</text>
+  <text x="61" y="286" text-anchor="middle" font-size="9" font-weight="bold" fill="#0e6874">+ meta.args</text>
+  <text x="61" y="299" text-anchor="middle" font-size="8.5" fill="#0e6874">(&#xB77C;&#xC774;&#xBE0C; &#xBBF8;&#xB9AC;&#xBCF4;&#xAE30;)</text>
+  <line x1="112" y1="282" x2="132" y2="282" stroke="#29b6c8" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Label C -->
+  <rect x="10" y="376" width="102" height="52" fill="#cba6f7" rx="8" filter="url(#label-shadow)"/>
+  <text x="61" y="391" text-anchor="middle" font-size="9" font-weight="bold" fill="#4c1d95">meta.argTypes</text>
+  <text x="61" y="404" text-anchor="middle" font-size="9" font-weight="bold" fill="#4c1d95">(stories.tsx)</text>
+  <text x="61" y="417" text-anchor="middle" font-size="8.5" fill="#4c1d95">Description/Default</text>
+  <line x1="112" y1="402" x2="132" y2="402" stroke="#cba6f7" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Label D -->
+  <rect x="10" y="516" width="102" height="52" fill="#a6e3a1" rx="8" filter="url(#label-shadow)"/>
+  <text x="61" y="533" text-anchor="middle" font-size="9" font-weight="bold" fill="#1a5e1a">export const</text>
+  <text x="61" y="546" text-anchor="middle" font-size="9" font-weight="bold" fill="#1a5e1a">Primary: Story</text>
+  <text x="61" y="559" text-anchor="middle" font-size="8.5" fill="#1a5e1a">(named exports)</text>
+  <line x1="112" y1="542" x2="132" y2="542" stroke="#a6e3a1" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- ===================== AUTODOCS TRIGGER ===================== -->
+  <rect x="132" y="626" width="636" height="54" fill="#fefce8" rx="8" stroke="#f9e2af99" stroke-width="1.5"/>
+  <text x="450" y="646" text-anchor="middle" font-size="10" font-weight="bold" fill="#7c5a00">&#xC774; &#xD398;&#xC774;&#xC9C0; &#xC804;&#xCCB4;&#xB97C; &#xC2E4;&#xD589;&#xD558;&#xB294; &#xD2B8;&#xB9AC;&#xAC70;</text>
+  <text x="350" y="664" font-size="10.5" fill="#1e2030">tags: [</text>
+  <text x="391" y="664" font-size="10.5" fill="#16a34a">'autodocs'</text>
+  <text x="466" y="664" font-size="10.5" fill="#1e2030">]</text>
+  <text x="450" y="678" text-anchor="middle" font-size="9" fill="#868e96">meta&#xC5D0; &#xC774; &#xD0DC;&#xADF8; &#xD558;&#xB098;&#xB9CC; &#xCD94;&#xAC00;&#xD558;&#xBA74; Storybook&#xC774; &#xC704; &#xBB38;&#xC11C; &#xD398;&#xC774;&#xC9C0; &#xC804;&#xCCB4;&#xB97C; &#xC790;&#xB3D9; &#xC0DD;&#xC131;&#xD569;&#xB2C8;&#xB2E4;.</text>
+
+  <!-- ===================== LEGEND ===================== -->
+  <rect x="132" y="694" width="636" height="56" fill="#f1f3f6" rx="8"/>
+  <rect x="152" y="703" width="10" height="10" fill="#fab387" rx="2"/>
+  <text x="167" y="712" font-size="8.5" fill="#495057">&#xCEF4;&#xD3EC;&#xB10C;&#xD2B8; &#xC124;&#xBA85;</text>
+  <rect x="252" y="703" width="10" height="10" fill="#89dceb" rx="2"/>
+  <text x="267" y="712" font-size="8.5" fill="#495057">Canvas</text>
+  <rect x="316" y="703" width="10" height="10" fill="#cba6f7" rx="2"/>
+  <text x="331" y="712" font-size="8.5" fill="#495057">Props &#xD14C;&#xC774;&#xBE14; (argTypes)</text>
+  <rect x="452" y="703" width="10" height="10" fill="#a6e3a1" rx="2"/>
+  <text x="467" y="712" font-size="8.5" fill="#495057">Story &#xCE74;&#xB4DC;</text>
+  <rect x="530" y="703" width="10" height="10" fill="#f9e2af" rx="2"/>
+  <text x="545" y="712" font-size="8.5" fill="#495057">autodocs &#xD0DC;&#xADF8;</text>
+  <rect x="152" y="721" width="10" height="10" fill="#e9d5ff" rx="2"/>
+  <text x="167" y="730" font-size="8.5" fill="#6c757d">JSDoc (button.tsx) &#x2192; &#xC5D0;&#xB514;&#xD130; &#xC778;&#xD154;&#xB9AC;&#xC13C;&#xC2A4; &#xC804;&#xC6A9; (Props &#xD14C;&#xC774;&#xBE14; &#xC790;&#xB3D9;&#xD654; &#xBBF8;&#xC9C0;&#xC6D0;)</text>
+
+  <!-- dividers between sections inside browser -->
+  <line x1="132" y1="234" x2="768" y2="234" stroke="#f0e8df" stroke-width="1"/>
+  <line x1="132" y1="344" x2="768" y2="344" stroke="#e8e0f4" stroke-width="1"/>
+  <line x1="132" y1="486" x2="768" y2="486" stroke="#dff4df" stroke-width="1"/>
+
+</svg>

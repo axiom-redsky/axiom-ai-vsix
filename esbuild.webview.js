@@ -7,7 +7,10 @@ async function main() {
     entryPoints: ['src/webview/index.tsx'],
     bundle: true,
     outfile: 'dist/webview.js',
-    format: 'esm',
+    // iife 필수 — 웹뷰 HTML이 type="module" 없이 classic script로 로드하므로, esm이면 의존성의
+    // 최상위 선언(예: vfile-location의 `function location`)이 전역 바인딩이 되어 window.location과
+    // 충돌해 번들 전체가 실행 전에 죽는다(모든 웹뷰 빈 화면).
+    format: 'iife',
     platform: 'browser',
     target: 'chrome114',    // VS Code 1.85+ Electron의 Chromium 버전
     loader: { '.tsx': 'tsx', '.ts': 'ts', '.css': 'css' },

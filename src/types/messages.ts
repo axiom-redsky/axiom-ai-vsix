@@ -1,3 +1,5 @@
+import type { ITocManifest, TGuideSource } from './guide';
+
 // 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
 export interface ProjectConfig {
   projectName: string;
@@ -147,7 +149,13 @@ export type WebviewToHostMessage =
   | { type: 'locateProbeUseActiveFile' }
   | { type: 'runLocateProbe'; query: string; filePath: string; forcedStart: number; forcedEnd: number }
   | { type: 'contractsProbeUseActiveFile' }
-  | { type: 'runContractsProbe'; query: string; filePath: string; selStart: number; selEnd: number };
+  | { type: 'runContractsProbe'; query: string; filePath: string; selStart: number; selEnd: number }
+  | { type: 'openGuide' }
+  | { type: 'guideReady' }
+  | { type: 'guideLoadDoc'; docId: string; anchor?: string }
+  | { type: 'guideEditDoc'; docId: string }
+  | { type: 'guideCreateDoc' }
+  | { type: 'guideOpenExternal'; url: string };
 
 /** 슬라이싱 실험 모드: 통째로 / 잘라서 / 둘 다 / 도구 호출(CC식) / 영역 편집(grep→블록 재작성+위치 교체) */
 export type ProbeMode = 'full' | 'sliced' | 'both' | 'tool' | 'region' | 'hybrid';
@@ -224,7 +232,12 @@ export type HostToWebviewMessage =
   | { type: 'contractsProbeFilePicked'; filePath: string }
   | { type: 'contractsProbeResult'; result: ContractsProbeResult }
   | { type: 'contractsProbeDone' }
-  | { type: 'contractsProbeError'; message: string };
+  | { type: 'contractsProbeError'; message: string }
+  // 내장 개발 가이드(GuidePanel ↔ GuideApp). rootUri = 이미지 상대경로 해석의 베이스(asWebviewUri 문자열).
+  | { type: 'guideToc'; toc: ITocManifest; titles: Record<string, string>; source: TGuideSource; rootUri: string; initialDocId?: string }
+  | { type: 'guideDoc'; docId: string; markdown: string }
+  | { type: 'guideNavigate'; docId: string; anchor?: string }
+  | { type: 'guideError'; message: string };
 
 /**
  * 단계별 테스트 ①의도파악의 의도 판정 한 건 — IntentResult(src/ai/intent)와 구조 호환이지만

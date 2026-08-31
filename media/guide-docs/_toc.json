@@ -1,0 +1,497 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-31",
+  "sidebars": [
+    {
+      "id": "startDoc",
+      "label": "시작하기",
+      "items": [
+        {
+          "type": "category",
+          "label": "◉ 시작하기",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "started/getting-started/overview"
+            },
+            {
+              "type": "doc",
+              "id": "started/getting-started/set-dev-env-config"
+            },
+            {
+              "type": "doc",
+              "id": "started/getting-started/dev-convention"
+            },
+            {
+              "type": "doc",
+              "id": "started/getting-started/react-style-guide"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ Scaffold 설정",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "started/app-config/index"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ Scaffold 작업 기반 다지기",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "started/frontend-common/index"
+            },
+            {
+              "type": "doc",
+              "id": "started/frontend-common/preparation-entry"
+            },
+            {
+              "type": "doc",
+              "id": "started/frontend-common/entry"
+            },
+            {
+              "type": "doc",
+              "id": "started/frontend-common/set-internal-network"
+            },
+            {
+              "type": "doc",
+              "id": "started/frontend-common/layout-theme"
+            },
+            {
+              "type": "doc",
+              "id": "started/frontend-common/convention"
+            },
+            {
+              "type": "doc",
+              "id": "started/frontend-common/dist"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ 퍼블리셔 가이드",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "started/publishing-guide/index"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "documentDoc",
+      "label": "개발 문서",
+      "items": [
+        {
+          "type": "category",
+          "label": "◉ 개발 가이드",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "documents/dev/create-biz-pages"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/navigating-pages"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/use-rest-api"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/using-ui-component"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/create-domain-common-function"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/create-global-state"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/create-module-css"
+            },
+            {
+              "type": "doc",
+              "id": "documents/dev/set-i18n-project"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ 디자인 시스템",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "documents/design-system/create-design-tokens"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ jwt 인증 적용",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "documents/jwt-certi/set-jwt-certi-common"
+            },
+            {
+              "type": "doc",
+              "id": "documents/jwt-certi/set-jwt-certi-biz"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ 기타 가이드",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "documents/etc/how-to-storybook"
+            },
+            {
+              "type": "doc",
+              "id": "documents/etc/component-documentation"
+            },
+            {
+              "type": "doc",
+              "id": "documents/etc/test-automation"
+            },
+            {
+              "type": "doc",
+              "id": "documents/etc/seo-optimization"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ AI-assisted development ",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "documents/ai/what-rag"
+            },
+            {
+              "type": "doc",
+              "id": "documents/ai/axiom-ai-reg-flow"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "componentsDoc",
+      "label": "컴포넌트",
+      "items": [
+        {
+          "type": "doc",
+          "id": "components/index"
+        },
+        {
+          "type": "category",
+          "label": "◉ UI Components",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "doc",
+              "id": "components/ui/accordion-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/alert-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/avatar-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/badge-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/breadcrumb-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/button-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/button-group-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/calendar-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/card-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/carousel-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/checkbox-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/combobox-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/dialog-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/drawer-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/input-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/inputgroup-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/native-select-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/pagination-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/progress-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/radio-group-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/select-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/skeleton-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/slider-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/smart-table-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/spinner-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/switch-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/table-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/tabs-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/textarea-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/toast-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/toggle-component"
+            },
+            {
+              "type": "doc",
+              "id": "components/ui/tooltip-component"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "apiDoc",
+      "label": "API",
+      "items": [
+        {
+          "type": "doc",
+          "id": "apis/index"
+        },
+        {
+          "type": "category",
+          "label": "◉ Functions",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "category",
+              "label": "• Hooks",
+              "collapsed": false,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "apis/global-function/hooks/use-api"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "• Factories",
+              "collapsed": false,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "apis/global-function/factories/define-store"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ Service Objects",
+          "collapsed": false,
+          "items": [
+            {
+              "type": "category",
+              "label": "• $router",
+              "collapsed": false,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/router/index"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "• $ui",
+              "collapsed": false,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/ui/alert-ui"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/ui/confirm-ui"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/ui/dialog-ui"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "• $util",
+              "collapsed": false,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/util/array-util"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/util/date-util"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/util/finance-util"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/util/number-util"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/util/object-util"
+                },
+                {
+                  "type": "doc",
+                  "id": "apis/service-objects/util/string-util"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "taskDoc",
+      "label": "작업 가이드",
+      "items": [
+        {
+          "type": "doc",
+          "id": "task/intro"
+        },
+        {
+          "type": "category",
+          "label": "◉ React 프로젝트 준비",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "task/react-assets/config-task/first-set-proj"
+            },
+            {
+              "type": "doc",
+              "id": "task/react-assets/config-task/set-layout-template"
+            },
+            {
+              "type": "doc",
+              "id": "task/react-assets/config-task/first-set-tanstack-query"
+            },
+            {
+              "type": "doc",
+              "id": "task/react-assets/config-task/first-set-storybook"
+            }
+          ]
+        },
+        {
+          "type": "category",
+          "label": "◉ Git 관련",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "task/git/command-list"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

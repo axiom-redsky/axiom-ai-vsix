@@ -6,6 +6,7 @@ import { IntentProbePanel } from './providers/IntentProbePanel';
 import { DecomposeProbePanel } from './providers/DecomposeProbePanel';
 import { LocateProbePanel } from './providers/LocateProbePanel';
 import { ContractsProbePanel } from './providers/ContractsProbePanel';
+import { GuidePanel } from './providers/GuidePanel';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -92,6 +93,15 @@ export function activate(context: vscode.ExtensionContext): void {
       chatProvider.clearHistory();
       vscode.window.showInformationMessage('Axiom AI: 대화 기록이 초기화되었습니다.');
     }),
+
+    // 내장 개발 가이드 — docId(가이드 루트 기준 확장자 없는 상대경로)를 주면 그 문서로 딥링크된다.
+    vscode.commands.registerCommand('axiom-ai.openGuide', (docId?: unknown) => {
+      GuidePanel.createOrShow(context.extensionUri, typeof docId === 'string' ? docId : undefined);
+    }),
+
+    vscode.commands.registerCommand('axiom-ai.reseedGuide', () => {
+      void GuidePanel.reseedInteractive(context.extensionUri);
+    }),
   );
 
   registerCommands(context, launcherProvider, chatProvider);
@@ -109,6 +119,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('axiom-ai.sdd.axiomFolder')) {
         _initProjectConfigProvider(projectConfigProvider);
+        // 가이드 패널의 localResourceRoots는 생성 시 고정이라 폴더가 바뀌면 재생성한다
+        GuidePanel.handleAxiomFolderChange(context.extensionUri);
       }
     }),
   );

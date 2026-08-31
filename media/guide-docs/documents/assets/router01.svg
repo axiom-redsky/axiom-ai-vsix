@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 400">
+  <defs>
+    <style>
+      .browser-frame { fill: #e5e7eb; stroke: #9ca3af; stroke-width: 2; rx: 8; }
+      .browser-header { fill: #f3f4f6; stroke: #9ca3af; stroke-width: 1; }
+      .browser-content { fill: #ffffff; }
+      .url-bar { fill: #ffffff; stroke: #d1d5db; stroke-width: 1; rx: 4; }
+      .button { fill: #2563eb; stroke: #1e40af; stroke-width: 1; rx: 4; cursor: pointer; }
+      .arrow { stroke: #16a34a; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+      .text { font: 600 22px sans-serif; fill: #374151; }
+      .url-text { font: 500 16px sans-serif; fill: #6b7280; }
+      .button-text { font: bold 18px sans-serif; fill: #ffffff; }
+      .title { font: bold 32px sans-serif; fill: #1f2937; }
+      .code { font: bold 14px 'Courier New', monospace; fill: #dc2626; }
+      .label { font: 600 24px sans-serif; fill: #059669; }
+      .dot { fill: #ef4444; }
+      .dot-yellow { fill: #f59e0b; }
+      .dot-green { fill: #10b981; }
+    </style>
+    <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#16a34a" />
+    </marker>
+  </defs>
+
+  <!-- Browser 1: Initial Page -->
+  <g id="browser-1">
+    <!-- Browser Frame -->
+    <rect x="30" y="80" width="400" height="280" class="browser-frame"/>
+    
+    <!-- Browser Header -->
+    <rect x="30" y="80" width="400" height="40" class="browser-header"/>
+    
+    <!-- Traffic Light Buttons -->
+    <circle cx="50" cy="100" r="6" class="dot"/>
+    <circle cx="70" cy="100" r="6" class="dot-yellow"/>
+    <circle cx="90" cy="100" r="6" class="dot-green"/>
+    
+    <!-- URL Bar -->
+    <rect x="110" y="90" width="300" height="20" class="url-bar"/>
+    <text x="120" y="104" class="url-text">https://example.com/#/account/main</text>
+    
+    <!-- Browser Content -->
+    <rect x="40" y="130" width="380" height="220" class="browser-content"/>
+    
+    <!-- Page Content -->
+    <text x="220" y="190" text-anchor="middle" class="text">현재 페이지</text>
+    <text x="220" y="220" text-anchor="middle" class="url-text">/account/main</text>
+    
+    <!-- Button -->
+    <rect x="100" y="250" width="240" height="60" class="button"/>
+    <text x="220" y="286" text-anchor="middle" class="button-text">계좌이용내역화면으로 이동</text>
+    
+    <!-- Label -->
+    <text x="230" y="70" text-anchor="middle" class="label">① 시작</text>
+  </g>
+
+  <!-- Arrow with code -->
+  <g id="arrow">
+    <path d="M 450 220 L 590 220" class="arrow"/>
+    <rect x="460" y="180" width="120" height="80" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" rx="4"/>
+    <text x="520" y="210" text-anchor="middle" class="text">클릭 시</text>
+    <text x="520" y="232" text-anchor="middle" class="code">$router.push</text>
+    <text x="520" y="250" text-anchor="middle" class="code">('/account/usage-history')</text>
+    
+    <text x="520" y="170" text-anchor="middle" class="label">② 실행</text>
+  </g>
+
+  <!-- Browser 2: Next Page -->
+  <g id="browser-2">
+    <!-- Browser Frame -->
+    <rect x="620" y="80" width="400" height="280" class="browser-frame"/>
+    
+    <!-- Browser Header -->
+    <rect x="620" y="80" width="400" height="40" class="browser-header"/>
+    
+    <!-- Traffic Light Buttons -->
+    <circle cx="640" cy="100" r="6" class="dot"/>
+    <circle cx="660" cy="100" r="6" class="dot-yellow"/>
+    <circle cx="680" cy="100" r="6" class="dot-green"/>
+    
+    <!-- URL Bar -->
+    <rect x="700" y="90" width="300" height="20" class="url-bar"/>
+    <text x="710" y="104" class="url-text">https://example.com/#/account/usage-history</text>
+    
+    <!-- Browser Content -->
+    <rect x="630" y="130" width="380" height="220" class="browser-content"/>
+    
+    <!-- Page Content -->
+    <text x="820" y="180" text-anchor="middle" class="text">다음 페이지</text>
+    <text x="820" y="210" text-anchor="middle" class="url-text">/account/usage-history</text>
+    <text x="820" y="260" text-anchor="middle" class="text" style="fill: #059669;">✓ 페이지 이동 완료</text>
+    <text x="820" y="290" text-anchor="middle" class="url-text" style="font-size: 15px;">히스토리에 추가됨</text>
+    <text x="820" y="315" text-anchor="middle" class="url-text" style="font-size: 15px;">(뒤로 가기로 이전 페이지 복귀 가능)</text>
+    
+    <!-- Label -->
+    <text x="820" y="70" text-anchor="middle" class="label">③ 완료</text>
+  </g>
+</svg>

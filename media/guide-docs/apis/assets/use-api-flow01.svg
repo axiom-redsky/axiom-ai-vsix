@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1020">
+  <defs>
+    <style>
+      .title { font: bold 24px sans-serif; fill: #1a1a1a; }
+      .subtitle { font: bold 16px sans-serif; fill: #2563eb; }
+      .text { font: 15px sans-serif; fill: #374151; }
+      .small-text { font: 13px sans-serif; fill: #6b7280; }
+      .step { font: bold 16px sans-serif; fill: #dc2626; }
+      .box { fill: #f0f9ff; stroke: #2563eb; stroke-width: 2; rx: 8; }
+      .server-box { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2; rx: 8; }
+      .arrow { stroke: #2563eb; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-back { stroke: #16a34a; stroke-width: 2; fill: none; marker-end: url(#arrowhead-green); }
+      .note-box { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.5; rx: 4; }
+      .cors-warning { fill: #fee2e2; stroke: #dc2626; stroke-width: 2.5; rx: 6; }
+      .cors-text { font: bold 14px sans-serif; fill: #dc2626; }
+      .highlight { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; rx: 4; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#2563eb" />
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#16a34a" />
+    </marker>
+  </defs>
+  
+  <!-- Title -->
+  <text x="400" y="35" text-anchor="middle" class="title">useApi 훅 동작 흐름도</text>
+  <text x="400" y="58" text-anchor="middle" class="small-text">(직접 API 호출)</text>
+  
+  <!-- Client Component (Initial) -->
+  <rect x="100" y="85" width="600" height="130" class="box"/>
+  <text x="400" y="112" text-anchor="middle" class="subtitle">Client Component</text>
+  <text x="120" y="138" class="text">const { data, isLoading, error } = useApi('/posts');</text>
+  <text x="120" y="160" class="small-text">- TanStack Query 기반 데이터 페칭</text>
+  <text x="120" y="180" class="small-text">- 초기 상태: isLoading: true, data: undefined</text>
+  <text x="120" y="200" class="small-text">- useApi('/posts') 또는 useApi('https://external-api.com/posts')</text>
+
+  <!-- Arrow 1: Request -->
+  <path d="M 400 215 L 400 275" class="arrow"/>
+  <rect x="270" y="235" width="260" height="25" class="highlight"/>
+  <text x="400" y="255" text-anchor="middle" class="step">① HTTP Request (GET/POST)</text>
+  
+  <!-- CORS Warning Box (강조) -->
+  <rect x="80" y="285" width="640" height="65" class="cors-warning"/>
+  <text x="400" y="307" text-anchor="middle" class="cors-text">⚠️ CORS 이슈 발생 가능 지점 ⚠️</text>
+  <text x="400" y="325" text-anchor="middle" class="small-text">다른 도메인(https://external-api.com)에서 API 호출 시 서버에서 CORS 허용 필요!</text>
+  <text x="400" y="340" text-anchor="middle" class="small-text">같은 도메인(/posts)인 경우 CORS 문제 없음</text>
+  
+  <!-- API Server -->
+  <rect x="100" y="370" width="600" height="180" class="server-box"/>
+  <text x="400" y="400" text-anchor="middle" class="subtitle">API Server</text>
+  <text x="120" y="425" class="text">https://external-api.com 또는 같은 도메인</text>
+  
+  <rect x="120" y="445" width="560" height="95" class="note-box"/>
+  <text x="140" y="470" class="step">② 데이터 처리 및 가공</text>
+  <text x="140" y="492" class="small-text">• DB 조회 (예: SELECT * FROM posts)</text>
+  <text x="140" y="512" class="small-text">• 비즈니스 로직 실행 (데이터 검증, 권한 체크 등)</text>
+  <text x="140" y="532" class="small-text">• 응답 데이터 생성 (JSON 형식으로 포맷팅)</text>
+  
+  <!-- Arrow 2: Response -->
+  <path d="M 400 550 L 400 620" class="arrow-back"/>
+  <rect x="260" y="570" width="280" height="25" class="highlight"/>
+  <text x="400" y="590" text-anchor="middle" class="step">③ HTTP Response (JSON)</text>
+  
+  <!-- Client Component (After Response) -->
+  <rect x="100" y="630" width="600" height="360" class="box"/>
+  <text x="400" y="660" text-anchor="middle" class="subtitle">Client Component (TanStack Query 처리 과정)</text>
+  
+  <!-- Step 4 -->
+  <rect x="120" y="680" width="560" height="45" class="highlight"/>
+  <text x="140" y="703" class="step">④ Response 수신</text>
+  <text x="140" y="720" class="small-text">axios를 통한 응답 데이터 수신</text>
+  
+  <!-- Step 5 -->
+  <rect x="120" y="735" width="560" height="60" class="highlight"/>
+  <text x="140" y="758" class="step">⑤ TanStack Query 캐싱</text>
+  <text x="140" y="775" class="small-text">• 응답 데이터 자동 캐싱 (메모리)</text>
+  <text x="140" y="792" class="small-text">• queryKey 기반 캐시 관리, staleTime/cacheTime 설정 적용</text>
+  
+  <!-- Step 6 -->
+  <rect x="120" y="805" width="560" height="75" class="highlight"/>
+  <text x="140" y="828" class="step">⑥ 상태 업데이트</text>
+  <text x="140" y="845" class="small-text">• data: API 응답 데이터 (예: { posts: [...] })</text>
+  <text x="140" y="862" class="small-text">• isLoading: false</text>
+  <text x="140" y="879" class="small-text">• error: null (성공 시) 또는 Error 객체 (실패 시)</text>
+  
+  <!-- Step 7 -->
+  <rect x="120" y="890" width="560" height="60" class="highlight"/>
+  <text x="140" y="913" class="step">⑦ 컴포넌트 Re-render</text>
+  <text x="140" y="930" class="small-text">• 업데이트된 data로 UI 자동 렌더링</text>
+  <text x="140" y="947" class="small-text">• 예: {data?.posts.map(post => &lt;PostCard key={post.id} {...post} /&gt;)}</text>
+  
+  <!-- Additional Notes -->
+  <rect x="100" y="965" width="600" height="40" class="note-box"/>
+  <text x="120" y="987" class="text" style="fill: #92400e;">※ 재요청 시: 캐시된 데이터를 먼저 표시하고 백그라운드에서 재검증 (stale-while-revalidate)</text>
+  
+</svg>

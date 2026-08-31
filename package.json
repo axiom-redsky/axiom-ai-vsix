@@ -5,7 +5,10 @@
   "version": "0.1.0",
   "publisher": "axiom",
   "private": true,
-  "repository": { "type": "git", "url": "https://github.com/axiom-redsky/axiom-ai-vsix.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/axiom-redsky/axiom-ai-vsix.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -85,7 +88,10 @@
         },
         "axiom-ai.llm.provider": {
           "type": "string",
-          "enum": ["openai", "ollama"],
+          "enum": [
+            "openai",
+            "ollama"
+          ],
           "default": "ollama",
           "enumDescriptions": [
             "OpenAI 호환 API (/v1/chat/completions). vLLM·LM Studio·LocalAI 등. thinking 억제는 injectNoThink·sendThinkingParams로 시도합니다.",
@@ -165,7 +171,9 @@
         },
         "axiom-ai.rag.additionalFiles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "RAG 인덱스에 추가할 개별 .md 파일 경로 목록 (절대 경로)"
         },
@@ -256,7 +264,11 @@
         },
         "axiom-ai.experimental.captureRegionRedaction": {
           "type": "string",
-          "enum": ["full", "skeleton", "meta"],
+          "enum": [
+            "full",
+            "skeleton",
+            "meta"
+          ],
           "default": "full",
           "description": "포집 시 남길 민감도. full=원본 소스(재현 100%, 개발자 dogfooding 전용) · skeleton=구조는 유지하되 문자열/숫자/한글 문구를 마스킹(반출 심사용 중간 민감도, 한글 앵커 재현은 일부 손실) · meta=소스 미포함, 쿼리·게이트·상태만(저민감도, 재현은 못 해도 '어느 실패가 잦은가' 분포 제공). captureRegionCases가 켜져 있을 때만 적용."
         },
@@ -397,6 +409,15 @@
       {
         "command": "axiom-ai.reindexCorpus",
         "title": "Axiom AI: Corpus 인덱스 재빌드"
+      },
+      {
+        "command": "axiom-ai.openGuide",
+        "title": "Axiom AI: 개발 가이드 열기",
+        "icon": "$(book)"
+      },
+      {
+        "command": "axiom-ai.reseedGuide",
+        "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }
     ],
     "menus": {
@@ -408,6 +429,11 @@
         },
         {
           "command": "axiom-ai.clearHistory",
+          "when": "view == axiom-ai.chatView",
+          "group": "navigation"
+        },
+        {
+          "command": "axiom-ai.openGuide",
           "when": "view == axiom-ai.chatView",
           "group": "navigation"
         }
@@ -434,6 +460,8 @@
     "test:json-type": "node scripts/run-test-json-type.mjs",
     "test:offline-transplant": "node scripts/run-test-offline-transplant.mjs",
     "test:knowledge-routing": "node scripts/run-test-knowledge-routing.mjs",
+    "test:guide": "node scripts/run-test-guide.mjs",
+    "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",
     "eval:intent-live": "node scripts/run-eval-intent-live.mjs",
@@ -462,6 +490,7 @@
     "react-dom": "^18.3.0",
     "react-markdown": "^9.0.0",
     "rehype-highlight": "^7.0.0",
+    "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.0",
     "typescript": "~5.4.0"
   },

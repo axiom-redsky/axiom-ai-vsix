@@ -301,6 +301,7 @@ export function LauncherApp(): React.ReactElement {
 function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleOpenChat = () => vscode.postMessage({ type: 'openChat' });
   const handleClearHistory = () => vscode.postMessage({ type: 'clearHistory' });
+  const handleOpenGuide = () => vscode.postMessage({ type: 'openGuide' });
 
   return (
     <>
@@ -335,6 +336,9 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
             />
           </svg>
           새 채팅 시작
+        </button>
+        <button className="launcher__secondary-btn" onClick={handleOpenGuide}>
+          📖 개발 가이드
         </button>
       </div>
 

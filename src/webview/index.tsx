@@ -9,6 +9,7 @@ import { IntentProbeApp } from './intentProbe/IntentProbeApp';
 import { DecomposeProbeApp } from './decomposeProbe/DecomposeProbeApp';
 import { LocateProbeApp } from './locateProbe/LocateProbeApp';
 import { ContractsProbeApp } from './contractsProbe/ContractsProbeApp';
+import { GuideApp } from './guide/GuideApp';
 import './styles/webview.css';
 import 'highlight.js/styles/vs2015.css';
 
@@ -25,6 +26,7 @@ if (rootEl) {
     : mode === 'decompose-probe' ? <DecomposeProbeApp />
     : mode === 'locate-probe' ? <LocateProbeApp />
     : mode === 'contracts-probe' ? <ContractsProbeApp />
+    : mode === 'guide' ? <GuideApp />
     : <ChatApp />,
   );
 }

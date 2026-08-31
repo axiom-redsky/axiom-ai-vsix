@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" role="img" aria-label="테스트 러너부터 검증까지 6개 라이브러리 계층 스택">
+	<defs>
+		<style>
+			text { font-family: 'Cascadia Code','JetBrains Mono','Consolas','Malgun Gothic',monospace; }
+			.box{fill:#ffffff;stroke:#d6e0d8;stroke-width:1.5}
+			.s-ink{fill:#17201a}
+			.s-muted{fill:#5c6c61}
+			.s-accent{fill:#2f9e5f}
+			.side{stroke:#5c6c61;stroke-width:1.5;fill:none;stroke-dasharray:5 5;opacity:.75}
+			.fill-accsoft{fill:rgba(47,158,95,0.12)}
+			.tab-accent{fill:#2f9e5f}
+			.tab-mute{fill:#5c6c61}
+			.b{font-weight:680}
+		</style>
+		<pattern id="gridB" width="32" height="32" patternUnits="userSpaceOnUse">
+			<path d="M32 0 H0 V32" fill="none" stroke="rgba(23,32,26,0.055)" stroke-width="1" />
+		</pattern>
+		<clipPath id="clipB">
+			<rect x="8" y="8" width="944" height="484" rx="18" />
+		</clipPath>
+		<marker id="arM2" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="5" refY="9" viewBox="0 0 10 10" orient="auto">
+			<path d="M0,0 L10,0 L5,10 z" fill="#5c6c61" />
+		</marker>
+	</defs>
+	<rect x="8" y="8" width="944" height="484" rx="18" fill="#f5f8f3" stroke="#d6e0d8" />
+	<rect x="8" y="8" width="944" height="484" fill="url(#gridB)" clip-path="url(#clipB)" />
+
+	<text x="40" y="48" font-size="15" class="s-ink b">요청 흐름 : 위(러너) → 아래(검증)</text>
+	<path d="M58 78 L58 450" class="side" style="opacity:.9" marker-end="url(#arM2)" />
+
+	<!-- band1 : 러너 (reused) -->
+	<rect x="84" y="70" width="836" height="52" rx="10" class="box" />
+	<rect x="84" y="70" width="7" height="52" class="tab-mute" />
+	<text x="112" y="101" font-size="13" class="s-muted b">러너 층</text>
+	<text x="300" y="94" font-size="14" class="s-ink b">vitest · @vitejs/plugin-react</text>
+	<text x="300" y="112" font-size="12" class="s-muted">테스트를 찾아 실행 · JSX/TSX 변환</text>
+	<rect x="800" y="84" width="104" height="24" rx="12" fill="#f5f8f3" stroke="#d6e0d8" />
+	<text x="852" y="101" text-anchor="middle" font-size="11" class="s-muted b">재사용</text>
+
+	<!-- band2 : 환경 -->
+	<rect x="84" y="136" width="836" height="52" rx="10" class="box" />
+	<rect x="84" y="136" width="7" height="52" class="tab-accent" />
+	<text x="112" y="167" font-size="13" class="s-muted b">환경 층</text>
+	<text x="300" y="160" font-size="14" class="s-ink b">jsdom</text>
+	<text x="300" y="178" font-size="12" class="s-muted">Node에 없는 document/window를 가짜로 제공</text>
+	<rect x="800" y="150" width="104" height="24" rx="12" class="fill-accsoft" />
+	<text x="852" y="167" text-anchor="middle" font-size="11" class="s-accent b">NEW &#160;-D</text>
+
+	<!-- band3 : 렌더·조회 -->
+	<rect x="84" y="202" width="836" height="52" rx="10" class="box" />
+	<rect x="84" y="202" width="7" height="52" class="tab-accent" />
+	<text x="112" y="233" font-size="13" class="s-muted b">렌더·조회</text>
+	<text x="300" y="226" font-size="14" class="s-ink b">@testing-library/react</text>
+	<text x="300" y="244" font-size="12" class="s-muted">render()로 그리고 screen.getByText로 찾기</text>
+	<rect x="800" y="216" width="104" height="24" rx="12" class="fill-accsoft" />
+	<text x="852" y="233" text-anchor="middle" font-size="11" class="s-accent b">NEW &#160;-D</text>
+
+	<!-- band4 : 사용자 행동 -->
+	<rect x="84" y="268" width="836" height="52" rx="10" class="box" />
+	<rect x="84" y="268" width="7" height="52" class="tab-accent" />
+	<text x="112" y="299" font-size="13" class="s-muted b">사용자 행동</text>
+	<text x="300" y="292" font-size="14" class="s-ink b">@testing-library/user-event</text>
+	<text x="300" y="310" font-size="12" class="s-muted">실제 사용자처럼 클릭 · 타이핑 시뮬레이션</text>
+	<rect x="800" y="282" width="104" height="24" rx="12" class="fill-accsoft" />
+	<text x="852" y="299" text-anchor="middle" font-size="11" class="s-accent b">NEW &#160;-D</text>
+
+	<!-- band5 : 검증 -->
+	<rect x="84" y="334" width="836" height="52" rx="10" class="box" />
+	<rect x="84" y="334" width="7" height="52" class="tab-accent" />
+	<text x="112" y="365" font-size="13" class="s-muted b">검증 층</text>
+	<text x="300" y="358" font-size="14" class="s-ink b">@testing-library/jest-dom</text>
+	<text x="300" y="376" font-size="12" class="s-muted">toBeInTheDocument() 같은 DOM 전용 매처 추가</text>
+	<rect x="800" y="348" width="104" height="24" rx="12" class="fill-accsoft" />
+	<text x="852" y="365" text-anchor="middle" font-size="11" class="s-accent b">NEW &#160;-D</text>
+
+	<!-- band6 : 브라우저 모드 -->
+	<rect x="84" y="400" width="836" height="52" rx="10" class="box" />
+	<rect x="84" y="400" width="7" height="52" class="tab-accent" />
+	<text x="112" y="431" font-size="13" class="s-muted b">브라우저 모드</text>
+	<text x="300" y="424" font-size="14" class="s-ink b">@vitest/browser-playwright · playwright</text>
+	<text x="300" y="442" font-size="12" class="s-muted">jsdom 대신 실제 Chromium을 띄워 *.browser.test 실행</text>
+	<rect x="800" y="414" width="104" height="24" rx="12" class="fill-accsoft" />
+	<text x="852" y="431" text-anchor="middle" font-size="11" class="s-accent b">NEW &#160;-D</text>
+</svg>
