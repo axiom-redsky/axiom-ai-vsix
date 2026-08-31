@@ -14,17 +14,21 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadCardsFromDir, finalizeCatalog } from '../ai/actions/CardCatalog';
+import { CardCatalogService } from './CardCatalogService';
 import { matchCards, listApplicableCards, type ICardMatchContext } from '../ai/actions/CardMatcher';
 import {
-  buildBindingView, buildCardsPayload, buildOutputViews, buildSlotViews, substituteSlots,
+  buildBindingView, buildCardsPayload, buildOutputViews, buildRecipeView, buildSlotViews, substituteSlots,
 } from '../ai/actions/CardPlanView';
 import type { IBindingPlan } from '../ai/actions/OfflineApiBinding';
+import type { IRecipePlan } from '../ai/actions/OfflineRecipeApply';
 import type { IActionCard, ICardMatch } from '../ai/actions/types';
 import { COMPONENT_PROPS_INDEX } from '../ai/contracts/generated/componentPropsIndex';
 import { splitFrontmatter } from '../ai/retrieval/KnowledgeDoc';
 import { PageCreationDetector } from '../ai/intent/PageCreationDetector';
-import { ENVELOPE_CHOICE_KEY, TARGET_FILE_CHOICE_KEY } from '../types/messages';
+import {
+  ENVELOPE_CHOICE_KEY, RECIPE_ANCHOR_CHOICE_KEY, RECIPE_ANCHOR_LIVE_CURSOR, RECIPE_CURSOR_KEY,
+  TARGET_FILE_CHOICE_KEY,
+} from '../types/messages';
 import type {
   ActionCardOutputView, ActionCardSlotView, ActionCardsPayload, HostToWebviewMessage,
 } from '../types/messages';
@@ -65,6 +69,30 @@ export interface IActionCardHost {
    */
   currentCodeFile(): string | null;
   /**
+   * 요청 시점의 커서/선택 영역을 앵커 key(`sel:12-14` | `line:37`)로 돌려준다 —
+   * recipe 카드가 "골격을 어디에 넣을지"의 **최초값**으로 쓴다(이후엔 카드의 위치 칩이 덮어쓴다).
+   * 편집기를 못 읽으면 null — 계획은 JSX 랜드마크만으로 후보를 만든다.
+   */
+  currentEditorAnchor(): string | null;
+  /**
+   * recipe 카드의 삽입 계획을 계산한다 — 대상 파일 원문이 필요하므로 호스트 몫이다.
+   * 막힘(파일 없음·자리 없음)은 null이 아니라 `plan.blocked` 사유로 돌려준다.
+   * `query`는 결정론 위치 찾기(locate)의 입력 — 커서를 손으로 맞추지 않아도 자리를 제안한다.
+   * `opts.preferCursor`면 커서를 자동 제안보다 앞에 둔다(사용자가 카드를 보고 커서를 옮긴 경우).
+   */
+  buildRecipePlan(
+    card: IActionCard, values: Record<string, string>, query: string,
+    opts?: { preferCursor?: boolean },
+  ): IRecipePlan | null;
+  /**
+   * 확정된 레시피 계획을 결정론 적용한다(확인 카드·파일 쓰기는 기존 경로 재사용).
+   * @returns null=적용 흐름 진입 / 문자열=실패 사유
+   */
+  applyRecipe(
+    card: IActionCard, values: Record<string, string>, query: string,
+    opts?: { preferCursor?: boolean },
+  ): Promise<string | null>;
+  /**
    * binding 카드의 계획(매핑 테이블)을 계산한다 — 현재 파일 원문과 스펙 문서가 필요하므로
    * 워크스페이스 I/O를 아는 호스트 몫이다. 지원하지 않는 id·현재 파일 없음이면 null.
    * 막힘(테이블 없음·스펙 없음)은 null이 아니라 `plan.blocked` 사유로 돌려준다 — 카드가
@@ -92,6 +120,11 @@ interface ICardSession {
   values: Map<string, Record<string, string>>;
   /** cardId → 테이블 컬럼 필드 → 사용자가 고른 API 필드(또는 REMOVE_COLUMN). binding 카드 전용. */
   choices: Map<string, Record<string, string>>;
+  /**
+   * 카드가 뜬 **뒤** 사용자가 편집기에서 커서를 직접 옮긴 카드들.
+   * 그 행동은 "여기 넣어줘"라는 의사표시이므로, 그때부터 커서가 자동 제안을 이긴다.
+   */
+  cursorMoved: Set<string>;
 }
 
 /**
@@ -112,28 +145,24 @@ let seq = 0;
 export class ActionCardController {
   private _session: ICardSession | null = null;
   private readonly _pageNameDetector = new PageCreationDetector();
+  /** 카탈로그 3계층·켜기끄기의 단일 진입점 — 관리 패널과 **같은 서비스**를 쓴다(Phase 3). */
+  private readonly _catalog: CardCatalogService;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _host: IActionCardHost,
-  ) {}
+  ) {
+    this._catalog = new CardCatalogService(_extensionUri);
+  }
 
   // ── 카탈로그 ────────────────────────────────────────────────────────────────
 
-  /** 내장 + 프로젝트 카드 로드(디렉터리가 작아 매 턴 로드 = 공짜 핫리로드). */
+  /**
+   * 내장 + 프로젝트 + 개인 카드 중 **활성 카드**만(디렉터리가 작아 매 턴 로드 = 공짜 핫리로드).
+   * 관리 패널에서 끈 카드가 여기서도 즉시 빠진다 — 두 경로가 같은 서비스를 부르기 때문.
+   */
   private _loadCatalog(): IActionCard[] {
-    const builtinDir = vscode.Uri.joinPath(this._extensionUri, 'media', 'action-cards').fsPath;
-    const builtin = loadCardsFromDir(builtinDir, 'builtin');
-    const wsRoot = this._host.workspaceRoot();
-    const project = wsRoot
-      ? loadCardsFromDir(path.join(wsRoot, '.axiom', 'actions'), 'project')
-      : { cards: [], issues: [] };
-    for (const i of [...builtin.issues, ...project.issues]) {
-      if (i.severity === 'error') {
-        console.warn(`[Axiom AI] 행동 카드 비활성: [${i.cardId ?? '?'}] ${i.message} (${i.sourcePath ?? ''})`);
-      }
-    }
-    return finalizeCatalog([...builtin.cards, ...project.cards]).cards;
+    return this._catalog.activeCards();
   }
 
   private _matchContext(fileOpen: boolean): ICardMatchContext {
@@ -180,13 +209,23 @@ export class ActionCardController {
     const requestId = `ac-${Date.now().toString(36)}-${++seq}`;
     const values = new Map<string, Record<string, string>>();
     const all = [...rec.matches, ...more];
-    // 요청 시점의 대상 파일을 **붙잡아** 둔다(이후 활성 편집기가 바뀌어도 카드는 이 파일을 본다).
+    // 요청 시점의 대상 파일·커서 위치를 **붙잡아** 둔다(이후 활성 편집기가 바뀌어도 카드는 이 자리를 본다).
     const targetFile = this._host.currentCodeFile();
+    const anchor = this._host.currentEditorAnchor();
     for (const m of all) {
-      values.set(m.card.id, { ...m.prefill, ...(targetFile ? { [TARGET_FILE_CHOICE_KEY]: targetFile } : {}) });
+      values.set(m.card.id, {
+        ...m.prefill,
+        ...(targetFile ? { [TARGET_FILE_CHOICE_KEY]: targetFile } : {}),
+        // 커서는 **자동으로 잡은 값** 칸에 넣는다 — 사용자의 명시적 선택 칸을 미리 채우면
+        // 요청 문장으로 찾아낸 자리가 언제나 커서에 밀린다.
+        ...(anchor ? { [RECIPE_CURSOR_KEY]: anchor } : {}),
+      });
     }
     // 세션엔 둘 다 담는다 — [다른 작업]에서 펼친 카드도 칩 편집·실행이 되어야 한다.
-    this._session = { requestId, query, matches: all, primary: rec.matches, values, choices: new Map() };
+    this._session = {
+      requestId, query, matches: all, primary: rec.matches, values,
+      choices: new Map(), cursorMoved: new Set(),
+    };
 
     const payload: ActionCardsPayload = buildCardsPayload(
       requestId, query, rec.mode === 'plan' ? 'plan' : 'list', rec.matches, values,
@@ -195,6 +234,7 @@ export class ActionCardController {
           outputs: (card, v) => this._resolveOutputs(card, v),
           editor: (c, slot) => this._slotEditor(c, slot),
           binding: (card, v) => this._resolveBindingPlan(card, v),
+          recipe: (card, v) => this._resolveRecipePlan(card, v),
           choices: this._session.choices,
         },
         ...(note ? { note } : {}),
@@ -203,6 +243,23 @@ export class ActionCardController {
     );
     this._host.post({ type: 'actionCards', payload });
     return true;
+  }
+
+  /**
+   * 이 질문에 **떴을 텐데 꺼져 있어서 못 뜬** 카드들의 제목.
+   *
+   * 토글은 채팅 결과를 조용히 바꾼다 — 실측(사용자 F5): 관리 패널에서 시험 삼아 끈 카드 때문에
+   * "달력으로 바꿔줘"가 카드 없이 지식 응답으로 답했고, 화면 어디에도 이유가 없었다.
+   * 끄는 것 자체는 정상 동작이므로 되돌리지 않고, **왜 안 떴는지를 말해준다**(실패를 계단으로).
+   */
+  disabledMatchTitles(query: string, fileOpen: boolean): string[] {
+    const view = this._catalog.load();
+    const off = view.entries
+      .filter((e) => e.status === 'disabled' && e.card)
+      .map((e) => e.card as IActionCard);
+    if (off.length === 0) return [];
+    const rec = matchCards(query, off, this._matchContext(fileOpen));
+    return rec.matches.map((m) => m.card.title);
   }
 
   /** 추천 세션의 히스토리 기록용 한 줄 요약(카드는 구조 메시지라 그대로 히스토리에 못 넣는다). */
@@ -239,6 +296,14 @@ export class ActionCardController {
   }
 
   /**
+   * 대상 파일이 바뀌면 붙잡아 둔 **삽입 위치를 버린다** — 줄 번호는 그 파일에서만 의미가 있어서,
+   * 남겨 두면 다른 파일의 엉뚱한 줄에 조용히 삽입된다(행 선택 폐기와 같은 종류의 안전 규약).
+   */
+  private _invalidateAnchor(card: IActionCard, values: Record<string, string>): void {
+    if (card.action.type === 'recipe') delete values[RECIPE_ANCHOR_CHOICE_KEY];
+  }
+
+  /**
    * 갱신된 슬롯 + 재계산한 출력 미리보기/매핑 테이블을 웹뷰로 되돌린다
    * (인라인 칩·QuickPick·바인딩 행 선택의 공통 출구 — 카드에 보이는 것은 항상 호스트가 계산한 것).
    */
@@ -246,6 +311,7 @@ export class ActionCardController {
     requestId: string, cardId: string, card: IActionCard, values: Record<string, string>,
   ): void {
     const plan = this._resolveBindingPlan(card, values);
+    const recipe = this._resolveRecipePlan(card, values);
     this._host.post({
       type: 'actionCardSlots',
       requestId,
@@ -261,7 +327,47 @@ export class ActionCardController {
             ),
           }
         : {}),
+      // 칩을 고치면 골격 미리보기도 따라간다 — 카드에 보이는 코드가 곧 삽입될 코드다.
+      ...(recipe ? { recipe: buildRecipeView(recipe, { liveCursor: true }), skeleton: recipe.preview } : {}),
     });
+  }
+
+  /**
+   * 편집기에서 커서가 움직였다 — 살아 있는 레시피 카드의 삽입 위치를 **따라가게** 한다.
+   *
+   * 사용자가 원한 흐름(실측 요청): "카드를 띄워 놓고 커서를 이리저리 옮기면 그 자리에 들어가면 좋겠다".
+   * 이건 Phase 2의 "렌더마다 환경 재독 금지"와 충돌하지 않는다 — 그 교훈은 *사용자가 가만히 있는데도*
+   * 계획이 바뀌는 것(다른 파일을 열었더니 대상이 바뀜)을 막으려던 것이고, 여기서는 **사용자의 행동**이
+   * 입력이다. 대상 파일이 같을 때만 반응하는 것도 그래서다.
+   */
+  notifyCursorMoved(anchorKey: string, fileRel: string): void {
+    const session = this._session;
+    if (!session) return;
+    for (const m of session.matches) {
+      if (m.card.action.type !== 'recipe') continue;
+      const values = session.values.get(m.card.id) ?? {};
+      if ((values[TARGET_FILE_CHOICE_KEY] ?? '') !== fileRel) continue;
+      if (values[RECIPE_CURSOR_KEY] === anchorKey) continue; // 같은 자리면 재전송하지 않는다
+      values[RECIPE_CURSOR_KEY] = anchorKey;
+      // 커서를 옮긴 것이 가장 최근 의사표시 → 이전에 칩으로 고른 값은 해제한다.
+      delete values[RECIPE_ANCHOR_CHOICE_KEY];
+      session.values.set(m.card.id, values);
+      session.cursorMoved.add(m.card.id);
+      this._postSlots(session.requestId, m.card.id, m.card, values);
+    }
+  }
+
+  /** recipe 카드의 삽입 계획. 실패는 카드 없음(null)으로 접는다 — 카탈로그는 산다. */
+  private _resolveRecipePlan(card: IActionCard, values: Record<string, string>): IRecipePlan | null {
+    if (card.action.type !== 'recipe') return null;
+    try {
+      return this._host.buildRecipePlan(card, values, this._session?.query ?? '', {
+        preferCursor: this._session?.cursorMoved.has(card.id) ?? false,
+      });
+    } catch (err) {
+      console.warn(`[Axiom AI] 레시피 계획 계산 실패: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   /** binding 카드의 계획을 호스트에서 계산한다. 실패는 카드 없음(null)으로 접는다 — 카탈로그는 산다. */
@@ -285,21 +391,55 @@ export class ActionCardController {
    */
   setBindingChoice(requestId: string, cardId: string, field: string, value: string): void {
     const found = this._findCard(requestId, cardId);
-    if (!found || found.card.action.type !== 'binding') return;
+    // 예약키(대상 파일·삽입 위치)는 binding·recipe 두 유형이 같은 통로를 쓴다 — 행 매핑은 binding 전용.
+    if (!found) return;
+    const type = found.card.action.type;
+    if (type !== 'binding' && type !== 'recipe') return;
     const key = field.trim();
     const picked = value.trim();
     if (!key || !picked) return;
+
+    if (key === RECIPE_ANCHOR_CHOICE_KEY) {
+      const values = this._session!.values.get(cardId) ?? {};
+      // "지금 커서 위치"는 값이 아니라 **요청**이다 — 편집기를 다시 읽어 확정 줄로 바꿔 저장한다.
+      // (사용자가 카드를 보고 커서를 옮긴 뒤 명시적으로 누른 것이라, "렌더마다 환경 재독" 금지
+      //  원칙과 충돌하지 않는다. 읽지 못하면 종전 값을 유지한다.)
+      let resolved = picked;
+      if (picked === RECIPE_ANCHOR_LIVE_CURSOR) {
+        const live = this._host.currentEditorAnchor();
+        if (!live) {
+          this._host.renderMarkdown('> ⚠️ 편집기 커서 위치를 읽지 못했습니다. 코드 파일에서 넣을 자리를 클릭한 뒤 다시 선택해주세요.');
+          return;
+        }
+        resolved = live;
+        // ⚠ 커서 칸에도 넣어야 **후보로 성립**한다. 계획은 후보 목록에 없는 값을 기본값으로 되돌리므로,
+        //   선택 칸에만 넣으면 "지금 커서 위치"가 조용히 무시된다(실측 버그).
+        values[RECIPE_CURSOR_KEY] = live;
+        this._session!.cursorMoved.add(cardId);
+      } else {
+        // 칩에서 다른 자리를 고른 것 = 가장 최근 의사표시 → 커서 우선 승격을 되돌린다.
+        this._session!.cursorMoved.delete(cardId);
+      }
+      values[key] = resolved;
+      this._session!.values.set(cardId, values);
+      this._postSlots(requestId, cardId, found.card, values);
+      return;
+    }
 
     if (key === ENVELOPE_CHOICE_KEY || key === TARGET_FILE_CHOICE_KEY) {
       const values = this._session!.values.get(cardId) ?? {};
       values[key] = picked;
       this._session!.values.set(cardId, values);
-      // 대상 파일이 바뀌면 표 자체가 달라진다 — 이전 표에 대한 행 선택은 버린다.
-      if (key === TARGET_FILE_CHOICE_KEY) this._invalidateChoices(found.card);
+      // 대상 파일이 바뀌면 표·줄 번호가 통째로 달라진다 — 이전 파일에 대한 행 선택과 삽입 위치는 버린다.
+      if (key === TARGET_FILE_CHOICE_KEY) {
+        this._invalidateChoices(found.card);
+        this._invalidateAnchor(found.card, values);
+      }
       this._postSlots(requestId, cardId, found.card, values);
       return;
     }
 
+    if (type !== 'binding') return; // 행 매핑은 binding 카드에만 있다
     const choices = this._session!.choices.get(cardId) ?? {};
     choices[key] = picked;
     this._session!.choices.set(cardId, choices);
@@ -478,7 +618,7 @@ export class ActionCardController {
         this._executeDoc(card);
         return;
       case 'recipe':
-        this._executeRecipe(card, values);
+        await this._executeRecipe(card, values);
         return;
       case 'command':
         await this._executeCommand(card);
@@ -577,13 +717,32 @@ export class ActionCardController {
     this._host.renderMarkdown(`## [${docId}.md]\n\n${body}`, true);
   }
 
-  /** recipe 실행(Phase 1) — 골격을 안내 카드로 렌더. 자동 structural 삽입은 A3(후속). */
-  private _executeRecipe(card: IActionCard, values: Record<string, string>): void {
+  /**
+   * recipe 실행(A3) — 카드에 보이던 골격을 **결정론으로 삽입**한다(모델 0회).
+   *
+   * 계획을 세울 수 없으면(파일 없음·자리 없음·미정 슬롯) 조용히 실패하지 않고, 종전처럼 골격을
+   * 안내로 렌더한 뒤 사유를 붙인다 — 자동 삽입이 안 되는 상황에서도 카드가 빈손이 되지는 않는다.
+   */
+  private async _executeRecipe(card: IActionCard, values: Record<string, string>): Promise<void> {
+    let reason: string | null;
+    try {
+      // 적용은 계획과 **같은 입력**으로 다시 세운다 — 그래야 카드에 보이던 자리에 정확히 들어간다.
+      reason = await this._host.applyRecipe(card, values, this._session?.query ?? '', {
+        preferCursor: this._session?.cursorMoved.has(card.id) ?? false,
+      });
+    } catch (err) {
+      reason = (err as Error).message;
+    }
+    if (reason) this._renderRecipeFallback(card, values, reason);
+  }
+
+  /** 자동 삽입이 막혔을 때의 안내 — 골격은 그대로 주고(복사해 쓸 수 있게) 사유를 함께 밝힌다. */
+  private _renderRecipeFallback(card: IActionCard, values: Record<string, string>, reason: string): void {
     const skeleton = substituteSlots(card.skeleton ?? '', values);
     this._host.renderMarkdown(
-      `${card.icon} **${card.title}** — 아래 골격을 현재 파일에 적용하세요.\n\n` +
+      `${card.icon} **${card.title}** — 자동 삽입을 하지 못했습니다: ${reason}\n\n` +
       `${card.description}\n\n\`\`\`tsx\n${skeleton}\n\`\`\`\n\n` +
-      `> 자동 삽입(structural apply)은 후속 단계에서 지원됩니다 — 지금은 골격을 복사해 붙여넣으세요.`,
+      `> 위 골격을 직접 붙여넣거나, 카드의 **대상 파일·삽입 위치** 칩을 고친 뒤 다시 실행해주세요.`,
     );
   }
 

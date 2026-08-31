@@ -38,12 +38,29 @@ export const SLOT_SOURCES: readonly TSlotSource[] = [
   'text', 'enum', 'domain-list', 'endpoint-list', 'component-list',
 ];
 
+/**
+ * recipe 카드가 골격을 **넣는 방식** (기본 `insert`).
+ *
+ * 왜 카드가 선언하나: "달력으로 바꿔줘"의 date-picker는 기존 날짜 입력을 **교체**해야 맞고,
+ * "표준 검색폼 삽입"은 **추가**해야 맞다. 이건 요청 문장이 아니라 **레시피의 본질**이라 카드만 안다
+ * (엔진이 문장에서 추측하면 정규식 두더지잡기로 돌아간다, §2-1). 어휘는 둘로 좁게 유지.
+ */
+export type TRecipeMode = 'insert' | 'replace';
+export const RECIPE_MODES: readonly TRecipeMode[] = ['insert', 'replace'];
+
 /** 카드 노출 전제조건 v1. 미충족 카드는 매칭에서 제외된다(비활성과 다름 — 상황 필터). */
 export type TPrecondition = 'file-open' | 'scaffold-detected';
 export const PRECONDITIONS: readonly TPrecondition[] = ['file-open', 'scaffold-detected'];
 
 /** 카탈로그 3계층 (§5). frontmatter가 아니라 **로더가 출처에 따라 부여**한다. */
 export type TCardLayer = 'builtin' | 'project' | 'personal';
+
+/**
+ * 계층 우선순위 — 클수록 상위(개인 > 프로젝트 > 내장).
+ * 동점 정렬 가점(CardMatcher)과 같은 id의 오버라이드 판정(CardCatalog)이 **같은 순서**를 쓰도록
+ * 여기 한 곳에 둔다. "프로젝트 카드가 내장 카드를 의도적으로 덮는다"(§5)가 이 순서의 의미다.
+ */
+export const LAYER_RANK: Record<TCardLayer, number> = { builtin: 0, project: 1, personal: 2 };
 
 /** template 출력 항목의 종류 — 계획 카드 미리보기의 `+ 신규` / `± 수정` 행. */
 export type TOutputKind = 'create' | 'modify';
@@ -91,6 +108,16 @@ export interface IActionSpec {
   command?: string;
   /** binding: 결정론 바인딩 레시피 id (v1: 'api-table'). 해석은 호스트 몫. */
   binding?: string;
+  /** recipe: 골격을 넣는 방식(기본 insert). replace면 위치 찾기가 잡은 요소를 갈아끼운다. */
+  mode?: TRecipeMode;
+  /**
+   * recipe: **무엇을 겨냥하는 레시피인가**(위치 찾기 힌트). 예: date-picker → `date 날짜 입력`.
+   *
+   * 사용자 문장만으로는 코드와 이어지지 않는 경우가 흔하다("달력으로 바꿔줘"에는 `type="date"`와
+   * 겹치는 글자가 없다). 자기가 무엇을 대체·보완하는지는 **카드만 아는 사실**이므로 카드가 선언하고,
+   * 엔진은 그 문자열을 사용자 문장과 함께 locate에 넘길 뿐 뜻은 모른다(§2-3).
+   */
+  target?: string;
 }
 
 /** 파싱·검증을 통과한 카드 한 장. */

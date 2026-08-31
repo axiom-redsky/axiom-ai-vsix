@@ -7,6 +7,8 @@ import { DecomposeProbePanel } from './providers/DecomposeProbePanel';
 import { LocateProbePanel } from './providers/LocateProbePanel';
 import { ContractsProbePanel } from './providers/ContractsProbePanel';
 import { GuidePanel } from './providers/GuidePanel';
+import { ActionCardsPanel } from './providers/ActionCardsPanel';
+import { CardCatalogService } from './providers/CardCatalogService';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -19,6 +21,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // 통합 설정 계층 초기화(SecretStorage 핸들·apiKey 선로딩·통합 설정 파일 감시).
   // 비동기지만 즉시 await하지 않아도 안전 — 선로딩 전엔 종전(settings.json) 동작으로 폴백한다.
   void ExtensionConfig.init(context);
+  // 행동 카드 개인 계층(globalStorage) 경로 확정 — 채팅 추천·관리 패널이 같은 3계층을 본다(§5).
+  CardCatalogService.init(context);
 
   const launcherProvider = new ChatPanelProvider(context.extensionUri);
   const chatProvider = new ChatViewProvider(context.extensionUri);
@@ -107,12 +111,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('axiom-ai.createPageWizard', () => {
       void chatProvider.runCreatePageWizard();
     }),
+
+    // 행동 카드 관리 패널 — 3계층 목록·켜기끄기·새 카드·lint·드라이런 (§5).
+    vscode.commands.registerCommand('axiom-ai.openActionCards', () => {
+      ActionCardsPanel.createOrShow(context.extensionUri);
+    }),
   );
 
   registerCommands(context, launcherProvider, chatProvider);
 
   // corpus 파일 변경 감시 등록
   chatProvider.registerCorpusWatcher(context);
+  // 레시피 카드의 삽입 위치가 편집기 커서를 따라가게 한다(카드를 띄운 채 자리를 고르는 흐름).
+  chatProvider.registerCursorTracking(context);
 
   // RAG 임베딩 인덱스를 백그라운드에서 미리 빌드 시작
   chatProvider.startIndexBuild();

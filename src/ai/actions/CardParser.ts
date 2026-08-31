@@ -10,10 +10,10 @@
 
 import { parseMiniYaml, type IYamlMap, type TYamlValue } from './MiniYaml';
 import {
-  ACTION_TYPES, SLOT_SOURCES, PRECONDITIONS,
+  ACTION_TYPES, SLOT_SOURCES, PRECONDITIONS, RECIPE_MODES,
   type IActionCard, type IActionCardSlot, type IActionSpec, type ICardIssue,
   type IParsedCard, type ITemplateOutput, type TActionType, type TCardLayer,
-  type TPrecondition, type TSlotSource,
+  type TPrecondition, type TRecipeMode, type TSlotSource,
 } from './types';
 
 export interface IParseCardOptions {
@@ -27,7 +27,9 @@ export interface IParseCardOptions {
 const KNOWN_TOP_KEYS = new Set([
   'schemaVersion', 'id', 'title', 'icon', 'triggers', 'preconditions', 'slots', 'action', 'priority',
 ]);
-const KNOWN_ACTION_KEYS = new Set(['type', 'template', 'outputs', 'doc', 'command', 'binding']);
+const KNOWN_ACTION_KEYS = new Set([
+  'type', 'template', 'outputs', 'doc', 'command', 'binding', 'mode', 'target',
+]);
 const KNOWN_SLOT_KEYS = new Set(['name', 'label', 'source', 'options', 'prefillFrom', 'pattern', 'hint']);
 
 const ID_RE = /^[a-z][a-z0-9-]*$/;
@@ -245,6 +247,17 @@ export function parseActionCard(raw: string, opts: IParseCardOptions = {}): IPar
       if (a.doc !== undefined) action.doc = asTrimmedString(a.doc) ?? undefined;
       if (a.command !== undefined) action.command = asTrimmedString(a.command) ?? undefined;
       if (a.binding !== undefined) action.binding = asTrimmedString(a.binding) ?? undefined;
+      if (a.mode !== undefined) {
+        const mode = asTrimmedString(a.mode);
+        if (mode && (RECIPE_MODES as readonly string[]).includes(mode)) action.mode = mode as TRecipeMode;
+        else err(`알 수 없는 action.mode "${mode ?? ''}" (지원: ${RECIPE_MODES.join(', ')})`, 'action.mode');
+        if (type !== 'recipe') warn('action.mode는 recipe 카드 전용 — 무시됨', 'action.mode');
+      }
+      if (a.target !== undefined) {
+        const target = asTrimmedString(a.target);
+        if (target) action.target = target;
+        if (type !== 'recipe') warn('action.target은 recipe 카드 전용 — 무시됨', 'action.target');
+      }
       if (a.outputs !== undefined) {
         const arr = asStringArray(a.outputs);
         if (!arr) {

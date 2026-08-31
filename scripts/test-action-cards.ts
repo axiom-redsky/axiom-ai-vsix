@@ -2,11 +2,16 @@
  * 행동 카드(Action Card) Phase 0 테스트 — MiniYaml 부분집합 파서 + CardParser 검증.
  * 순수 모듈이라 vscode 스텁 없이 돈다. 계획: docs/offline-action-cards-plan.md §4.
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { parseMiniYaml } from '../src/ai/actions/MiniYaml';
 import { parseActionCard, findTriggerCollisions, splitCardFrontmatter } from '../src/ai/actions/CardParser';
 import { matchCards, listApplicableCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
-import { loadCardsFromDir, finalizeCatalog } from '../src/ai/actions/CardCatalog';
-import { buildCardsPayload, buildOutputViews, buildSlotViews, missingSlots, substituteSlots } from '../src/ai/actions/CardPlanView';
+import { loadCardsFromDir, finalizeCatalog, buildCatalog } from '../src/ai/actions/CardCatalog';
+import { buildCardTemplate, CARD_TEMPLATE_KINDS } from '../src/ai/actions/CardTemplate';
+import { buildCardsPayload, buildCardView, buildOutputViews, buildSlotViews, missingSlots, substituteSlots } from '../src/ai/actions/CardPlanView';
+import { buildRecipePlan } from '../src/ai/actions/OfflineRecipeApply';
 import { buildBindingPlan } from '../src/ai/actions/OfflineApiBinding';
 import type { IActionCard } from '../src/ai/actions/types';
 
@@ -485,7 +490,8 @@ console.log('\n── J. 계획 카드 뷰 ──');
 
   const recipe = cards.find((c) => c.id === 'insert-date-picker')!;
   const rv = buildCardsPayload('req-2', 'x', 'plan', [{ card: recipe, score: 1, matchedTriggers: ['달력'], prefill: {} }], new Map());
-  eq(rv.cards[0].executeLabel, '골격 안내 보기', 'J11: recipe 실행 라벨');
+  // A3 이후 recipe는 안내가 아니라 실제 삽입을 한다 — 라벨도 그렇게 말해야 한다.
+  eq(rv.cards[0].executeLabel, '⏎ 이 골격 넣기', 'J11: recipe 실행 라벨');
   ok(!!rv.cards[0].skeleton, 'J12: recipe 골격 전달(코드 미리보기)');
   eq(rv.cards[0].outputs, [], 'J13: recipe는 출력 행 없음');
 
@@ -735,6 +741,186 @@ console.log('\n── P. 다른 작업(카탈로그 탈출구) ──');
 
   // more 미주입(구 호출부·테스트) → 종전 동작
   eq(buildCardsPayload('req-p2', 'x', 'plan', rec.matches, values).moreCards, undefined, 'P9: 미주입이면 필드 없음(회귀 0)');
+}
+
+// ═══ Q. 카탈로그 3계층 + 새 카드 스캐폴딩 (Phase 3) ═════════════════════════
+console.log('\n── Q. 3계층 카탈로그 ──');
+{
+  const tmpDir = (files: Record<string, string>): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-cards-q-'));
+    for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body, 'utf8');
+    return dir;
+  };
+  /** 최소 유효 카드(doc) — 계층·충돌·토글 실험용. */
+  const docCard = (id: string, triggers: string[]): string =>
+    [
+      '---',
+      `id: ${id}`,
+      `title: ${id}`,
+      `triggers: [${triggers.join(', ')}]`,
+      'action:',
+      '  type: doc',
+      '  doc: scaffold-docs/use-api',
+      '---',
+      '',
+      `## 설명`,
+      `${id} 설명`,
+      '',
+    ].join('\n');
+
+  // Q1 — 3계층 합성
+  {
+    const builtin = tmpDir({ 'alpha.card.md': docCard('alpha', ['알파 문서']) });
+    const project = tmpDir({ 'beta.card.md': docCard('beta', ['베타 문서']) });
+    const personal = tmpDir({ 'gamma.card.md': docCard('gamma', ['감마 문서']) });
+    const view = buildCatalog([
+      { dir: builtin, layer: 'builtin' },
+      { dir: project, layer: 'project' },
+      { dir: personal, layer: 'personal' },
+    ]);
+    eq(view.cards.map((c) => c.id).sort(), ['alpha', 'beta', 'gamma'], 'Q1: 3계층 카드가 모두 활성');
+    eq(view.entries.map((e) => `${e.layer}:${e.id}:${e.status}`),
+      ['builtin:alpha:active', 'project:beta:active', 'personal:gamma:active'],
+      'Q2: entries는 계층 순 정렬 + 상태 표기');
+  }
+
+  // Q3~Q4 — 사용자 토글(카드 파일 불변)
+  {
+    const builtin = tmpDir({
+      'alpha.card.md': docCard('alpha', ['알파 문서']),
+      'beta.card.md': docCard('beta', ['베타 문서']),
+    });
+    const view = buildCatalog([{ dir: builtin, layer: 'builtin' }], { disabledIds: ['beta'] });
+    eq(view.cards.map((c) => c.id), ['alpha'], 'Q3: 끈 카드는 매칭 대상에서 빠진다');
+    eq(view.entries.find((e) => e.id === 'beta')?.status, 'disabled', 'Q4: 목록에는 남고 상태만 꺼짐(관리 가능)');
+  }
+
+  // Q5~Q7 — 같은 id는 상위 계층이 덮는다(§5 의도된 오버라이드)
+  {
+    const builtin = tmpDir({ 'create-page.card.md': docCard('create-page', ['페이지 생성']) });
+    const project = tmpDir({ 'create-page.card.md': docCard('create-page', ['페이지 생성']) });
+    const view = buildCatalog([
+      { dir: builtin, layer: 'builtin' },
+      { dir: project, layer: 'project' },
+    ]);
+    eq(view.cards.length, 1, 'Q5: 같은 id는 한 장만 산다(중복 추천 없음)');
+    eq(view.cards[0].layer, 'project', 'Q6: 상위 계층이 이긴다');
+    const shadowed = view.entries.find((e) => e.layer === 'builtin');
+    eq([shadowed?.status, shadowed?.overriddenBy], ['overridden', 'project'], 'Q7: 덮인 카드는 사유와 함께 목록에 남는다');
+  }
+
+  // Q8 — 덮는 쪽이 깨졌으면 덮지 않는다(fail-open: 깨진 프로젝트 카드가 멀쩡한 내장 카드를 끄면 안 된다)
+  {
+    const builtin = tmpDir({ 'alpha.card.md': docCard('alpha', ['알파 문서']) });
+    const project = tmpDir({ 'alpha.card.md': '---\nid: alpha\ntitle: 깨진 카드\n---\n' }); // triggers·action 누락
+    const view = buildCatalog([
+      { dir: builtin, layer: 'builtin' },
+      { dir: project, layer: 'project' },
+    ]);
+    eq(view.cards.map((c) => `${c.layer}:${c.id}`), ['builtin:alpha'], 'Q8: 깨진 상위 카드는 하위 카드를 덮지 못한다');
+    eq(view.entries.find((e) => e.layer === 'project')?.status, 'invalid', 'Q9: 깨진 카드는 사유와 함께 invalid로 노출');
+    ok((view.entries.find((e) => e.layer === 'project')?.issues ?? []).some((i) => i.severity === 'error'),
+      'Q10: 그 카드의 error 이유가 목록에 실린다');
+  }
+
+  // Q11~Q12 — 트리거 충돌은 활성 카드끼리만 본다(끈 카드는 트리거를 반납한다)
+  {
+    const builtin = tmpDir({
+      'alpha.card.md': docCard('alpha', ['같은 트리거']),
+      'beta.card.md': docCard('beta', ['같은 트리거']),
+    });
+    const clash = buildCatalog([{ dir: builtin, layer: 'builtin' }]);
+    eq(clash.cards.map((c) => c.id), ['alpha'], 'Q11: 같은 계층 트리거 중복 → 나중 카드 비활성');
+    eq(clash.entries.find((e) => e.id === 'beta')?.status, 'invalid', 'Q12: 충돌 사유가 그 카드 행에 붙는다');
+
+    const freed = buildCatalog([{ dir: builtin, layer: 'builtin' }], { disabledIds: ['alpha'] });
+    eq(freed.cards.map((c) => c.id), ['beta'], 'Q13: 앞 카드를 끄면 충돌이 풀려 뒤 카드가 산다');
+  }
+
+  // Q15~Q16 — 꺼진 카드도 **본체를 들고 있어야** "원래 떴을지"를 물을 수 있다.
+  // (실측: 시험 삼아 끈 카드 때문에 채팅에 카드가 안 떴는데 화면 어디에도 이유가 없었다.)
+  {
+    const builtin = tmpDir({
+      'alpha.card.md': docCard('alpha', ['알파 문서']),
+      'broken.card.md': '---\nid: broken\ntitle: 깨진 카드\n---\n',
+    });
+    const view = buildCatalog([{ dir: builtin, layer: 'builtin' }], { disabledIds: ['alpha'] });
+    const off = view.entries.find((e) => e.id === 'alpha');
+    eq([off?.status, off?.card?.triggers], ['disabled', ['알파 문서']], 'Q15: 꺼진 카드는 본체째 목록에 남는다');
+    eq(view.entries.find((e) => e.id === 'broken')?.card, undefined, 'Q16: 파싱 실패 카드에는 본체가 없다');
+  }
+
+  // Q14 — 없는 디렉터리는 정상 상태(프로젝트에 .axiom/actions가 없는 경우)
+  eq(buildCatalog([{ dir: path.join(os.tmpdir(), 'axiom-nope-' + Date.now()), layer: 'project' }]).entries, [],
+    'Q14: 디렉터리 부재는 조용한 빈 결과');
+}
+
+console.log('\n── R. 새 카드 스캐폴딩 ──');
+{
+  // 만들자마자 ⚠가 뜨는 템플릿은 스캐폴딩이 아니다 — 모든 종류가 경고 없이 파서를 통과해야 한다.
+  for (const kind of CARD_TEMPLATE_KINDS) {
+    const id = `my-${kind}-card`;
+    const parsed = parseActionCard(buildCardTemplate(kind, id), { expectedId: id, layer: 'project' });
+    ok(parsed.card !== null, `R: ${kind} 템플릿이 파서를 통과(card 살아있음)`);
+    eq(parsed.issues, [], `R: ${kind} 템플릿은 경고도 0`);
+    eq(parsed.card?.action.type, kind, `R: ${kind} 템플릿의 action.type`);
+    eq(parsed.card?.id, id, `R: ${kind} 템플릿 id가 파일명과 일치`);
+  }
+  // recipe 템플릿은 골격에 슬롯 플레이스홀더가 있고, 그 슬롯이 선언돼 있어야 치환된다.
+  const recipe = parseActionCard(buildCardTemplate('recipe', 'my-recipe'), { expectedId: 'my-recipe' }).card;
+  ok((recipe?.skeleton ?? '').includes('{{name}}'), 'R: recipe 템플릿 골격에 슬롯 플레이스홀더');
+  eq(recipe?.slots.map((s) => s.name), ['name'], 'R: 그 플레이스홀더에 대응하는 슬롯 선언');
+}
+
+// ═══ S. recipe 카드 = 삽입 계획 카드 (A3) ═══════════════════════════════════
+console.log('\n── S. 레시피 계획 카드 ──');
+{
+  const { cards } = finalizeCatalog(loadCardsFromDir('media/action-cards', 'builtin').cards);
+  const recipeCard = cards.find((c) => c.id === 'insert-date-picker')!;
+  const match = { card: recipeCard, score: 9, matchedTriggers: ['달력'], prefill: {} };
+
+  // 해석기 미주입(호스트가 파일을 모르는 경우) → 종전대로 골격만(회귀 0)
+  const bare = buildCardView(recipeCard, match, {});
+  eq(bare.recipe, undefined, 'S1: 해석기 없으면 계획 없음(골격만)');
+  eq(bare.skeleton, recipeCard.skeleton, 'S2: 그 경우 골격은 카드 원문 그대로');
+  eq(bare.executeLabel, '⏎ 이 골격 넣기', 'S3: 실행 라벨이 "안내 보기"가 아니라 삽입을 말한다');
+
+  const source = [
+    "import React from 'react';",
+    'export default function P(): React.ReactNode {',
+    '  return (',
+    '    <div className="page">',
+    '      <span>x</span>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const withPlan = buildCardView(recipeCard, match, {}, {
+    recipe: (card, values) => buildRecipePlan({
+      source, skeleton: card.skeleton ?? '', values, targetFile: 'src/P.tsx', targetFileChoices: ['src/P.tsx'],
+    }),
+  });
+  eq(withPlan.recipe?.blocked, null, 'S4: 계획이 서면 blocked 없음');
+  ok((withPlan.recipe?.anchorChoices.length ?? 0) > 0, 'S5: 삽입 위치 후보가 카드에 실린다');
+  eq(withPlan.recipe?.targetFile, 'src/P.tsx', 'S6: 대상 파일이 카드에 보인다');
+  ok((withPlan.recipe?.jsxLines ?? 0) > 0 && (withPlan.recipe?.importCount ?? 0) > 0, 'S7: 부품 요약');
+
+  // 슬롯이 있는 레시피 — 미치환이면 실행을 잠글 근거(pendingSlots)를 카드가 들고 있어야 한다
+  const slotCard: IActionCard = {
+    ...recipeCard,
+    id: 'x-recipe',
+    slots: [{ name: 'name', label: '이름', source: 'text' }],
+    skeleton: 'const {{name}}Ref = useRef(null);',
+  };
+  const pending = buildCardView(slotCard, { ...match, card: slotCard }, {}, {
+    recipe: (card, values) => buildRecipePlan({ source, skeleton: card.skeleton ?? '', values }),
+  });
+  eq(pending.recipe?.pendingSlots, ['name'], 'S8: 미정 슬롯이 카드에 표시된다(실행 잠금 근거)');
+  const filled = buildCardView(slotCard, { ...match, card: slotCard }, { name: 'picker' }, {
+    recipe: (card, values) => buildRecipePlan({ source, skeleton: card.skeleton ?? '', values }),
+  });
+  eq(filled.recipe?.pendingSlots, [], 'S9: 칩을 채우면 잠금이 풀린다');
+  eq(filled.skeleton, 'const pickerRef = useRef(null);', 'S10: 카드에 보이는 골격 = 삽입될 골격(치환 반영)');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

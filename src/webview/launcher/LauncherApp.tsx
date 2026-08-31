@@ -302,6 +302,7 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleOpenChat = () => vscode.postMessage({ type: 'openChat' });
   const handleClearHistory = () => vscode.postMessage({ type: 'clearHistory' });
   const handleOpenGuide = () => vscode.postMessage({ type: 'openGuide' });
+  const handleOpenActionCards = () => vscode.postMessage({ type: 'openActionCards' });
 
   return (
     <>
@@ -339,6 +340,13 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
         </button>
         <button className="launcher__secondary-btn" onClick={handleOpenGuide}>
           📖 개발 가이드
+        </button>
+        <button
+          className="launcher__secondary-btn"
+          onClick={handleOpenActionCards}
+          title="오프라인 모드에서 뜨는 추천 카드의 카탈로그 — 목록·켜기끄기·새 카드·드라이런"
+        >
+          🃏 오프라인 행동 카드
         </button>
       </div>
 

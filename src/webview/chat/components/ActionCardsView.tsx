@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ENVELOPE_CHOICE_KEY, TARGET_FILE_CHOICE_KEY } from '../../../types/messages';
+import { ENVELOPE_CHOICE_KEY, RECIPE_ANCHOR_CHOICE_KEY, TARGET_FILE_CHOICE_KEY } from '../../../types/messages';
 import type {
   ActionCardBindingRowView, ActionCardSlotView, ActionCardsPayload, ActionCardView,
 } from '../../../types/messages';
@@ -254,6 +254,109 @@ function BindingTable({
   );
 }
 
+/**
+ * 레시피 카드 본문 = **무엇을 어디에 넣는가**(A3).
+ * 골격은 이미 확정돼 있으므로, 남은 판단은 "어디에"뿐 — 그 한 조각을 위치 칩으로 사람이 정한다.
+ */
+function RecipePlan({
+  card, requestId, disabled, onBindingChoice,
+}: {
+  card: ActionCardView;
+  requestId: string;
+  disabled: boolean;
+  onBindingChoice: Props['onBindingChoice'];
+}): React.ReactElement | null {
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const recipe = card.recipe;
+  if (!recipe) return null;
+
+  const chip = (
+    key: string,
+    label: string,
+    value: string | null,
+    options: string[],
+    optionLabels?: Record<string, string>,
+  ): React.ReactElement => (
+    <div className="action-binding__envelope">
+      <span className="action-binding__fields-label">{label}</span>
+      <div className="action-chip-wrap">
+        <button
+          className={`action-chip${value ? '' : ' action-chip--empty'}${editingField === key ? ' action-chip--editing' : ''}`}
+          disabled={disabled || options.length === 0}
+          title={value ?? undefined}
+          onClick={() => setEditingField((cur) => (cur === key ? null : key))}
+        >
+          <span className="action-chip__value">{value ? (optionLabels?.[value] ?? value) : '선택'}</span>
+          <span className="action-chip__caret" aria-hidden>▾</span>
+        </button>
+        {editingField === key && !disabled && (
+          <ChipEditor
+            slot={{
+              name: key,
+              label,
+              value,
+              inline: true,
+              options,
+              allowCustom: false,
+              ...(optionLabels ? { optionLabels } : {}),
+            }}
+            onCommit={(picked) => {
+              setEditingField(null);
+              onBindingChoice(requestId, card.cardId, key, picked);
+            }}
+            onCancel={() => setEditingField(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+
+  const targetChip = chip(
+    TARGET_FILE_CHOICE_KEY,
+    '대상 파일',
+    recipe.targetFile ? recipe.targetFile.split('/').pop() ?? recipe.targetFile : null,
+    recipe.targetFileChoices,
+  );
+
+  // 위치 칩 — 온라인에서 모델이 하던 "어디에"를 사람이 고르는 자리(§2 핵심 통찰).
+  const anchorChip =
+    recipe.anchorChoices.length > 0
+      ? chip(
+          RECIPE_ANCHOR_CHOICE_KEY,
+          '삽입 위치',
+          recipe.anchorKey,
+          recipe.anchorChoices.map((a) => a.key),
+          Object.fromEntries(recipe.anchorChoices.map((a) => [a.key, a.label])),
+        )
+      : null;
+
+  // 막혔을 때도 칩은 남긴다 — 막힌 이유가 대개 "자리가 틀렸다"이고, 고칠 수단이 이 칩이다.
+  if (recipe.blocked) {
+    return (
+      <div className="action-binding">
+        {targetChip}
+        {anchorChip}
+        <div className="action-binding__blocked">⚠️ {recipe.blocked}</div>
+      </div>
+    );
+  }
+
+  const parts = [
+    recipe.importCount > 0 ? `import ${recipe.importCount}건` : '',
+    recipe.codeLines > 0 ? `코드 ${recipe.codeLines}줄` : '',
+    recipe.jsxLines > 0 ? `화면 조각 ${recipe.jsxLines}줄` : '',
+  ].filter(Boolean);
+
+  return (
+    <div className="action-binding">
+      <div className="action-card__outputs-title">넣을 것: {parts.join(' · ')}</div>
+      {targetChip}
+      {anchorChip}
+      {recipe.notice && <div className="action-binding__notice">ℹ️ {recipe.notice}</div>}
+    </div>
+  );
+}
+
 function PlanCard({
   card, requestId, executed, disabled, others, othersOpen, onToggleOthers,
   onChip, onSlotSet, onBindingChoice, onExecute,
@@ -339,6 +442,13 @@ function PlanCard({
         onSlotSet={onSlotSet}
       />
 
+      <RecipePlan
+        card={card}
+        requestId={requestId}
+        disabled={disabled}
+        onBindingChoice={onBindingChoice}
+      />
+
       {card.description && <p className="action-card__desc">{card.description}</p>}
 
       {card.skeleton && (
@@ -356,12 +466,19 @@ function PlanCard({
         ) : (
           <button
             className="action-card__execute"
-            // 계획이 아직 완성되지 않았으면(막힘·미결정 행) 잠근다 — 카드가 약속한 계획대로만 실행한다.
-            disabled={disabled || !!(card.binding && (card.binding.blocked || card.binding.pendingCount > 0))}
+            // 계획이 아직 완성되지 않았으면(막힘·미결정 행·미정 슬롯) 잠근다 —
+            // 카드가 약속한 계획대로만 실행한다(§3.6 "미리보기 = 검증 게이트").
+            disabled={
+              disabled ||
+              !!(card.binding && (card.binding.blocked || card.binding.pendingCount > 0)) ||
+              !!(card.recipe && (card.recipe.blocked || card.recipe.pendingSlots.length > 0))
+            }
             title={
               card.binding && card.binding.pendingCount > 0
                 ? '애매한 컬럼을 먼저 정해주세요'
-                : undefined
+                : card.recipe && card.recipe.pendingSlots.length > 0
+                  ? `먼저 정할 값: ${card.recipe.pendingSlots.join(', ')}`
+                  : undefined
             }
             onClick={() => onExecute(requestId, card.cardId)}
           >

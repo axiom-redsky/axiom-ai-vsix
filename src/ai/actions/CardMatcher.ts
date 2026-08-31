@@ -15,6 +15,7 @@
 
 import { extractDomainFromQuery } from '../intent/IntentSignals';
 import { extractApiPaths } from '../decompose/SectionExtractor';
+import { LAYER_RANK } from './types';
 import type {
   IActionCard, IActionCardSlot, ICardMatch, IRecommendation, TRecommendMode,
 } from './types';
@@ -43,8 +44,8 @@ export interface IMatcherOptions {
   planGapRatio?: number;
 }
 
-/** 계층 정렬 가점 — 동점일 때 상위 계층(개인>프로젝트>내장)이 앞선다 (§4.5 충돌 정책). */
-const LAYER_RANK: Record<IActionCard['layer'], number> = { builtin: 0, project: 1, personal: 2 };
+// 계층 정렬 가점(동점일 때 상위 계층이 앞선다, §4.5 충돌 정책)은 types.ts의 LAYER_RANK를 쓴다 —
+// 카탈로그의 id 오버라이드 판정과 순서가 갈리면 안 되므로 진실원은 한 곳이다.
 
 /** 소문자화 + 공백 제거 — 한글 `\b` 함정·공백변형("검색 조건"/"검색조건")을 함께 흡수. */
 function compact(s: string): string {

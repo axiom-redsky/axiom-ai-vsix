@@ -47,6 +47,8 @@ const QUERY_TOKEN_BRIDGE: Record<string, string[]> = {
   뱃지: ['badge'], 배지: ['badge'],
   모달: ['dialog'], 다이얼로그: ['dialog'],
   정렬: ['sort'],
+  // 날짜 계열 — 한국어 요청("달력으로 바꿔줘")과 코드(`type="date"`)는 겹치는 글자가 하나도 없다.
+  날짜: ['date'], 일자: ['date'], 달력: ['date', 'calendar'], 캘린더: ['date', 'calendar'],
 };
 
 /**
@@ -90,6 +92,23 @@ function decomposeDomainCompounds(tokens: string[]): string[] {
     }
   }
   return [...out];
+}
+
+/**
+ * 질문 → locate가 코드에서 찾을 **토큰 목록**(잡음 제거 → 복합어 어근 분해 → 한글·코드 브리지).
+ *
+ * 위치 찾기의 **어휘**만 떼어낸 것이다. locate 본체(모델 재작성용 region + 안전 게이트)와 쓰임이
+ * 다른 호출부 — 예: 오프라인 레시피가 "교체할 요소 하나"를 찾을 때 — 가 같은 어휘를 쓰도록,
+ * 토큰 규칙을 두 번 적지 않게 한다(어휘가 갈라지면 "온라인은 찾는데 오프라인은 못 찾는" 비대칭이 생긴다).
+ */
+export function locateTokens(query: string): string[] {
+  const base = tokenizeQuery(query)
+    .map((t) => t.toLowerCase())
+    .filter((t) => t.length >= 2 && !LOCATE_STOP.has(t));
+  // 복합 도메인어 어근 분해("예산관리"→+"예산") 후 한글 구조어 → 영문 컴포넌트 토큰 브리지.
+  // 전자는 god component 섹션 라우팅(복합어가 섹션 내 앵커와 0매칭)을, 후자는 한글 질문어↔영문 컴포넌트명
+  // 0매칭을 메운다. 둘 다 원본 토큰을 유지한 채 보강만 하므로 기존 매칭은 그대로다.
+  return bridgeQueryTokens(decomposeDomainCompounds(base));
 }
 
 export interface RegionSafety {
@@ -563,13 +582,7 @@ export function locateEditRegion(
   forcedRegion?: { startLine: number; endLine: number },
 ): LocatedRegion {
   const lines = source.split('\n');
-  const baseTokens = tokenizeQuery(query)
-    .map((t) => t.toLowerCase())
-    .filter((t) => t.length >= 2 && !LOCATE_STOP.has(t));
-  // 복합 도메인어 어근 분해("예산관리"→+"예산") 후 한글 구조어 → 영문 컴포넌트 토큰 브리지(locate 한정).
-  // 전자는 god component 섹션 라우팅(복합어가 섹션 내 앵커와 0매칭)을, 후자는 한글 질문어↔영문 컴포넌트명
-  // 0매칭을 메운다. 둘 다 원본 토큰을 유지한 채 보강만 하므로 기존 매칭은 그대로다.
-  const tokens = bridgeQueryTokens(decomposeDomainCompounds(baseTokens));
+  const tokens = locateTokens(query);
 
   // ① grep — 모든 줄을 점수화해 후보 목록을 만든다.
   //   (단일 최고점 줄 하나만 잡으면, 토큰을 우연히 가진 비-JSX 줄 — 상태/라벨 `const`, 주석 — 에

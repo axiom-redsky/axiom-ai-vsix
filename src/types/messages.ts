@@ -129,6 +129,11 @@ export interface ActionCardSlotView {
   inline: boolean;
   /** 인라인 편집 시 고를 후보. 비어 있으면 자유 입력 전용. */
   options?: string[];
+  /**
+   * 후보 값 → 표시 라벨. 값 자체가 사람이 읽을 것이 아닐 때만 쓴다(예: 삽입 위치 key `line:37`
+   * → "37줄: <div …> 앞에 삽입"). 미지정 후보는 값을 그대로 보여준다.
+   */
+  optionLabels?: Record<string, string>;
   /** true면 후보에 없는 값도 직접 입력할 수 있다(예: 새 도메인). */
   allowCustom?: boolean;
   /** 자유 입력 칸의 placeholder. */
@@ -160,6 +165,50 @@ export const ENVELOPE_CHOICE_KEY = '__envelope__';
  * 파일(.md)을 보고 "테이블을 못 찾았다"며 잠긴다(실측).
  */
 export const TARGET_FILE_CHOICE_KEY = '__file__';
+
+/**
+ * 레시피 카드가 골격을 **어디에** 넣을지 나르는 예약 필드명(`sel:12-14` | `line:37`).
+ * 요청 시점의 커서/선택이 최초값이고, 카드의 위치 칩이 같은 자리를 덮어쓴다 —
+ * "요청 시점 고정 + 카드에서 수정"이 한 통로여야 렌더마다 계획이 흔들리지 않는다.
+ */
+export const RECIPE_ANCHOR_CHOICE_KEY = '__anchor__';
+
+/**
+ * 위치 칩에서 고를 수 있는 특별 값 — "**지금** 편집기 커서 위치를 쓴다".
+ *
+ * 요청 시점 고정이 기본이지만, 카드를 보고 나서 "여기 넣고 싶다"며 편집기에서 커서를 옮기는 건
+ * 자연스러운 흐름이다(실측). 그때 호스트가 커서를 **다시 읽어** 확정 줄로 바꿔 저장한다 —
+ * 계획이 저 혼자 환경을 다시 읽는 게 아니라 사용자가 명시적으로 요청한 갱신이라 원칙에 어긋나지 않는다.
+ */
+export const RECIPE_ANCHOR_LIVE_CURSOR = 'cursor:now';
+
+/**
+ * 요청 시점의 커서/선택을 담는 예약 필드명 — **자동으로 붙잡은 값**이라 사용자의 명시적 선택
+ * (`RECIPE_ANCHOR_CHOICE_KEY`)과 칸을 나눈다. 한 칸을 쓰면 "요청으로 찾아낸 자리"가 언제나
+ * 커서에 밀려, 커서를 안 맞춰도 되게 하려던 위치 자동 제안이 무력해진다.
+ */
+export const RECIPE_CURSOR_KEY = '__cursor__';
+
+/** recipe 카드의 계획 — "무엇을 어디에 넣는가"를 카드가 실행 전에 그대로 보여준다. */
+export interface ActionCardRecipeView {
+  /** 계획을 세울 수 없는 이유. null이면 실행 가능. */
+  blocked: string | null;
+  targetFile: string | null;
+  targetFileChoices: string[];
+  /** 확정된 삽입 위치 라벨. JSX가 없는(훅만 넣는) 레시피면 null. */
+  anchorLabel: string | null;
+  anchorKey: string | null;
+  /** 위치 칩 드롭다운 후보(선택 영역 교체 + JSX 랜드마크 삽입 지점). */
+  anchorChoices: Array<{ key: string; label: string }>;
+  /** 아직 값이 없어 골격에 `{{…}}`가 남은 슬롯 — 있으면 실행 잠금. */
+  pendingSlots: string[];
+  /** 부품 요약 — import n건 · 코드 n줄 · 화면 조각 n줄. */
+  importCount: number;
+  codeLines: number;
+  jsxLines: number;
+  /** 사용자가 알아야 할 전제(삽입은 교체가 아니라는 사실 등). */
+  notice: string | null;
+}
 
 /** 매핑 테이블 한 행 — API 바인딩 카드의 본문(§3.6 "매핑 테이블 자체가 카드"). */
 export interface ActionCardBindingRowView {
@@ -222,10 +271,12 @@ export interface ActionCardView {
   slots: ActionCardSlotView[];
   /** template: "만들어질 것" 미리보기 행들. */
   outputs: ActionCardOutputView[];
-  /** recipe: 삽입될 골격(기본 접힘 렌더). */
+  /** recipe: 삽입될 골격(기본 접힘 렌더). 계획이 있으면 **슬롯이 치환된** 텍스트다. */
   skeleton?: string;
   /** binding: 매핑 테이블(계획). 호스트가 현재 파일·스펙으로 계산해 내려보낸다. */
   binding?: ActionCardBindingView;
+  /** recipe: 삽입 계획(대상 파일·위치·부품). 호스트가 현재 파일로 계산해 내려보낸다. */
+  recipe?: ActionCardRecipeView;
   /** 실행 버튼 라벨(유형별: 이대로 만들기/골격 보기/문서 보기/위저드 열기). */
   executeLabel: string;
 }
@@ -248,6 +299,82 @@ export interface ActionCardsPayload {
    * 추천이 빗나가거나 막혀도 **카드 안에서** 다른 작업으로 갈 수 있게 하는 탈출구(§3.6 장면 2).
    */
   moreCards?: ActionCardView[];
+}
+
+// ── 행동 카드 관리 패널 (Phase 3, §5 "편집은 파일, 관리는 패널") ─────────────
+
+export type ActionCatalogLayer = 'builtin' | 'project' | 'personal';
+/** active=매칭 참여 / disabled=사용자가 끔 / invalid=검증·충돌 오류 / overridden=상위 계층이 덮음. */
+export type ActionCatalogStatus = 'active' | 'disabled' | 'invalid' | 'overridden';
+
+export interface ActionCatalogIssueView {
+  severity: 'error' | 'warning';
+  message: string;
+  field?: string;
+}
+
+export interface ActionCatalogEntryView {
+  cardId: string;
+  title: string;
+  icon: string;
+  layer: ActionCatalogLayer;
+  status: ActionCatalogStatus;
+  actionType: string | null;
+  triggers: string[];
+  description: string;
+  /** 카드 파일 절대 경로 — "파일 열기"용. */
+  sourcePath: string;
+  /** 표시용 짧은 경로(워크스페이스 상대 등). */
+  displayPath: string;
+  issues: ActionCatalogIssueView[];
+  overriddenBy?: ActionCatalogLayer;
+}
+
+export interface ActionCatalogLayerView {
+  layer: ActionCatalogLayer;
+  dir: string;
+  exists: boolean;
+  /** 사용자가 새 카드를 만들 수 있는 계층인가(내장 = 번들이라 불가). */
+  editable: boolean;
+  count: number;
+}
+
+export interface ActionCatalogPayload {
+  entries: ActionCatalogEntryView[];
+  layers: ActionCatalogLayerView[];
+  /** 특정 카드에 귀속되지 않는 카탈로그 수준 이슈(계층 간 트리거 공유 경고 등). */
+  issues: ActionCatalogIssueView[];
+  /** 드라이런의 기본 상황값 = 지금 워크스페이스의 실제 상태. */
+  context: {
+    fileOpen: boolean;
+    scaffoldDetected: boolean;
+    domainCount: number;
+    endpointCount: number;
+    componentCount: number;
+  };
+}
+
+export interface ActionCatalogDryrunRow {
+  cardId: string;
+  icon: string;
+  title: string;
+  layer: ActionCatalogLayer;
+  actionType: string | null;
+  score: number;
+  matchedTriggers: string[];
+  prefill: Array<{ name: string; value: string }>;
+}
+
+export interface ActionCatalogDryrunResult {
+  query: string;
+  mode: 'plan' | 'list' | 'none';
+  /** (top1−top2)/top1 — 계획 카드/리스트를 가르는 확신도. 후보가 1장 이하면 null. */
+  gap: number | null;
+  rows: ActionCatalogDryrunRow[];
+  /** 전제조건에 걸려 후보에서 빠진 카드 — "왜 안 뜨는지"가 드라이런의 절반이다. */
+  excluded: Array<{ cardId: string; title: string; reason: string }>;
+  /** 매칭이 0일 때 안전망(listApplicableCards)이 대신 보여줄 목록. */
+  fallback: ActionCatalogDryrunRow[];
 }
 
 // WebView → Extension Host
@@ -292,7 +419,21 @@ export type WebviewToHostMessage =
   | { type: 'actionCardSlotSet'; requestId: string; cardId: string; slotName: string; value: string }
   | { type: 'actionCardBindingChoice'; requestId: string; cardId: string; field: string; value: string }
   | { type: 'actionCardExecute'; requestId: string; cardId: string }
+  // 행동 카드 관리 패널: 목록 로드 / 켜기끄기 / 카드 파일 열기 / 새 카드 / 드라이런
+  | { type: 'actionCatalogLoad' }
+  | { type: 'actionCatalogToggle'; cardId: string; enabled: boolean }
+  | { type: 'actionCatalogOpenCard'; sourcePath: string }
+  | { type: 'actionCatalogNewCard'; layer: ActionCatalogLayer }
+  | {
+      type: 'actionCatalogDryrun';
+      query: string;
+      fileOpen: boolean;
+      scaffoldDetected: boolean;
+      /** 확신도 임계(비우면 매처 기본값 0.5). */
+      gapRatio?: number;
+    }
   | { type: 'openGuide' }
+  | { type: 'openActionCards' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
   | { type: 'guideEditDoc'; docId: string }
@@ -351,7 +492,15 @@ export type HostToWebviewMessage =
       outputs: ActionCardOutputView[];
       /** binding 카드면 재계산된 매핑 테이블(엔드포인트 칩·행 선택이 바뀌면 계획이 바뀐다). */
       binding?: ActionCardBindingView;
+      /** recipe 카드면 재계산된 삽입 계획(위치 칩·대상 파일이 바뀌면 계획이 바뀐다). */
+      recipe?: ActionCardRecipeView;
+      /** recipe: 슬롯 치환이 반영된 골격(칩을 고치면 미리보기도 따라간다). */
+      skeleton?: string;
     }
+  // 행동 카드 관리 패널
+  | { type: 'actionCatalog'; payload: ActionCatalogPayload }
+  | { type: 'actionCatalogDryrunResult'; result: ActionCatalogDryrunResult }
+  | { type: 'actionCatalogNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

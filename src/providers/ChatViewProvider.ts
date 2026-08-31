@@ -52,6 +52,8 @@ import {
   buildBindingApply, buildBindingPlan, pickSpecDoc, rankByPathAffinity, type IBindingPlan,
 } from '../ai/actions/OfflineApiBinding';
 import { scanSpecDocs, listEndpoints, type ISpecDoc } from '../ai/actions/SpecDocScanner';
+import { buildRecipeApply, buildRecipePlan, type IRecipePlan } from '../ai/actions/OfflineRecipeApply';
+import type { IActionCard } from '../ai/actions/types';
 import { planJsxTransplant, isVerbatimTransplantRequest } from '../ai/retrieval/OfflineTransplant';
 import { IntentExampleStore } from '../ai/intent/IntentExampleStore';
 import { IntentEmbeddingClassifier } from '../ai/intent/IntentEmbeddingClassifier';
@@ -60,7 +62,9 @@ import { detectJsonTypeRequest, renderJsonTypeCard, type IJsonTypeRequest } from
 import { fillSlots, classifyOfflineIntent } from '../ai/intent/IntentSignals';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import type { ChatMessage, LlmConfig, LlmTuning } from '../ai/types';
-import { ENVELOPE_CHOICE_KEY, TARGET_FILE_CHOICE_KEY } from '../types/messages';
+import {
+  ENVELOPE_CHOICE_KEY, RECIPE_ANCHOR_CHOICE_KEY, RECIPE_CURSOR_KEY, TARGET_FILE_CHOICE_KEY,
+} from '../types/messages';
 import type { WebviewToHostMessage, HostToWebviewMessage, PageCreationState, DiffLine, ActionCardOutputView } from '../types/messages';
 
 /**
@@ -171,8 +175,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       scanDomains: () => this._scanWorkspaceDomains(),
       scanEndpoints: () => listEndpoints(this._specDocs()),
       currentCodeFile: () => this._currentCodeFilePath(),
+      currentEditorAnchor: () => this._currentEditorAnchor(),
       buildBindingPlan: (bindingId, values) => this._buildCardBindingPlan(bindingId, values),
       applyBinding: (bindingId, values, choices) => this._applyCardBinding(bindingId, values, choices),
+      buildRecipePlan: (card, values, query, opts) => this._buildCardRecipePlan(card, values, query, opts),
+      applyRecipe: (card, values, query, opts) => this._applyCardRecipe(card, values, query, opts),
       workspaceRoot: () => this._getWorkspaceRoot(),
     });
   }
@@ -307,6 +314,121 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   /** 카드 세션이 붙잡을 대상 파일(워크스페이스 상대 경로). 없으면 null. */
   private _currentCodeFilePath(): string | null {
     return this._currentFileForCard()?.path ?? null;
+  }
+
+  /**
+   * 카드 세션이 붙잡을 **삽입 위치**(레시피 카드) — 요청 시점의 선택 영역 또는 커서 줄.
+   *
+   * 선택이 있으면 `sel:시작-끝`(그 영역을 교체), 없으면 `line:커서줄`(그 줄 앞에 삽입).
+   * 온라인에서 모델이 하던 "어디에 넣을까"를 오프라인에서는 사용자가 이미 답해 둔 셈이다 —
+   * 커서는 대개 작업하려던 자리에 있다(§2 "모델의 한 조각을 사람의 클릭으로").
+   */
+  private _currentEditorAnchor(): string | null {
+    const ctx = this._editorCollector.collect();
+    if (!ctx.available) return null;
+    // 선택 영역이 있으면 그게 가장 분명한 의사표시다(비어 있으면 collector가 selection을 안 채운다).
+    if (ctx.selection && ctx.selection.endLine >= ctx.selection.startLine) {
+      return `sel:${ctx.selection.startLine}-${ctx.selection.endLine}`;
+    }
+    // 커서 줄은 **대상 파일과 같은 문서**의 편집기에서 읽는다. 채팅 입력창에 포커스가 있으면
+    // activeTextEditor가 엉뚱한(또는 빈) 편집기일 수 있어, 그대로 믿으면 남의 파일 줄 번호가 실린다.
+    const target = ctx.absoluteFilePath;
+    const editors = [
+      ...(vscode.window.activeTextEditor ? [vscode.window.activeTextEditor] : []),
+      ...vscode.window.visibleTextEditors,
+    ];
+    for (const ed of editors) {
+      if (ed.document.uri.scheme !== 'file') continue;
+      if (target && path.resolve(ed.document.fileName) !== path.resolve(target)) continue;
+      return `line:${ed.selection.active.line + 1}`;
+    }
+    // 커서를 못 읽어도 계획은 선다 — 화면(JSX) 랜드마크가 후보를 채우고, 사용자가 칩에서 고른다.
+    return null;
+  }
+
+  /**
+   * 레시피 카드의 삽입 계획 — 대상 파일 원문(디스크)에 골격을 어떻게 넣을지 계산한다(모델 0회).
+   * 대상은 **카드가 들고 있는 파일**이 우선이다(바인딩 카드와 같은 규약 — 렌더 중에 활성 편집기가
+   * 바뀌어도 계획이 흔들리지 않게).
+   */
+  private _buildCardRecipePlan(
+    card: IActionCard,
+    values: Record<string, string>,
+    query: string,
+    opts?: { preferCursor?: boolean },
+    preread?: { path: string; content: string },
+  ): IRecipePlan | null {
+    if (card.action.type !== 'recipe') return null;
+    const file = preread ?? this._readCardFile(values[TARGET_FILE_CHOICE_KEY]);
+    return buildRecipePlan({
+      source: file?.content ?? '',
+      skeleton: card.skeleton ?? '',
+      values,
+      targetFile: file?.path ?? null,
+      targetFileChoices: this._listOpenCodeFiles(),
+      // 요청 문장 + 카드가 선언한 방식 → 결정론 위치 찾기가 자리를 제안한다(커서 의존 제거).
+      query,
+      ...(card.action.mode ? { mode: card.action.mode } : {}),
+      ...(card.action.target ? { target: card.action.target } : {}),
+      ...(values[RECIPE_ANCHOR_CHOICE_KEY] ? { anchorChoice: values[RECIPE_ANCHOR_CHOICE_KEY] } : {}),
+      ...(values[RECIPE_CURSOR_KEY] ? { cursorAnchor: values[RECIPE_CURSOR_KEY] } : {}),
+      ...(opts?.preferCursor ? { preferCursor: true } : {}),
+    });
+  }
+
+  /**
+   * 편집기 커서 이동 → 살아 있는 레시피 카드의 삽입 위치를 따라가게 한다.
+   *
+   * 사용자가 카드를 띄워 놓고 자리를 고르는 방식이 "커서를 옮겨 보는 것"이라(실측 요청),
+   * 그 행동을 그대로 입력으로 받는다. 타이핑·드래그로 초당 여러 번 오므로 짧게 묶어(디바운스)
+   * 마지막 위치만 반영한다.
+   */
+  registerCursorTracking(context: vscode.ExtensionContext): void {
+    let timer: NodeJS.Timeout | undefined;
+    context.subscriptions.push(
+      vscode.window.onDidChangeTextEditorSelection((e) => {
+        if (e.textEditor.document.uri.scheme !== 'file') return;
+        if (!/\.(tsx|ts|jsx|js)$/.test(e.textEditor.document.fileName)) return;
+        const rel = this._toWorkspaceRelative(e.textEditor.document.fileName);
+        if (!rel) return;
+        const sel = e.selections[0];
+        if (!sel) return;
+        const key = sel.isEmpty
+          ? `line:${sel.active.line + 1}`
+          : `sel:${sel.start.line + 1}-${sel.end.line + 1}`;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => this._actionCards.notifyCursorMoved(key, rel), 250);
+      }),
+      new vscode.Disposable(() => { if (timer) clearTimeout(timer); }),
+    );
+  }
+
+  /**
+   * 확정된 레시피 계획을 결정론 적용한다 — 카드에 보이던 골격 그대로(모델 0회).
+   * 결과 텍스트는 바인딩과 같은 확인 카드·파일 쓰기 경로로 흘려보낸다.
+   */
+  private async _applyCardRecipe(
+    card: IActionCard, values: Record<string, string>, query: string, opts?: { preferCursor?: boolean },
+  ): Promise<string | null> {
+    // 계획과 적용이 **같은 원문**을 보게 한 번만 읽는다(두 번 읽으면 그 사이 편집으로 갈린다).
+    const file = this._readCardFile(values[TARGET_FILE_CHOICE_KEY]);
+    if (!file) return '대상 파일을 읽지 못했습니다. 카드에서 대상 파일을 다시 골라주세요.';
+    const plan = this._buildCardRecipePlan(card, values, query, opts, file);
+    if (!plan) return '이 카드는 골격 삽입을 지원하지 않습니다.';
+
+    const result = buildRecipeApply({ source: file.content, plan, skeleton: card.skeleton ?? '', values });
+    if (result.blocked || !result.text) return result.blocked ?? '적용할 내용을 만들지 못했습니다.';
+
+    const notice =
+      `> ${card.icon} **${card.title}** — 카드의 골격을 **결정론으로 삽입**했습니다(LLM 미사용).\n` +
+      result.summary.map((s) => `>\n> · ${s}`).join('');
+
+    this._corpusOutputChannel.appendLine(
+      `[Axiom AI] 🧩 카드 레시피 적용 (${file.path}): card=${card.id} ${result.summary.join(' / ')}`,
+    );
+
+    await this._applyCardFileEdit(file.path, file.content, result.text, notice);
+    return null;
   }
 
   /**
@@ -538,6 +660,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._post({ type: 'done' });
         this._postStatus('⚠️ 오프라인 모드');
         return;
+      }
+      // 꺼진 카드 때문에 안 뜬 것이라면 그 사실을 밝힌다 — 토글이 채팅 결과를 조용히 바꾸면
+      // 사용자는 "고장났다"고 읽는다(실측). 끄기는 정상 동작이므로 되돌리지 않고 이유만 말한다.
+      const offTitles = this._actionCards.disabledMatchTitles(text, !!editorCtx.filePath);
+      if (offTitles.length > 0) {
+        this._post({
+          type: 'token',
+          content:
+            `\n> 🃏 이 요청에 맞는 카드가 있지만 **꺼져 있어** 뜨지 않았습니다: ${offTitles.join(', ')}\n` +
+            `> 런처의 **🃏 오프라인 행동 카드** 패널에서 켜면 다시 뜹니다.\n`,
+        });
       }
     }
 

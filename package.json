@@ -212,6 +212,14 @@
           "default": true,
           "description": "외부 corpus frontmatter 유효성 검사 후 Output 채널에 경고를 표시합니다"
         },
+        "axiom-ai.actionCards.disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "끄기로 표시한 오프라인 행동 카드의 id 목록. 카드 파일은 그대로 두고 여기에만 기록되므로, 팀 카드(.axiom/actions)를 지우지 않고 개인적으로 숨길 수 있습니다. 관리: 명령 팔레트 → 'Axiom AI: 행동 카드 관리'"
+        },
         "axiom-ai.sdd.axiomFolder": {
           "type": "string",
           "default": "",
@@ -420,6 +428,10 @@
         "title": "Axiom AI: 페이지 생성 위저드"
       },
       {
+        "command": "axiom-ai.openActionCards",
+        "title": "Axiom AI: 오프라인 행동 카드 관리"
+      },
+      {
         "command": "axiom-ai.reseedGuide",
         "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }
@@ -468,6 +480,7 @@
     "test:action-cards": "node scripts/run-test-action-cards.mjs",
     "dryrun:cards": "node scripts/run-dryrun-cards.mjs",
     "test:offline-api-binding": "node scripts/run-test-offline-api-binding.mjs",
+    "test:offline-recipe": "node scripts/run-test-offline-recipe.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",

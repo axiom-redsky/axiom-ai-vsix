@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0 완료 · Phase 1 코드 완료(F5 수동 검증 대기)** (2026-08-31, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 착수(A3 레시피 실행기 완료) — 전부 F5 라이브 검증 통과** (2026-08-31, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -369,7 +369,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 |---|---|---|---|
 | ★A1 | **API → 화면 바인딩 위저드** | 스펙/샘플 JSON → T타입 → `useApi<{data:T[]}>` 봉투계약 훅 → SmartTable/폼 바인딩. 모델이 하던 필드 매핑만 **매핑 테이블 UI**(정확·유사 이름 자동 프리필, 애매한 것만 드롭다운) | compose binding Stage1~3, detectEnvelopeKey, JsonTypeGenerator |
 | ★A2 | **페이지/도메인 생성 위저드** | QuickPick 3단(도메인→유형→이름), 라우터 자동 배선 | page/router.template.txt, page-templates/*.md, FileCreatorService |
-| A3 | 레시피 카드 실행기 | 계약카드(date-picker 등)를 명령으로 — 슬롯 입력 → 정확 골격 삽입 | ScaffoldContracts, structural apply |
+| A3 | 레시피 카드 실행기 ✅(2026-08-31) | 계약카드(date-picker 등)를 명령으로 — 슬롯 입력 → 정확 골격 삽입. 위치는 **사람이 칩으로**(커서/선택 기본값) | ScaffoldContracts, structural apply |
 | A4 | 컴포넌트 삽입기 | 컴포넌트 선택 → 필수 prop 폼 → import 포함 JSX 생성 | ComponentPropsIndex(53종), locate/앵커 |
 
 ### B. 지식·탐색 — 제자리에서 보여주기
@@ -452,7 +452,8 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
     오프라인에서는 `containsExactApiPath` 선확인으로 차단(카드는 사용자가 보고 승인하는 물건이라
     조용한 오바인딩이 최악의 실패). 막힘은 조용한 빈 결과가 아니라 `blocked` 사유로 노출.
     `test:offline-api-binding` 20/0 · 온라인 `test:api-binding` 69/0 무회귀.
-  - 진행 (2026-08-31, 후반): **매핑 테이블 렌더 + 결정론 적용 완료 · F5 수동 검증 대기**.
+  - 진행 (2026-08-31, 후반): **매핑 테이블 렌더 + 결정론 적용 완료 · F5 라이브 검증 통과**
+    (1~4차 F5에서 발각한 아래 문제를 전부 고친 뒤, 적용 왕복 = 표 확정 → 확인 카드 diff → 파일 반영까지 확인).
     - **새 액션 유형 `binding`**(스키마 v1 추가, `action.binding: api-table`): 미리보기가
       워크스페이스 상태(현재 파일·스펙)로 갈려 정적 선언으로 표현이 안 되는 유형. 엔진은
       id를 그대로 호스트에 넘길 뿐 내용은 모른다(§2-3). 내장 카드가 `command`(→"준비 중"
@@ -539,9 +540,116 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       `test:api-binding` 75/0 · typecheck · compile · 무회귀(region-edit 243/0 · knowledge-routing 80/0).
 - **Phase 3 — 카탈로그 3계층 + 관리 패널**
   `.axiom/actions/` 핫리로드, 목록/토글/새 카드/lint/드라이런 패널.
+  - 진행 (2026-08-31): **완료 · F5 라이브 검증 통과**(패널 렌더·계층 목록·토글·새 카드·드라이런). 구성 =
+    `ai/actions/CardCatalog.ts`(순수 3계층 합성 `buildCatalog`) + `ai/actions/CardTemplate.ts`(순수 스캐폴딩) +
+    `providers/CardCatalogService.ts`(계층 경로·토글·새 카드·감시) + `providers/ActionCardsPanel.ts` +
+    `webview/actionCards/ActionCardsApp.tsx` + 메시지 5종(`actionCatalogLoad`/`Toggle`/`OpenCard`/`NewCard`/`Dryrun`
+    ↔ `actionCatalog`/`actionCatalogDryrunResult`/`actionCatalogNotice`).
+    진입 = 명령 팔레트 `Axiom AI: 행동 카드 관리` + 런처 홈 버튼(🃏).
+    - **개인 계층 실현**: `<globalStorage>/action-cards` — `CardCatalogService.init(context)`가 activate에서
+      경로를 심는다(globalStorage 접근 불가 환경이면 조용히 2계층으로 동작).
+    - **채팅과 패널이 같은 서비스를 본다**: `ActionCardController._loadCatalog`가 `CardCatalogService.activeCards()`로
+      바뀌었다 — 계층 경로·켜기끄기 규칙이 갈라지면 "패널에서 껐는데 채팅에는 뜬다"가 되므로 구조적으로 봉했다.
+    - **해소 순서가 곧 정책**(`buildCatalog`): ①검증 실패=invalid(fail-open) → ②**같은 id는 상위 계층이 덮는다**
+      (개인>프로젝트>내장, 덮인 카드는 `overridden`으로 목록에 남음) → ③사용자 토글 제거(`disabled`, **끈 카드는
+      트리거도 반납**) → ④남은 카드끼리 트리거 충돌 검사. ⚠ 덮는 쪽이 invalid면 **덮지 않는다** — 깨진 프로젝트
+      카드가 멀쩡한 내장 카드까지 끄면 fail-open이 깨진다.
+    - **토글 상태는 카드 파일이 아니라 설정**(§4 규칙 3): `axiom-ai.actionCards.disabled`(id 배열, 워크스페이스 대상.
+      워크스페이스가 없으면 전역). 카드 파일은 git에서 항상 깨끗하게.
+    - **드라이런은 운영 매처를 그대로 호출**(미러 금지) — 뜨는 카드뿐 아니라 **상황 필터로 빠진 카드**와
+      매칭 0일 때의 안전망 목록까지 함께 보여준다("카드가 안 뜬다" 신고의 절반은 매칭이 아니라 전제조건이다).
+      확신도 임계·file-open·scaffold를 패널에서 바로 실험할 수 있다(CLI `dryrun:cards`의 패널판).
+    - **새 카드 = 파서를 통과하는 스캐폴딩**: `recipe`/`doc`/`command` 3종(`template`·`binding`은 호스트 실행기 id를
+      가리키는 유형이라 사용자 저작 대상에서 제외). 만들자마자 ⚠가 뜨면 스캐폴딩이 아니므로 "경고 0"을 테스트로 고정.
+    - 핫리로드 = 프로젝트·개인 디렉터리 `*.card.md` 감시 + `actionCards.disabled` 설정 변경 감시(손으로 고쳐도 따라옴).
+      채팅 경로는 종전대로 매 턴 로드(공짜 핫리로드).
+    - 게이트: `test:action-cards` 210/0(Q·R 섹션 신설) · typecheck · compile ·
+      무회귀(offline-api-binding 96/0 · offline-intent 73/0 · api-binding 75/0 · region-edit 243/0 · knowledge-routing 80/0).
 - **Phase 4 — 확장**
   입력창 위 실시간 추천 리스트(형태 B, §3.5 — `/` 슬래시 메뉴와 표시 컴포넌트 공유),
   Scaffold 린트(C1, 독립 트랙으로 병행 가능), 카탈로그 패널(B1), 채집 플라이휠(§6).
+  - **A3 레시피 실행기 (2026-08-31): 완료 · F5 라이브 검증 통과**(자동 위치 제안 → 커서 추적 →
+    결정론 삽입 → 확인 카드 diff → 적용까지 실측 확인).
+    Phase 3가 팀 레시피 카드 저작을 열었는데 실행이 *"골격을 복사해 붙여넣으세요"*에 멈춰 있어
+    카탈로그의 값어치가 절반만 실현된 상태였다 — 그 꼬리를 이었다.
+    - **모델의 남은 한 조각 = "어디에"**: 레시피는 골격이 이미 확정돼 있으므로(카드가 소유),
+      온라인에서 모델이 하던 둘(①골격 작성 ②위치 결정) 중 ②만 남는다. 그걸 **위치 칩**으로
+      사람이 고른다(§2 핵심 통찰의 가장 순수한 사례). 기본값 = **요청 시점의 커서/선택 영역**.
+    - `ai/actions/OfflineRecipeApply.ts`(순수): `splitRecipeSkeleton`(골격 → 코드/JSX 2채널 —
+      **맨 끝 최상위 여는 태그부터가 JSX**) · `buildRecipePlan`(대상 파일·위치 후보·부품 요약·미정
+      슬롯) · `buildRecipeApply`(JSX 줄 삽입/선택 영역 교체 → 나머지는 `applyStructuralEdit`).
+    - **삽입 vs 교체**: 선택 영역이 있으면 그 줄들을 **교체**, 없으면 앵커 줄 **앞에 삽입**하고
+      "삽입만 합니다"를 카드가 먼저 밝힌다 — 결정론이 알 수 없는 "무엇을 지울지"를 추측하지 않되,
+      사용자가 선택으로 답해 두면 교체까지 한다.
+    - **import는 두 겹으로 닫는다**: 골격 안 import는 `applyStructuralEdit`가 상단으로 hoist하고,
+      골격이 **빠뜨린** react 훅·UI 컴포넌트 import는 `resolveKnownImports` 테이블로 보강한다
+      (카드 작성자가 실수해도 삽입 결과가 컴파일되게).
+    - 안전 규약: 미정 슬롯이 있으면 실행 잠금(§3.6 검증 게이트) · **대상 파일이 바뀌면 붙잡아 둔
+      삽입 위치를 폐기**(줄 번호는 그 파일에서만 의미가 있다 — 행 선택 폐기와 같은 종류) ·
+      계획과 적용은 한 번 읽은 같은 원문 · 자동 삽입이 막히면 사유와 함께 **골격 안내로 폴백**.
+    - 결과는 바인딩과 같은 확인 카드·쓰기 경로(`_applyCardFileEdit` → precomputedDiff).
+    - 곁들여 고친 것: `actionCardSlots` 갱신이 `moreCards`를 건너뛰어 `[다른 작업 ▾]`에서 펼친
+      카드의 칩 편집이 화면에 반영되지 않던 버그(값은 호스트에만 반영 = 진실원 규약 위반).
+    - ⚠ **1차 F5에서 발각(사용자 지적) — 삽입 자리가 화면 밖이었다**: 요청 시점 커서가 **1줄**(파일 맨 위
+      import 구역)이었고 그대로 앵커가 되어 화면 조각이 import 위에 박혔다(Calendar·import 뒤엉킴은 전부
+      그 파생). 뿌리는 "커서를 기본값으로 삼되 **검증하지 않은 것**" — 채팅에 타이핑하는 동안 커서가 어디
+      있는지는 사용자가 신경 쓰지 않는다. 수정 셋:
+      1. **화면(JSX) 범위 계산**(`jsxInsertRange`) — 루트 여는 태그 **다음** 줄부터 루트 닫는 태그까지.
+         ★루트 **앞**은 삽입 자리가 아니다: 거기 넣으면 형제 루트가 둘이 되어 JSX가 깨진다
+         (adjacent JSX elements). 자기닫힘 루트(`return <Spinner />`)는 자식을 못 받으므로 범위 없음.
+         **교체는 규칙이 다르다** — 루트를 통째로 바꾸는 건 루트가 하나로 유지되므로 `rootLine`부터 허용.
+      2. 범위 밖 커서는 **채택하지 않고** 왜 안 썼는지 카드가 밝힌다 + 앵커 라벨에 **그 줄의 코드**를
+         함께 표시(`커서 위치(7줄): <input … 앞에 삽입`) — "1줄 앞에 삽입"만으로는 그게 import 구역인지 모른다.
+      3. **적용 직전 재검증**(`isAnchorInJsx`) — 계획이 어떻게 만들어졌든 화면 밖에는 넣지 않는다.
+    - ⚠ **"카드가 뜬 뒤 커서를 옮겨도 안 따라간다"(같은 지적)**: 요청 시점 고정은 의도지만 탈출구가 없었다.
+      위치 칩에 **`지금 편집기 커서 위치 사용`**(`RECIPE_ANCHOR_LIVE_CURSOR`) 항목을 넣어, 사용자가 명시적으로
+      누르면 호스트가 커서를 다시 읽어 확정 줄로 저장한다(렌더마다 환경 재독이 아니라 **사용자 요청에 의한
+      갱신**이라 원칙과 충돌하지 않는다). 막힌 계획에서도 위치·대상 파일 칩은 남긴다(고칠 수단이 그 칩이므로).
+      커서 읽기도 **대상 파일과 같은 문서**의 편집기에서만 읽도록 고쳤다(채팅 포커스 시 남의 파일 줄 번호 방지).
+    - ⚠ **2차 F5 — "맨 위에 똑같은 코드가 또 들어간다"(사용자 지적)**: 화면에 보인 잔재는 1차(버그) 적용의
+      결과였지만, 그게 드러낸 진짜 결함은 **재실행이 멱등하지 않다**는 것이었다. 이름 있는 선언(const·ref)은
+      `applyStructuralEdit`의 중복 선언 가드가 걸러줬는데 **익명 문장(`useEffect`)은 이름이 없어 가드가 볼 것이
+      없었고 그대로 또 삽입**됐다. 수정 = `dedupeAgainstSource`(문장 원문 대조로 이미 있는 문장·화면 조각을 뺀다).
+      계획과 적용이 **같은 함수**를 쓰므로 카드의 "넣을 것" 요약도 실제로 넣을 것만 센다. 전부 이미 있으면
+      `이미 이 파일에 들어 있습니다`로 막고, 일부만 있으면 `이미 파일에 있는 …은 다시 넣지 않습니다`로 밝힌다.
+      (`splitStatements`를 StructuralAnchor에서 export해 재사용 — 문장 분할 규칙이 갈라지지 않게.)
+    - ⚠ **3차 F5 — "커서 위치를 이렇게 수동으로 맞춰야 하나?"(사용자 지적)**: 맞는 지적이었다. "모델이 하던
+      위치 결정을 사람에게 넘긴다"를 과잉 적용했는데, **위치 찾기는 이미 결정론으로 도는 층**이 있다(§2 통찰).
+      수정 = 요청 문장으로 **자리를 자동 제안**(`locateAnchors`)하고 사람에게는 *확인*만 남긴다.
+      - **어휘는 locate와 공유, 줄 스캔은 이 층에서**: `locateTokens`를 RegionEdit에서 export해 브리지·불용어를
+        한 곳에 두되(어휘가 갈라지면 "온라인은 찾는데 오프라인은 못 찾는" 비대칭), 스캔은 따로 한다 —
+        locate 본체는 "모델이 재작성할 region"을 고르는 도구라 목표가 다르다(실측: bestLine이 상태 선언
+        줄로 갔고, 그쪽 snap은 부모 컨테이너까지 넓혔다).
+      - ★**점수는 줄이 아니라 요소 단위**: 여러 줄 컨트롤은 정체(`<Input`)와 근거(`type="date"`)가 다른 줄에
+        있어 줄 단위로 세면 옆의 평범한 `<input>`(같은 1점)에 밀린다(실측). 요소로 묶어 토큰을 합치면
+        진짜 대상이 이긴다.
+      - ★**정밀 스냅**(`snapElement`): locate의 스냅은 여러 줄 자기닫힘 요소를 부모까지 넓힌다 — 모델이
+        재작성하는 온라인에선 괜찮지만 여기선 그 범위를 **통째로 교체**하므로 화면이 날아간다.
+      - ★**루트 요소는 자동 제안 금지**: 교체하면 화면 전체 삭제다. 사용자가 편집기에서 직접 루트를 선택한
+        경우만 허용(명시적 의사표시).
+      - **카드가 자기 대상을 선언한다**(스키마 v1 추가): `action.mode`(insert|replace) + `action.target`
+        (위치 찾기 힌트). "달력으로 바꿔줘"에는 `type="date"`와 겹치는 글자가 하나도 없어 사용자 문장만으론
+        코드에 닿지 않는다 — 무엇을 대체하는지는 **카드만 아는 사실**이고, 엔진이 문장에서 추측하면 정규식
+        두더지잡기로 돌아간다(§2-1). date-picker 카드에 `mode: replace` + `target: date 날짜 입력 input`.
+      - 공용 브리지 어휘에 날짜 계열 추가(`날짜/일자/달력/캘린더 → date, calendar`) — 온라인 locate에도 이득.
+        게이트: `eval:region` 88%(36/41) **회귀 0**.
+      - 우선순위 = **자동 제안 > 요청 시점 커서 > 화면 랜드마크**, 그리고 **사용자의 명시적 선택이 최우선**.
+        이를 위해 커서(`RECIPE_CURSOR_KEY`)와 사용자 선택(`RECIPE_ANCHOR_CHOICE_KEY`)의 칸을 나눴다 —
+        한 칸을 쓰면 자동으로 잡은 커서가 언제나 자동 제안을 밀어낸다.
+    - ⚠ **4차 F5 — "`지금 커서 위치`가 안 먹고, 카드를 띄운 채 커서를 옮기면 따라왔으면 좋겠다"(사용자)**:
+      - **버그**: 계획은 후보 목록에 없는 값을 기본값으로 되돌리는데, `cursor:now` 해석 결과를 *선택 칸*에만
+        넣어 후보로 성립하지 않았다 → 조용히 무시. 수정 = 해석한 줄을 **커서 칸에도** 저장(후보 생성).
+      - **커서 자동 추적**(`registerCursorTracking` → `notifyCursorMoved`): 카드가 살아 있는 동안 편집기
+        커서가 움직이면(같은 대상 파일, 250ms 디바운스) 삽입 위치가 따라간다. Phase 2의 "렌더마다 환경
+        재독 금지"와 충돌하지 않는다 — 그 교훈은 *사용자가 가만히 있는데* 계획이 바뀌는 것을 막으려던 것이고,
+        여기서는 **사용자의 행동 자체가 입력**이다(대상 파일이 같을 때만 반응하는 것도 그래서).
+      - **가장 최근 행동이 이긴다**: 커서를 옮기면 `preferCursor`로 자동 제안을 앞지르고 이전 칩 선택은 해제,
+        칩에서 다른 자리를 고르면 커서 승격이 해제. 단 **화면(JSX) 밖 커서는 옮겼어도 쓰지 않는다**(안전 우선).
+      - 실행 시점에도 계획과 **같은 입력**(preferCursor 포함)으로 다시 세우므로, 카드에 보이던 자리에 정확히
+        들어간다 — "실행할 때 최종 커서를 읽는" 대안은 미리보기와 실제가 갈라져 채택하지 않았다.
+    - 게이트: `test:offline-recipe` 81/0(신설) · `test:action-cards` 222/0(S 섹션 신설) ·
+      typecheck · compile · 무회귀(region-edit 243/0 · react-rules 39/0 · offline-api-binding 96/0 ·
+      offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).
@@ -558,6 +666,9 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 3. ~~카드 스키마 형식~~ → **해소 (2026-08-28)**: md + YAML frontmatter 확정, §4.
 4. ~~슬롯 소스 표준화~~ → **해소 (2026-08-31)**: v1 = `text`/`enum`/`domain-list`/
    `endpoint-list`/`component-list` 5종 + 스캔 계약·주입 인터페이스 확정, §4.5.
+4-1. **같은 id의 계층 오버라이드** → **해소 (2026-08-31, Phase 3)**: 상위 계층이 덮고 하위는
+   `overridden`으로 목록에 남는다. §4의 id 유일성은 **한 계층 안**의 규칙이고, 계층 간 같은 id는
+   "우리 프로젝트용으로 내장 카드를 갈아끼운다"(§5)라는 정상적인 의도로 읽는다.
 5. **채집 플라이휠의 일반화 품질**: 성공 편집 → 카드 변환 시 "그 파일 전용"이 아닌
    재사용 가능한 골격으로 추상화하는 규칙 필요 (수동 확인 단계를 거치는 반자동이 안전).
 6. **계획 카드의 확신도 임계**: 격차 게이트가 과신하면 엉뚱한 계획이 큰 카드로

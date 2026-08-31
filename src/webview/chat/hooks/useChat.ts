@@ -287,17 +287,28 @@ export function useChat() {
           // 칩 편집 결과 반영 — 해당 카드의 슬롯·출력 미리보기만 교체.
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.subtype !== 'action-cards' || m.actionCards?.requestId !== msg.requestId) return m;
+              const cards = m.actionCards;
+              if (m.subtype !== 'action-cards' || cards?.requestId !== msg.requestId) return m;
+              const patch = (c: typeof cards.cards[number]) =>
+                c.cardId === msg.cardId
+                  ? {
+                      ...c,
+                      slots: msg.slots,
+                      outputs: msg.outputs,
+                      // 미포함 필드는 그대로 둔다 — 유형별 부분 갱신 메시지다.
+                      ...(msg.binding ? { binding: msg.binding } : {}),
+                      ...(msg.recipe ? { recipe: msg.recipe } : {}),
+                      ...(msg.skeleton !== undefined ? { skeleton: msg.skeleton } : {}),
+                    }
+                  : c;
               return {
                 ...m,
                 actionCards: {
-                  ...m.actionCards,
-                  cards: m.actionCards.cards.map((c) =>
-                    c.cardId === msg.cardId
-                      // binding 미포함(비-binding 카드)이면 기존 표를 그대로 둔다 — 부분 갱신 메시지다.
-                      ? { ...c, slots: msg.slots, outputs: msg.outputs, ...(msg.binding ? { binding: msg.binding } : {}) }
-                      : c,
-                  ),
+                  ...cards,
+                  cards: cards.cards.map(patch),
+                  // `[다른 작업 ▾]`에서 펼친 카드도 칩 편집이 되어야 한다 — 갱신 대상에서 빠지면
+                  // 값은 호스트에만 반영되고 화면은 옛 계획을 그린다(호스트가 진실원이라는 규약 위반).
+                  ...(cards.moreCards ? { moreCards: cards.moreCards.map(patch) } : {}),
                 },
               };
             }),

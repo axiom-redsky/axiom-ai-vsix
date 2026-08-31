@@ -6,15 +6,18 @@
  */
 
 import { decorateBindingRows, resolveBindingChoices, type IBindingPlan } from './OfflineApiBinding';
+import type { IRecipePlan } from './OfflineRecipeApply';
 import type { IActionCard, ICardMatch, TRecommendMode } from './types';
+import { RECIPE_ANCHOR_LIVE_CURSOR } from '../../types/messages';
 import type {
-  ActionCardBindingView, ActionCardOutputView, ActionCardSlotView, ActionCardView, ActionCardsPayload,
+  ActionCardBindingView, ActionCardOutputView, ActionCardRecipeView, ActionCardSlotView,
+  ActionCardView, ActionCardsPayload,
 } from '../../types/messages';
 
 /** 실행 버튼 라벨 — 유형별로 "무슨 일이 일어나는지"를 말한다(§3.6: 이름 대신 결과). */
 export const EXECUTE_LABEL: Record<IActionCard['action']['type'], string> = {
   template: '⏎ 이대로 만들기',
-  recipe: '골격 안내 보기',
+  recipe: '⏎ 이 골격 넣기',
   doc: '문서 보기',
   command: '위저드 열기',
   binding: '⏎ 이 매핑대로 적용',
@@ -111,6 +114,41 @@ export function buildBindingView(
 }
 
 /**
+ * 레시피 계획 해석기 — recipe 카드가 "무엇을 어디에 넣는지"를 계산한다. 현재 파일 원문이 필요하므로
+ * 호스트가 주입한다. 미주입이면 null → 카드는 종전처럼 골격만 접어서 보여준다(회귀 0).
+ */
+export type TRecipeResolver = (card: IActionCard, values: Record<string, string>) => IRecipePlan | null;
+
+/**
+ * 레시피 계획 → 카드 본문 뷰(순수 매핑).
+ *
+ * `liveCursor`면 위치 후보 맨 앞에 "지금 커서 위치" 항목을 넣는다 — 값이 동적이라 순수 계획이
+ * 만들 수 없고(호스트만 편집기를 안다), 카드를 본 뒤 커서를 옮기는 흐름을 지원하는 유일한 통로다.
+ */
+export function buildRecipeView(
+  plan: IRecipePlan,
+  opts: { liveCursor?: boolean } = {},
+): ActionCardRecipeView {
+  const anchorChoices = plan.anchorChoices.map((a) => ({ key: a.key, label: a.label }));
+  if (opts.liveCursor && plan.jsxLines > 0) {
+    anchorChoices.unshift({ key: RECIPE_ANCHOR_LIVE_CURSOR, label: '지금 편집기 커서 위치 사용' });
+  }
+  return {
+    anchorChoices,
+    blocked: plan.blocked,
+    targetFile: plan.targetFile,
+    targetFileChoices: plan.targetFileChoices,
+    anchorLabel: plan.anchor?.label ?? null,
+    anchorKey: plan.anchor?.key ?? null,
+    pendingSlots: plan.pendingSlots,
+    importCount: plan.importCount,
+    codeLines: plan.codeLines,
+    jsxLines: plan.jsxLines,
+    notice: plan.notice,
+  };
+}
+
+/**
  * 카드 뷰를 만드는 데 필요한 **호스트 주입 재료** 묶음.
  * (워크스페이스를 아는 쪽은 호스트뿐이라 전부 선택 주입 — 미주입이면 카드의 정적 선언으로 양보한다.)
  */
@@ -118,6 +156,7 @@ export interface ICardViewHooks {
   outputs?: TOutputsResolver;
   editor?: TSlotEditorResolver;
   binding?: TBindingResolver;
+  recipe?: TRecipeResolver;
   /** cardId → (컬럼 필드 → 고른 API 필드). binding 카드의 행 선택 상태. */
   choices?: Map<string, Record<string, string>>;
 }
@@ -128,9 +167,10 @@ export function buildCardView(
   values: Record<string, string>,
   hooks: ICardViewHooks = {},
 ): ActionCardView {
-  const { outputs: resolveOutputs, editor: resolveEditor, binding: resolveBinding } = hooks;
+  const { outputs: resolveOutputs, editor: resolveEditor, binding: resolveBinding, recipe: resolveRecipe } = hooks;
   const choices = hooks.choices?.get(card.id) ?? {};
   const plan = card.action.type === 'binding' ? resolveBinding?.(card, values) ?? null : null;
+  const recipe = card.action.type === 'recipe' ? resolveRecipe?.(card, values) ?? null : null;
   return {
     cardId: card.id,
     icon: card.icon,
@@ -140,7 +180,10 @@ export function buildCardView(
     matchedTriggers: match.matchedTriggers,
     slots: buildSlotViews(card, values, resolveEditor),
     outputs: resolveOutputs?.(card, values) ?? buildOutputViews(card, values),
-    ...(card.skeleton !== undefined ? { skeleton: card.skeleton } : {}),
+    // 계획이 있으면 **슬롯이 치환된** 골격을 보여준다 — 카드에 보이는 코드가 곧 삽입될 코드다.
+    ...(recipe ? { skeleton: recipe.preview } : card.skeleton !== undefined ? { skeleton: card.skeleton } : {}),
+    // 호스트가 편집기를 아는 경우에만 "지금 커서 위치" 항목이 의미가 있다(해석기 = 호스트 주입).
+    ...(recipe ? { recipe: buildRecipeView(recipe, { liveCursor: true }) } : {}),
     // 제안을 넣을 슬롯은 **카드 선언에서** 찾는다(엔진에 슬롯 이름을 하드코딩하지 않기 — §2-3).
     ...(plan
       ? { binding: buildBindingView(plan, choices, card.slots.find((s) => s.source === 'endpoint-list')?.name) }

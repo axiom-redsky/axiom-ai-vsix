@@ -538,7 +538,7 @@ function collectDeclaredBindings(code: string): Set<string> {
  * 코드 조각을 문장 단위로 쪼갠다(괄호·중괄호·대괄호 균형이 0으로 돌아오고 `;`로 끝나면 문장 종료).
  * 멀티라인 `const { data } = useApi({\n …\n});` 도 한 문장으로 묶는다.
  */
-function splitStatements(code: string): string[] {
+export function splitStatements(code: string): string[] {
   const lines = code.split('\n');
   const out: string[] = [];
   let buf: string[] = [];

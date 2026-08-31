@@ -33,11 +33,15 @@ export function ChipEditor({ slot, onCommit, onCancel }: Props): React.ReactElem
   const hasOptions = options.length > 0;
   const allowCustom = !!slot.allowCustom;
 
+  // 값이 사람 말이 아닌 후보(삽입 위치 key 등)는 라벨로 보여주고 **라벨로도 검색**된다.
+  const labelOf = (opt: string): string => slot.optionLabels?.[opt] ?? opt;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((o) => o.toLowerCase().includes(q));
-  }, [options, query]);
+    return options.filter((o) => o.toLowerCase().includes(q) || labelOf(o).toLowerCase().includes(q));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, query, slot.optionLabels]);
 
   // 자유 입력 값이 형식 규칙을 만족하는지(입력 중 즉시 피드백).
   const customValue = query.trim();
@@ -130,7 +134,7 @@ export function ChipEditor({ slot, onCommit, onCancel }: Props): React.ReactElem
               onMouseEnter={() => setActiveIndex(i)}
               onClick={() => onCommit(opt)}
             >
-              {opt}
+              {labelOf(opt)}
             </li>
           ))}
           {canCommitCustom && (
