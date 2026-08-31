@@ -149,13 +149,6 @@ project: react-app-scaffold
              useLottie, 로티, 로티애니메이션, lottie파일]
   files: [libraries/lottie-react.md]
 
-## 스펙 작성 가이드
-
-- keywords: [spec, 스펙, 스펙구조, spec-guide, spec-structure, 섹션, 복잡도, L1, L2, L3,
-             컴포넌트트리, component-tree, props, state, 상태, render-logic, 렌더조건,
-             events, 이벤트, form, 폼스펙, edge-cases, 예외처리, 수락기준, 스펙작성]
-  files: [spec-guide/spec-structure.md]
-
 ## 스캐폴드 공통 유틸 ($util)
 
 - keywords: [util, 유틸, 유틸리티, 헬퍼, helper, $util, 공통함수, 공통유틸,

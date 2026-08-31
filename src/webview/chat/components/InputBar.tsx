@@ -304,7 +304,7 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
           const source = measuredTokens !== undefined ? '실측' : '추정';
           const hasBreakdown = breakdown && (
             breakdown.rulesChars + breakdown.fileChars + breakdown.ragChars +
-            breakdown.sddChars + breakdown.domainChars
+            breakdown.domainChars
           ) > 0;
           return (
             <div className="input-bar__context-meter">
@@ -350,7 +350,6 @@ function ContextBreakdownPanel({ breakdown }: { breakdown: ContextBreakdown }): 
     { label: '규칙·가이드', chars: breakdown.rulesChars, color: 'var(--vscode-charts-blue, #4FC1FF)' },
     { label: '현재 파일', chars: breakdown.fileChars, color: 'var(--vscode-charts-green, #89D185)' },
     { label: 'RAG 문서', chars: breakdown.ragChars, color: 'var(--vscode-charts-orange, #E8B568)' },
-    { label: 'SDD 스펙', chars: breakdown.sddChars, color: 'var(--vscode-charts-purple, #B180D7)' },
     { label: '도메인 컨텍스트', chars: breakdown.domainChars, color: 'var(--vscode-charts-yellow, #DDB100)' },
   ];
   const total = rows.reduce((sum, r) => sum + r.chars, 0);

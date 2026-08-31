@@ -207,7 +207,6 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         ['qnaAntiRepeatFrequencyPenalty', 'llm.qnaAntiRepeat.frequencyPenalty'],
         ['qnaAntiRepeatPresencePenalty', 'llm.qnaAntiRepeat.presencePenalty'],
         ['offlineFallback',              'server.offlineFallback'],
-        ['requireComplianceTags',        'sdd.requireComplianceTags'],
         ['userStubsFolder',              'stubs.userStubsFolder'],
         ['externalCorpusEnabled',        'rag.externalCorpusEnabled'],
         ['validateExternalCorpus',       'rag.validateExternalCorpus'],

@@ -1,5 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { vscode } from '../vscodeApi';
+import React, { useCallback, useMemo } from 'react';
 import { useChat } from './hooks/useChat';
 import { MessageList } from './components/MessageList';
 import { InputBar } from './components/InputBar';
@@ -8,20 +7,10 @@ import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
   const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach } = useChat();
-  const [prefillText, setPrefillText] = useState('');
-
   const totalChars = useMemo(
     () => messages.reduce((sum, m) => sum + m.content.length, 0),
     [messages],
   );
-
-  const handlePrefill = useCallback((text: string) => {
-    setPrefillText(text);
-  }, []);
-
-  const handlePrefillConsumed = useCallback(() => {
-    setPrefillText('');
-  }, []);
 
   const handleSend = useCallback((text: string) => {
     const cmd = isExactSlashCommand(text);
@@ -71,13 +60,10 @@ export function ChatApp(): React.ReactElement {
         usage={usage}
         isOffline={isOffline}
       />
-      <SpecQuickBar onPrefill={handlePrefill} onSend={sendMessage} isStreaming={isStreaming} />
       <InputBar
         onSend={handleSend}
         onStop={stopStreaming}
         isStreaming={isStreaming || isWaiting}
-        prefillText={prefillText}
-        onPrefillConsumed={handlePrefillConsumed}
         onAttach={attachReference}
         appendText={attachText}
         onAppendConsumed={consumeAttach}
@@ -96,110 +82,3 @@ export function ChatApp(): React.ReactElement {
   );
 }
 
-/* ─── SDD 퀵액션 버튼 띠 ─────────────────────────────────────── */
-
-interface QuickBarProps {
-  onPrefill: (text: string) => void;
-  onSend: (text: string) => void;
-  isStreaming: boolean;
-}
-
-function SpecQuickBar({ onPrefill, onSend, isStreaming }: QuickBarProps): React.ReactElement {
-  const [open, setOpen] = useState(false);
-
-  const prefill = (text: string) => {
-    onPrefill(text);
-  };
-
-  const send = (text: string) => {
-    if (isStreaming) return;
-    onSend(text);
-  };
-
-  return (
-    <div className="spec-quick-bar">
-      <button
-        className={`spec-quick-bar__toggle${open ? ' spec-quick-bar__toggle--open' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        title="SDD 스펙 빠른 액션"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 4h8M2 6h8M2 8h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-        <span>SDD</span>
-        <svg
-          className="spec-quick-bar__chevron"
-          width="10" height="10" viewBox="0 0 10 10" fill="none"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
-        >
-          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="spec-quick-bar__actions">
-          <button
-            className="spec-quick-bar__btn spec-quick-bar__btn--primary"
-            onClick={() => prefill('/spec ')}
-            title="스펙 생성 — 입력창에 /spec 을 채웁니다"
-            disabled={isStreaming}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-            스펙 생성
-          </button>
-
-          <button
-            className="spec-quick-bar__btn spec-quick-bar__btn--accent"
-            onClick={() => prefill('/spec fast ')}
-            title="빠른 생성 — 스펙 + 승인 + 코드 한 번에"
-            disabled={isStreaming}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M7 1L3 6.5h3L4.5 11 9.5 5H6.5L7 1z" fill="currentColor" />
-            </svg>
-            빠른 생성
-          </button>
-
-          <button
-            className="spec-quick-bar__btn"
-            onClick={() => prefill('/spec update ')}
-            title="스펙 수정 — 현재 열린 spec.md를 AI로 수정"
-            disabled={isStreaming}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 9.5h8M7.5 2.5l2 2-5 5H2.5v-2l5-5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            스펙 수정
-          </button>
-
-          <button
-            className="spec-quick-bar__btn spec-quick-bar__btn--success"
-            onClick={() => send('/spec approve')}
-            title="승인 — 현재 열린 spec.md를 approved로 전환"
-            disabled={isStreaming}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 6.5l3 3 5-6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            승인
-          </button>
-
-          <button
-            className="spec-quick-bar__btn spec-quick-bar__btn--muted"
-            onClick={() => { vscode.postMessage({ type: 'sendMessage', text: '/spec guide' }); }}
-            title="스펙 작성 규칙 가이드 보기"
-            disabled={isStreaming}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
-              <path d="M6 5.5v3M6 3.5v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-            가이드
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}

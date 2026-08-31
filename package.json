@@ -43,11 +43,6 @@
           "visibility": "visible"
         },
         {
-          "id": "axiom-ai.sddPanel",
-          "name": "SDD 스펙",
-          "visibility": "collapsed"
-        },
-        {
           "type": "webview",
           "id": "axiom-ai.projectConfigPanel",
           "name": "프로젝트 설정",
@@ -212,12 +207,7 @@
         "axiom-ai.sdd.axiomFolder": {
           "type": "string",
           "default": "",
-          "description": "SDD 스펙 저장 폴더 경로 (워크스페이스 상대 또는 절대 경로). 예: .axiom"
-        },
-        "axiom-ai.sdd.requireComplianceTags": {
-          "type": "boolean",
-          "default": false,
-          "description": "금융 컴플라이언스 태그(compliance-tags, reviewer) 필수 여부"
+          "description": ".axiom 폴더 경로 — 통합 설정(axiom.config.json)·knowledge 저장소 (워크스페이스 상대 또는 절대 경로). 예: .axiom"
         },
         "axiom-ai.server.endpoint": {
           "type": "string",
@@ -407,49 +397,6 @@
       {
         "command": "axiom-ai.reindexCorpus",
         "title": "Axiom AI: Corpus 인덱스 재빌드"
-      },
-      {
-        "command": "axiom-ai.generateSpec",
-        "title": "Axiom AI: SDD 스펙 생성",
-        "icon": "$(file-add)"
-      },
-      {
-        "command": "axiom-ai.generateSpecForFolder",
-        "title": "Axiom AI: 이 폴더의 스펙 생성"
-      },
-      {
-        "command": "axiom-ai.scaffoldFromSpec",
-        "title": "Axiom AI: 스펙에서 코드 생성 (/scaffold)",
-        "icon": "$(play)"
-      },
-      {
-        "command": "axiom-ai.approveSpec",
-        "title": "Axiom AI: 스펙 승인 (Approve)",
-        "icon": "$(check)"
-      },
-      {
-        "command": "axiom-ai.updateSpec",
-        "title": "Axiom AI: 스펙 수정 (AI 보조)",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "axiom-ai.openSpec",
-        "title": "Axiom AI: 스펙 열기"
-      },
-      {
-        "command": "axiom-ai.refreshSddPanel",
-        "title": "Axiom AI: SDD 패널 새로고침",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "axiom-ai.addScreen",
-        "title": "Axiom AI: 화면 추가 (Add Screen)",
-        "icon": "$(add)"
-      },
-      {
-        "command": "axiom-ai.extractSpecFromFile",
-        "title": "Axiom AI: 파일에서 스펙 추출",
-        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -463,75 +410,6 @@
           "command": "axiom-ai.clearHistory",
           "when": "view == axiom-ai.chatView",
           "group": "navigation"
-        },
-        {
-          "command": "axiom-ai.refreshSddPanel",
-          "when": "view == axiom-ai.sddPanel",
-          "group": "navigation"
-        },
-        {
-          "command": "axiom-ai.generateSpec",
-          "when": "view == axiom-ai.sddPanel",
-          "group": "navigation"
-        },
-        {
-          "command": "axiom-ai.addScreen",
-          "when": "view == axiom-ai.sddPanel",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "axiom-ai.openSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem =~ /^sddSpec/",
-          "group": "sdd@1"
-        },
-        {
-          "command": "axiom-ai.updateSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem =~ /^sddSpec/",
-          "group": "sdd@2"
-        },
-        {
-          "command": "axiom-ai.approveSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem =~ /^sddSpec-(draft|review|unknown)$/",
-          "group": "sdd@3"
-        },
-        {
-          "command": "axiom-ai.scaffoldFromSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem == sddSpec-approved",
-          "group": "sdd@4"
-        },
-        {
-          "command": "axiom-ai.addScreen",
-          "when": "view == axiom-ai.sddPanel && viewItem == sddFolder",
-          "group": "sdd@0"
-        },
-        {
-          "command": "axiom-ai.updateSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem =~ /^sddSpec/",
-          "group": "inline@1"
-        },
-        {
-          "command": "axiom-ai.approveSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem =~ /^sddSpec-(draft|review|unknown)$/",
-          "group": "inline@2"
-        },
-        {
-          "command": "axiom-ai.scaffoldFromSpec",
-          "when": "view == axiom-ai.sddPanel && viewItem == sddSpec-approved",
-          "group": "inline@2"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "axiom-ai.generateSpecForFolder",
-          "when": "explorerResourceIsFolder",
-          "group": "axiomAi"
-        },
-        {
-          "command": "axiom-ai.extractSpecFromFile",
-          "when": "resourceExtname == .html || resourceExtname == .htm || resourceExtname == .tsx",
-          "group": "axiomAi"
         }
       ]
     }

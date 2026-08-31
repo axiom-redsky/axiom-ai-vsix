@@ -109,7 +109,6 @@ const DEFAULT_ADVANCED: NonNullable<AxiomSettings['advanced']> = {
   injectNoThink: true,
   sendThinkingParams: true,
   offlineFallback: true,
-  requireComplianceTags: false,
   userStubsFolder: '',
   externalCorpusEnabled: true,
   validateExternalCorpus: true,
@@ -831,7 +830,6 @@ function AdvancedSection({
       <div className="settings__advanced-group">
         <h3 className="settings__advanced-title">기타</h3>
         {toggle('offlineFallback', '오프라인 폴백 — server.offlineFallback')}
-        {toggle('requireComplianceTags', '컴플라이언스 태그 강제 — sdd.requireComplianceTags')}
         {toggle('externalCorpusEnabled', '외부 corpus 라우팅 — rag.externalCorpusEnabled')}
         {toggle('validateExternalCorpus', '외부 corpus 검증 — rag.validateExternalCorpus')}
         {text('userStubsFolder', '오프라인 stubs 폴더 — stubs.userStubsFolder', '(지정 없음)')}

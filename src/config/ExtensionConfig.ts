@@ -12,7 +12,6 @@ import type { AxiomSettings } from '../types/messages';
  * - 읽기·쓰기 라우팅의 단일 진실원. flat dotted key 형태로 저장한다(설정 키와 동일).
  */
 const PROJECT_CONFIG_KEYS = new Set<string>([
-  'sdd.requireComplianceTags',
   'server.offlineFallback',
   'rag.userRagFolder', 'rag.additionalFiles', 'rag.externalCorpusEnabled', 'rag.validateExternalCorpus',
   'stubs.userStubsFolder',
@@ -514,16 +513,11 @@ export class ExtensionConfig {
     };
   }
 
-  // ─── SDD 설정 ───────────────────────────────────────────────────────────────
+  // ─── .axiom 폴더 설정 ───────────────────────────────────────────────────────
 
-  /** .axiom/ 폴더 경로 (SDD 스펙 저장소). 설정 없으면 빈 문자열 */
+  /** .axiom/ 폴더 경로 (통합설정·knowledge 저장소). 설정 없으면 빈 문자열 */
   static getSddAxiomFolder(): string {
     return ExtensionConfig._cfg().get<string>('sdd.axiomFolder', '');
-  }
-
-  /** 금융 컴플라이언스 필드 강제 여부 */
-  static getSddRequireComplianceTags(): boolean {
-    return ExtensionConfig._resolve<boolean>('sdd.requireComplianceTags', false);
   }
 
   // ─── 서버 설정 (폐쇄망 지원) ──────────────────────────────────────────────
@@ -576,7 +570,6 @@ export class ExtensionConfig {
       injectNoThink:                llm.injectNoThink,
       sendThinkingParams:           llm.sendThinkingParams,
       offlineFallback:              ExtensionConfig.isOfflineFallbackEnabled(),
-      requireComplianceTags:        ExtensionConfig.getSddRequireComplianceTags(),
       userStubsFolder:              ExtensionConfig.getUserStubsFolder(),
       externalCorpusEnabled:        ExtensionConfig._resolve<boolean>('rag.externalCorpusEnabled', true),
       validateExternalCorpus:       ExtensionConfig._resolve<boolean>('rag.validateExternalCorpus', true),

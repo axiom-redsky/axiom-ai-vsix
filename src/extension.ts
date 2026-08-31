@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { ChatPanelProvider } from './providers/ChatPanelProvider';
 import { ChatViewProvider } from './providers/ChatViewProvider';
-import { SddPanelProvider } from './views/SddPanelProvider';
 import { StageTestPanelProvider } from './views/StageTestPanelProvider';
 import { IntentProbePanel } from './providers/IntentProbePanel';
 import { DecomposeProbePanel } from './providers/DecomposeProbePanel';
@@ -12,7 +11,6 @@ import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
 import { registerCommands } from './commands/index';
 import { ExtensionConfig } from './config/ExtensionConfig';
-import { AxiomIndexTracker } from './spec/AxiomIndexTracker';
 import { initEmbeddingPipeline } from './ai/retrieval/EmbeddingService';
 import * as path from 'path';
 
@@ -27,7 +25,6 @@ export function activate(context: vscode.ExtensionContext): void {
   // 설정 패널의 연결 테스트가 성공하면 채팅 토큰 메터를 즉시 온라인으로 되돌린다
   // (오프라인 사용 후 온라인 전환 시 "오프라인 · 토큰 미사용"이 다음 턴까지 고정되던 문제).
   launcherProvider.onConnectionOnline = () => chatProvider.resetTokenMeter();
-  const sddPanel = new SddPanelProvider();
   const projectConfigProvider = new ProjectConfigProvider(context.extensionUri);
   const sliceProbeProvider = new SliceProbeProvider(context.extensionUri);
   const regionIoProbeProvider = new RegionIoProbeProvider(context.extensionUri);
@@ -42,10 +39,6 @@ export function activate(context: vscode.ExtensionContext): void {
       ChatViewProvider.viewId,
       chatProvider,
       { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-    vscode.window.registerTreeDataProvider(
-      SddPanelProvider.viewId,
-      sddPanel,
     ),
     vscode.window.registerWebviewViewProvider(
       ProjectConfigProvider.viewId,
@@ -82,8 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // SDD 패널 + 프로젝트 설정 패널 axiomDir 초기화
-  _initSddPanel(sddPanel, context);
+  // 프로젝트 설정 패널 axiomDir 초기화
   _initProjectConfigProvider(projectConfigProvider);
 
   context.subscriptions.push(
@@ -102,42 +94,24 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  registerCommands(context, launcherProvider, chatProvider, sddPanel);
+  registerCommands(context, launcherProvider, chatProvider);
 
   // corpus 파일 변경 감시 등록
   chatProvider.registerCorpusWatcher(context);
-  sddPanel.registerWatcher(context);
 
   // RAG 임베딩 인덱스를 백그라운드에서 미리 빌드 시작
   chatProvider.startIndexBuild();
   // 임베딩 모델 콜드 스타트 방지 — buildIndex 완료 여부와 무관하게 파이프라인 워밍업
   initEmbeddingPipeline().catch(() => {});
 
-  // 설정 변경 시 SDD 패널 + 프로젝트 설정 패널 재초기화
+  // 설정 변경 시 프로젝트 설정 패널 재초기화
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('axiom-ai.sdd.axiomFolder')) {
-        _initSddPanel(sddPanel, context);
         _initProjectConfigProvider(projectConfigProvider);
       }
     }),
   );
-
-  // staleness 체크 (activate 시 1회)
-  _checkStaleness();
-}
-
-function _initSddPanel(sddPanel: SddPanelProvider, context: vscode.ExtensionContext): void {
-  const axiomFolder = ExtensionConfig.getSddAxiomFolder();
-  if (!axiomFolder) return;
-
-  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  const axiomDir = wsRoot && !path.isAbsolute(axiomFolder)
-    ? path.join(wsRoot, axiomFolder)
-    : axiomFolder;
-
-  sddPanel.setAxiomDir(axiomDir);
-  sddPanel.registerWatcher(context);
 }
 
 function _initProjectConfigProvider(provider: ProjectConfigProvider): void {
@@ -150,29 +124,6 @@ function _initProjectConfigProvider(provider: ProjectConfigProvider): void {
     : axiomFolder;
 
   provider.setAxiomDir(axiomDir);
-}
-
-function _checkStaleness(): void {
-  const axiomFolder = ExtensionConfig.getSddAxiomFolder();
-  if (!axiomFolder) return;
-
-  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!wsRoot) return;
-
-  const axiomDir = path.isAbsolute(axiomFolder) ? axiomFolder : path.join(wsRoot, axiomFolder);
-  const tracker = new AxiomIndexTracker(axiomDir);
-  const stale = tracker.checkStaleness(wsRoot);
-
-  if (stale.length > 0) {
-    vscode.window.showWarningMessage(
-      `⚠️ ${stale.length}개 스펙이 만료되었습니다. SDD 패널에서 확인해주세요.`,
-      '패널 열기',
-    ).then((action) => {
-      if (action === '패널 열기') {
-        vscode.commands.executeCommand('axiom-ai.sddPanel.focus');
-      }
-    });
-  }
 }
 
 export function deactivate(): void {}

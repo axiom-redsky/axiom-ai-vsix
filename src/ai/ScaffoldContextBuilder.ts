@@ -43,7 +43,7 @@ export class ScaffoldContextBuilder {
   private _ragDir: string | null | undefined = undefined; // undefined = 아직 탐색 전
   /** buildSystemPrompt 가장 최근 호출의 구성 요소별 글자 수 */
   private _lastBreakdown: ContextBreakdown = {
-    rulesChars: 0, fileChars: 0, ragChars: 0, sddChars: 0, domainChars: 0,
+    rulesChars: 0, fileChars: 0, ragChars: 0, domainChars: 0,
   };
   /** buildSystemPrompt 가장 최근 호출이 프롬프트에 실제로 주입한 scaffold 문서 출처 목록(중복 제거). */
   private _lastScaffoldSources: string[] = [];
@@ -628,13 +628,10 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     // 모든 시나리오(Q&A·A·B·C)에 공통 적용 — 모델이 임의 엔드포인트를 지어내지 않게 한다.
     const referencedSection = this._buildReferencedFilesSection(userQuery);
 
-    // SDD 컨텍스트는 _handleMessage가 ctx.content에 append하므로 파일 섹션에 포함된다.
-    // 별도 분리가 필요하면 EditorContext에 sddChars를 추가하는 추가 작업이 필요.
     this._lastBreakdown = {
       rulesChars: 0, // coreRules는 시나리오 분기 뒤 합산 — _buildScenarioCPrompt / 시나리오 A·B 반환 직전에 갱신
       fileChars: fileSection.length,
       ragChars: scaffoldSection.length,
-      sddChars: 0,
       domainChars: domainSection.length,
     };
 

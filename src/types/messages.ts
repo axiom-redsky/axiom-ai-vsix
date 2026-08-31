@@ -33,7 +33,7 @@ export interface AxiomSettings {
    * axiomFolder만 부트스트랩이라 전역 settings.json에 저장된다.
    */
   project?: {
-    /** .axiom 폴더 경로(SDD/통합설정 저장소). 전역 settings.json(axiom-ai.sdd.axiomFolder)에 저장. */
+    /** .axiom 폴더 경로(통합설정·knowledge 저장소). 전역 settings.json(axiom-ai.sdd.axiomFolder)에 저장. */
     axiomFolder: string;
     /** 실험: 영역(region/hybrid) 편집. */
     regionEdit: boolean;
@@ -87,7 +87,6 @@ export interface AxiomSettings {
     sendThinkingParams: boolean;
     // 기타
     offlineFallback: boolean;
-    requireComplianceTags: boolean;
     userStubsFolder: string;
     externalCorpusEnabled: boolean;
     validateExternalCorpus: boolean;
@@ -110,17 +109,6 @@ export interface PageCreationState {
   waitingForCollision?: boolean;
   /** 쿼리에 도메인이 명시된 경우("example 도메인에") 그 값. 이름 되묻기 라운드트립을 넘겨 유지한다. */
   explicitDomain?: string | null;
-}
-
-// /spec wizard 상태 머신 (ChatViewProvider 내부 + 웹뷰 상태 표시용)
-export interface SpecWizardState {
-  step: 'intent' | 'domain' | 'acceptance' | 'api' | 'exceptions' | 'review';
-  partial: {
-    domain?: string;
-    screen?: string;
-    intent?: string;
-  };
-  collectedSections: Record<string, string>;
 }
 
 // WebView → Extension Host
@@ -193,7 +181,6 @@ export type HostToWebviewMessage =
   | { type: 'ragFolderSet'; folderPath: string }
   | { type: 'projectConfigLoaded'; config: ProjectConfig | null }
   | { type: 'projectConfigSaved' }
-  | { type: 'wizardStep'; step: SpecWizardState['step']; prompt: string }
   | { type: 'connectionTestResult'; ok: boolean; endpoint: string; detail: string }
   // outputReserve = 이 턴 요청에 실은 max_tokens(출력 자리). 토큰 메터 분모는 contextWindow가 아니라
   // (contextWindow − outputReserve) = "모델이 답할 자리를 남긴 실사용 가능 입력 예산"이어야 한다.
@@ -550,6 +537,5 @@ export interface ContextBreakdown {
   rulesChars: number;
   fileChars: number;
   ragChars: number;
-  sddChars: number;
   domainChars: number;
 }
