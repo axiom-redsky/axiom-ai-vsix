@@ -1,6 +1,7 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: 구상 확정 — 착수 전 (2026-08-28 추가 확정: 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6)
+> 상태: Phase 0 진행 중 (2026-08-31 착수 — 스키마 타입·MiniYaml·CardParser·`test:action-cards` 완료, §9 진행표 참조)
+> 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
 > 관련 메모리: [offline-mode-enhancement], [offline-intent-responder], [intent-routing-collision-safety], [region-disambiguation], [recipe-contract-cards], [region-failure-capture]
@@ -291,6 +292,32 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
   doc=첫 단락. 계획 카드(§3.6) 렌더에 추가 스키마 필드 불필요
   (부족해지면 v2에서 `preview` 오버라이드 필드 고려).
 
+### 4.5 슬롯 소스 v1 + 구현 계약 (확정 2026-08-31, Phase 0 ①)
+
+규칙 2의 "정확한 목록과 스캔 계약"을 다음 5개로 확정 (`src/ai/actions/types.ts`가 진실원):
+
+| source | 스캔 계약 | 프리필 |
+|---|---|---|
+| `text` | 스캔 없음 — 자유 입력(InputBox) | `prefillFrom: query` 시 결정론 추출기 |
+| `enum` | 스캔 없음 — 카드가 `options:`로 고정 선택지 선언 (예: 페이지 유형 list/form) | 〃 |
+| `domain-list` | `src/domains/*` 하위 디렉터리명 (+위저드가 "새 도메인" 항목 추가) | 〃 (extractDomainFromQuery 재사용) |
+| `endpoint-list` | api-spec 문서에서 추출한 API 경로(extractApiPaths 계열) | 〃 |
+| `component-list` | ComponentPropsIndex 컴포넌트명(자동생성 인덱스) | 〃 |
+
+- 스캐너는 `ISlotSourceProviders`로 주입 — 엔진·파서는 vscode/디스크 비의존(테스트=스텁).
+- **구현 확정 사항** (Phase 0 ①·② 코드에 반영):
+  - frontmatter 파싱 = **의존성 0의 YAML 부분집합 파서**(`MiniYaml.ts`). js-yaml 미도입 —
+    카드 어휘가 좁아(규칙 2) 부분집합으로 충분, 지원 밖 문법은 errors로 명시 보고.
+  - `action.outputs`는 문자열 배열 `"+ 경로"` / `"± 경로 (설명)"` — §3.6 미리보기의
+    `+ 신규 / ± 수정` 표기를 스키마에 그대로 사용 (중첩 객체 리스트 회피).
+  - 카드 lint의 씨앗: `{{플레이스홀더}}` ↔ 슬롯 선언 교차검증(선언 없는 플레이스홀더=error,
+    recipe의 미사용 슬롯=warning), 카드 내 중복 트리거 dedupe+warning.
+  - 트리거 충돌 정책(`findTriggerCollisions`): **같은 계층** 중복=나중 카드 비활성(error) /
+    **계층 간** 공유=warning만 — 프로젝트 카드가 내장 카드를 의도적으로 덮는 경우가
+    정상이므로(§5), 정렬에서 상위 계층 가점으로 해소.
+  - `preconditions` v1 어휘 = `file-open` | `scaffold-detected` (모르는 값=error).
+  - `schemaVersion` 누락=1로 간주, 1 이외=그 카드만 비활성(전방 호환).
+
 ---
 
 ## 5. 카탈로그 3계층 + 관리 UI
@@ -391,6 +418,9 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
   카드 타입 정의, 내장 카드 3~4장(수기), 트리거 매칭·정렬 + **확신도 게이트**
   (top1–top2 격차, §3.6). 테스트: 카드 드라이런 하니스(질문 → 뜨는 카드 top-N +
   계획카드/리스트 모드 스냅샷, eval:region 계기판과 동형 철학).
+  - 진행: ① 스키마 타입+슬롯 소스 계약(§4.5) ✅ · ② MiniYaml+CardParser(fail-open 검증,
+    `test:action-cards` 61/0) ✅ (2026-08-31, `src/ai/actions/`) — 남은 것: ③ 내장 카드
+    수기 3~4장 · ④ 매칭 엔진+확신도 게이트 · ⑤ 드라이런 하니스
 - **Phase 1 — 계획 카드 UI(형태 A) + 페이지 위저드 (A2)**
   오프라인 행동성 요청 → 계획 카드/컴팩트 리스트 렌더(§3.6, 프리필 칩·파일 diff
   미리보기·근거 하이라이트) → 칩 편집(단일 슬롯 QuickPick) → 템플릿 생성.
@@ -417,8 +447,8 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 2. **카드 매칭 품질**: 유한 카탈로그 검색이라 자연어 실행보다 훨씬 쉽지만,
    트리거 겹침·한글 토큰화는 여전한 주의 지점. → 드라이런·lint로 등록 시점 차단.
 3. ~~카드 스키마 형식~~ → **해소 (2026-08-28)**: md + YAML frontmatter 확정, §4.
-4. **슬롯 소스 표준화**: 초기 4~5개 한정 원칙은 확정(§4 규칙 2), 정확한 목록과
-   각 소스의 스캔 계약(무엇을 어디서 어떻게 긁나)은 Phase 0에서 확정.
+4. ~~슬롯 소스 표준화~~ → **해소 (2026-08-31)**: v1 = `text`/`enum`/`domain-list`/
+   `endpoint-list`/`component-list` 5종 + 스캔 계약·주입 인터페이스 확정, §4.5.
 5. **채집 플라이휠의 일반화 품질**: 성공 편집 → 카드 변환 시 "그 파일 전용"이 아닌
    재사용 가능한 골격으로 추상화하는 규칙 필요 (수동 확인 단계를 거치는 반자동이 안전).
 6. **계획 카드의 확신도 임계**: 격차 게이트가 과신하면 엉뚱한 계획이 큰 카드로
