@@ -437,6 +437,25 @@ export interface RouterMapPayload {
   focusPath: string | null;
 }
 
+/** 퍼블리싱 포팅(§7 D1) 페이로드 — 계획을 화면이 그대로 그린다. */
+export interface HandoffPayload {
+  /** `src/publishing/` 아래 도메인들. */
+  domains: string[];
+  /** 지금 고른 도메인. */
+  domain: string | null;
+  /** 그 도메인의 페이지 컴포넌트 이름들. */
+  pages: string[];
+  /** 고른 페이지(비면 전부). */
+  selectedPages: string[];
+  moves: { from: string; to: string; kind: 'page' | 'component'; conflict: boolean }[];
+  updates: { path: string; create: boolean; note: string }[];
+  /** 퍼블리셔가 라우터에 적어 둔 주소·이름. */
+  routes: { component: string; path: string; name: string | null }[];
+  notices: string[];
+  /** 계획을 세울 수 없는 이유. null이면 실행 가능. */
+  blocked: string | null;
+}
+
 export interface ActionCatalogDryrunRow {
   cardId: string;
   icon: string;
@@ -532,6 +551,11 @@ export type WebviewToHostMessage =
   | { type: 'routerMapLoad' }
   | { type: 'routerMapCopy'; text: string }
   | { type: 'routerMapOpen'; file: string; line: number }
+  // 퍼블리싱 포팅(§7 D1): 계획 로드 / 도메인·페이지 선택 / 파일 열기 / 적용
+  | { type: 'handoffLoad' }
+  | { type: 'handoffSelect'; domain: string; pages: string[] }
+  | { type: 'handoffOpen'; file: string; line: number }
+  | { type: 'handoffApply' }
   // 입력창 위 실시간 추천(형태 B): 타이핑 중 요청 / 목록에서 선택
   | { type: 'cardSuggestRequest'; query: string }
   | { type: 'cardSuggestPick'; cardId: string; query: string }
@@ -540,6 +564,7 @@ export type WebviewToHostMessage =
   | { type: 'openComponentCatalog' }
   | { type: 'openDesignTokens' }
   | { type: 'openRouterMap' }
+  | { type: 'openPublishingHandoff' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
   | { type: 'guideEditDoc'; docId: string }
@@ -617,6 +642,8 @@ export type HostToWebviewMessage =
   | { type: 'designTokensTarget'; target: string | null }
   | { type: 'routerMap'; payload: RouterMapPayload }
   | { type: 'routerMapNotice'; message: string; severity: 'info' | 'error' }
+  | { type: 'handoff'; payload: HandoffPayload }
+  | { type: 'handoffNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

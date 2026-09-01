@@ -11,6 +11,7 @@ import { ActionCardsPanel } from './providers/ActionCardsPanel';
 import { ComponentCatalogPanel } from './providers/ComponentCatalogPanel';
 import { DesignTokensPanel } from './providers/DesignTokensPanel';
 import { RouterMapPanel } from './providers/RouterMapPanel';
+import { PublishingHandoffPanel } from './providers/PublishingHandoffPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
 import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
 import { ScaffoldHoverProvider } from './providers/ScaffoldHoverProvider';
@@ -137,6 +138,11 @@ export function activate(context: vscode.ExtensionContext): void {
     // 라우터 맵 — 어떤 주소가 어떤 화면인지 + 고아 페이지·중복 주소 (§7 B4).
     vscode.commands.registerCommand('axiom-ai.openRouterMap', (routePath?: unknown) => {
       RouterMapPanel.createOrShow(context.extensionUri, typeof routePath === 'string' ? routePath : undefined);
+    }),
+
+    // 퍼블리싱 포팅 — publishing/ 산출물을 domains/로 옮기는 결정론 계획 + 적용 (§7 D1).
+    vscode.commands.registerCommand('axiom-ai.openPublishingHandoff', () => {
+      PublishingHandoffPanel.createOrShow(context.extensionUri);
     }),
 
     // hover 카드의 "정의 열기" — 토큰이 선언된 파일의 그 줄로 이동한다.

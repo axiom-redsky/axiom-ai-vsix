@@ -5,6 +5,7 @@ import * as cp from 'child_process';
 import { LlmService } from '../ai/pipeline/LlmService';
 import { EditorContextCollector, type EditorContext } from '../ai/decompose/EditorContextCollector';
 import { ScaffoldContextBuilder } from '../ai/ScaffoldContextBuilder';
+import { appendDomainToRootRouter, appendRouteToDomainRouter } from '../ai/router/RouterRegistration';
 import { FileCreatorService } from '../ai/pipeline/FileCreatorService';
 import type { AxiomAction, LineEdit, MultiPatchResult, PatchBlock } from '../ai/pipeline/FileCreatorService';
 import { extractRelevantTsSlice, restoreSlicedStubs, splitTsSections, stripSliceStubs } from '../ai/decompose/CodeSectionExtractor';
@@ -5618,7 +5619,7 @@ export default routes;`;
         : null;
 
       const updatedRouterCode = existingRouter
-        ? this._appendToExistingRouter(existingRouter, pageName, domain, routePath)
+        ? appendRouteToDomainRouter(existingRouter, pageName, domain, routePath)
         : newDomainRouterCode;
 
       actions.push({
@@ -5648,7 +5649,7 @@ export default routes;`;
         : null;
 
       const updatedRootRouter = existingRootRouter
-        ? this._appendDomainToRootRouter(existingRootRouter, domain, domainPascal)
+        ? appendDomainToRootRouter(existingRootRouter, domain, domainPascal)
         : `import type { TAppRoute } from '@/types/router';
 import RootLayout from '@/shared/components/layout/RootLayout';
 import ${domainPascal}Router from '@/domains/${domain}/router';
@@ -5673,176 +5674,6 @@ export default routes;`;
     return actions;
   }
 
-  /**
-   * 기존 도메인 라우터 파일에 신규 페이지 import와 routes 항목을 추가한다.
-   *
-   * import 삽입 우선순위:
-   * 1. 마지막 loadable import 뒤에 추가
-   * 2. (폴백) `const routes` 선언 바로 앞에 추가
-   *
-   * route 항목 삽입 우선순위:
-   * 1. `];` 앞에 추가
-   * 2. (폴백) 들여쓰기된 `]` 앞에 추가
-   */
-  private _escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  private _appendToExistingRouter(
-    existing: string,
-    pageName: string,
-    domain: string,
-    routePath: string,
-  ): string {
-    // 동일 path 또는 동일 컴포넌트가 이미 등록돼 있으면 중복 항목을 추가하지 않는다.
-    const pathAlreadyRouted = new RegExp(
-      `path:\\s*['"]${this._escapeRegExp(routePath)}['"]`,
-    ).test(existing);
-    const elementAlreadyRouted = new RegExp(
-      `element:\\s*<${this._escapeRegExp(pageName)}\\s*/>`,
-    ).test(existing);
-    if (pathAlreadyRouted || elementAlreadyRouted) {
-      return existing;
-    }
-
-    const loadableImportLine = `import loadable from '@loadable/component';`;
-    const importLine = `const ${pageName} = loadable(() => import('@/domains/${domain}/pages/${pageName}'));`;
-
-    let withLoadableImport: string;
-    if (existing.includes(loadableImportLine)) {
-      withLoadableImport = existing;
-    } else {
-      withLoadableImport = existing.replace(
-        /^(import type \{ TAppRoute \} from ['"]@\/types\/router['"];?\r?\n)/m,
-        `$1\n${loadableImportLine}\n`,
-      );
-      if (withLoadableImport === existing) {
-        withLoadableImport = existing.replace(
-          /^((?:import[^\n]*\n)+)/m,
-          `$1${loadableImportLine}\n`,
-        );
-      }
-      if (withLoadableImport === existing) {
-        withLoadableImport = `${loadableImportLine}\n${existing}`;
-      }
-    }
-
-    let withImport: string;
-    if (withLoadableImport.includes(importLine)) {
-      withImport = withLoadableImport;
-    } else {
-      // 1순위: 마지막 loadable import 뒤
-      withImport = withLoadableImport.replace(
-        /(\nconst \w+ = loadable[^\n]+\n)(?!const \w+ = loadable)/,
-        `$1${importLine}\n`,
-      );
-      if (withImport === withLoadableImport) {
-        // 2순위: const routes 선언 바로 앞
-        withImport = withLoadableImport.replace(/^(const routes\b)/m, `${importLine}\n\n$1`);
-      }
-    }
-
-    const routeEntry = `  {\n    path: '${routePath}',\n    element: <${pageName} />,\n    name: '${pageName}',\n  },`;
-
-    let result = withImport.replace(/(\];)/, `${routeEntry}\n$1`);
-    if (result === withImport) {
-      // 폴백: 들여쓰기된 `]` (세미콜론 없는 경우)
-      result = withImport.replace(/^(\s*\])/m, `${routeEntry}\n$1`);
-    }
-    return result;
-  }
-
-  /**
-   * 루트 라우터 파일에 신규 도메인 import와 routes 항목을 추가한다.
-   *
-   * import 삽입 우선순위:
-   * 1. 마지막 Router import 뒤에 추가
-   * 2. (폴백) `const routes` 선언 바로 앞에 추가
-   */
-  private _appendDomainToRootRouter(
-    existing: string,
-    domain: string,
-    domainPascal: string,
-  ): string {
-    const importLine = `import ${domainPascal}Router from '@/domains/${domain}/router';`;
-    const routeEntry = `  { path: '/${domain}', element: <RootLayout />, children: ${domainPascal}Router },`;
-
-    const lines = existing.split('\n');
-
-    // 줄 단위로 "살아있는 코드"인지 판정한다(// 라인 주석과 /* */ 블록 주석을 모두 무시).
-    // 사용자가 주석으로 넣어둔 import/route 때문에 중복 판정·잘못된 위치 삽입이 일어나던 것을 막는다.
-    let inBlock = false;
-    const isActive: boolean[] = lines.map((line) => {
-      const trimmed = line.trim();
-      if (inBlock) {
-        if (trimmed.includes('*/')) inBlock = false;
-        return false;
-      }
-      if (trimmed.startsWith('/*')) {
-        if (!trimmed.includes('*/')) inBlock = true;
-        return false;
-      }
-      if (trimmed.startsWith('//')) return false;
-      return true;
-    });
-
-    // ── import 추가 ──────────────────────────────────────────────────
-    const alreadyImported = lines.some((l, i) => isActive[i] && l.includes(importLine));
-    if (!alreadyImported) {
-      // 1순위: 마지막 (활성) Router import 뒤
-      let lastRouterImport = -1;
-      for (let i = 0; i < lines.length; i++) {
-        if (isActive[i] && /^\s*import\s+\w+Router\s+from\s+/.test(lines[i])) {
-          lastRouterImport = i;
-        }
-      }
-      if (lastRouterImport >= 0) {
-        lines.splice(lastRouterImport + 1, 0, importLine);
-        isActive.splice(lastRouterImport + 1, 0, true);
-      } else {
-        // 2순위: 활성 `const routes` 선언 바로 앞
-        const routesDeclIdx = lines.findIndex(
-          (l, i) => isActive[i] && /^\s*const\s+routes\b/.test(l),
-        );
-        const insertAt = routesDeclIdx >= 0 ? routesDeclIdx : 0;
-        lines.splice(insertAt, 0, importLine);
-        isActive.splice(insertAt, 0, true);
-      }
-    }
-
-    // ── routes 항목 추가 ─────────────────────────────────────────────
-    // 활성 `const routes ... = [` 를 찾아, 대괄호 깊이를 세서 그 배열의 닫는 `]` 직전에 삽입.
-    const routesStart = lines.findIndex(
-      (l, i) => isActive[i] && /^\s*const\s+routes\b[^=]*=\s*\[/.test(l),
-    );
-    let inserted = false;
-    if (routesStart >= 0) {
-      let depth = 0;
-      for (let i = routesStart; i < lines.length; i++) {
-        if (!isActive[i]) continue;
-        for (const ch of lines[i]) {
-          if (ch === '[') depth++;
-          else if (ch === ']') depth--;
-        }
-        if (depth <= 0) {
-          // i번째 줄이 배열을 닫는다 → 그 줄 앞에 항목 삽입
-          lines.splice(i, 0, routeEntry);
-          inserted = true;
-          break;
-        }
-      }
-    }
-    if (!inserted) {
-      // 폴백: 첫 번째 활성 `];` 앞
-      const closeIdx = lines.findIndex((l, i) => isActive[i] && /\];/.test(l));
-      if (closeIdx >= 0) {
-        lines.splice(closeIdx, 0, routeEntry);
-        inserted = true;
-      }
-    }
-
-    return lines.join('\n');
-  }
 
   /** 현재 활성 에디터 파일 경로에서 도메인명을 추출한다. */
   private _detectDomainFromEditor(): string | null {

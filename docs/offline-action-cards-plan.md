@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 ✅ / B3 ✅ — F5 검증 통과 / B4 라우터 맵 ✅ 코드 완료·F5 대기)** — §7 A·B·C 후보 전부 소진 (2026-09-01, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 ✅ / B3 ✅ / B4 ✅ — F5 검증 통과 / D1 퍼블리싱 포팅 ✅ 코드 완료·F5 대기)** — §7 A·B·C 소진 + D 착수 (2026-09-01, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -16,19 +16,24 @@
 ### 지금 어디까지 왔나 (2026-09-01 갱신)
 Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B1(컴포넌트 카탈로그)**·
 **형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)**·
-**B2(hover 승격)**·**B3(디자인 토큰)**·**B4(라우터 맵)** 까지 완료. 앞의 일곱은 **F5 라이브 검증 통과**,
-B4는 **코드·게이트 완료·F5 대기**. 전 게이트 green.
-**§7의 A·B·C 후보가 이것으로 전부 소진됐다** — 남은 것은 §6 채집 플라이휠(설계 먼저)과 D 그룹(워크플로우)뿐이다.
+**B2(hover 승격)**·**B3(디자인 토큰)**·**B4(라우터 맵)**·**D1(퍼블리싱 포팅)** 까지 완료.
+앞의 여덟은 **F5 라이브 검증 통과**, D1은 **코드·게이트 완료·F5 대기**. 전 게이트 green.
+**§7 A·B·C는 전부 소진**됐고 D 그룹에 착수했다 — 남은 것은 D2·D3와 §6 채집 플라이휠(설계 먼저).
+
+> ⚠ **D1은 지금까지와 성격이 다르다 — 파일을 쓴다.** 읽기 전용 창(B1·B3·B4)과 달리 계획 카드의
+> 안전 규약(§3.6)을 그대로 따랐다: 미리보기 → 사람이 누를 때만 → 원본 유지(복사). 이어서 손대는
+> 사람은 이 세 가지를 깨지 않는지부터 확인할 것.
 상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
 
 > ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`), 형태 B·A4는 `f97b78c`,
-> **B2는 `69b8ff1`**. **B3·B4는 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
+> **B2는 `69b8ff1`**. **B3·B4·D1은 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
 
 ### 다음에 할 일 = 아래 중 택1
 
 | 후보 | 무게 | 시작점 |
 |---|---|---|
-| **★ B4 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. 아래 "F5로 눈으로 확인하는 법"의 라우터 맵 절 참고 |
+| **★ D1 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. ⚠ **파일을 쓰는 첫 기능**이라 확인이 더 중요하다 — 아래 "F5로 눈으로 확인하는 법"의 퍼블리싱 포팅 절 |
+| §7 D2 Mock 데이터 생성기 · D3 오프라인 큐잉 | 중간 | D2=T타입 → fixture JSON(JsonTypeGenerator 역방향, 백엔드 미완성 상태 개발) · D3=LLM 필요한 요청을 로컬 JSONL에 쌓았다가 온라인 복귀 시 일괄 제안 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | §7 A·B·C가 전부 소진돼 이제 이게 남은 큰 트랙이다. ⚠ §10-5(재사용 골격 추상화 규칙) 미해결 → **코드보다 설계 결정이 먼저** |
 | §7 D 그룹(워크플로우) | 중간 | D1 publishing→domains 포팅 · D2 Mock 데이터 생성기 · D3 오프라인 큐잉 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **코드보다 설계 결정이 먼저**(착수하면 규칙 선택지 정리부터) |
@@ -56,6 +61,7 @@ npm run test:component-catalog  # 126  ← B1 + A4 삽입/입력 폼
 npm run test:scaffold-hover     # 76   ← B2
 npm run test:design-tokens      # 68   ← B3
 npm run test:router-map         # 63   ← B4
+npm run test:publishing-handoff # 47   ← D1
 npm run test:action-cards       # 235  ← 카드 엔진 전체(T 섹션 = 형태 B)
 npm run test:offline-recipe     # 81   ← A3
 npm run test:offline-api-binding # 96  ← Phase 2
@@ -89,6 +95,25 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
   명령 팔레트 `Axiom AI: 컴포넌트 카탈로그 열기`. 확인할 것: 왼쪽 목록 34개 · 검색창에 `표`(→SmartTable)·
   `달력`(→Calendar) · 오른쪽 prop 표/스니펫 복사 · `📖 가이드에서 열기`가 가이드 패널로 딥링크되는지 ·
   `소스 열기`(scaffold 워크스페이스를 열었을 때만 성공, 아니면 사유 안내).
+- **퍼블리싱 포팅(D1)** = 온·오프라인 무관·모델 호출 0. ⚠ **파일을 쓰는 유일한 창**이라 확인이 더 중요하다.
+  런처의 `📦 퍼블리싱 포팅` 또는 명령 팔레트 `Axiom AI: 퍼블리싱 포팅 열기`.
+  창은 위에서부터 **제목 → 설명문 → `옮길 화면`(체크박스) → `새로 생길 파일` → `고쳐질 파일` →
+  `알아 두실 것` → 맨 아래 요약 + [이대로 옮기기]** 순서다. 그 순서대로 확인한다:
+  1. **`옮길 화면` 칸**: `ExamplePage` 체크박스 **오른쪽 회색 작은 글씨**에
+     `/example/example-page · 예제 페이지`가 보이는지. → 이 값은 퍼블리셔가
+     `src/publishing/example/router/index.tsx`에 **직접 적어 둔 것**이다. 지어낸 게 아니라 승계했는지 보는 것.
+  2. **`새로 생길 파일` 칸**: 두 줄(화면 ExamplePage + 그 화면이 쓰는 부품 ExampleCard).
+     ★`ExampleCard.stories.tsx`는 **여기 없어야** 정상(퍼블리셔 자산이라 안 건드린다).
+  3. **`고쳐질 파일` 칸**: `src/domains/example/router/index.tsx` 한 줄.
+  4. **맨 아래 [이대로 옮기기]** → 창 아래 "옮겼습니다" 안내 + VSCode 오른쪽 아래
+     **"라우터 맵에서 확인"** 알림이 뜬다.
+  5. 새로 생긴 `src/domains/example/pages/ExamplePage.tsx`의 **맨 첫 줄**이
+     `@/domains/example/components/ExampleCard`인지. `@/publishing/…`이 남아 있으면 **버그**
+     (퍼블리싱 폴더를 지우는 순간 화면이 죽는다).
+  6. 도메인 라우터에 `path: 'example-page'`·`name: '예제 페이지'`가 그대로 들어갔는지.
+  7. **Ctrl+Z 한 번**으로 전부 되돌아가는지 · `src/publishing/` 원본이 **그대로 남아 있는지**.
+  8. 되돌리지 말고 패널을 닫았다 다시 열어 또 누르면 "이미 있음 · 건너뜀"이 뜨고
+     라우트가 **두 줄 생기지 않는지**(멱등).
 - **라우터 맵(B4)** = 온·오프라인 무관·모델 호출 0. 런처의 `🗺 라우터 맵` 또는 명령 팔레트
   `Axiom AI: 라우터 맵 열기`. 확인할 것: ①`화면 목록` 탭에 주소·이름·컴포넌트가 뜨고 검색이 되는지
   ②`중첩 구조` 탭에서 레이아웃(`경로 없음`)을 지나 주소가 만들어지는 게 보이는지
@@ -131,7 +156,10 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
    스크롤될 자식은 `flex:1` + **`min-height:0`**(flex 자식은 기본 `min-height:auto`라 내용보다 작아지지
    않는다), 고정 영역은 `flex:none`. 셋 중 하나만 빠져도 "목록 아래쪽을 볼 방법이 없는" 화면이 된다
    (B3 F5에서 실제로 발생 — 기준 구현은 `componentCatalog.css`의 `.cc`/`.cc__list`).
-6. 린트 Quick Fix는 **스캐폴드 소스를 실제로 고친다.** 검증 후 그 저장소에 변경이 남지 않았는지 확인할 것.
+6. **F5 확인 안내는 "화면"부터 쓴다.** 내부 이름(`ExamplePage 옆`·`focusEntryId`)만 대면 읽는 사람은
+   그게 화면 어디인지 모른다 — 창이 위에서부터 어떤 칸으로 이뤄졌는지 먼저 적고, 그 칸 이름으로 짚을 것
+   (사용자 지적, 2026-09-01).
+7. 린트 Quick Fix는 **스캐폴드 소스를 실제로 고친다.** 검증 후 그 저장소에 변경이 남지 않았는지 확인할 것.
 
 ---
 
@@ -516,7 +544,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 ### D. 워크플로우 — 폐쇄망 팀 현실
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
-| D1 | publishing→domains 포팅 도우미 | 퍼블리셔 산출물 이관 결정론 보조 | OfflineTransplant, reconcileImportsWithReference |
+| D1 | **publishing→domains 포팅 도우미** ✅(2026-09-01) | 퍼블리싱 산출물을 도메인으로 복사 + import 재작성 + **퍼블리셔가 정한 주소·이름 그대로** 라우터 등록(도메인·루트 양쪽) | RouterMap 파서(B4), RouterRegistration(페이지 생성과 공유) |
 | D2 | Mock 데이터 생성기 | T타입 → fixture JSON (백엔드 미완성 상태 개발) | JsonTypeGenerator 역방향 |
 | D3 | 오프라인 큐잉 | LLM 필요한 요청을 로컬 JSONL에 기록 → 온라인 복귀 시 일괄 처리 제안 | RegionCaptureRecorder 인프라 |
 
@@ -1088,7 +1116,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       offline-recipe 81/0 · offline-api-binding 96/0 · react-rules 39/0 · region-edit 243/0 ·
       offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
-  - **B4 라우터 맵 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+  - **B4 라우터 맵 (2026-09-01): 완료 · F5 라이브 검증 통과**
     "지식·탐색"(B) 축의 마지막 조각. B1=부품 · B3=색 · **B4=화면과 주소**.
     - **왜**: 주소 하나를 알아내려면 파일을 세 번 건너뛴다(`shared/router`의 `/example` →
       도메인 라우터의 `ui-components/calendar` → `loadable(() => import(…))`의 실제 파일).
@@ -1121,11 +1149,50 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
     - **자료 읽기는 `providers/RouterSource.ts` 한 곳**(패널·hover 공유). 라우터/페이지 파일을 저장하거나
       파일이 생기고 지워지면 자동 갱신. `src/core`(라우터를 *만드는* 쪽)와 `__stories__`·`*.stories.tsx`는
       제외한다 — 안 빼면 스토리 파일이 "주소가 없다"고 신고된다(당연히 없다).
+    - **F5 실측으로 확인된 것**(수정 사항 없음): nicify에서 화면 58개 · 확인 필요 10건 —
+      `admin`·`main` **연결 안 된 라우터** 2건 + **주소 없는 페이지** 8건이 원인 구분과 함께 표시됐다.
+      (probe에서 세던 11건과 1건 차이는 로더가 `*.stories.tsx`를 제외했기 때문 — 의도한 동작.)
     - 게이트: `test:router-map` 63/0(A 텍스트 8 · B 파싱 8 · C 경로 9 · D 분기 2 · E 미연결/고아 7 ·
       F 중복·실패 5 · G 검색·hover 17 · H 실 프로젝트 7) · typecheck · compile ·
       무회귀(design-tokens 68/0 · scaffold-hover 76/0 · component-catalog 126/0 · scaffold-lint 64/0 ·
       action-cards 235/0 · offline-recipe 81/0 · offline-api-binding 96/0 · react-rules 39/0 ·
       region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
+
+  - **D1 퍼블리싱 포팅 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+    §7 D 그룹(폐쇄망 팀 현실)의 첫 항목이자, **파일을 쓰는 첫 창**.
+    - **왜 자동화할 값어치가 있나**: 이건 취향이 아니라 **scaffold가 문서로 정해 둔 계약**이다
+      (`src/publishing/README.md`의 핸드오프 표: `pages/`→`domains/[name]/pages/`,
+      `components/`→`shared/` 또는 `domains/[name]/components/`). 그런데 손으로 하면 매번 같은 자리에서
+      틀린다 — import 경로(`@/publishing/…`)를 안 고치거나, 라우터 등록을 빠뜨려 **주소 없는 페이지**가
+      되거나(§7 B4가 잡아내는 바로 그 상태), 퍼블리셔가 정해 둔 `path`·`name`을 옮기다 바꿔 버린다.
+    - ★**퍼블리셔가 정한 것을 그대로 옮긴다**: 주소(`example-page`)와 화면 이름(`예제 페이지`)은 이미
+      퍼블리싱 라우터에 적혀 있다. **B4 파서를 그대로 재사용해** 읽어서 승계한다 — 새로 지어내면 그건
+      남의 결정을 덮어쓰는 것이다. 없을 때만 파일명에서 만들고, **지어냈다고 안내에 적는다**(C9).
+    - ★**복사이지 이동이 아니다**: 원본을 지우지 않는다. 퍼블리셔는 계속 그 폴더에서 작업하고
+      Storybook도 그 경로를 본다. 지우는 건 사람이 확인한 뒤 할 일이라 화면 맨 위에 그렇게 적었다.
+      `.stories.tsx`도 퍼블리셔 자산이라 두고 간다(D2).
+    - **import를 안 고치면 조용히 썩는다**: 옮긴 페이지가 `@/publishing/…`을 계속 바라봐도 **컴파일은
+      된다**. 아무도 눈치채지 못하다가 퍼블리싱 폴더를 지우는 순간 화면이 죽는다. 그래서 옮기는 파일들의
+      상호 참조를 표로 만들어 한 번에 재작성하고(B1·B2), 옮기지 않는 것은 **건드리지 않는다**(B4).
+    - **덮어쓰지 않는다**: 대상 파일이 이미 있으면 그 항목만 건너뛰고 그 사실을 적는다. 건너뛴 화면은
+      **라우트도 등록하지 않는다**(D7) — 없는 파일을 가리키는 라우트를 만들면 그게 더 나쁘다.
+    - ⚠ **테스트가 기존 코드의 결함을 잡았다**: 라우터 등록을 ChatViewProvider의 private 메서드에서
+      `ai/router/RouterRegistration`으로 끌어내(페이지 생성과 **같은 함수**를 쓰기 위해) 멱등성을
+      확인해 보니, **루트 라우터 등록이 멱등이 아니었다** — 두 번 부르면 같은 도메인이 두 줄 생긴다.
+      페이지 생성 경로는 **신규 도메인일 때만** 부르기 때문에 드러나지 않았지만, 포팅은 사용자가
+      [적용]을 두 번 누를 수 있다. 등록 전 존재 확인을 추가해 막았다(E7).
+    - **B4로 교차 검증한다**(F): 포팅 결과 라우터를 그대로 라우터 맵에 넣어 ①주소가 실제로 열리고
+      ②"주소 없는 페이지"가 **0건이 되는지**를 테스트가 확인한다 — 포팅이 라우터 등록까지 닫았다는 증거다.
+    - **쓰기는 `WorkspaceEdit` 한 번**으로 묶어 **Ctrl+Z 한 번**에 되돌아간다. 적용 후 저장까지 하고
+      (반쯤 적용된 상태로 보이지 않게), "라우터 맵에서 확인" 버튼으로 결과를 바로 볼 수 있게 잇는다.
+      ★적용 시점에 **계획을 다시 계산한다** — 화면의 계획은 오래됐을 수 있고, 보이는 것과 적용되는 것이
+      갈라지면 미리보기가 검증 게이트 역할을 못 한다.
+    - 게이트: `test:publishing-handoff` 47/0(A 경로 7 · B import 5 · C 라우트승계 9 · D 선택·충돌 8 ·
+      E 새도메인·멱등 9 · F B4교차검증 3 · G 실자료 6) · typecheck · compile ·
+      무회귀(action-cards 235/0 ← 라우터 등록 추출의 회귀 가드 · router-map 63/0 · design-tokens 68/0 ·
+      scaffold-hover 76/0 · component-catalog 126/0 · scaffold-lint 64/0 · offline-recipe 81/0 ·
+      offline-api-binding 96/0 · react-rules 39/0 · region-edit 243/0 · offline-intent 73/0 ·
+      api-binding 75/0 · knowledge-routing 80/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).

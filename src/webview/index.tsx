@@ -14,10 +14,12 @@ import { ActionCardsApp } from './actionCards/ActionCardsApp';
 import { ComponentCatalogApp } from './componentCatalog/ComponentCatalogApp';
 import { DesignTokensApp } from './designTokens/DesignTokensApp';
 import { RouterMapApp } from './routerMap/RouterMapApp';
+import { PublishingHandoffApp } from './publishingHandoff/PublishingHandoffApp';
 import './styles/webview.css';
 import './styles/componentCatalog.css';
 import './styles/designTokens.css';
 import './styles/routerMap.css';
+import './styles/publishingHandoff.css';
 import 'highlight.js/styles/vs2015.css';
 
 const mode = (document.body as HTMLElement).dataset.mode ?? 'chat';
@@ -38,6 +40,7 @@ if (rootEl) {
     : mode === 'component-catalog' ? <ComponentCatalogApp />
     : mode === 'design-tokens' ? <DesignTokensApp />
     : mode === 'router-map' ? <RouterMapApp />
+    : mode === 'publishing-handoff' ? <PublishingHandoffApp />
     : <ChatApp />,
   );
 }

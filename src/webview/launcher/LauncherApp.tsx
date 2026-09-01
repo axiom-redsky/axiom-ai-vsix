@@ -306,6 +306,7 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleOpenComponentCatalog = () => vscode.postMessage({ type: 'openComponentCatalog' });
   const handleOpenDesignTokens = () => vscode.postMessage({ type: 'openDesignTokens' });
   const handleOpenRouterMap = () => vscode.postMessage({ type: 'openRouterMap' });
+  const handleOpenHandoff = () => vscode.postMessage({ type: 'openPublishingHandoff' });
 
   return (
     <>
@@ -371,6 +372,13 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
           title="주소 ↔ 화면 지도 — 고아 페이지·중복 주소 찾기 (모델 호출 없음)"
         >
           🗺 라우터 맵
+        </button>
+        <button
+          className="launcher__secondary-btn"
+          onClick={handleOpenHandoff}
+          title="퍼블리셔 산출물(publishing/)을 domains/로 옮기기 — import 재작성·라우터 등록까지"
+        >
+          📦 퍼블리싱 포팅
         </button>
       </div>
 

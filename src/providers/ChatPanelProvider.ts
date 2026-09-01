@@ -58,6 +58,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         case 'openRouterMap':
           vscode.commands.executeCommand('axiom-ai.openRouterMap');
           break;
+        case 'openPublishingHandoff':
+          vscode.commands.executeCommand('axiom-ai.openPublishingHandoff');
+          break;
         case 'getSettings':
           this._handleGetSettings();
           break;
