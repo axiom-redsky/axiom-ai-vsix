@@ -545,6 +545,7 @@
     "test:knowledge-routing": "node scripts/run-test-knowledge-routing.mjs",
     "test:guide": "node scripts/run-test-guide.mjs",
     "test:action-cards": "node scripts/run-test-action-cards.mjs",
+    "test:chat-mode": "node scripts/run-test-chat-mode.mjs",
     "dryrun:cards": "node scripts/run-dryrun-cards.mjs",
     "test:offline-api-binding": "node scripts/run-test-offline-api-binding.mjs",
     "test:offline-recipe": "node scripts/run-test-offline-recipe.mjs",
