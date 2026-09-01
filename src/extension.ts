@@ -10,6 +10,7 @@ import { GuidePanel } from './providers/GuidePanel';
 import { ActionCardsPanel } from './providers/ActionCardsPanel';
 import { ComponentCatalogPanel } from './providers/ComponentCatalogPanel';
 import { DesignTokensPanel } from './providers/DesignTokensPanel';
+import { RouterMapPanel } from './providers/RouterMapPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
 import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
 import { ScaffoldHoverProvider } from './providers/ScaffoldHoverProvider';
@@ -131,6 +132,11 @@ export function activate(context: vscode.ExtensionContext): void {
     // 인자로 토큰 이름을 주면 그 토큰을 펼쳐서 연다(hover 카드의 딥링크).
     vscode.commands.registerCommand('axiom-ai.openDesignTokens', (tokenName?: unknown) => {
       DesignTokensPanel.createOrShow(context.extensionUri, typeof tokenName === 'string' ? tokenName : undefined);
+    }),
+
+    // 라우터 맵 — 어떤 주소가 어떤 화면인지 + 고아 페이지·중복 주소 (§7 B4).
+    vscode.commands.registerCommand('axiom-ai.openRouterMap', (routePath?: unknown) => {
+      RouterMapPanel.createOrShow(context.extensionUri, typeof routePath === 'string' ? routePath : undefined);
     }),
 
     // hover 카드의 "정의 열기" — 토큰이 선언된 파일의 그 줄로 이동한다.

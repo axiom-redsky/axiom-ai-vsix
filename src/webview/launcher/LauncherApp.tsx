@@ -305,6 +305,7 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleOpenActionCards = () => vscode.postMessage({ type: 'openActionCards' });
   const handleOpenComponentCatalog = () => vscode.postMessage({ type: 'openComponentCatalog' });
   const handleOpenDesignTokens = () => vscode.postMessage({ type: 'openDesignTokens' });
+  const handleOpenRouterMap = () => vscode.postMessage({ type: 'openRouterMap' });
 
   return (
     <>
@@ -363,6 +364,13 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
           title="이 프로젝트 CSS의 디자인 토큰 — 라이트·다크 실제 색 견본·복사 (모델 호출 없음)"
         >
           🎨 디자인 토큰
+        </button>
+        <button
+          className="launcher__secondary-btn"
+          onClick={handleOpenRouterMap}
+          title="주소 ↔ 화면 지도 — 고아 페이지·중복 주소 찾기 (모델 호출 없음)"
+        >
+          🗺 라우터 맵
         </button>
       </div>
 

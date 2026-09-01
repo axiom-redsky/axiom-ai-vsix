@@ -1,6 +1,7 @@
 import type { ITocManifest, TGuideSource } from './guide';
 import type { ICatalogEntry as IComponentCatalogEntry } from '../ai/catalog/ComponentCatalog';
 import type { IDesignToken } from '../ai/tokens/DesignTokens';
+import type { IRouteNode, IRouterIssue } from '../ai/router/RouterMap';
 import type { ICardSuggestion } from '../ai/actions/CardSuggest';
 
 // 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
@@ -419,6 +420,23 @@ export interface DesignTokensPayload {
   focusToken: string | null;
 }
 
+/** 라우터 맵(§7 B4) 페이로드. 노드·이슈는 순수 모듈 타입을 그대로 보낸다. */
+export interface RouterMapPayload {
+  routes: IRouteNode[];
+  screens: IRouteNode[];
+  issues: IRouterIssue[];
+  counts: { screens: number; routes: number; issues: number; orphanPages: number };
+  /** 진입점 라우터 파일. 못 찾으면 null. */
+  entry: string | null;
+  files: string[];
+  /** 워크스페이스 폴더 이름. */
+  root: string | null;
+  /** 라우터 파일을 하나도 못 찾았는가. */
+  empty: boolean;
+  /** hover 딥링크로 열렸을 때 강조할 주소. */
+  focusPath: string | null;
+}
+
 export interface ActionCatalogDryrunRow {
   cardId: string;
   icon: string;
@@ -510,6 +528,10 @@ export type WebviewToHostMessage =
   | { type: 'designTokensCopy'; text: string }
   | { type: 'designTokensOpenDefinition'; file: string; line: number }
   | { type: 'designTokensInsert'; text: string }
+  // 라우터 맵(§7 B4): 목록 로드 / 주소 복사 / 파일 열기
+  | { type: 'routerMapLoad' }
+  | { type: 'routerMapCopy'; text: string }
+  | { type: 'routerMapOpen'; file: string; line: number }
   // 입력창 위 실시간 추천(형태 B): 타이핑 중 요청 / 목록에서 선택
   | { type: 'cardSuggestRequest'; query: string }
   | { type: 'cardSuggestPick'; cardId: string; query: string }
@@ -517,6 +539,7 @@ export type WebviewToHostMessage =
   | { type: 'openActionCards' }
   | { type: 'openComponentCatalog' }
   | { type: 'openDesignTokens' }
+  | { type: 'openRouterMap' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
   | { type: 'guideEditDoc'; docId: string }
@@ -592,6 +615,8 @@ export type HostToWebviewMessage =
   | { type: 'designTokens'; payload: DesignTokensPayload }
   | { type: 'designTokensNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'designTokensTarget'; target: string | null }
+  | { type: 'routerMap'; payload: RouterMapPayload }
+  | { type: 'routerMapNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

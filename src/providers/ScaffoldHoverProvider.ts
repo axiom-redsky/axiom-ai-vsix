@@ -20,8 +20,10 @@ import { ExtensionConfig } from '../config/ExtensionConfig';
 import { renderHoverMarkdown, resolveScaffoldHover, resolveTokenHover, type IHoverCard } from '../ai/hover/ScaffoldHover';
 import type { ICatalogEntry } from '../ai/catalog/ComponentCatalog';
 import type { IDesignToken } from '../ai/tokens/DesignTokens';
+import type { IRouteNode } from '../ai/router/RouterMap';
 import { hasGuideDoc, loadComponentCatalog } from './CatalogSource';
 import { isStyleDocument, loadDesignTokens } from './TokenSource';
+import { isRouterDocument, loadRouterMap } from './RouterSource';
 import { SCAFFOLD_LANGS, isScaffoldSourceDocument, isScaffoldWorkspace } from './scaffoldWorkspace';
 
 /** 토큰 hover가 도는 스타일 언어. */
@@ -32,6 +34,8 @@ export class ScaffoldHoverProvider implements vscode.HoverProvider {
   private _entries: ICatalogEntry[] | null = null;
   /** 디자인 토큰 캐시(CSS 파일 여러 장 파싱 + var 체인 해소). */
   private _tokens: IDesignToken[] | null = null;
+  /** 라우터 맵의 화면 캐시(라우터 파일 전체 파싱). */
+  private _screens: IRouteNode[] | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -48,6 +52,7 @@ export class ScaffoldHoverProvider implements vscode.HoverProvider {
       // 토큰 값을 고치는 중이면 저장할 때마다 최신을 보여준다(고친 색이 hover에 바로 보여야 한다).
       vscode.workspace.onDidSaveTextDocument((doc) => {
         if (isStyleDocument(doc)) this._tokens = null;
+        if (isRouterDocument(doc)) this._screens = null;
       }),
     );
   }
@@ -70,6 +75,7 @@ export class ScaffoldHoverProvider implements vscode.HoverProvider {
           source: doc.getText(),
           entries: this._catalog(),
           tokens: this._designTokens(),
+          screens: this._routeScreens(),
         });
     } catch {
       // hover가 문서 하나 때문에 죽지 않게 — 판정 실패는 "hover 없음"으로 처리(fail-open).
@@ -100,6 +106,17 @@ export class ScaffoldHoverProvider implements vscode.HoverProvider {
       }
     }
     return this._entries;
+  }
+
+  private _routeScreens(): IRouteNode[] {
+    if (!this._screens) {
+      try {
+        this._screens = loadRouterMap().map.screens;
+      } catch {
+        this._screens = [];
+      }
+    }
+    return this._screens;
   }
 
   private _designTokens(): IDesignToken[] {

@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 hover ✅ / B3 디자인 토큰 ✅ — 일곱 트랙 전부 F5 검증 통과)** (2026-09-01, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 ✅ / B3 ✅ — F5 검증 통과 / B4 라우터 맵 ✅ 코드 완료·F5 대기)** — §7 A·B·C 후보 전부 소진 (2026-09-01, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -16,18 +16,21 @@
 ### 지금 어디까지 왔나 (2026-09-01 갱신)
 Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B1(컴포넌트 카탈로그)**·
 **형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)**·
-**B2(hover 승격)**·**B3(디자인 토큰 브라우저)** 까지 완료. **일곱 트랙 전부 F5 라이브 검증 통과**,
-전 게이트 green. §7의 ★우선순위 항목은 이미 전부 소진했고, B2·B3로 "지식·탐색"(B) 축은 **B4만** 남았다.
+**B2(hover 승격)**·**B3(디자인 토큰)**·**B4(라우터 맵)** 까지 완료. 앞의 일곱은 **F5 라이브 검증 통과**,
+B4는 **코드·게이트 완료·F5 대기**. 전 게이트 green.
+**§7의 A·B·C 후보가 이것으로 전부 소진됐다** — 남은 것은 §6 채집 플라이휠(설계 먼저)과 D 그룹(워크플로우)뿐이다.
 상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
 
 > ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`), 형태 B·A4는 `f97b78c`,
-> **B2는 `69b8ff1`**. **B3는 미커밋**(게이트·F5 검증 모두 통과) — 이어서 하기 전에 `git status`로 먼저 확인할 것.
+> **B2는 `69b8ff1`**. **B3·B4는 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
 
 ### 다음에 할 일 = 아래 중 택1
 
 | 후보 | 무게 | 시작점 |
 |---|---|---|
-| **★ §7 B4 라우터 맵**(권장) | 작음 | 같은 "결정론 데이터 + 창" 패턴의 마지막 조각. `domains/*/router` + `shared/router` 파싱 → 경로 트리·고아 페이지·중복 경로 탐지. ⚠ B3가 만든 자리를 그대로 쓸 것: 순수 파서(`ai/…`) + `providers/…Source.ts`(자료 읽기 공유) + 패널 + hover 한 줄 |
+| **★ B4 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. 아래 "F5로 눈으로 확인하는 법"의 라우터 맵 절 참고 |
+| **§6 채집 플라이휠** | 무거움 — 설계부터 | §7 A·B·C가 전부 소진돼 이제 이게 남은 큰 트랙이다. ⚠ §10-5(재사용 골격 추상화 규칙) 미해결 → **코드보다 설계 결정이 먼저** |
+| §7 D 그룹(워크플로우) | 중간 | D1 publishing→domains 포팅 · D2 Mock 데이터 생성기 · D3 오프라인 큐잉 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **코드보다 설계 결정이 먼저**(착수하면 규칙 선택지 정리부터) |
 
 **이 트랙에서 반복해서 통한 작업 방식**(새 항목도 이대로 하면 된다):
@@ -52,6 +55,7 @@ npm run test:scaffold-lint      # 64   ← C1
 npm run test:component-catalog  # 126  ← B1 + A4 삽입/입력 폼
 npm run test:scaffold-hover     # 76   ← B2
 npm run test:design-tokens      # 68   ← B3
+npm run test:router-map         # 63   ← B4
 npm run test:action-cards       # 235  ← 카드 엔진 전체(T 섹션 = 형태 B)
 npm run test:offline-recipe     # 81   ← A3
 npm run test:offline-api-binding # 96  ← Phase 2
@@ -85,6 +89,15 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
   명령 팔레트 `Axiom AI: 컴포넌트 카탈로그 열기`. 확인할 것: 왼쪽 목록 34개 · 검색창에 `표`(→SmartTable)·
   `달력`(→Calendar) · 오른쪽 prop 표/스니펫 복사 · `📖 가이드에서 열기`가 가이드 패널로 딥링크되는지 ·
   `소스 열기`(scaffold 워크스페이스를 열었을 때만 성공, 아니면 사유 안내).
+- **라우터 맵(B4)** = 온·오프라인 무관·모델 호출 0. 런처의 `🗺 라우터 맵` 또는 명령 팔레트
+  `Axiom AI: 라우터 맵 열기`. 확인할 것: ①`화면 목록` 탭에 주소·이름·컴포넌트가 뜨고 검색이 되는지
+  ②`중첩 구조` 탭에서 레이아웃(`경로 없음`)을 지나 주소가 만들어지는 게 보이는지
+  ③**`확인 필요` 탭** — nicify에서는 `admin`·`main` 라우터가 **연결 안 됨**으로, 그 도메인 페이지들이
+  **주소 없는 페이지**로 떠야 한다(실측 11건). 원인 두 종류가 구분돼 적히는지 함께 볼 것
+  ④`라우트`·`화면 파일` 버튼이 그 파일 그 줄로 가는지 ⑤**`$router.push('/…')` 문자열 위에 마우스** →
+  어떤 화면인지 + 딥링크 ⑥**일부러 오타**를 내면(`/example/blank-pag`) "화면을 찾지 못했습니다 + 비슷한 주소"가
+  뜨는지 ⑦반대로 `useApi('/api/…')` 위에서는 **아무 말도 안 하는지**(API 경로는 화면이 아니다)
+  ⑧라우터를 고쳐 저장하면 목록이 따라 바뀌는지.
 - **디자인 토큰(B3)** = 온·오프라인 무관·모델 호출 0. 런처의 `🎨 디자인 토큰` 또는 명령 팔레트
   `Axiom AI: 디자인 토큰 열기`. 확인할 것: ①토큰 201개·색 157개가 뜨고 **라이트/다크 값이 한 줄에 나란히**
   ②`--color-primary` 를 펼치면 경유 체인(`var(--primary)` → `--primary` → `#499ed8`)이 보이는지
@@ -492,7 +505,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 | ★B1 | **컴포넌트 카탈로그 패널** ✅(2026-09-01) | props 표+예제 브라우징·검색·스니펫 복사 (데이터는 전부 있고 UI만 없음) | ComponentPropsIndex, knowledge/components, media/guide-docs |
 | B2 | **Hover 승격** ✅(2026-09-01) | `useApi`·`$router`·`$ui`·`$util`·`cn`·`useForm` 위에 hover → 계약 카드 / UI 컴포넌트 위에 hover → prop 표·스니펫·가이드 딥링크. "질문할 줄 알아야 도움받는" 채팅 한계 돌파 | ScaffoldContracts, ComponentCatalog, guide-docs |
 | B3 | **디자인 토큰 브라우저** ✅(2026-09-01) | `app.css` @import 순서를 따라 파싱 → `var()` 체인 해소 → 라이트/다크 색 견본·복사·정의 열기 + `var(--…)` hover | — (신규) |
-| B4 | 라우터 맵 | domains/*/router 파싱 → 경로 트리, 고아 페이지·중복 경로 탐지 | — (신규, 소형) |
+| B4 | **라우터 맵** ✅(2026-09-01) | 진입점부터 라우터를 따라가 주소↔화면 대응·중첩 트리 + 연결 안 된 라우터·주소 없는 페이지·중복 주소 탐지 + 주소 문자열 hover(오타 제보) | — (신규) |
 
 ### C. 검사·교정 — 기존 게이트를 Diagnostics로 노출
 | # | 기능 | 내용 | 재사용 자산 |
@@ -1074,6 +1087,45 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       무회귀(scaffold-hover 76/0 · component-catalog 126/0 · scaffold-lint 64/0 · action-cards 235/0 ·
       offline-recipe 81/0 · offline-api-binding 96/0 · react-rules 39/0 · region-edit 243/0 ·
       offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
+
+  - **B4 라우터 맵 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+    "지식·탐색"(B) 축의 마지막 조각. B1=부품 · B3=색 · **B4=화면과 주소**.
+    - **왜**: 주소 하나를 알아내려면 파일을 세 번 건너뛴다(`shared/router`의 `/example` →
+      도메인 라우터의 `ui-components/calendar` → `loadable(() => import(…))`의 실제 파일).
+      그런데 **정말 알고 싶은 것**은 대개 그다음이다 — "이 페이지, 열 수 있는 주소가 있나?"
+    - ★**실 파일이 가르쳐 준 것들**(전부 계약으로 고정):
+      1. **주석이 진실을 바꾼다** — nicify에는 `//import MainRouter …`처럼 **주석 처리된 라우터**가
+         실제로 있다. 주석을 안 지우면 "연결됐다"고 거짓말하고, 지우면 그 도메인이 **미연결**로 드러난다
+         (실측: `admin`·`main` 두 도메인). 단 **문자열 안의 `//`는 지우면 안 된다**(`'@/domains/…'`가 깨진다).
+      2. **경로 없는 중간 계층** — `{ element: <ProtectedRoute />, children: [{ element: <RootLayout />, … }] }`.
+      3. **DEV/PROD 분기** — `...(import.meta.env.DEV ? […] : […])`. 양쪽에 같은 경로가 있다.
+      4. **라우터 모듈의 export가 하나가 아니다** — `import AuthRouter, { protectedRoutes } from …`.
+      5. **동적 import 자식** — `children: (await import('@/publishing/example/router')).default`.
+    - ⚠ **실 데이터가 바로 잡은 오탐 둘**(합성 케이스로는 안 보였다):
+      · **레이아웃을 화면으로 셌다** → `/`가 세 번 선언된 것처럼 보여 "중복 주소"를 잘못 신고.
+        수정 = **화면 = element가 붙은 잎(leaf)**, 자식이 있으면 레이아웃(테스트 C9·H7이 고정).
+      · **DEV/PROD 쌍둥이가 두 줄씩** → 목록이 두 배(예: `/example/*` 52개가 104줄).
+        수정 = 같은 자리·같은 화면이 양쪽 분기에 있으면 **한 줄(always)로 접는다**(D1).
+    - **고아 페이지는 원인을 나눠 말한다**: (a) 라우터엔 적혀 있는데 **그 라우터가 연결 안 됨** →
+      진입점에 붙이면 된다 / (b) **아무도 안 가리킴** → 라우트를 새로 적어야 한다. 뭉뚱그리면 고치는
+      방법이 달라진다(E5·E6). 실측 nicify 9건 중 6건이 (a), 나머지가 작업 중인 페이지였다.
+    - **모르면 모른다고**: 해석 못 한 `children`·없는 모듈은 조용히 버리지 않고 이슈로 남긴다(F4·F5).
+      실 scaffold에서는 해석 실패 0건(H6).
+    - **화면**: `화면 목록`(주소·이름·컴포넌트·검색) / `중첩 구조`(레이아웃까지 사실대로) /
+      `확인 필요`(연결 안 됨·주소 없음·중복). 모든 줄에서 **라우트 선언**과 **화면 파일**을 그 줄로 연다.
+      결과는 **경고이지 오류가 아니다** — 조건부 등록·작업 중인 파일일 수 있어 화면에도 그렇게 적었다.
+    - **hover 확장(B2 재사용)**: `$router.push('/example/blank-page')`의 주소 문자열 위 → 어떤 화면인지 +
+      DEV 전용 여부 + 딥링크. ★**없는 주소면 그 자리에서 알린다**(오타·지워진 화면) — 단 **화면 이동
+      문맥일 때만**(`$router.push`·`navigate(`·`<Link to=`). `useApi('/api/employees')`에 "화면이 없다"고
+      말하면 그건 명백한 오답이라 G16이 이 선을 고정한다. `:id` 자리를 채운 주소도 그 라우트로 본다(G13).
+    - **자료 읽기는 `providers/RouterSource.ts` 한 곳**(패널·hover 공유). 라우터/페이지 파일을 저장하거나
+      파일이 생기고 지워지면 자동 갱신. `src/core`(라우터를 *만드는* 쪽)와 `__stories__`·`*.stories.tsx`는
+      제외한다 — 안 빼면 스토리 파일이 "주소가 없다"고 신고된다(당연히 없다).
+    - 게이트: `test:router-map` 63/0(A 텍스트 8 · B 파싱 8 · C 경로 9 · D 분기 2 · E 미연결/고아 7 ·
+      F 중복·실패 5 · G 검색·hover 17 · H 실 프로젝트 7) · typecheck · compile ·
+      무회귀(design-tokens 68/0 · scaffold-hover 76/0 · component-catalog 126/0 · scaffold-lint 64/0 ·
+      action-cards 235/0 · offline-recipe 81/0 · offline-api-binding 96/0 · react-rules 39/0 ·
+      region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).

@@ -19,6 +19,7 @@
 import { SCAFFOLD_CONTRACTS } from '../contracts/ScaffoldContracts';
 import type { ICatalogEntry, ICatalogMember, ICatalogProp } from '../catalog/ComponentCatalog';
 import { findToken, type IDesignToken, type ITokenValue } from '../tokens/DesignTokens';
+import type { IRouteNode } from '../router/RouterMap';
 
 /** 식별자 한 글자(전역 `$router`·`$ui`·`$util` 때문에 `$`를 포함한다). */
 const WORD = /[A-Za-z0-9_$]/;
@@ -229,7 +230,7 @@ export function declaresLocally(source: string, name: string): boolean {
 // ── 결과 카드 ─────────────────────────────────────────────────────────────────
 
 export interface IHoverCard {
-  kind: 'contract' | 'component' | 'token';
+  kind: 'contract' | 'component' | 'token' | 'route';
   /** 계약 카드 id 또는 카탈로그 항목 id. */
   id: string;
   title: string;
@@ -258,6 +259,8 @@ export interface IHoverInput {
   entries?: ICatalogEntry[];
   /** 디자인 토큰(B3). 없으면 토큰 hover는 건너뛴다. */
   tokens?: IDesignToken[];
+  /** 라우터 맵의 화면들(B4). 없으면 주소 hover는 건너뛴다. */
+  screens?: IRouteNode[];
 }
 
 /**
@@ -277,7 +280,11 @@ export function resolveScaffoldHover(input: IHoverInput): IHoverCard | null {
   if (component) return component;
 
   // 토큰은 식별자 규칙이 달라(`--color-primary`) 심볼을 따로 뽑는다.
-  return resolveTokenHover(input.lineText, input.character, input.tokens ?? []);
+  const token = resolveTokenHover(input.lineText, input.character, input.tokens ?? []);
+  if (token) return token;
+
+  // 주소는 따옴표 안 문자열이라 또 다르다(`$router.push('/example/blank-page')`).
+  return resolveRouteHover(input.lineText, input.character, input.screens ?? []);
 }
 
 function resolveContractHover(sym: IHoverSymbol, source: string): IHoverCard | null {
@@ -421,6 +428,114 @@ export function resolveTokenHover(lineText: string, character: number, tokens: I
   };
 }
 
+// ── 라우트 주소 hover (§7 B4) ─────────────────────────────────────────────────
+
+/** 커서가 들어 있는 따옴표 문자열. 문자열 안이 아니면 null. */
+export function stringAt(lineText: string, character: number): { value: string; start: number; end: number } | null {
+  // 따옴표 세 종류 · 이스케이프 허용 · 같은 따옴표로 닫힐 때까지.
+  for (const m of lineText.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    if (character >= start && character <= end) return { value: m[2], start, end };
+  }
+  return null;
+}
+
+/**
+ * 이 줄이 **화면 이동**을 하고 있는가. "없는 주소" 경고는 이때만 낸다 —
+ * `'/api/employees'` 같은 API 경로에 "화면이 없다"고 말하면 그건 명백한 오답이다.
+ */
+export function isNavigationLine(lineText: string): boolean {
+  return /\$router\s*\.\s*(push|replace)\s*\(|\bnavigate\s*\(|<\s*(Link|NavLink)\b|\bto\s*=|\bhref\s*=/.test(lineText);
+}
+
+/** 같은 뿌리를 공유하는 가까운 주소들(오타 제보에 곁들일 후보). */
+function nearbyRoutes(screens: IRouteNode[], target: string): IRouteNode[] {
+  const segs = target.split('/').filter(Boolean);
+  const scored = screens
+    .map((s) => {
+      const other = s.fullPath.split('/').filter(Boolean);
+      let shared = 0;
+      while (shared < segs.length && shared < other.length && segs[shared] === other[shared]) shared++;
+      const lastSame = segs.length > 0 && other.length > 0 && segs[segs.length - 1] === other[other.length - 1];
+      return { s, score: shared * 2 + (lastSame ? 1 : 0) };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.s.fullPath.localeCompare(b.s.fullPath));
+  return scored.slice(0, 3).map((x) => x.s);
+}
+
+/** `:id` 자리를 실제 값으로 채운 주소도 그 라우트로 본다. */
+function matchDynamic(screens: IRouteNode[], target: string): IRouteNode | null {
+  const segs = target.split('/');
+  for (const s of screens) {
+    if (!s.dynamic) continue;
+    const pattern = s.fullPath.split('/');
+    if (pattern.length !== segs.length) continue;
+    if (pattern.every((p, i) => p.startsWith(':') || p === segs[i])) return s;
+  }
+  return null;
+}
+
+/**
+ * 주소 문자열 hover — 그 주소가 **어떤 화면인지** 알려주고, 화면 이동인데 맞는 주소가 없으면
+ * 그 사실을 알린다(오타·지워진 화면을 그 자리에서 잡는다).
+ */
+export function resolveRouteHover(lineText: string, character: number, screens: IRouteNode[]): IHoverCard | null {
+  if (screens.length === 0) return null;
+  const str = stringAt(lineText, character);
+  if (!str || !str.value.startsWith('/')) return null;
+
+  const path = str.value.replace(/[?#].*$/, '').replace(/\/$/, '') || '/';
+  const exact = screens.find((s) => s.fullPath === path) ?? matchDynamic(screens, path);
+  const range = { start: str.start, end: str.end };
+
+  if (exact) {
+    const lines = [
+      `- 화면   **${exact.name ?? exact.component ?? '(이름 없음)'}**`,
+      exact.component ? `- 컴포넌트 \`${exact.component}\`` : '',
+      exact.componentFile ? `- 파일   \`${exact.componentFile}\`` : '',
+      `- 라우트  \`${exact.file}:${exact.line}\``,
+      exact.env !== 'always'
+        ? `- ⚠ **${exact.env === 'dev' ? 'DEV' : 'PROD'} 전용** 분기에만 등록돼 있습니다.`
+        : '',
+    ].filter(Boolean);
+    return {
+      kind: 'route',
+      id: exact.fullPath,
+      title: exact.fullPath,
+      subtitle: '라우트 주소',
+      body: lines.join('\n'),
+      guideDocId: null,
+      catalogEntryId: null,
+      source: exact.componentFile,
+      definition: { file: exact.file, line: exact.line },
+      range,
+    };
+  }
+
+  // 맞는 화면이 없다 — **화면 이동 문맥일 때만** 말한다(API 경로에 참견 금지).
+  if (!isNavigationLine(lineText)) return null;
+  const near = nearbyRoutes(screens, path);
+  const body = [
+    '- ⚠ 이 주소로 열리는 화면을 찾지 못했습니다.',
+    near.length > 0 ? `- 비슷한 주소: ${near.map((n) => `\`${n.fullPath}\``).join(' · ')}` : '',
+    '- 라우터에 아직 안 적었거나, 주소가 바뀌었거나, 오타일 수 있습니다.',
+  ].filter(Boolean);
+  return {
+    kind: 'route',
+    id: path,
+    title: path,
+    subtitle: '라우트 주소 — 화면 없음',
+    body: body.join('\n'),
+    guideDocId: null,
+    catalogEntryId: null,
+    source: null,
+    definition: null,
+    range,
+  };
+}
+
 // ── 마크다운 조립 ──────────────────────────────────────────────────────────────
 
 /** 표 한 칸에 안전하게 넣을 타입 문자열(유니온의 `|`가 표를 깨뜨린다 — 백틱 안에서도 깨진다). */
@@ -489,6 +604,12 @@ export function buildHoverLinks(
   }
   if (card.catalogEntryId) {
     links.push(commandLink('🧩 카탈로그에서 열기', 'axiom-ai.openComponentCatalog', [card.catalogEntryId]));
+  }
+  if (card.kind === 'route') {
+    links.push(commandLink('🗺 라우터 맵에서 열기', 'axiom-ai.openRouterMap', [card.id]));
+    if (card.definition) {
+      links.push(commandLink('📄 라우트 열기', 'axiom-ai.openTokenDefinition', [card.definition.file, card.definition.line]));
+    }
   }
   if (card.kind === 'token') {
     links.push(commandLink('🎨 토큰 브라우저에서 열기', 'axiom-ai.openDesignTokens', [card.id]));

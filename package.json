@@ -470,6 +470,11 @@
         "category": "Axiom AI"
       },
       {
+        "command": "axiom-ai.openRouterMap",
+        "title": "Axiom AI: 라우터 맵 열기",
+        "category": "Axiom AI"
+      },
+      {
         "command": "axiom-ai.reseedGuide",
         "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }
@@ -523,6 +528,7 @@
     "test:component-catalog": "node scripts/run-test-component-catalog.mjs",
     "test:scaffold-hover": "node scripts/run-test-scaffold-hover.mjs",
     "test:design-tokens": "node scripts/run-test-design-tokens.mjs",
+    "test:router-map": "node scripts/run-test-router-map.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",
