@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 hover ✅ — F5 검증 통과 / B3 디자인 토큰 ✅ 코드 완료·F5 대기)** (2026-09-01, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 hover ✅ / B3 디자인 토큰 ✅ — 일곱 트랙 전부 F5 검증 통과)** (2026-09-01, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -16,19 +16,17 @@
 ### 지금 어디까지 왔나 (2026-09-01 갱신)
 Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B1(컴포넌트 카탈로그)**·
 **형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)**·
-**B2(hover 승격)**·**B3(디자인 토큰 브라우저)** 까지 완료. 앞의 여섯은 **F5 라이브 검증 통과**,
-B3는 **코드·게이트 완료·F5 대기**. 전 게이트 green. §7의 ★우선순위 항목은 이미 전부 소진했고,
-B2·B3로 "지식·탐색"(B) 축은 B4만 남았다.
+**B2(hover 승격)**·**B3(디자인 토큰 브라우저)** 까지 완료. **일곱 트랙 전부 F5 라이브 검증 통과**,
+전 게이트 green. §7의 ★우선순위 항목은 이미 전부 소진했고, B2·B3로 "지식·탐색"(B) 축은 **B4만** 남았다.
 상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
 
 > ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`), 형태 B·A4는 `f97b78c`,
-> **B2는 `69b8ff1`**. **B3는 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
+> **B2는 `69b8ff1`**. **B3는 미커밋**(게이트·F5 검증 모두 통과) — 이어서 하기 전에 `git status`로 먼저 확인할 것.
 
 ### 다음에 할 일 = 아래 중 택1
 
 | 후보 | 무게 | 시작점 |
 |---|---|---|
-| **★ B3 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. 아래 "F5로 눈으로 확인하는 법"의 토큰 절 참고 |
 | **★ §7 B4 라우터 맵**(권장) | 작음 | 같은 "결정론 데이터 + 창" 패턴의 마지막 조각. `domains/*/router` + `shared/router` 파싱 → 경로 트리·고아 페이지·중복 경로 탐지. ⚠ B3가 만든 자리를 그대로 쓸 것: 순수 파서(`ai/…`) + `providers/…Source.ts`(자료 읽기 공유) + 패널 + hover 한 줄 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **코드보다 설계 결정이 먼저**(착수하면 규칙 선택지 정리부터) |
 
@@ -115,7 +113,12 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
 2. **webview 번들 format은 `iife` 유지.** esm으로 바꾸면 전 웹뷰가 빈 화면이 된다(vfile-location 전역 충돌).
 3. **"카드가 안 뜬다" 신고는 순서대로**: ① `dryrun:cards` 로 매처 확인 → ② 그 앞의 **의도 라우팅** 확인. 실제 두 번 다 원인은 매처가 아니라 앞단이었다.
 4. **오프라인 개선 시 공유 어휘스코어러 `buildContext` 절대 수정 금지**(온라인 회귀).
-5. 린트 Quick Fix는 **스캐폴드 소스를 실제로 고친다.** 검증 후 그 저장소에 변경이 남지 않았는지 확인할 것.
+5. **새 웹뷰 패널의 스크롤 계약**: `webview.css`의 `body`가 `height:100vh; overflow:hidden`이라
+   **페이지 자체는 절대 스크롤되지 않는다.** 최상위 컨테이너는 `min-height`가 아니라 **`height:100vh`**,
+   스크롤될 자식은 `flex:1` + **`min-height:0`**(flex 자식은 기본 `min-height:auto`라 내용보다 작아지지
+   않는다), 고정 영역은 `flex:none`. 셋 중 하나만 빠져도 "목록 아래쪽을 볼 방법이 없는" 화면이 된다
+   (B3 F5에서 실제로 발생 — 기준 구현은 `componentCatalog.css`의 `.cc`/`.cc__list`).
+6. 린트 Quick Fix는 **스캐폴드 소스를 실제로 고친다.** 검증 후 그 저장소에 변경이 남지 않았는지 확인할 것.
 
 ---
 
@@ -1022,7 +1025,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       offline-recipe 81/0 · offline-api-binding 96/0 · scaffold-lint 64/0 · react-rules 39/0 ·
       region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
-  - **B3 디자인 토큰 브라우저 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+  - **B3 디자인 토큰 브라우저 (2026-09-01): 완료 · F5 라이브 검증 통과**
     B1·B2가 "부품"을 다뤘다면 이건 **색·크기·그림자**다. 자료는 확장 번들이 아니라 **열려 있는
     프로젝트의 CSS** — 그래서 퍼블리셔가 색을 바꾸면 이 창도 즉시 바뀐다(B1과 다른 점).
     - **왜 필요한가**: `--color-primary` 하나를 알아내려면 지금은 파일 세 개를 손으로 따라가야 한다 —
@@ -1054,6 +1057,18 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
     - **자료 읽기는 `providers/TokenSource.ts` 한 곳**(패널·hover 공유, B2의 `CatalogSource`와 같은 규약).
       스타일 파일을 **저장하면** 패널이 자동 갱신되고 hover 캐시도 버린다 — 색을 고치는 중에 옛 값을
       보여주면 그게 제일 나쁘다.
+    - ⚠ **F5에서 발각 — 목록 아래쪽을 볼 방법이 없었다**(사용자 지적): `webview.css`의 `body`가
+      `height:100vh; overflow:hidden`이라 **페이지 자체는 스크롤되지 않는데**, 최상위 컨테이너를
+      `min-height:100vh`로 둬서 내용(254줄)만큼 자랐고 자란 부분이 통째로 잘렸다. 목록의
+      `overflow:auto`도 무력했다 — flex 자식은 기본 `min-height:auto`라 내용보다 작아지지 않기 때문.
+      수정 = 컨테이너 `height:100vh` + 목록 `min-height:0` + 고정 영역 `flex:none`.
+      **기준 구현이 이미 있었다**(`componentCatalog.css`의 `.cc`/`.cc__list`) — 새 패널을 만들 때는
+      그 세 줄부터 베낄 것(§RESUME 함정 5에 등재).
+    - **F5 실측으로 확인된 것**: 실 프로젝트(nicify 테마) 토큰 254개·색 210·다크 재정의 104 ·
+      값 검색(`334155` → 13개) · **4단계 체인 해소**(`var(--primary)` → `--primary` →
+      `--color-line-strong` → `--color-slate-700` → `#334155`) · 정의 열기(`themes/theme-nicify.css:44`) ·
+      hover의 **색 견본(SVG 이미지)이 실제로 렌더된다**(안 보일 수 있다고 예상했으나 정상) ·
+      CSS·`.tsx` 양쪽 hover · 커서 삽입.
     - 게이트: `test:design-tokens` 68/0(A 파싱 13 · B import 3 · C 순서 4 · D 라이트/다크 5 ·
       E var해소 7 · F 분류·검색 17 · G 실자료·hover 19) · typecheck · compile ·
       무회귀(scaffold-hover 76/0 · component-catalog 126/0 · scaffold-lint 64/0 · action-cards 235/0 ·
