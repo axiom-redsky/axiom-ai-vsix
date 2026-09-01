@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { vscode } from '../vscodeApi';
 import type { HostToWebviewMessage, AxiomSettings } from '../../types/messages';
+import { isValidEndpoint, resolveLlmUrls } from '../../ai/llmEndpoint';
 
 type Tab = 'home' | 'settings';
 
@@ -115,7 +116,7 @@ const DEFAULT_ADVANCED: NonNullable<AxiomSettings['advanced']> = {
 };
 
 const DEFAULT_SETTINGS: AxiomSettings = {
-  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768, provider: 'ollama' },
+  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768, provider: 'openai' },
   rag: { userRagFolder: '', additionalFiles: [] },
   project: { ...DEFAULT_PROJECT },
   advanced: { ...DEFAULT_ADVANCED },
@@ -257,7 +258,7 @@ export function LauncherApp(): React.ReactElement {
             className={`launcher__save-btn${dirty ? ' launcher__save-btn--active' : ''}${saved ? ' launcher__save-btn--saved' : ''}`}
             onClick={handleSave}
             disabled={!dirty}
-            title="LLM 연결 + 프로젝트 설정을 함께 저장 (RAG 파일은 추가/삭제 시 즉시 반영)"
+            title="두 탭(서버 연결 · 프로젝트)의 설정을 함께 저장합니다 — 어느 탭에 있든 상관없습니다. (RAG 파일은 추가/삭제 시 즉시 반영)"
           >
             {saved ? (
               <svg className="launcher__save-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -463,22 +464,122 @@ function SettingsTab({
   onCreateRagTemplate,
 }: SettingsTabProps): React.ReactElement {
   const project = settings.project ?? DEFAULT_PROJECT;
+
+  // 설정을 "언제 손대는 것이냐"로 갈라 놓는다 — 투입 첫날 한 번(서버 연결) vs 필요할 때(프로젝트).
+  // 좁은 사이드바에서 세로로 이어 붙이면 경계가 스크롤에 묻혀 안 보인다.
+  const [settingsTab, setSettingsTab] = useState<'server' | 'project'>('server');
+
+  // 주소 미리보기는 **실제 호출과 같은 함수**(resolveLlmUrls)로 만든다 — 화면과 요청이 갈라지지 않게.
+  const endpointMode = settings.llm.endpointMode ?? 'base';
+  const endpointValid = isValidEndpoint(settings.llm.endpoint);
+  const resolvedUrls = resolveLlmUrls(settings.llm.endpoint, endpointMode, settings.llm.provider ?? 'openai');
+
+  // Axiom은 규약·지식을 항상 함께 보내므로 창이 작으면 '현재 파일'부터 깎인다 → 하한선을 눈에 보이게.
+  const ctxLevel: 'good' | 'warn' | 'bad' =
+    settings.llm.contextWindow >= 32768 ? 'good' : settings.llm.contextWindow >= 16384 ? 'warn' : 'bad';
+  // 출력 자리를 크게 잡을수록 입력(파일)이 줄어든다. 1/4 초과면 알려준다.
+  const maxTokensTooBig =
+    settings.llm.contextWindow > 0 && settings.llm.maxTokens > settings.llm.contextWindow / 4;
+
   return (
     <div className="settings">
-      {/* LLM 설정 */}
-      <section className="settings__section">
-        <h2 className="settings__section-title">LLM 서버 설정</h2>
+      {/* 하위 탭 — 저장 버튼은 상단에 하나뿐이며 어느 탭에 있든 양쪽을 함께 저장한다. */}
+      <div className="settings__subtabs">
+        <button
+          className={`settings__subtab${settingsTab === 'server' ? ' settings__subtab--active' : ''}`}
+          onClick={() => setSettingsTab('server')}
+        >
+          서버 연결
+        </button>
+        <button
+          className={`settings__subtab${settingsTab === 'project' ? ' settings__subtab--active' : ''}`}
+          onClick={() => setSettingsTab('project')}
+        >
+          프로젝트
+        </button>
+      </div>
 
-        <label className="settings__label">
-          엔드포인트 URL
+      {settingsTab === 'server' && (
+      <>
+      <p className="settings__group-lead">투입 첫날 한 번 설정하면 되는 값입니다. 고객사 담당자에게 받아 적으세요.</p>
+
+      {/* ── ① 접속 정보 — 담당자에게 "받아 적는" 값. 틀리면 연결 실패로 즉시 드러난다. ── */}
+      <section className="settings__section settings__section--connect">
+        <h2 className="settings__section-title">① 접속 정보</h2>
+        <p className="settings__section-lead">
+          고객사 AI 담당자에게 <strong>받은 값을 그대로 적는 칸</strong>입니다. 임의로 정하지 마세요.
+        </p>
+
+        <div className="settings__field">
+          <div className="settings__field-head">
+            <span className="settings__field-name">AI 서버 주소</span>
+            <div className="settings__mode" role="radiogroup" aria-label="주소 해석 방식">
+              <label className="settings__mode-opt">
+                <input
+                  type="radio"
+                  name="endpointMode"
+                  checked={endpointMode === 'base'}
+                  onChange={() => onLlmChange('endpointMode', 'base')}
+                />
+                <span>기본 주소</span>
+              </label>
+              <label className="settings__mode-opt">
+                <input
+                  type="radio"
+                  name="endpointMode"
+                  checked={endpointMode === 'full'}
+                  onChange={() => onLlmChange('endpointMode', 'full')}
+                />
+                <span>전체 주소</span>
+              </label>
+            </div>
+          </div>
           <input
             className="settings__input"
             type="text"
             value={settings.llm.endpoint}
-            placeholder="https://..."
+            placeholder={endpointMode === 'full' ? 'https://gw.co.kr/llm/v1/chat/completions' : 'http://10.10.20.31:8000'}
             onChange={(e) => onLlmChange('endpoint', e.target.value)}
           />
-        </label>
+        </div>
+        <p className="settings__hint">
+          {endpointMode === 'full' ? (
+            <>
+              <strong>전체 주소</strong> — 받은 주소를 <strong>그대로</strong> 호출합니다. 뒤에 아무것도 붙이지 않습니다.
+              경로가 특이한 게이트웨이용입니다.
+            </>
+          ) : (
+            <>
+              <strong>기본 주소</strong> — 받은 주소 뒤에 <code>/v1/chat/completions</code> 같은 경로를 붙여 호출합니다.
+              대부분 이쪽입니다. 주소 끝에 <code>/v1</code>이 딸려와도 알아서 정리합니다.
+            </>
+          )}
+        </p>
+
+        {settings.llm.endpoint.trim().length > 0 &&
+          (endpointValid ? (
+            <div className="settings__url-preview">
+              <div className="settings__url-preview-title">이렇게 호출합니다</div>
+              <div className="settings__url-preview-row">
+                <span>대화</span>
+                <code>{resolvedUrls.chat || '—'}</code>
+              </div>
+              <div className="settings__url-preview-row">
+                <span>모델 목록</span>
+                <code>{resolvedUrls.models || '—'}</code>
+              </div>
+              {endpointMode === 'full' && (
+                <p className="settings__url-preview-note">
+                  전체 주소 모드에서는 모델 목록·서버 종류 감지 주소를 <strong>추정</strong>합니다.
+                  빗나가도 연결 테스트는 대화 주소로 직접 확인하므로 문제되지 않습니다.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="settings__url-preview settings__url-preview--bad">
+              주소 형식이 올바르지 않습니다 — <code>http://</code> 또는 <code>https://</code>로 시작해야 합니다.
+            </div>
+          ))}
 
         <label className="settings__label">
           모델명
@@ -486,16 +587,19 @@ function SettingsTab({
             className="settings__input"
             type="text"
             value={settings.llm.model}
-            placeholder="예: qwen2.5-coder:14b"
+            placeholder="예: qwen3.6:35b-a3b"
             onChange={(e) => onLlmChange('model', e.target.value)}
           />
         </label>
+        <p className="settings__hint">
+          서버에 등록된 이름과 <strong>한 글자도 다르면 안 됩니다</strong>. 대소문자·슬래시·콜론까지 그대로 적으세요.
+        </p>
 
         <label className="settings__label">
           백엔드 종류 (provider)
           <select
             className="settings__input"
-            value={settings.llm.provider ?? 'ollama'}
+            value={settings.llm.provider ?? 'openai'}
             onChange={(e) => onLlmChange('provider', e.target.value)}
           >
             <option value="ollama">ollama (네이티브 /api/chat)</option>
@@ -518,55 +622,6 @@ function SettingsTab({
           />
         </label>
 
-        <div className="settings__row">
-          <PresetNumberField
-            label="Temperature"
-            halfWidth
-            value={settings.llm.temperature}
-            step={0.1}
-            min={0}
-            max={2}
-            presets={[
-              { value: 0.1, label: '0.1 · 결정적(코드 편집)' },
-              { value: 0.2, label: '0.2 · 기본(권장)' },
-              { value: 0.3, label: '0.3 · 약간 다양' },
-              { value: 0.7, label: '0.7 · Qwen 일반 권장' },
-            ]}
-            onChange={(v) => onLlmChange('temperature', v)}
-          />
-
-          <PresetNumberField
-            label="Max Tokens (출력 상한)"
-            halfWidth
-            value={settings.llm.maxTokens}
-            step={256}
-            min={256}
-            presets={[
-              { value: 2048, label: '2048' },
-              { value: 4096, label: '4096' },
-              { value: 8192, label: '8192 · 기본(권장)' },
-              { value: 16384, label: '16384 · 큰 파일' },
-            ]}
-            onChange={(v) => onLlmChange('maxTokens', v)}
-          />
-        </div>
-
-        <PresetNumberField
-          label="Context Window (입력+출력 합산 · Ollama num_ctx로 전달)"
-          value={settings.llm.contextWindow}
-          step={1024}
-          min={1024}
-          presets={[
-            { value: 8192, label: '8192' },
-            { value: 16384, label: '16384' },
-            { value: 32768, label: '32768 · 기본(권장)' },
-            { value: 65536, label: '65536 · qwen3-coder-64k 최대(VRAM 여유 시)' },
-            { value: 131072, label: '131072 · 128k(고VRAM)' },
-          ]}
-          hint="qwen3-coder 권장: Context 32768 · Max Tokens 8192 · Temp 0.2. Context를 올리면 서버 VRAM(KV 캐시)이 늘어납니다."
-          onChange={(v) => onLlmChange('contextWindow', v)}
-        />
-
         <div className="settings__actions-row">
           <button
             className="settings__test-btn"
@@ -583,6 +638,138 @@ function SettingsTab({
           </div>
         )}
       </section>
+
+      {/* ── ② 모델 한계 — 서버가 정한 값. 우리에게 결정권이 없고, 틀리면 조용히 잘린다. ── */}
+      <section className="settings__section settings__section--limit">
+        <h2 className="settings__section-title">② 모델 한계</h2>
+        <p className="settings__section-lead">
+          담당자에게 <strong>확인해야 하는 값</strong>입니다. 서버가 정한 값이라 추측하면 안 됩니다.
+        </p>
+
+        <PresetNumberField
+          label="Context Window (입력+출력 합산 · Ollama num_ctx로 전달)"
+          value={settings.llm.contextWindow}
+          step={1024}
+          min={1024}
+          presets={[
+            { value: 8192, label: '8192 · 권장 미만' },
+            { value: 16384, label: '16384 · 최소' },
+            { value: 32768, label: '32768 · 권장' },
+            { value: 65536, label: '65536 · 64k(VRAM 여유 시)' },
+            { value: 131072, label: '131072 · 128k(고VRAM)' },
+          ]}
+          onChange={(v) => onLlmChange('contextWindow', v)}
+        />
+
+        <div className="settings__guide">
+          <div className="settings__guide-row settings__guide-row--good">
+            <b>32768 이상</b> — 권장. 파일을 통째로 보고 일합니다
+          </div>
+          <div className="settings__guide-row settings__guide-row--warn">
+            <b>16384</b> — 최소. 200줄 이하 파일이면 그럭저럭 돌아갑니다
+          </div>
+          <div className="settings__guide-row settings__guide-row--bad">
+            <b>8192 이하</b> — 사실상 못 씁니다. 설치는 되고 답도 하는데 제 성능이 안 나옵니다
+          </div>
+        </div>
+
+        {ctxLevel !== 'good' && (
+          <div className={`settings__warn settings__warn--${ctxLevel}`}>
+            {ctxLevel === 'bad' ? (
+              <>
+                현재 <b>{settings.llm.contextWindow}</b> — Axiom은 규약·지식을 함께 보내기 때문에 이 크기에서는
+                <strong> 현재 파일을 100줄 정도밖에 못 봅니다.</strong> 담당자에게 32768 이상으로 올려 달라고 요청하세요.
+              </>
+            ) : (
+              <>
+                현재 <b>{settings.llm.contextWindow}</b> — 돌아가긴 하지만 큰 파일에서는 앞부분만 보게 됩니다.
+                가능하면 32768 이상을 권장합니다.
+              </>
+            )}
+          </div>
+        )}
+
+        <p className="settings__hint">
+          담당자에게 물을 때: vLLM이면 <code>--max-model-len</code>, Ollama면 <code>OLLAMA_CONTEXT_LENGTH</code> 값을 확인하세요.
+          <strong> 모델 스펙상 최대치가 아니라 서버가 실제로 띄운 값</strong>이어야 합니다.
+        </p>
+      </section>
+
+      {/* ── ③ 출력 설정 — 서버 제약이 아니라 "AI가 한 번에 쓸 코드 길이". 우리가 정한다. ── */}
+      <section className="settings__section settings__section--output">
+        <h2 className="settings__section-title">③ 출력 설정</h2>
+        <p className="settings__section-lead">
+          담당자에게 받는 값이 아니라 <strong>우리가 정하는 값</strong>입니다.
+        </p>
+
+        <PresetNumberField
+          label="Max Tokens (출력 상한)"
+          value={settings.llm.maxTokens}
+          step={256}
+          min={256}
+          presets={[
+            { value: 2048, label: '2048 · 부족할 수 있음' },
+            { value: 4096, label: '4096 · 최소' },
+            { value: 8192, label: '8192 · 권장' },
+            { value: 16384, label: '16384 · thinking 모델·초대형 파일' },
+          ]}
+          onChange={(v) => onLlmChange('maxTokens', v)}
+        />
+
+        <div className="settings__guide">
+          <div className="settings__guide-row settings__guide-row--good">
+            <b>8192</b> — 권장. 파일 전체 재작성까지 감당합니다
+          </div>
+          <div className="settings__guide-row settings__guide-row--warn">
+            <b>4096</b> — 최소. 부분 수정은 되지만 큰 파일을 다시 쓸 때 중간에 끊길 수 있습니다
+          </div>
+          <div className="settings__guide-row settings__guide-row--warn">
+            <b>16384</b> — thinking(혼잣말) 모델이거나 아주 큰 파일을 다룰 때만
+          </div>
+        </div>
+
+        {maxTokensTooBig && (
+          <div className="settings__warn settings__warn--warn">
+            출력 상한이 Context Window의 1/4을 넘습니다(<b>{settings.llm.maxTokens}</b> / {settings.llm.contextWindow}).
+            출력 자리를 크게 잡을수록 <strong>AI가 볼 수 있는 파일이 줄어듭니다.</strong>
+          </div>
+        )}
+
+        <p className="settings__hint">
+          응답이 문장 한가운데서 멈추거나 코드 블록이 닫히지 않은 채 끝나면 이 값이 부족한 것입니다.
+        </p>
+      </section>
+
+      {/* ── ④ 세부 조정 — 평소엔 손대지 않고, 증상이 있을 때만 만지는 값. ── */}
+      <section className="settings__section settings__section--tune">
+        <h2 className="settings__section-title">④ 세부 조정</h2>
+        <p className="settings__section-lead">
+          <strong>평소에는 손대지 마세요.</strong> 사이트가 바뀌어도 그대로 두면 되는 값이며, 증상이 있을 때만 조정합니다.
+        </p>
+
+        <PresetNumberField
+          label="Temperature (답변의 들쭉날쭉한 정도)"
+          value={settings.llm.temperature}
+          step={0.1}
+          min={0}
+          max={2}
+          presets={[
+            { value: 0.1, label: '0.1 · 결정적(코드 편집)' },
+            { value: 0.2, label: '0.2 · 기본(권장)' },
+            { value: 0.3, label: '0.3 · 약간 다양' },
+            { value: 0.7, label: '0.7 · Qwen 일반 권장' },
+          ]}
+          hint="코드 작업에서는 낮을수록 좋습니다. 높이면 창의적이 되는 게 아니라 규약을 안 지킵니다. 다만 일부 Qwen3 모델은 너무 낮으면 같은 문장을 반복할 수 있어, 그럴 때만 0.6~0.7로 올려 보세요."
+          onChange={(v) => onLlmChange('temperature', v)}
+        />
+      </section>
+
+      </>
+      )}
+
+      {settingsTab === 'project' && (
+      <>
+      <p className="settings__group-lead">프로젝트마다 다른 지식·동작 설정입니다. 필요할 때 다시 오면 됩니다.</p>
 
       {/* RAG 파일 관리 */}
       <section className="settings__section">
@@ -756,6 +943,8 @@ function SettingsTab({
 
       {/* 고급 설정 — 접이식. 대부분 axiom.config.json, thinking만 전역. */}
       <AdvancedSection advanced={settings.advanced ?? DEFAULT_ADVANCED} onChange={onAdvancedChange} />
+      </>
+      )}
     </div>
   );
 }

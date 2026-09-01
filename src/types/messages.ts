@@ -29,6 +29,12 @@ export interface AxiomSettings {
     contextWindow: number;
     /** LLM 백엔드 종류. 연결 테스트의 자동 정렬과 동일 값. (옵셔널: 기존 메시지 하위호환) */
     provider?: 'openai' | 'ollama';
+    /**
+     * 엔드포인트 해석 방식. 'base'=뒤에 API 경로를 붙임(기본) / 'full'=받은 주소를 그대로 호출.
+     * 런타임 조립의 진실원은 src/ai/llmEndpoint.ts — 여기선 웹뷰 번들이 확장 코드를 끌어오지 않도록
+     * 같은 리터럴 유니온을 그대로 적는다. (옵셔널: 기존 메시지 하위호환)
+     */
+    endpointMode?: 'base' | 'full';
   };
   rag: {
     userRagFolder: string;

@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ExtensionConfig } from '../config/ExtensionConfig';
 import { LlmService } from '../ai/pipeline/LlmService';
 import type { WebviewToHostMessage, HostToWebviewMessage, AxiomSettings } from '../types/messages';
+import { guessProviderFromUrl, isValidEndpoint, resolveLlmUrls } from '../ai/llmEndpoint';
 
 export class ChatPanelProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'axiom-ai.chatPanel';
@@ -111,6 +112,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         maxTokens:   llm.maxTokens,
         contextWindow: llm.contextWindow,
         provider:    llm.provider,
+        endpointMode: llm.endpointMode,
       },
       rag: {
         userRagFolder:   rag.folder,
@@ -166,6 +168,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       }
       if (llm.model      !== undefined) await this._updateCfgSticky(cfg, 'llm.model',        llm.model);
       if (llm.provider   !== undefined) await this._updateCfgSticky(cfg, 'llm.provider',     llm.provider);
+      if (llm.endpointMode !== undefined) await this._updateCfgSticky(cfg, 'llm.endpointMode', llm.endpointMode);
       if (llm.temperature !== undefined) await this._updateCfgSticky(cfg, 'llm.temperature', llm.temperature);
       if (llm.maxTokens  !== undefined) await this._updateCfgSticky(cfg, 'llm.maxTokens',    llm.maxTokens);
       if (llm.contextWindow !== undefined) await this._updateCfgSticky(cfg, 'llm.contextWindow', llm.contextWindow);
@@ -407,10 +410,16 @@ tags: [예시키워드, example, 샘플, 작성예시]
     const base = llm.endpoint?.trim() ?? '';
     let modelsUrl: string;
     let chatUrl: string;
+    let verbatimChat = false;
     try {
       if (!base) throw new Error('엔드포인트 URL이 비어 있습니다.');
-      modelsUrl = new URL('/v1/models', base).toString();
-      chatUrl = new URL('/v1/chat/completions', base).toString();
+      if (!isValidEndpoint(base)) throw new Error('URL 형식 오류');
+      // 주소 조립은 llmEndpoint 단독 담당 — 화면 미리보기와 실제 호출이 같은 함수를 쓴다.
+      // 'full' 모드면 chat은 받은 주소 그대로, models는 기준 주소 추정(빗나가면 아래 2단계로 넘어간다).
+      const urls = resolveLlmUrls(base, llm.endpointMode ?? 'base', llm.provider ?? 'openai');
+      modelsUrl = urls.models;
+      chatUrl = urls.chat;
+      verbatimChat = urls.verbatimChat;
     } catch {
       this._post({
         type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
@@ -444,8 +453,10 @@ tags: [예시키워드, example, 샘플, 작성예시]
           this.onConnectionOnline?.();
           return;
         }
-        if (ids.length > 0) {
+        if (ids.length > 0 && !verbatimChat) {
           // 서버는 살아있으나 설정한 모델명이 목록에 없음 → 채팅 시 404가 날 상황을 미리 알려준다.
+          // (전체 주소 모드면 이 목록은 '추정한 기준 주소'에서 온 것이라 근거가 약하다 → 확정하지 않고
+          //  아래 2단계에서 실제 대화 주소로 직접 호출해 판정한다.)
           const preview = ids.slice(0, 8).join(', ');
           this._post({ type: 'connectionTestResult', ok: false, endpoint: llm.endpoint,
             detail: `서버 연결됨 — '${llm.model}' 모델이 서버에 없습니다. 모델명을 확인해주세요. 사용 가능: ${preview}${ids.length > 8 ? ` 외 ${ids.length - 8}개` : ''}` });
@@ -512,8 +523,21 @@ tags: [예시키워드, example, 샘플, 작성예시]
     signal: AbortSignal,
   ): Promise<string> {
     let detected: 'openai' | 'ollama';
+    // 전체 주소 모드: /api/tags 는 '추정한 기준 주소'라 404가 나도 근거가 되지 못한다(비-Ollama로
+    // 오판하면 채팅이 통째로 404). 받은 주소의 꼬리에서 읽히면 그것만 쓰고, 아니면 건드리지 않는다.
+    if ((llm.endpointMode ?? 'base') === 'full') {
+      const guessed = guessProviderFromUrl(llm.endpoint);
+      if (!guessed) return '';
+      const cfgFull = vscode.workspace.getConfiguration('axiom-ai');
+      const currentFull = cfgFull.get<'openai' | 'ollama'>('llm.provider', 'openai');
+      if (currentFull === guessed) return '';
+      await cfgFull.update('llm.provider', guessed, vscode.ConfigurationTarget.Global);
+      return ` · 주소가 '${guessed}' 방식이라 provider를 자동 설정했습니다(이전: '${currentFull}').`;
+    }
     try {
-      const tagsRes = await fetch(new URL('/api/tags', llm.endpoint).toString(), { method: 'GET', headers, signal });
+      const tagsUrl = resolveLlmUrls(llm.endpoint, llm.endpointMode ?? 'base', llm.provider ?? 'openai').tags;
+      if (!tagsUrl) return '';
+      const tagsRes = await fetch(tagsUrl, { method: 'GET', headers, signal });
       // /api/tags 200 = Ollama 네이티브 존재 → ollama. 404 등(res.ok=false) = 비-Ollama → openai.
       detected = tagsRes.ok ? 'ollama' : 'openai';
     } catch {
@@ -522,7 +546,7 @@ tags: [예시키워드, example, 샘플, 작성예시]
     }
 
     const cfg = vscode.workspace.getConfiguration('axiom-ai');
-    const current = cfg.get<'openai' | 'ollama'>('llm.provider', 'ollama');
+    const current = cfg.get<'openai' | 'ollama'>('llm.provider', 'openai');
     if (current === detected) return '';
 
     await cfg.update('llm.provider', detected, vscode.ConfigurationTarget.Global);

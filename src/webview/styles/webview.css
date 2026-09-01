@@ -2929,3 +2929,213 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 }
 .action-card__others-btn:disabled { opacity: 0.5; cursor: default; }
 .action-cards__others { display: flex; flex-direction: column; gap: 6px; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   설정 구역 구분 — "누가 정하는 값인지"를 색으로 드러낸다.
+   ① 접속 정보(받아 적기) ② 모델 한계(서버가 정함) ③ 출력 설정(우리가 정함) ④ 세부 조정(평소 손대지 않음)
+   SI 투입 첫날 개발자가 "여기는 내가 정할 자리가 아니다"를 한눈에 알게 하는 것이 목적이다.
+   ───────────────────────────────────────────────────────────────────────────── */
+.settings__section--connect,
+.settings__section--limit,
+.settings__section--output,
+.settings__section--tune {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
+.settings__section--connect { border-left-color: var(--vscode-charts-blue, #3794ff); }
+.settings__section--limit   { border-left-color: var(--vscode-charts-orange, #d18616); }
+.settings__section--output  { border-left-color: var(--vscode-charts-green, #89d185); }
+.settings__section--tune    { border-left-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.5)); }
+
+/* 구역 첫 줄 안내 — 제목보다 진하게(성격 설명이 본문이다) */
+.settings__section-lead {
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.72;
+  margin: -2px 0 2px;
+}
+
+/* 라벨 옆에 모드 선택을 얹는 필드(주소 입력) — label 중첩을 피하려 div로 짠다 */
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings__field-name {
+  font-size: 11.5px;
+  opacity: 0.85;
+}
+
+.settings__mode {
+  display: flex;
+  gap: 4px;
+}
+
+.settings__mode-opt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.settings__mode-opt:hover { opacity: 0.9; }
+
+.settings__mode-opt:has(input:checked) {
+  opacity: 1;
+  border-color: var(--vscode-focusBorder, #3794ff);
+  background: var(--vscode-list-activeSelectionBackground, rgba(55, 148, 255, 0.15));
+}
+
+.settings__mode-opt input[type='radio'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* 실제 호출 주소 미리보기 — 고른 모드의 결과를 눈으로 확인시킨다 */
+.settings__url-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.22));
+  font-size: 10.5px;
+}
+
+.settings__url-preview--bad {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-inputValidation-errorForeground, inherit);
+  opacity: 0.95;
+}
+
+.settings__url-preview-title {
+  font-weight: 700;
+  opacity: 0.6;
+  letter-spacing: 0.03em;
+}
+
+.settings__url-preview-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.settings__url-preview-row > span {
+  flex-shrink: 0;
+  width: 52px;
+  opacity: 0.5;
+}
+
+.settings__url-preview-row > code {
+  word-break: break-all;
+  opacity: 0.9;
+}
+
+.settings__url-preview-note {
+  margin-top: 3px;
+  opacity: 0.55;
+  line-height: 1.5;
+}
+
+/* 값 가이드(권장/최소/불가) — 개발자가 숫자를 고를 때 판단 근거를 그 자리에 둔다 */
+.settings__guide {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.settings__guide-row {
+  padding-left: 8px;
+  border-left: 2px solid transparent;
+  opacity: 0.7;
+}
+
+.settings__guide-row > b { opacity: 0.95; }
+
+.settings__guide-row--good { border-left-color: var(--vscode-charts-green, #89d185); }
+.settings__guide-row--warn { border-left-color: var(--vscode-charts-yellow, #cca700); }
+.settings__guide-row--bad  { border-left-color: var(--vscode-charts-red, #f14c4c); }
+
+/* 현재 값이 권장선을 벗어났을 때의 즉시 경고 */
+.settings__warn {
+  padding: 7px 9px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.settings__warn--warn {
+  background: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.12));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700);
+}
+
+.settings__warn--bad {
+  background: var(--vscode-inputValidation-errorBackground, rgba(241, 76, 76, 0.12));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   설정 하위 탭 — "서버 연결"(투입 첫날 한 번) / "프로젝트"(필요할 때).
+   좁은 사이드바에서 두 성격의 설정을 세로로 이어 붙이면 경계가 스크롤에 묻힌다.
+   상단 주 탭(홈/설정)과 형태를 달리해(알약형) 층위를 구분한다.
+   ───────────────────────────────────────────────────────────────────────────── */
+.settings__subtabs {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 7px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.08));
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+
+.settings__subtab {
+  flex: 1;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--vscode-foreground);
+  font-size: 11.5px;
+  font-weight: 500;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.settings__subtab:hover { opacity: 0.8; }
+
+.settings__subtab--active {
+  opacity: 1;
+  font-weight: 600;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+/* 하위 탭 바로 아래 한 줄 — 이 탭이 언제 쓰는 설정인지 알려준다 */
+.settings__group-lead {
+  font-size: 10.5px;
+  line-height: 1.55;
+  opacity: 0.5;
+  margin: -4px 2px -2px;
+}

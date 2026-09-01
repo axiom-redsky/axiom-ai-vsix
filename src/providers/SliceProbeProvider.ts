@@ -14,6 +14,7 @@ import {
 import { applyStructuralEdit, type StructuralEdit, type ImportRequest } from '../ai/apply/StructuralAnchor';
 import { locateEditRegion, firstJsxTag } from '../ai/locate/RegionEdit';
 import { ExtensionConfig } from '../config/ExtensionConfig';
+import { resolveLlmUrls } from '../ai/llmEndpoint';
 import { LlmService } from '../ai/pipeline/LlmService';
 import type { ChatMessage } from '../ai/types';
 import type { WebviewToHostMessage, HostToWebviewMessage, ProbeMode } from '../types/messages';
@@ -512,7 +513,8 @@ ${fileView}
       this._post({ type: 'probeOutput', variant: 'tool', status: 'error', content: 'LLM 엔드포인트/모델 미설정', promptChars: 0 });
       return;
     }
-    const url = new URL('/v1/chat/completions', cfg.endpoint).toString();
+    // 주소 조립은 llmEndpoint 단독 담당(게이트웨이 중간 경로 보존 · 'full' 모드 그대로 쓰기).
+    const url = resolveLlmUrls(cfg.endpoint, cfg.endpointMode ?? 'base', 'openai').chat;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const apiKey = (cfg.apiKey ?? '').trim();
     if (apiKey) headers['Authorization'] = /^(Bearer|Basic)\s+/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;

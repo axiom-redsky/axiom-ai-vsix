@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import type { ChatMessage, LlmConfig, LlmTuning, LlmUsage } from '../types';
 import { FallbackStubService } from '../retrieval/FallbackStubService';
 import { ExtensionConfig } from '../../config/ExtensionConfig';
+import { isValidEndpoint, resolveLlmUrls } from '../llmEndpoint';
 
 export class LlmService {
   private readonly _bundledStubsDir: string | null;
@@ -54,16 +55,17 @@ export class LlmService {
 
     // 서버 종류별 헬스체크 엔드포인트 우선순위
     // GET 요청만 사용: POST /v1/chat/completions 는 인증 정책이 엔드포인트마다 달라 오탐 발생
-    let probeUrls: string[];
-    try {
-      probeUrls = [
-        new URL('/v1/models', base).toString(),  // OpenAI 호환 (LM Studio, vLLM, LocalAI, Ollama)
-        new URL('/api/tags', base).toString(),   // Ollama 네이티브
-      ];
-    } catch {
+    if (!isValidEndpoint(base)) {
       console.warn(`[Axiom AI] 헬스체크 생략 — 엔드포인트 URL 형식 오류: ${base} → 오프라인 모드`);
       return false;
     }
+    // 기준 주소는 llmEndpoint가 뽑는다(게이트웨이 중간 경로 보존). 'full' 모드에서도 프로브는
+    // 기준 주소 추정으로 시도한다 — 실패하면 아래 대화 라우트가 없으니 오프라인으로 떨어질 뿐 무해하다.
+    const urls = resolveLlmUrls(base, config.endpointMode ?? 'base', config.provider);
+    const probeUrls: string[] = [
+      urls.models,  // OpenAI 호환 (LM Studio, vLLM, LocalAI, Ollama)
+      urls.tags,    // Ollama 네이티브
+    ].filter(Boolean);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
@@ -80,6 +82,15 @@ export class LlmService {
         if (res.ok) {
           return true;
         }
+      }
+      // 'full' 모드 보정: 기준 주소 추정이 빗나가면 위 프로브가 전부 404다. 그렇다고 오프라인으로
+      // 확정하면 정작 대화는 되는 서버에서 오프라인 모드로 떨어진다. 대화 주소에 GET을 던져
+      // **응답이 오기만 하면**(405 Method Not Allowed 등) 서버가 살아있는 것으로 본다.
+      if (urls.verbatimChat && urls.chat) {
+        const res = await fetch(urls.chat, { method: 'GET', headers, signal: controller.signal });
+        console.log(`[Axiom AI] 헬스체크(전체 주소 모드) ${urls.chat} → ${res.status}`);
+        if (res.status === 401 || res.status === 403) return false;
+        return res.status < 500;
       }
       return false;
     } catch (err) {
@@ -117,11 +128,14 @@ export class LlmService {
     if (!config.endpoint?.trim()) {
       throw new Error('LLM 엔드포인트가 설정되지 않았습니다. 설정에서 엔드포인트 URL을 입력하거나, 비워 두면 오프라인 모드로 사용하세요.');
     }
-    let url: string;
-    try {
-      url = new URL(isOllama ? '/api/chat' : '/v1/chat/completions', config.endpoint).toString();
-    } catch {
+    // 주소 조립은 llmEndpoint가 단독 담당한다 — 'full' 모드면 받은 주소를 그대로 쓰고,
+    // 'base' 모드면 게이트웨이 중간 경로(/llm 등)를 보존한 채 대화 경로만 덧붙인다.
+    if (!isValidEndpoint(config.endpoint)) {
       throw new Error(`LLM 엔드포인트 URL 형식이 올바르지 않습니다: '${config.endpoint}' (예: http://127.0.0.1:11434)`);
+    }
+    const url = resolveLlmUrls(config.endpoint, config.endpointMode ?? 'base', config.provider).chat;
+    if (!url) {
+      throw new Error(`LLM 엔드포인트에서 호출 주소를 만들 수 없습니다: '${config.endpoint}'`);
     }
 
     const headers: Record<string, string> = {

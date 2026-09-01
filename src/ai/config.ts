@@ -8,15 +8,23 @@ export const AI_DEFAULTS = {
   apiKey: '',
   /**
    * LLM 백엔드 종류. 요청 경로·바디·thinking 억제 방식이 달라진다.
-   * - 'ollama': Ollama 네이티브(/api/chat). thinking은 top-level think:false로만 확실히 꺼진다. (기본)
-   *   기본 모델 qwen3-coder가 추론(reasoning) 모델이라 /v1 호환 경로로는 thinking이 안 꺼져 빈 응답이 나기 쉽다.
-   *   추론을 확실히 끄는 ollama를 기본으로 둔다. vLLM 등 OpenAI 호환 서버를 쓰면 'openai'로 override.
-   * - 'openai': OpenAI 호환(/v1/chat/completions). vLLM·LM Studio·LocalAI 등.
-   *   thinking 억제는 injectNoThink(/no_think) + sendThinkingParams(enable_thinking)로 시도.
+   * - 'openai': OpenAI 호환(/v1/chat/completions). vLLM·LM Studio·LocalAI·LiteLLM 등. (기본)
+   *   SI 현장에서 고객사가 제공하는 서버는 대부분 이쪽이다(사내 GPU 서빙 1순위가 vLLM, 게이트웨이도 호환).
+   *   thinking 억제는 injectNoThink(/no_think) + sendThinkingParams(enable_thinking)로 시도한다.
+   * - 'ollama': Ollama 네이티브(/api/chat). thinking을 top-level think:false로 확실히 끈다.
+   *   기본 모델 qwen3.6:35b-a3b가 추론(reasoning) 모델이라, Ollama 서버를 /v1 호환 경로로 부르면
+   *   thinking이 안 꺼져 빈 응답이 나기 쉽다 → Ollama에 붙었으면 반드시 이 값이어야 한다.
+   * 어긋나도 연결 테스트가 /api/tags 로 서버 방언을 감지해 자동 정렬한다(_autoAlignProvider).
    */
-  provider: 'ollama',
-  // 배포 하한 모델. qwen3-coder(코딩 특화, 4bit ~18~20GB → 24GB GPU 1장)을 표준으로. 사이트별 모델은 설정으로 override.
-  model: 'qwen3-coder-64k',
+  provider: 'openai',
+  /**
+   * 엔드포인트 해석 방식(src/ai/llmEndpoint.ts).
+   * - 'base': 받은 주소를 기준 주소로 보고 뒤에 API 경로를 붙인다. (기본 · 대부분의 현장)
+   * - 'full': 받은 주소를 그대로 대화 호출에 쓴다. 경로가 커스텀인 게이트웨이용 탈출구.
+   */
+  endpointMode: 'base',
+  // 배포 하한 모델. qwen3.6:35b-a3b를 표준으로. 사이트별 모델은 설정으로 override.
+  model: 'qwen3.6:35b-a3b',
   temperature: 0.2,
   maxTokens: 8192,
   /** 모델 컨텍스트 윈도우(토큰). 사이트별로 다른 모델이 들어오므로 설정으로 override 가능. */

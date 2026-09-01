@@ -1,3 +1,5 @@
+import type { LlmEndpointMode } from './llmEndpoint';
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -14,6 +16,11 @@ export interface LlmConfig {
    * - 'ollama': Ollama 네이티브(/api/chat). think:false로 thinking을 확실히 끈다(/v1 호환 레이어는 억제 파라미터를 무시).
    */
   provider: LlmProvider;
+  /**
+   * 엔드포인트 해석 방식. 'base'면 endpoint 뒤에 API 경로를 붙이고, 'full'이면 endpoint를 대화 호출에
+   * 그대로 쓴다. 조립은 src/ai/llmEndpoint.ts(resolveLlmUrls)가 단독으로 담당한다.
+   */
+  endpointMode: LlmEndpointMode;
   model: string;
   temperature: number;
   maxTokens: number;
