@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
 import type { HostToWebviewMessage, DiffLine, ContextBreakdown, ActionCardsPayload, CardSuggestionsPayload } from '../../../types/messages';
-import { DEFAULT_CHAT_MODE, chatModeView, type ChatMode } from '../../../ai/ChatMode';
+import { DEFAULT_CHAT_MODE, chatModeSwitchNotice, type ChatMode } from '../../../ai/ChatMode';
 
 export interface ContextUsage {
   promptTokens?: number;
@@ -375,16 +375,18 @@ export function useChat() {
   const changeMode = useCallback((next: ChatMode) => {
     setMode((prev) => {
       if (prev === next) return prev;
-      const view = chatModeView(next);
-      setMessages((msgs) => [
-        ...msgs,
-        {
+      setMessages((msgs) => {
+        const line = {
           id: `mode-${Date.now()}`,
-          role: 'system',
-          subtype: 'mode-switch',
-          content: `${view.icon} ${view.label}로 전환`,
-        },
-      ]);
+          role: 'system' as const,
+          subtype: 'mode-switch' as const,
+          content: chatModeSwitchNotice(next),
+        };
+        // 연속 전환(Shift+Tab 연타)은 구분선을 쌓지 않고 마지막 한 줄만 남긴다 —
+        // 표식이 대화를 덮으면 정작 어디서 바뀌었는지가 안 보인다.
+        const last = msgs[msgs.length - 1];
+        return last?.subtype === 'mode-switch' ? [...msgs.slice(0, -1), line] : [...msgs, line];
+      });
       vscode.postMessage({ type: 'setChatMode', mode: next });
       return next;
     });

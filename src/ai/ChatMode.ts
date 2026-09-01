@@ -142,6 +142,24 @@ export function nextChatMode(mode: ChatMode): ChatMode {
   return CHAT_MODES[(i + 1) % CHAT_MODES.length].id;
 }
 
+/**
+ * 받침을 보고 '로/으로'를 고른다 — "자동로 전환"은 한국어가 아니다.
+ * 한글 음절의 종성이 없거나 ㄹ이면 '로', 그 외에는 '으로'. 한글이 아니면 '로'(외래어 관례).
+ */
+function withRoParticle(label: string): string {
+  const last = label.trim().slice(-1);
+  const code = last.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return `${label}로`;
+  const jong = (code - 0xac00) % 28;
+  return jong === 0 || jong === 8 ? `${label}로` : `${label}으로`;
+}
+
+/** 모드가 바뀐 지점에 남기는 한 줄(§4.3). */
+export function chatModeSwitchNotice(mode: ChatMode): string {
+  const view = chatModeView(mode);
+  return `${view.icon} ${withRoParticle(view.label)} 전환`;
+}
+
 /** general 모드에서 입력창 하단에 띄우는 한 줄 안내(§4.2). */
 export function chatModeHint(mode: ChatMode): string | null {
   return mode === 'general'

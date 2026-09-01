@@ -7,6 +7,7 @@ import {
   DEFAULT_CHAT_MODE,
   buildGeneralSystemPrompt,
   chatModeHint,
+  chatModeSwitchNotice,
   chatModeView,
   nextChatMode,
   normalizeChatMode,
@@ -107,6 +108,9 @@ console.log('\n── D. CHAT_MODES ──');
   // 기본 모드는 하단 안내를 바꾸지 않는다(§4.2 — 기본값에 잉크를 쓰지 않는다)
   eq(chatModeHint('auto'), null, 'D6: auto는 안내문 교체 없음');
   ok((chatModeHint('general') ?? '').includes('파일 수정 꺼짐'), 'D7: general 안내에 파일 수정 꺼짐 명시');
+  // 전환 한 줄의 조사 — 받침 있는 '자동'은 '으로', 없는 '묻기'는 '로' (F5에서 발견된 실제 오류)
+  ok(chatModeSwitchNotice('auto').includes('자동으로 전환'), 'D8: 자동 → 으로');
+  ok(chatModeSwitchNotice('general').includes('그냥 묻기로 전환'), 'D9: 그냥 묻기 → 로');
 }
 
 // ═══ E. general 시스템 프롬프트 ═════════════════════════════════════════════
