@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 ✅ / B3 ✅ / B4 ✅ / D1 ✅ / D2 ✅ — 열 트랙 전부 F5 검증 통과)** — §7 A·B·C 소진 + D 진행 (2026-09-01, §9 진행표)
+> 상태: **트랙 종료 (2026-09-01)** — Phase 0~4 완료(A1·A2·A3·A4 / 형태 B / B1·B2·B3·B4 / C1 / D1·D2, **열 트랙 전부 F5 검증 통과**). 남은 후보 C2·D3·§6은 **사용자 판단으로 제외**. 계획된 작업 없음 (§9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -18,7 +18,9 @@ Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B
 **형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)**·
 **B2(hover 승격)**·**B3(디자인 토큰)**·**B4(라우터 맵)**·**D1(퍼블리싱 포팅)**·
 **D2(Mock 데이터 생성기)** 까지 완료 — **열 트랙 전부 F5 라이브 검증 통과**, 전 게이트 green.
-**§7 A·B·C는 전부 소진**됐고 D 그룹을 진행 중이다 — 남은 것은 D3와 §6 채집 플라이휠(설계 먼저).
+**§7 카탈로그가 전부 소진됐다** — 남은 후보 셋(**C2 결정론 Quick Fix · D3 오프라인 큐잉 ·
+§6 채집 플라이휠**)은 2026-09-01 **"오프라인 모드에 크게 필요치 않다"는 사용자 판단으로 전부 제외**했다.
+**계획된 작업은 없다.** 문서에 남긴 취소선 항목은 기록일 뿐 착수 대상이 아니니 **다시 제안하지 말 것**.
 
 > ⚠ **D1은 지금까지와 성격이 다르다 — 파일을 쓴다.** 읽기 전용 창(B1·B3·B4)과 달리 계획 카드의
 > 안전 규약(§3.6)을 그대로 따랐다: 미리보기 → 사람이 누를 때만 → 원본 유지(복사). 이어서 손대는
@@ -33,12 +35,20 @@ Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B
 > **B2는 `69b8ff1`**. **B3 `2ea36f6`·`91307fa` · B4 `cc8f0f9` · D1 `861e887`**. 여기까지 커밋됨.
 > **D2는 F5 통과했으나 미커밋**(2026-09-01 기준). 이어서 하기 전에 `git status`로 현재 상태를 먼저 확인할 것.
 
-### 다음에 할 일 = 아래 중 택1
+### 다음에 할 일 = **없다 (트랙 종료, 2026-09-01)**
 
-| 후보 | 무게 | 시작점 |
+계획된 기능은 전부 끝났고, 남아 있던 후보는 사용자 판단으로 제외했다:
+
+| 제외한 후보 | 언제 | 이유 |
 |---|---|---|
-| **★ §7 D3 오프라인 큐잉**(권장) | 중간 | LLM이 필요한 요청을 로컬 JSONL에 쌓았다가 온라인 복귀 시 일괄 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. **D 그룹의 마지막 항목** |
-| **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **코드보다 설계 결정이 먼저**(착수하면 규칙 선택지 정리부터) |
+| ~~D3 오프라인 큐잉~~ | 2026-09-01 | 쌓아 뒀다 나중에 일괄 처리하는 흐름은 필요하지 않다 |
+| ~~C2 결정론 Quick Fix~~ | 2026-09-01 | 오프라인 모드에 크게 필요치 않다(C1 린트가 이미 진단+Quick Fix 제공) |
+| ~~§6 카드 채집 플라이휠~~ | 2026-09-01 | 오프라인 모드에 크게 필요치 않다(카드 등록은 수작업 `.axiom/actions/`로 충분) |
+
+**남은 잡무는 D2 커밋 하나뿐**(F5 통과·미커밋). 문서의 취소선 항목은 기록일 뿐이니
+**먼저 제안하지 말 것** — 재개는 사용자가 말할 때만.
+
+새 요청이 들어오면 아래 "이 트랙에서 반복해서 통한 작업 방식"을 그대로 따르면 된다.
 
 **이 트랙에서 반복해서 통한 작업 방식**(새 항목도 이대로 하면 된다):
 1. **순수 모듈 먼저** — vscode 비의존 층(`ai/…`)에 로직을 놓고, provider/webview는 배선만. 그래야 테스트가 vscode 스텁 없이 돈다.
@@ -531,7 +541,11 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 
 ---
 
-## 6. 카드 채집 플라이휠 (등록 자동화)
+## 6. 카드 채집 플라이휠 (등록 자동화) — **제외 (2026-09-01, 사용자 판단)**
+
+> ⚠ **이 절은 아이디어 기록으로만 남긴다. 착수 대상이 아니다.** 오프라인 모드에 크게 필요하지 않다고
+> 결론냈다(2026-09-01). 카드 등록은 수작업(`.axiom/actions/` 핫리로드, §5)으로 충분하다는 판단이다.
+> **다시 제안하지 말 것** — 재개하려면 사용자가 먼저 말한다.
 
 등록을 전부 수작업에 두지 않는다: **온라인 모드에서 LLM이 성공적으로 해낸 편집**
 (applied + 미되돌림)을 감지하면 "이 패턴을 오프라인 레시피 카드로 저장할까요?"
@@ -545,13 +559,13 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 
 ## 7. 오프라인 기능 후보 전체 카탈로그
 
-추천 카드가 가리킬 목적지들. ★ = 우선순위 상위 4개.
+추천 카드가 가리킬 목적지들. ★ = 우선순위 상위 4개. **전부 소진**(C2·D3은 2026-09-01 제외 결정).
 
 ### A. 생성 — 자연어 대신 위저드
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
-| ★A1 | **API → 화면 바인딩 위저드** | 스펙/샘플 JSON → T타입 → `useApi<{data:T[]}>` 봉투계약 훅 → SmartTable/폼 바인딩. 모델이 하던 필드 매핑만 **매핑 테이블 UI**(정확·유사 이름 자동 프리필, 애매한 것만 드롭다운) | compose binding Stage1~3, detectEnvelopeKey, JsonTypeGenerator |
-| ★A2 | **페이지/도메인 생성 위저드** | QuickPick 3단(도메인→유형→이름), 라우터 자동 배선 | page/router.template.txt, page-templates/*.md, FileCreatorService |
+| ★A1 | **API → 화면 바인딩 위저드** ✅(Phase 2) | 스펙/샘플 JSON → T타입 → `useApi<{data:T[]}>` 봉투계약 훅 → SmartTable/폼 바인딩. 모델이 하던 필드 매핑만 **매핑 테이블 UI**(정확·유사 이름 자동 프리필, 애매한 것만 드롭다운) | compose binding Stage1~3, detectEnvelopeKey, JsonTypeGenerator |
+| ★A2 | **페이지/도메인 생성 위저드** ✅(Phase 1) | QuickPick 3단(도메인→유형→이름), 라우터 자동 배선 | page/router.template.txt, page-templates/*.md, FileCreatorService |
 | A3 | 레시피 카드 실행기 ✅(2026-08-31) | 계약카드(date-picker 등)를 명령으로 — 슬롯 입력 → 정확 골격 삽입. 위치는 **사람이 칩으로**(커서/선택 기본값) | ScaffoldContracts, structural apply |
 | A4 | 컴포넌트 삽입기 ✅(2026-09-01) | 컴포넌트 선택 → **필수 prop 폼** → import 포함 JSX를 커서 자리에 삽입 | ComponentPropsIndex(53종), A3 OfflineRecipeApply |
 
@@ -567,14 +581,14 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
 | ★C1 | **Scaffold 린트** ✅(2026-08-31) | 모듈스코프 훅, 봉투 언랩 누락(`data?.data`), I/T 접두사, refetch 무인자, import 규칙 → VSCode Diagnostics + Quick Fix. ESLint가 못 잡는 프로젝트 고유 계약. "추가 LLM 호출 없는 검증" 특허 서사와 일치 | 편집 파이프라인 거부 게이트 탐지기들(react-rules 등) |
-| C2 | 결정론 Quick Fix | import hoist, 엔드포인트 별칭 정규화, 정적배열→API 교체 채널을 code action으로 | 기존 변환기들 |
+| ~~C2~~ | ~~결정론 Quick Fix~~ — **제외 (2026-09-01, 사용자 판단)** | 오프라인 모드에 크게 필요치 않다고 결론. C1 린트가 이미 진단 + Quick Fix를 제공한다. **다시 제안하지 말 것** | — |
 
 ### D. 워크플로우 — 폐쇄망 팀 현실
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
 | D1 | **publishing→domains 포팅 도우미** ✅(2026-09-01) | 퍼블리싱 산출물을 도메인으로 복사 + import 재작성 + **퍼블리셔가 정한 주소·이름 그대로** 라우터 등록(도메인·루트 양쪽) | RouterMap 파서(B4), RouterRegistration(페이지 생성과 공유) |
 | D2 | **Mock 데이터 생성기** ✅(2026-09-01) | 워크스페이스 타입 → fixture JSON + **같은 값에서 나온 `useApi<T>` 한 줄**. `public/mock/`에 저장하면 dev 서버가 그대로 서빙 → 백엔드 없이 화면이 돈다 | JsonTypeGenerator 역방향, detectEnvelopeKey, RouterMap 텍스트 도구 |
-| D3 | 오프라인 큐잉 | LLM 필요한 요청을 로컬 JSONL에 기록 → 온라인 복귀 시 일괄 처리 제안 | RegionCaptureRecorder 인프라 |
+| ~~D3~~ | ~~오프라인 큐잉~~ — **제외 (2026-09-01, 사용자 판단)** | 쌓아 뒀다 나중에 일괄 처리하는 흐름은 필요하지 않다고 결론. **다시 제안하지 말 것** | — |
 
 **우선순위 근거**: A1·C1은 온라인 모드에서도 그대로 가치가 있어(모델 결과 검증·프리필)
 오프라인 전용 투자 부담이 없음. 넷 다 새 엔진이 아니라 기존 결정론 층에 UI를 붙이는 작업.
@@ -592,7 +606,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 | `ai/apply/` structural apply·앵커 | 위저드 결과의 결정론 삽입 |
 | `ai/contracts/ComponentPropsIndex` | 카탈로그 패널(B1)·컴포넌트 삽입기(A4) 데이터 |
 | `ai/JsonTypeGenerator` | A1 위저드의 타입 생성 단계 |
-| `ai/pipeline/RegionCaptureRecorder` | 카드 채집 플라이휠(§6)·오프라인 큐잉(D3) 원료 |
+| `ai/pipeline/RegionCaptureRecorder` | 카드 채집 플라이휠(§6) 원료 |
 | region disambiguation(모델 객관식) | 같은 되묻기 패턴 — 응답자만 모델→사용자 |
 | `.axiom/knowledge` 핫리로드(_AUTHORING) | `.axiom/actions/` 핫리로드로 확장 |
 
@@ -616,7 +630,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
   미리보기·근거 하이라이트) → 칩 편집(단일 슬롯 QuickPick) → 템플릿 생성.
   기존 오프라인 실행 경로는 카드 뒤로 이동(직접 실행 제거). 맨땅 진입용 순차
   QuickPick 병행. 코드 미리보기 접힘·높이 상한 포함.
-  - 진행 (2026-08-31): **코드 완료·F5 수동 검증 대기**. 구성 =
+  - 진행 (2026-08-31): **완료 · F5 라이브 검증 통과**(커밋 `ebf0de7`). 구성 =
     `providers/ActionCardController.ts`(카탈로그 로드·세션·칩 QuickPick·유형별 실행) +
     `ai/actions/CardPlanView.ts`(순수 뷰 변환) + `webview/chat/components/ActionCardsView.tsx`
     (계획 카드/컴팩트 리스트·칩·출력 미리보기·골격 접기) + 메시지 4종
@@ -902,7 +916,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       offline-api-binding 96/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0 ·
       line-edits 15/0 · code-slice 26/0).
 
-  - **B1 컴포넌트 카탈로그 패널 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+  - **B1 컴포넌트 카탈로그 패널 (2026-09-01): 완료 · F5 라이브 검증 통과**(커밋 `486190d`)
     §7의 ★우선순위 넷 중 마지막 남은 항목. A1·A2·A3가 "만들기", C1이 "검사"였다면 이건 **찾아보기** 축이다.
     - **왜 값어치가 있나 — 데이터는 다 있는데 사람이 볼 창구만 없었다**: `componentPropsIndex`(53종,
       자동생성)는 지금까지 **모델 프롬프트에만** 주입됐다. 즉 "Axiom은 아는데 개발자는 못 보는" 지식이었다.
@@ -957,7 +971,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       무회귀(scaffold-lint 64/0 · action-cards 222/0 · offline-recipe 81/0 · offline-api-binding 96/0 ·
       react-rules 39/0 · region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
-  - **형태 B 입력창 위 실시간 추천 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+  - **형태 B 입력창 위 실시간 추천 (2026-09-01): 완료 · F5 라이브 검증 통과**(커밋 `f97b78c`)
     §3.5가 "후속"으로 미뤄 두었던 나머지 절반. 형태 A(Enter 후 채팅 카드)는 Phase 1에서 기반으로
     깔렸고, 이제 **Enter 전** 표시가 붙었다.
     - **왜 지금인가 — 만든 카드가 관문을 못 넘고 있었다**: 카드는 `create_page`·`modify_file`로
@@ -995,7 +1009,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       무회귀(component-catalog 80/0 · offline-recipe 81/0 · offline-api-binding 96/0 · region-edit 243/0 ·
       react-rules 39/0 · scaffold-lint 64/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
-  - **A4 부품 삽입기 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+  - **A4 부품 삽입기 (2026-09-01): 완료 · F5 라이브 검증 통과**(커밋 `f97b78c`)
     B1이 만든 카탈로그의 마지막 한 걸음 — "보여주기"에서 "넣어주기"로. 카탈로그 상세의
     `⤵ 커서 위치에 넣기` 버튼 하나가 전부다.
     - ★**새 삽입기를 만들지 않았다**: 재료가 이미 양 끝에 다 있었다 — **무엇을 넣을지**는 B1의
@@ -1302,8 +1316,8 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 4-1. **같은 id의 계층 오버라이드** → **해소 (2026-08-31, Phase 3)**: 상위 계층이 덮고 하위는
    `overridden`으로 목록에 남는다. §4의 id 유일성은 **한 계층 안**의 규칙이고, 계층 간 같은 id는
    "우리 프로젝트용으로 내장 카드를 갈아끼운다"(§5)라는 정상적인 의도로 읽는다.
-5. **채집 플라이휠의 일반화 품질**: 성공 편집 → 카드 변환 시 "그 파일 전용"이 아닌
-   재사용 가능한 골격으로 추상화하는 규칙 필요 (수동 확인 단계를 거치는 반자동이 안전).
+5. ~~채집 플라이휠의 일반화 품질~~ → **없어짐 (2026-09-01)**: §6 플라이휠 자체를 제외해
+   이 결정은 필요 없어졌다(재개하면 다시 열린다).
 6. **계획 카드의 확신도 임계**: 격차 게이트가 과신하면 엉뚱한 계획이 큰 카드로
    그려져 역효과. 임계값은 Phase 0 드라이런 하니스로 튜닝하되, 초기엔 보수적으로
    (애매하면 리스트 쪽) 시작.
