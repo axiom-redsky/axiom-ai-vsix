@@ -1,5 +1,6 @@
 import type { ITocManifest, TGuideSource } from './guide';
 import type { ICatalogEntry as IComponentCatalogEntry } from '../ai/catalog/ComponentCatalog';
+import type { IDesignToken } from '../ai/tokens/DesignTokens';
 import type { ICardSuggestion } from '../ai/actions/CardSuggest';
 
 // 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
@@ -400,6 +401,24 @@ export interface ComponentCatalogPayload {
   focusEntryId?: string | null;
 }
 
+/** 디자인 토큰 브라우저(§7 B3) 페이로드. 토큰 자체는 순수 모듈 타입을 그대로 보낸다. */
+export interface DesignTokensPayload {
+  tokens: IDesignToken[];
+  counts: { total: number; colors: number; overriddenInDark: number };
+  /** 읽은 파일들(순서 = app.css @import 순서 = 덮어쓰기 순서). */
+  files: string[];
+  /** 스타일 루트(워크스페이스 기준 상대경로). null이면 이 프로젝트엔 토큰이 없다. */
+  stylesRoot: string | null;
+  /** app.css의 import를 따라갔는지(false = 폴백으로 tokens/*.css만 읽음) — 사실대로 표시한다. */
+  followedEntry: boolean;
+  /** import 목록엔 있는데 실제로 없던 파일. */
+  missing: string[];
+  /** "어디에 넣을지" — 삽입 버튼이 누르기 전에 말한다. */
+  target: string | null;
+  /** hover 딥링크로 열렸을 때 골라 둘 토큰 이름. */
+  focusToken: string | null;
+}
+
 export interface ActionCatalogDryrunRow {
   cardId: string;
   icon: string;
@@ -486,12 +505,18 @@ export type WebviewToHostMessage =
   | { type: 'componentCatalogOpenKnowledge'; source: string }
   // values = 필수 prop 입력 폼에서 채운 값(prop 이름 → 값). 비면 타입에서 유도한 기본값.
   | { type: 'componentCatalogInsert'; entryId: string; values: Record<string, string> }
+  // 디자인 토큰 브라우저(§7 B3): 목록 로드 / 복사 / 정의 열기 / 커서에 삽입
+  | { type: 'designTokensLoad' }
+  | { type: 'designTokensCopy'; text: string }
+  | { type: 'designTokensOpenDefinition'; file: string; line: number }
+  | { type: 'designTokensInsert'; text: string }
   // 입력창 위 실시간 추천(형태 B): 타이핑 중 요청 / 목록에서 선택
   | { type: 'cardSuggestRequest'; query: string }
   | { type: 'cardSuggestPick'; cardId: string; query: string }
   | { type: 'openGuide' }
   | { type: 'openActionCards' }
   | { type: 'openComponentCatalog' }
+  | { type: 'openDesignTokens' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
   | { type: 'guideEditDoc'; docId: string }
@@ -564,6 +589,9 @@ export type HostToWebviewMessage =
   | { type: 'componentCatalog'; payload: ComponentCatalogPayload }
   | { type: 'componentCatalogNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'componentCatalogTarget'; target: ComponentCatalogTarget | null }
+  | { type: 'designTokens'; payload: DesignTokensPayload }
+  | { type: 'designTokensNotice'; message: string; severity: 'info' | 'error' }
+  | { type: 'designTokensTarget'; target: string | null }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

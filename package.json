@@ -465,6 +465,11 @@
         "category": "Axiom AI"
       },
       {
+        "command": "axiom-ai.openDesignTokens",
+        "title": "Axiom AI: 디자인 토큰 열기",
+        "category": "Axiom AI"
+      },
+      {
         "command": "axiom-ai.reseedGuide",
         "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }
@@ -517,6 +522,7 @@
     "test:scaffold-lint": "node scripts/run-test-scaffold-lint.mjs",
     "test:component-catalog": "node scripts/run-test-component-catalog.mjs",
     "test:scaffold-hover": "node scripts/run-test-scaffold-hover.mjs",
+    "test:design-tokens": "node scripts/run-test-design-tokens.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",

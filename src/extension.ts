@@ -9,6 +9,7 @@ import { ContractsProbePanel } from './providers/ContractsProbePanel';
 import { GuidePanel } from './providers/GuidePanel';
 import { ActionCardsPanel } from './providers/ActionCardsPanel';
 import { ComponentCatalogPanel } from './providers/ComponentCatalogPanel';
+import { DesignTokensPanel } from './providers/DesignTokensPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
 import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
 import { ScaffoldHoverProvider } from './providers/ScaffoldHoverProvider';
@@ -124,6 +125,18 @@ export function activate(context: vscode.ExtensionContext): void {
     // 인자로 부품 id를 주면 그 부품을 펼쳐서 연다(hover 카드의 "카탈로그에서 열기" 딥링크, §7 B2).
     vscode.commands.registerCommand('axiom-ai.openComponentCatalog', (entryId?: unknown) => {
       ComponentCatalogPanel.createOrShow(context.extensionUri, typeof entryId === 'string' ? entryId : undefined);
+    }),
+
+    // 디자인 토큰 브라우저 — 프로젝트 CSS의 토큰을 견본과 함께 (§7 B3).
+    // 인자로 토큰 이름을 주면 그 토큰을 펼쳐서 연다(hover 카드의 딥링크).
+    vscode.commands.registerCommand('axiom-ai.openDesignTokens', (tokenName?: unknown) => {
+      DesignTokensPanel.createOrShow(context.extensionUri, typeof tokenName === 'string' ? tokenName : undefined);
+    }),
+
+    // hover 카드의 "정의 열기" — 토큰이 선언된 파일의 그 줄로 이동한다.
+    vscode.commands.registerCommand('axiom-ai.openTokenDefinition', (file?: unknown, line?: unknown) => {
+      if (typeof file !== 'string') return;
+      void DesignTokensPanel.openDefinitionAt(file, typeof line === 'number' ? line : 1);
     }),
   );
 

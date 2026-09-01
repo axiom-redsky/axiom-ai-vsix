@@ -304,6 +304,7 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleOpenGuide = () => vscode.postMessage({ type: 'openGuide' });
   const handleOpenActionCards = () => vscode.postMessage({ type: 'openActionCards' });
   const handleOpenComponentCatalog = () => vscode.postMessage({ type: 'openComponentCatalog' });
+  const handleOpenDesignTokens = () => vscode.postMessage({ type: 'openDesignTokens' });
 
   return (
     <>
@@ -355,6 +356,13 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
           title="scaffold 부품 목록 — prop 표·예제·스니펫 복사 (모델 호출 없음)"
         >
           🧩 컴포넌트 카탈로그
+        </button>
+        <button
+          className="launcher__secondary-btn"
+          onClick={handleOpenDesignTokens}
+          title="이 프로젝트 CSS의 디자인 토큰 — 라이트·다크 실제 색 견본·복사 (모델 호출 없음)"
+        >
+          🎨 디자인 토큰
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ — F5 검증 통과 / B2 hover 승격 ✅ 코드 완료·F5 수동 검증 대기)** (2026-09-01, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ / B2 hover ✅ — F5 검증 통과 / B3 디자인 토큰 ✅ 코드 완료·F5 대기)** (2026-09-01, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -16,20 +16,20 @@
 ### 지금 어디까지 왔나 (2026-09-01 갱신)
 Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B1(컴포넌트 카탈로그)**·
 **형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)**·
-**B2(hover 승격)** 까지 완료. 앞의 다섯은 **F5 라이브 검증 통과**, B2는 **코드·게이트 완료·F5 대기**.
-전 게이트 green. §7의 ★우선순위 항목은 이미 전부 소진했고, B2로 "지식·탐색" 축도 닫혔다.
+**B2(hover 승격)**·**B3(디자인 토큰 브라우저)** 까지 완료. 앞의 여섯은 **F5 라이브 검증 통과**,
+B3는 **코드·게이트 완료·F5 대기**. 전 게이트 green. §7의 ★우선순위 항목은 이미 전부 소진했고,
+B2·B3로 "지식·탐색"(B) 축은 B4만 남았다.
 상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
 
-> ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`), 형태 B·A4는 `f97b78c`에 포함.
-> **B2는 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
-> 미커밋이면 그 상태 그대로 이어가도 되고, 먼저 커밋해도 된다(게이트는 이미 전부 통과).
+> ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`), 형태 B·A4는 `f97b78c`,
+> **B2는 `69b8ff1`**. **B3는 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
 
 ### 다음에 할 일 = 아래 중 택1
 
 | 후보 | 무게 | 시작점 |
 |---|---|---|
-| **★ B2 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. 아래 "F5로 눈으로 확인하는 법"의 hover 절 참고 |
-| **★ §7 B3 디자인 토큰 브라우저 · B4 라우터 맵**(권장) | 작음 | 같은 "결정론 데이터 + 창" 패턴. B3=`assets/styles/tokens/*.css` 파싱 → 색 견본·복사, B4=`domains/*/router` 파싱 → 경로 트리·고아/중복 탐지. ⚠ B2가 만든 자리를 재사용할 것: 토큰 hover(`var(--color-…)` 위에 색 견본)는 `ai/hover/ScaffoldHover`에 심볼 표를 한 줄 늘리는 일이다 |
+| **★ B3 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. 아래 "F5로 눈으로 확인하는 법"의 토큰 절 참고 |
+| **★ §7 B4 라우터 맵**(권장) | 작음 | 같은 "결정론 데이터 + 창" 패턴의 마지막 조각. `domains/*/router` + `shared/router` 파싱 → 경로 트리·고아 페이지·중복 경로 탐지. ⚠ B3가 만든 자리를 그대로 쓸 것: 순수 파서(`ai/…`) + `providers/…Source.ts`(자료 읽기 공유) + 패널 + hover 한 줄 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **코드보다 설계 결정이 먼저**(착수하면 규칙 선택지 정리부터) |
 
 **이 트랙에서 반복해서 통한 작업 방식**(새 항목도 이대로 하면 된다):
@@ -53,6 +53,7 @@ npm run typecheck && npm run compile
 npm run test:scaffold-lint      # 64   ← C1
 npm run test:component-catalog  # 126  ← B1 + A4 삽입/입력 폼
 npm run test:scaffold-hover     # 76   ← B2
+npm run test:design-tokens      # 68   ← B3
 npm run test:action-cards       # 235  ← 카드 엔진 전체(T 섹션 = 형태 B)
 npm run test:offline-recipe     # 81   ← A3
 npm run test:offline-api-binding # 96  ← Phase 2
@@ -86,6 +87,15 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
   명령 팔레트 `Axiom AI: 컴포넌트 카탈로그 열기`. 확인할 것: 왼쪽 목록 34개 · 검색창에 `표`(→SmartTable)·
   `달력`(→Calendar) · 오른쪽 prop 표/스니펫 복사 · `📖 가이드에서 열기`가 가이드 패널로 딥링크되는지 ·
   `소스 열기`(scaffold 워크스페이스를 열었을 때만 성공, 아니면 사유 안내).
+- **디자인 토큰(B3)** = 온·오프라인 무관·모델 호출 0. 런처의 `🎨 디자인 토큰` 또는 명령 팔레트
+  `Axiom AI: 디자인 토큰 열기`. 확인할 것: ①토큰 201개·색 157개가 뜨고 **라이트/다크 값이 한 줄에 나란히**
+  ②`--color-primary` 를 펼치면 경유 체인(`var(--primary)` → `--primary` → `#499ed8`)이 보이는지
+  ③검색창에 `499ed8`(값)·`그림자`(한글)·`brand` ④`☀/🌙` 토글로 견본 바탕이 바뀌는지
+  ⑤`📄 …:줄` 을 누르면 **그 파일 그 줄**로 이동 ⑥`⤵ 커서에 넣기`가 `var(--…)` 를 넣는지
+  ⑦**CSS 파일에서 `var(--color-primary)` 위에 마우스** → 색 견본 + 라이트/다크 값 + 딥링크 2개
+  ⑧`.tsx`의 `style={{ color: 'var(--color-primary)' }}` 에서도 같은 카드가 뜨는지
+  ⑨토큰 CSS를 고쳐 **저장하면** 패널·hover 값이 따라 바뀌는지. ⚠ hover의 색 견본은 마크다운 이미지라
+  환경에 따라 안 보일 수 있다 — 안 보이면 값·링크만 보이고 나머지는 정상이다(그때 알려줄 것).
 - **Scaffold hover(B2)** = 온·오프라인 무관·모델 호출 0. 스캐폴드 폴더를 열고 아무 `.tsx`나 보면 된다.
   확인할 것: ①`useApi` 위에 마우스 → 봉투 계약 카드 + `📖 가이드에서 열기`(눌러서 가이드 패널이 열리는지)
   ②`$util.date.format` 의 **`date` 위**에 올려도 카드가 뜨고 링크가 **date-util 문서**로 가는지(멤버를 본다)
@@ -478,7 +488,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 |---|---|---|---|
 | ★B1 | **컴포넌트 카탈로그 패널** ✅(2026-09-01) | props 표+예제 브라우징·검색·스니펫 복사 (데이터는 전부 있고 UI만 없음) | ComponentPropsIndex, knowledge/components, media/guide-docs |
 | B2 | **Hover 승격** ✅(2026-09-01) | `useApi`·`$router`·`$ui`·`$util`·`cn`·`useForm` 위에 hover → 계약 카드 / UI 컴포넌트 위에 hover → prop 표·스니펫·가이드 딥링크. "질문할 줄 알아야 도움받는" 채팅 한계 돌파 | ScaffoldContracts, ComponentCatalog, guide-docs |
-| B3 | 디자인 토큰 브라우저 | tokens/*.css 파싱 → 색 견본·CSS 변수 자동완성·복사 | — (신규, 소형) |
+| B3 | **디자인 토큰 브라우저** ✅(2026-09-01) | `app.css` @import 순서를 따라 파싱 → `var()` 체인 해소 → 라이트/다크 색 견본·복사·정의 열기 + `var(--…)` hover | — (신규) |
 | B4 | 라우터 맵 | domains/*/router 파싱 → 경로 트리, 고아 페이지·중복 경로 탐지 | — (신규, 소형) |
 
 ### C. 검사·교정 — 기존 게이트를 Diagnostics로 노출
@@ -962,7 +972,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       react-rules 39/0 · scaffold-lint 64/0 · offline-api-binding 96/0 · offline-intent 73/0 ·
       api-binding 75/0 · knowledge-routing 80/0 · line-edits 15/0).
 
-  - **B2 hover 승격 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+  - **B2 hover 승격 (2026-09-01): 완료 · F5 라이브 검증 통과**
     카탈로그·린트가 각각 "찾아보기"와 "검사"라면 hover는 **묻지 않아도 먼저 알려주는** 축이다 —
     채팅은 질문할 줄 알아야 하고, 카탈로그는 찾아봐야 하고, 린트는 이미 틀린 뒤에 말한다.
     hover만이 **코드를 읽는 그 자리에서** 먼저 말한다.
@@ -1002,10 +1012,53 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       표를 그대로 부순다(백틱 안에서도). `typeCell`이 이스케이프·길이 제한을 하고, E4가 실 53종의
       모든 prop으로 표 무결성을 검사한다.
     - 설정 `axiom-ai.hover.enabled`(기본 on) — 린트와 같은 규약으로 끌 수 있다.
+    - **F5 실측으로 확인된 것**(전부 1회 통과, 수정 사항 없음): `useApi`·`$util.date.format`·`$ui.confirm`
+      계약 카드 · `<Button>` 부품 카드(prop 표 + 스니펫) · 딥링크 양쪽 실제 이동(가이드 패널이 `$util.date`
+      문서로 · 카탈로그가 **Button이 펼쳐진 채**) · ★**침묵도 실측**: `src/core/hooks/use-api.ts`(계약을
+      구현하는 파일)에서 TS hover만 뜨고 Axiom 카드는 뜨지 않았다 — `scaffoldWorkspace`의 프레임워크
+      영역 제외가 실제로 동작한다는 확인.
     - 게이트: `test:scaffold-hover` 76/0(A 심볼 12 · B 계약 17 · C 컴포넌트 20 · D 마크다운 13 ·
       E 실 자료 14) · typecheck · compile · 무회귀(component-catalog 126/0 · action-cards 235/0 ·
       offline-recipe 81/0 · offline-api-binding 96/0 · scaffold-lint 64/0 · react-rules 39/0 ·
       region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
+
+  - **B3 디자인 토큰 브라우저 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+    B1·B2가 "부품"을 다뤘다면 이건 **색·크기·그림자**다. 자료는 확장 번들이 아니라 **열려 있는
+    프로젝트의 CSS** — 그래서 퍼블리셔가 색을 바꾸면 이 창도 즉시 바뀐다(B1과 다른 점).
+    - **왜 필요한가**: `--color-primary` 하나를 알아내려면 지금은 파일 세 개를 손으로 따라가야 한다 —
+      `theme-light.css`에서 `var(--color-brand-500)` → `primitive.css`에서 `#465fff` → 그런데
+      `themes/theme-default.css`가 brand를 덮어써서 **실제로는 `#499ed8`**. 편집기도 tsc도 이 체인을
+      풀어 주지 않는다(VSCode의 CSS 색 표시는 리터럴만 본다). 그 계산을 층이 대신한다.
+    - ★**실제 파일이 가르쳐 준 세 가지**(전부 계약으로 고정했다):
+      1. **순서가 값을 바꾼다** — `app.css`의 `@import` 순서가 곧 덮어쓰기 순서다. 그래서 파일을
+         **받은 순서대로** 병합하고 **정렬하지 않는다**(테스트 C3이 "순서를 뒤집으면 값이 달라진다"로
+         이 의존성을 못 박는다 — 나중에 누가 정렬하면 즉시 빨간불).
+      2. **한 토큰에 값이 둘** — `:root`(라이트)·`.dark`. 한쪽만 보여주면 절반이 거짓이다.
+      3. **다크는 덮어쓰기지 전체 정의가 아니다** — `.dark`가 안 적은 토큰은 라이트 값을 쓴다.
+         그리고 **자기는 그대로인데 참조하는 토큰이 다크에서 바뀌는 간접 변화**(D5)도 잡아야 한다.
+    - ★**활성 테마만 읽는다**: `themes/` 폴더에는 지금 안 쓰는 테마(`theme-example-project.css`)가 함께
+      들어 있고 `app.css`에서 **주석 처리**돼 있다. 폴더를 통째로 읽으면 안 쓰는 테마 색이 섞여 사실과
+      다른 값을 보여준다 — 그래서 진입점의 import 목록이 유일한 진실원이다(B1).
+    - **모르면 모른다고 한다**: 못 푸는 `var(--x)`는 원문을 그대로 남기고(E3), 대체값이 있으면 그걸
+      쓰고(E4), 순환 참조는 끊는다(E6). `calc()`는 **치환만 하고 계산하지 않는다**(E5) — 계산기를
+      만들기 시작하면 CSS 엔진을 다시 짜게 된다.
+    - **그림자는 색이 아니다**(F4): 값 안에 `rgba(…)`가 있어도 `0 1px 2px rgba(…)`는 그림자다.
+      분류는 **이름 접두사 먼저, 없으면 값 모양**(브랜드 테마의 `--background`·`--radius`는 접두사가 없다).
+    - 화면: 한 줄 = 토큰 하나 + 라이트/다크 견본이 나란히. 펼치면 **경유 체인**(왜 이 값인지)과
+      복사·값 복사·커서에 넣기·정의 열기(`파일:줄`). 검색은 이름·값(`499ed8`)·한글 별칭(색·그림자·모서리),
+      그룹 칩으로 좁히기, `☀/🌙` 토글로 견본 바탕 전환. 반투명 색은 **체크무늬 바탕** 위에 그려 정직하게 보인다.
+    - **hover 확장(B2 재사용)**: `var(--color-primary)` 위에 마우스 → 색 견본(SVG 이미지) + 라이트/다크
+      최종값 + 경유 체인 + 딥링크 2개. CSS·SCSS·LESS에서 뜨고, `.tsx`의 인라인 스타일에서도 뜬다.
+      토큰 이름은 식별자 규칙이 달라(`--`, `-` 포함) 심볼 추출기를 따로 뒀다(`cssVarAt`) —
+      Tailwind 클래스(`bg-brand-500`)는 `--`로 시작하지 않아 걸리지 않는다(G3).
+    - **자료 읽기는 `providers/TokenSource.ts` 한 곳**(패널·hover 공유, B2의 `CatalogSource`와 같은 규약).
+      스타일 파일을 **저장하면** 패널이 자동 갱신되고 hover 캐시도 버린다 — 색을 고치는 중에 옛 값을
+      보여주면 그게 제일 나쁘다.
+    - 게이트: `test:design-tokens` 68/0(A 파싱 13 · B import 3 · C 순서 4 · D 라이트/다크 5 ·
+      E var해소 7 · F 분류·검색 17 · G 실자료·hover 19) · typecheck · compile ·
+      무회귀(scaffold-hover 76/0 · component-catalog 126/0 · scaffold-lint 64/0 · action-cards 235/0 ·
+      offline-recipe 81/0 · offline-api-binding 96/0 · react-rules 39/0 · region-edit 243/0 ·
+      offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).

@@ -18,6 +18,7 @@
 
 import { SCAFFOLD_CONTRACTS } from '../contracts/ScaffoldContracts';
 import type { ICatalogEntry, ICatalogMember, ICatalogProp } from '../catalog/ComponentCatalog';
+import { findToken, type IDesignToken, type ITokenValue } from '../tokens/DesignTokens';
 
 /** 식별자 한 글자(전역 `$router`·`$ui`·`$util` 때문에 `$`를 포함한다). */
 const WORD = /[A-Za-z0-9_$]/;
@@ -228,7 +229,7 @@ export function declaresLocally(source: string, name: string): boolean {
 // ── 결과 카드 ─────────────────────────────────────────────────────────────────
 
 export interface IHoverCard {
-  kind: 'contract' | 'component';
+  kind: 'contract' | 'component' | 'token';
   /** 계약 카드 id 또는 카탈로그 항목 id. */
   id: string;
   title: string;
@@ -242,6 +243,8 @@ export interface IHoverCard {
   catalogEntryId: string | null;
   /** 컴포넌트 소스 상대경로(props 인덱스 기준). */
   source: string | null;
+  /** 토큰 카드일 때 정의 위치(스타일 루트 기준 상대경로 + 1-based 줄) — "정의 열기" 링크용. */
+  definition: { file: string; line: number } | null;
   /** hover 하이라이트 범위(줄 안 열 위치). */
   range: { start: number; end: number };
 }
@@ -253,6 +256,8 @@ export interface IHoverInput {
   source: string;
   /** 카탈로그(B1과 같은 조립 결과). 없으면 컴포넌트 hover는 건너뛴다. */
   entries?: ICatalogEntry[];
+  /** 디자인 토큰(B3). 없으면 토큰 hover는 건너뛴다. */
+  tokens?: IDesignToken[];
 }
 
 /**
@@ -268,7 +273,11 @@ export function resolveScaffoldHover(input: IHoverInput): IHoverCard | null {
   const contract = resolveContractHover(sym, input.source);
   if (contract) return contract;
 
-  return resolveComponentHover(sym, input.source, input.entries ?? []);
+  const component = resolveComponentHover(sym, input.source, input.entries ?? []);
+  if (component) return component;
+
+  // 토큰은 식별자 규칙이 달라(`--color-primary`) 심볼을 따로 뽑는다.
+  return resolveTokenHover(input.lineText, input.character, input.tokens ?? []);
 }
 
 function resolveContractHover(sym: IHoverSymbol, source: string): IHoverCard | null {
@@ -287,6 +296,7 @@ function resolveContractHover(sym: IHoverSymbol, source: string): IHoverCard | n
     guideDocId: entry.guide ? entry.guide(sym.member) : null,
     catalogEntryId: null,
     source: null,
+    definition: null,
     range: { start: sym.start, end: sym.end },
   };
 }
@@ -334,7 +344,80 @@ function resolveComponentHover(sym: IHoverSymbol, source: string, entries: ICata
     guideDocId: entry.guideDocId,
     catalogEntryId: entry.id,
     source: shown?.source ?? null,
+    definition: null,
     range: { start: sym.start, end: sym.end },
+  };
+}
+
+// ── 디자인 토큰 hover (§7 B3) ──────────────────────────────────────────────────
+
+/** CSS 변수 이름 한 글자 — 식별자와 달리 `-`를 포함한다(`--color-primary`). */
+const CSS_VAR_CHAR = /[A-Za-z0-9_-]/;
+
+/**
+ * 커서 아래의 CSS 변수 이름(`--color-primary`). 변수가 아니면 null.
+ *
+ * `var(--color-primary)`의 `color` 위든 `--` 위든 같은 이름을 돌려준다. Tailwind 클래스
+ * (`bg-brand-500`)처럼 `--`로 시작하지 않는 토막은 걸리지 않는다.
+ */
+export function cssVarAt(lineText: string, character: number): { name: string; start: number; end: number } | null {
+  if (character < 0 || character > lineText.length) return null;
+  let s = character;
+  let e = character;
+  while (s > 0 && CSS_VAR_CHAR.test(lineText[s - 1])) s--;
+  while (e < lineText.length && CSS_VAR_CHAR.test(lineText[e])) e++;
+  if (s === e) return null;
+  const name = lineText.slice(s, e);
+  if (!/^--[A-Za-z0-9_-]+$/.test(name)) return null;
+  return { name, start: s, end: e };
+}
+
+/** 색 견본 — hover 마크다운에는 색을 칠할 방법이 없어 **작은 SVG 이미지**로 그린다. */
+export function colorSwatch(color: string): string {
+  const safe = color.replace(/"/g, "'");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">`
+    + `<rect x="0.5" y="0.5" width="13" height="13" rx="3" fill="${safe}" stroke="rgba(128,128,128,0.6)"/></svg>`;
+  return `![](data:image/svg+xml;utf8,${encodeURIComponent(svg)})`;
+}
+
+/** 값 한 줄 — 견본 + 최종 값 + (참조를 거쳤으면) 그 경로. */
+function tokenValueLine(label: string, v: ITokenValue): string {
+  const swatch = v.color ? `${colorSwatch(v.color)} ` : '';
+  const via = v.chain.length > 0 ? ` — \`${v.raw}\` 경유 ${v.chain.map((c) => `\`${c}\``).join(' → ')}` : '';
+  return `- ${label} ${swatch}\`${v.resolved}\`${via}`;
+}
+
+/**
+ * 디자인 토큰 카드. **라이트·다크를 함께** 보여준다 — 한쪽만 보여주면 절반이 거짓이 되고,
+ * 다크에서 재정의되지 않았으면 "같음"이라고 말한다(빈칸으로 두면 모르는 것처럼 보인다).
+ */
+export function resolveTokenHover(lineText: string, character: number, tokens: IDesignToken[]): IHoverCard | null {
+  if (tokens.length === 0) return null;
+  const at = cssVarAt(lineText, character);
+  if (!at) return null;
+  const token = findToken(tokens, at.name);
+  if (!token) return null;
+
+  const lines: string[] = [];
+  if (token.light) lines.push(tokenValueLine('라이트', token.light));
+  if (token.dark) lines.push(tokenValueLine('다크  ', token.dark));
+  else if (token.light) lines.push('- 다크   라이트와 같음(재정의 없음)');
+
+  const def = token.light ?? token.dark;
+  if (def) lines.push(`- 정의   \`${def.file}:${def.line}\``);
+
+  return {
+    kind: 'token',
+    id: token.name,
+    title: token.name,
+    subtitle: `디자인 토큰 · ${token.group}`,
+    body: lines.join('\n'),
+    guideDocId: null,
+    catalogEntryId: null,
+    source: null,
+    definition: def ? { file: def.file, line: def.line } : null,
+    range: { start: at.start, end: at.end },
   };
 }
 
@@ -406,6 +489,12 @@ export function buildHoverLinks(
   }
   if (card.catalogEntryId) {
     links.push(commandLink('🧩 카탈로그에서 열기', 'axiom-ai.openComponentCatalog', [card.catalogEntryId]));
+  }
+  if (card.kind === 'token') {
+    links.push(commandLink('🎨 토큰 브라우저에서 열기', 'axiom-ai.openDesignTokens', [card.id]));
+    if (card.definition) {
+      links.push(commandLink('📄 정의 열기', 'axiom-ai.openTokenDefinition', [card.definition.file, card.definition.line]));
+    }
   }
   return links.join(' · ');
 }
