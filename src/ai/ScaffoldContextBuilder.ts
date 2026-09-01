@@ -11,6 +11,12 @@ import { extractRelevantTsSlice } from './decompose/CodeSectionExtractor';
 import { tokenizeQuery } from './decompose/SectionExtractor';
 import { OfflineKnowledgeRetriever } from './retrieval/OfflineKnowledgeRetriever';
 import { buildComponentPropsSectionForRegion } from './contracts/ComponentPropsIndex';
+import {
+  DEFAULT_CHAT_MODE,
+  buildGeneralSystemPrompt,
+  resolveModePolicy,
+  type ChatModePolicy,
+} from './ChatMode';
 import { buildContractSection, contractsRequirePatchMode, selectScaffoldContracts } from './contracts/ScaffoldContracts';
 import type { IntentResult } from './intent/IntentClassifier';
 import { scanLibraryVersions } from './PackageVersionScanner';
@@ -385,7 +391,30 @@ React 19, TypeScript, Vite 8, TanStack Query v5 (v5 API만 사용), shadcn/ui, T
     userQuery: string,
     forceQnA = false,
     forceModify = false,
+    policy: ChatModePolicy = resolveModePolicy(DEFAULT_CHAT_MODE),
   ): Promise<string> {
+    // 대화 모드 general — scaffold 지식을 아예 싣지 않는다(§3.3). 조기 분기라 아래 기존 경로는 무영향.
+    // 사용자가 **직접 고른** 선택 영역만 살린다(§5.4) — 파일 전문 자동 주입은 하지 않는다.
+    if (!policy.injectScaffoldRag) {
+      const selected = ctx.selection?.text || ctx.selectedText || '';
+      const fixed = buildGeneralSystemPrompt();
+      const prompt = buildGeneralSystemPrompt({
+        selectedText: selected,
+        selectionPath: ctx.filePath ?? undefined,
+        selectionLanguage: ctx.language ?? undefined,
+      });
+      this._lastScaffoldSources = [];
+      this._lastSliceGroupGuard = null;
+      // 컨텍스트 분해 패널에 "규칙·가이드 0 / RAG 0"이 그대로 보이게 한다 — 절감이 눈에 보여야 한다(§4.4).
+      this._lastBreakdown = {
+        rulesChars: fixed.length,
+        fileChars: prompt.length - fixed.length,
+        ragChars: 0,
+        domainChars: 0,
+      };
+      return prompt;
+    }
+
     const ragDir = this._getRagDir();
     const diet = ExtensionConfig.getPromptDietConfig();
 

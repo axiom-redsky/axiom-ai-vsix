@@ -33,6 +33,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const launcherProvider = new ChatPanelProvider(context.extensionUri);
   const chatProvider = new ChatViewProvider(context.extensionUri);
+  // 대화 모드 복원 — 워크스페이스별로 기억한다(§5.2). 웹뷰가 뜨기 전에 해야 첫 화면부터 맞다.
+  chatProvider.registerChatMode(context);
 
   // 설정 패널의 연결 테스트가 성공하면 채팅 토큰 메터를 즉시 온라인으로 되돌린다
   // (오프라인 사용 후 온라인 전환 시 "오프라인 · 토큰 미사용"이 다음 턴까지 고정되던 문제).

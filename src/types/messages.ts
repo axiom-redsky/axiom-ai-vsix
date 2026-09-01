@@ -3,6 +3,7 @@ import type { ICatalogEntry as IComponentCatalogEntry } from '../ai/catalog/Comp
 import type { IDesignToken } from '../ai/tokens/DesignTokens';
 import type { IRouteNode, IRouterIssue } from '../ai/router/RouterMap';
 import type { ICardSuggestion } from '../ai/actions/CardSuggest';
+import type { ChatMode } from '../ai/ChatMode';
 
 // 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
 export interface ProjectConfig {
@@ -531,7 +532,7 @@ export interface ActionCatalogDryrunResult {
 
 // WebView → Extension Host
 export type WebviewToHostMessage =
-  | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number } }
+  | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number }; mode?: ChatMode }
   | { type: 'stopMessage' }
   | { type: 'clearHistory' }
   | { type: 'ready' }
@@ -645,6 +646,8 @@ export type HostToWebviewMessage =
   | { type: 'done' }
   | { type: 'error'; message: string }
   | { type: 'status'; text: string }
+  // 현재 대화 모드 — 호스트가 진실원(workspaceState 복원값). 웹뷰 알약이 이 값을 그린다(§4.2).
+  | { type: 'chatMode'; mode: ChatMode }
   // 처리 단계(마일스톤) — "생각 중" 인디케이터에 체크리스트처럼 누적 표시된다(status 한 줄과 별개 채널).
   | { type: 'progress'; label: string }
   | { type: 'selectionContext'; filePath: string; startLine: number; endLine: number; selectedText: string }

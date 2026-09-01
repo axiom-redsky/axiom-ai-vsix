@@ -33,6 +33,13 @@ import {
 import { impliedControlTags } from '../ai/decompose/RegionIntent';
 import { computeDiffHunks } from '../ai/apply/DiffUtil';
 import {
+  DEFAULT_CHAT_MODE,
+  normalizeChatMode,
+  resolveModePolicy,
+  stripHistoryForGeneral,
+  type ChatMode,
+} from '../ai/ChatMode';
+import {
   splitIntoSections,
   scoreSections,
   tokenizeQuery,
@@ -83,6 +90,9 @@ interface GroundedPatchRegion {
   startLine: number;
   endLine: number;
 }
+
+/** 대화 모드 저장 키(workspaceState) — 워크스페이스별로 기억한다(§5.2). */
+const CHAT_MODE_KEY = 'axiom.chatMode';
 
 /**
  * 우측 Secondary Side Bar에 표시되는 채팅 WebviewView 프로바이더.
@@ -136,6 +146,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _lastSelectionLineRange: { startLine: number; endLine: number } | undefined;
   /** 직전 사용자 요청 원문 — 재시도·후처리 게이트가 삭제 의도 판정 등에 참조(retry 지시문에 오염되지 않음). */
   private _lastUserQuery = '';
+  /** 대화 모드(docs/chat-mode-plan.md) — 기본 auto = 종전 동작과 바이트 동일. */
+  private _chatMode: ChatMode = DEFAULT_CHAT_MODE;
+  /** 모드 저장소 = workspaceState(§5.2 — 프로젝트마다 Axiom 쓰임이 다르다). */
+  private _chatModeStore: vscode.Memento | undefined;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._llm = new LlmService(_extensionUri);
@@ -848,9 +862,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       switch (msg.type) {
         case 'ready':
           this._postStatus(ExtensionConfig.getLlmConfig().model);
+          // 기억된 모드를 첫 렌더부터 알려준다 — 웹뷰가 기본값을 그려 놓고 있으면 그건 거짓 상태다.
+          this._post({ type: 'chatMode', mode: this._chatMode });
           break;
         case 'sendMessage':
-          await this._handleMessage(msg.text, msg.selection);
+          await this._handleMessage(msg.text, msg.selection, msg.mode);
           break;
         case 'stopMessage':
           this._abortController?.abort();
@@ -1643,6 +1659,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     context.subscriptions.push(this._configChangeDisposable);
   }
 
+  /**
+   * 워크스페이스별 대화 모드 복원(§5.2). activate에서 웹뷰 생성 전에 한 번 호출한다.
+   * 저장값이 오염됐거나 미지원 모드(보류된 ask 등)면 normalizeChatMode가 기본(auto)으로 떨어뜨린다.
+   */
+  registerChatMode(context: vscode.ExtensionContext): void {
+    this._chatModeStore = context.workspaceState;
+    this._chatMode = normalizeChatMode(context.workspaceState.get(CHAT_MODE_KEY));
+  }
+
+  /** 모드 변경 — 저장·로그·웹뷰 통지를 한 곳에서 한다(보이지 않는 상태 금지, §2 원칙 3). */
+  private _setChatMode(mode: ChatMode): void {
+    if (mode === this._chatMode) return;
+    this._chatMode = mode;
+    void this._chatModeStore?.update(CHAT_MODE_KEY, mode);
+    this._corpusOutputChannel.appendLine(`[Axiom AI] [모드] ${mode}로 전환`);
+    this._post({ type: 'chatMode', mode });
+  }
+
   /** RAG 인덱스 빌드를 백그라운드에서 시작한다. */
   startIndexBuild(): void {
     this._scaffoldBuilder.startIndexBuild();
@@ -1653,8 +1687,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async _handleMessage(
     text: string,
     overrideSelection?: { filePath: string; startLine: number; endLine: number },
+    mode?: ChatMode,
   ): Promise<void> {
     if (!this._view) return;
+
+    // ── 대화 모드 ────────────────────────────────────────────────────────────
+    // 웹뷰가 실어 보낸 값이 진실원(사용자가 방금 고른 것). 안 실려 오면 기억된 모드를 그대로 쓴다.
+    // policy는 새 파이프라인이 아니라 **기존 게이트의 프리셋**이다 — auto면 모든 키가 종전 값이라
+    // 아래 분기가 하나도 달라지지 않는다(§7 불변식 #1).
+    if (mode) this._setChatMode(mode);
+    const policy = resolveModePolicy(this._chatMode);
 
     // 오프라인 의도 되묻기 대기: 번호 선택 처리
     if (this._offlineClarify) {
@@ -1691,7 +1733,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 행동성 요청은 실행이 아니라 **추천**이어야 하므로(offline-action-cards-plan §2-1) 여기서 계획
     // 카드를 먼저 시도한다. 매칭이 없으면 종전 흐름 그대로 진행한다(카드는 관문이 아니다).
     // 온라인은 무영향 — 헬스체크가 살아 있으면 이 블록을 통째로 건너뛴다(§10.1: 카드는 오프라인 선행 실험).
-    if (this._pageCreationDetector.detect(text).isPageCreation) {
+    if (policy.allowActionCards && this._pageCreationDetector.detect(text).isPageCreation) {
       if (!(await this._isLlmOnline(ExtensionConfig.getEffectiveLlmConfig()))) {
         const offlineCtx = this._editorCollector.collect(overrideSelection);
         // 여기까지 왔으면 "행동 요청"임은 이미 확정 — 트리거가 안 걸려도 옛 대화로 떨어뜨리지 말고
@@ -1719,7 +1761,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 채팅에 한 줄로 표시한다. 신뢰 가능한 분류면 그대로 라우팅하고, 분류 실패(null)·'other'면
     // 아래 기존 PageCreationDetector 정규식으로 폴백한다(회귀 0).
     let intent: IntentResult | null = null;
-    if (ExtensionConfig.isIntentClassifierEnabled()) {
+    if (policy.runIntentClassifier && ExtensionConfig.isIntentClassifierEnabled()) {
       this._postStatus('의도 분석 중…');
       intent = await this._classifyIntent(text);
       this._postStep('의도 분석');
@@ -1753,7 +1795,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // 분류기가 create_page 외로 **확정**했으면(=null도 'other'도 아님) 정규식 생성 분기를 건너뛴다.
     const classifierRoutedAway = intent !== null && intent.intent !== 'other';
     const pageIntent = this._pageCreationDetector.detect(text);
-    if (!classifierRoutedAway && pageIntent.isPageCreation) {
+    if (policy.pageCreationIntercept && !classifierRoutedAway && pageIntent.isPageCreation) {
       // pageName이 null(순수 한국어 이름)이어도 생성 워크플로우로 진입해 영문명을 되묻는다.
       // 그러지 않으면 "직원 리스트 화면 만들어줘" 같은 요청이 파일 수정/영역 편집 경로로 새어
       // 열려 있던 도메인 파일을 엉뚱하게 수정한다.
@@ -1794,6 +1836,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 사전 헬스체크 — 서버가 죽었으면 LLM 경로(타겟 확정 QuickPick·영역편집·streamChat·무의미한
       // axiom-action 재시도 데드엔드)를 전부 건너뛰고, 의도 기반 오프라인 응답(로컬 RAG)을 낸다.
       if (!(await this._isLlmOnline(config))) {
+        // general 모드는 오프라인에서 답할 수단이 없다. 로컬 scaffold 지식을 몰래 렌더하면 그건
+        // 모드 계약 위반이다(§5.6) — 숨기지 말고 솔직히 말한다. (전환 버튼은 Phase 3)
+        if (!policy.allowOfflineKnowledge) {
+          this._postOfflineTurn();
+          this._post({
+            type: 'token',
+            content:
+              '\n> 지금 서버에 연결되지 않아 일반 질문에 답할 수 없습니다.\n' +
+              '> 🧭 자동 모드로 바꾸면 로컬 scaffold 지식으로 찾아볼 수 있습니다.\n',
+          });
+          this._post({ type: 'done' });
+          this._postStatus('⚠️ 오프라인 모드');
+          return;
+        }
         // 이식 우선 오프라인 응답(헬스체크 실패 경로).
         await this._respondOfflineOrTransplant(text, editorCtx);
         return;
@@ -1827,13 +1883,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 종전 게이트와 **바이트 동일하게** 계산돼 회귀 0(불변식 #1). 이후 분기(S4 충돌안전 되묻기 등)는
       // 개별 불리언이 아니라 이 route 하나만 소비해 결정자를 단일화한다. ④ isFileModificationContext를
       // classifyOfflineIntent로 대체하는 오프라인 단일화는 S1 실측 divergence 확보 후 S5에서 수행한다.
-      const route: 'qna' | 'modify' | 'passthrough' =
+      const autoRoute: 'qna' | 'modify' | 'passthrough' =
         this._scaffoldBuilder.isQnAGated(text, forceQnA, forceModify)
           ? 'qna'
           : classifierSaysModify ||
               this._scaffoldBuilder.isFileModificationContext(text, editorCtx.filePath ?? '')
             ? 'modify'
             : 'passthrough';
+      // 사람이 고른 모드가 자동 판정을 이긴다(§1.3 — 자동 추론을 사람의 선언이 이긴다).
+      // 판정 로직 자체는 건드리지 않는다: auto는 forceRoute=null이라 route === autoRoute(회귀 0).
+      const route: 'qna' | 'modify' | 'passthrough' = policy.forceRoute ?? autoRoute;
       // 소비처 alias — 종전 이름·의미 유지(회귀 0). 두 게이트가 단일 route에서 흐른다.
       const qnaGated = route === 'qna';
       const isFileCtx = route === 'modify';
@@ -1849,7 +1908,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 약한 모델이 topK 청크만 보고 짧게 요약하던 것을(캡처: 온라인 답변이 오프라인보다 빈약) 결정론
       // 문서 전문 렌더로 대체한다. 확신이 없으면(빈손·카탈로그 폴백 FALLBACK_HINT) false → 아래 기존
       // LLM 경로로 떨어져 "의도 오판 → 도움 0"을 막는다.
-      if (qnaGated && ExtensionConfig.isOnlineKnowledgeAnswerEnabled()) {
+      if (qnaGated && policy.allowOnlineKnowledgeAnswer && ExtensionConfig.isOnlineKnowledgeAnswerEnabled()) {
         if (await this._tryOnlineKnowledgeAnswer(text, editorCtx, intent)) {
           this._post({ type: 'done' });
           this._postStatus(config.model);
@@ -1937,8 +1996,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this._warnUnmatchedApiPaths(refResult.unmatchedApiPaths);
       }
 
-      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text, forceQnA, forceModify);
+      const systemPrompt = await this._scaffoldBuilder.buildSystemPrompt(editorCtx, text, forceQnA, forceModify, policy);
       const breakdown = this._scaffoldBuilder.lastBreakdown();
+      // 모드가 실제로 프롬프트를 줄였는지 한 줄로 남긴다 — 알약만 바뀌고 배선이 안 걸린 상태를
+      // 구분하는 유일한 근거다(계획 §6 Phase 1 완료 기준). auto는 로그를 늘리지 않는다.
+      if (this._chatMode !== DEFAULT_CHAT_MODE) {
+        this._corpusOutputChannel.appendLine(
+          `[Axiom AI] [모드] ${this._chatMode} — 시스템 프롬프트 ${systemPrompt.length}자 · 규칙 ${breakdown.rulesChars} · RAG ${breakdown.ragChars} · 파일 ${breakdown.fileChars}`,
+        );
+      }
       this._post({
         type: 'contextInfo',
         systemPromptChars: systemPrompt.length,
@@ -1960,7 +2026,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           ]
         : [
             { role: 'system', content: systemPrompt },
-            ...this._history,
+            // §5.3 히스토리 오염 — 직전 scaffold 턴의 axiom-action/patch가 남아 있으면 약한 모델이
+            // 그 형식을 흉내낸다. 문맥은 살리고 형식만 지운다(파서 차단과 **둘 다** 한다).
+            ...(policy.stripActionHistory ? stripHistoryForGeneral(this._history) : this._history),
           ];
       if (isSelectionEdit && this._history.length > 1) {
         this._corpusOutputChannel.appendLine(
@@ -2953,6 +3021,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
      */
     precomputedDiff?: DiffLine[],
   ): Promise<boolean> {
+    // 안전은 프롬프트가 아니라 코드로(§2 원칙 5) — 파일 쓰기가 꺼진 모드에선 파서 진입 자체를 막는다.
+    // 약한 모델은 "수정하지 마세요"라는 문장을 어긴다. 모든 호출부가 이 한 지점을 지난다.
+    if (!resolveModePolicy(this._chatMode).allowFileWrite) {
+      this._corpusOutputChannel.appendLine('[Axiom AI] [모드] 파일 쓰기 차단 — axiom-action 파싱 생략');
+      return false;
+    }
     const blockRegex = /<axiom-action>([\s\S]*?)<\/axiom-action>/g;
     const actions: AxiomAction[] = [];
     const blockMatches = [...response.matchAll(blockRegex)];

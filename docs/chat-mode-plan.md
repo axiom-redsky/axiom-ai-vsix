@@ -1,6 +1,6 @@
 # 대화 모드 전환 (Chat Mode) — 설계 계획
 
-> 상태: **계획 수립 (2026-09-01)** — 코드 변경 없음. 구현 착수 전 단계.
+> 상태: **Phase 0·1 구현 완료 (2026-09-01)** — 정책 모듈 + 호스트 배선. 기능은 켜졌고 UI만 없다(Phase 2).
 > 작성: 2026-09-01
 > 관련 문서: [offline-action-cards-plan.md](offline-action-cards-plan.md) · [page-creation-intent-routing-plan.md](page-creation-intent-routing-plan.md) · [unified-settings-plan.md](unified-settings-plan.md)
 > 관련 메모리: [qna-gating-consistency], [intent-routing-redesign], [prefer-intent-over-blocking], [offline-intent-responder], [online-knowledge-answer]
@@ -13,12 +13,26 @@
 > **이 문서가 이 트랙의 유일한 진실원**이다. 이어서 작업한 뒤에는 이 절도 함께 갱신할 것.
 
 ### 지금 어디까지 왔나
-**계획만 있고 코드는 하나도 없다.** 이 문서가 첫 산출물이다.
-문제 정의(§1) · 설계 원칙(§2) · 모드 정의(§3) · UI 안(§4) · 사용성 규칙(§5) · 구현 Phase(§6) 까지 확정 초안.
+**Phase 0·1 완료.** 모드는 호스트에서 실제로 동작한다 — 다만 **고를 UI가 없어** 아직 `auto` 고정이다.
+
+- Phase 0: `src/ai/ChatMode.ts` 신설(정책 표·CHAT_MODES·general 프롬프트·히스토리 스트립) + `npm run test:chat-mode` 55건
+- Phase 1: 게이트 ①②③④⑥ policy 배선 · `forceRoute` · `buildSystemPrompt` general 조기 분기 ·
+  `_handleAxiomAction` 진입 차단 · 히스토리 스트립 · `workspaceState` 기억 · 출력 채널 `[모드]` 로그
+- §7 무회귀 전량 green(typecheck·compile·region-edit 243·offline-intent 73·offline-answer 70·
+  knowledge-routing 80·action-cards 235·api-binding 75·chat-mode 55·eval:region exit 0)
+
+**계획에서 벗어난 것 2건**(의도한 것, 아래 §3.3·§6에 반영해 둠):
+1. 정책 키를 하나 늘렸다 — `stripActionHistory`(§5.3의 히스토리 스트립을 모드별 정책으로 표현).
+   provider가 `this._chatMode === 'general'`을 직접 보지 않게 하려는 것(정책 단일 진실원 유지).
+2. §5.6 오프라인 × general 안내 **한 줄**을 Phase 3이 아니라 Phase 1에 넣었다.
+   ④를 그냥 건너뛰면 죽은 서버로 streamChat을 때려 에러가 난다 — 대안이 "정직한 한 줄"뿐이었다.
+   전환 **버튼**은 계획대로 Phase 3.
 
 ### 다음에 할 일
-**Phase 0(정책 모듈 `src/ai/ChatMode.ts` 신설 + 테스트)부터.** §6 진행표 참조.
-Phase 0은 vscode 비의존 순수 모듈이라 UI 없이도 검증이 끝난다 — 이 트랙에서 가장 싸고 되돌리기 쉬운 첫걸음.
+**Phase 2(UI: 알약 + 모드 메뉴 + 배지)부터.** §4가 확정 사양, §6 Phase 2가 작업 목록이다.
+호스트 계약은 이미 있다 — 웹뷰는 `sendMessage`에 `mode`를 실어 보내고, 호스트가 `chatMode` 알림을 준다.
+행 데이터는 `CHAT_MODES`(`src/ai/ChatMode.ts`)를 import할 것 — 라벨을 웹뷰에 다시 적지 말 것.
+검증은 §6 Phase 2 완료 기준 7항목(F5 수동). **6번(규칙 0 / RAG 0)이 안 나오면 웹뷰만 바뀐 것.**
 
 ### 확정된 것 (2026-09-01, 사용자 지시)
 - **UI 형태 = Claude Code 모드 메뉴와 동일 계열**(입력창 우하단 알약 → 위로 뜨는 모드 메뉴). §4가 확정 사양.
@@ -132,6 +146,7 @@ Axiom이 이번 요청에서 실제로 필요한 건 **지식 축**이다. 두 �
 | `allowActionCards` | ✅ | ❌ | ❌ | #L1693 |
 | `allowOfflineKnowledge` | ✅ | ❌ (§5.6) | ✅ | `_respondOfflineOrTransplant` |
 | `allowOnlineKnowledgeAnswer` | ✅ | ❌ | ✅ | #L1853 |
+| `stripActionHistory` *(구현 시 추가)* | ❌ | ✅ | ❌ | §5.3 · streamChat 메시지 구성 |
 
 `general` 모드의 시스템 프롬프트 = **아주 짧은 한 문단**(사용자 언어·한국어 답변·코드블록 규칙 정도).
 목표치: **시스템 프롬프트 1,500자 미만** (현재 scaffold 경로는 통상 수만 자). 이건 측정 가능한 완료 기준이다.
@@ -332,6 +347,7 @@ Axiom이 이번 요청에서 실제로 필요한 건 **지식 축**이다. 두 �
   - `general` 정책이 모든 주입 키 false임을 고정
   - `buildGeneralSystemPrompt` 길이 < 1,500자
 - **완료 기준**: `npm run typecheck` 0 · `test:chat-mode` green · 다른 코드 변경 0줄
+- **결과(2026-09-01)**: 완료. 테스트 55건 통과. 계획 대비 정책 키 `stripActionHistory` 1개 추가(§3.3 표에 반영).
 
 ### Phase 1 — 호스트 배선 (기능은 켜지되 UI는 아직 없음)
 - [messages.ts](../src/types/messages.ts): `sendMessage`에 `mode?: ChatMode` 추가, 호스트→웹뷰 `chatMode` 알림 추가
@@ -345,6 +361,9 @@ Axiom이 이번 요청에서 실제로 필요한 건 **지식 축**이다. 두 �
 - [ScaffoldContextBuilder.buildSystemPrompt](../src/ai/ScaffoldContextBuilder.ts#L383)에 `policy` 인자 추가
   - `!policy.injectScaffoldRag` → `buildGeneralSystemPrompt` 반환(조기 분기, 기존 경로 무영향)
 - **완료 기준**: 무회귀 전량(§7) green + 출력 채널에 `[모드] general — RAG 0 / 규칙 0` 로그 확인
+- **결과(2026-09-01)**: 완료. §7 전량 green. 로그는 `[Axiom AI] [모드] general — 시스템 프롬프트 N자 · 규칙 N · RAG 0 · 파일 N`.
+  파일 쓰기 차단은 호출부마다가 아니라 `_handleAxiomAction` **진입점 한 곳**에 뒀다(호출부가 15곳이라 한 곳이 안전).
+  §5.6 오프라인 안내 한 줄도 여기서 처리(버튼 없이) — ④를 그냥 건너뛰면 죽은 서버로 요청이 나간다.
 
 ### Phase 2 — UI (캡처 형태: 알약 + 모드 메뉴 + 배지)
 - 신설 `src/webview/chat/components/ModeMenu.tsx` — 알약 버튼 + 팝오버 한 벌.
@@ -421,8 +440,8 @@ npm run eval:region        # 적용률·게이트 회귀 확인
 |---|---|---|---|
 | 계획 | 이 문서 | ✅ 2026-09-01 | 미커밋 |
 | 계획 | UI 사양 확정(§4 = Claude Code 모드 메뉴 형태, 사용자 지시) | ✅ 2026-09-01 | 미커밋 |
-| 0 | `ChatMode.ts` 정책 모듈 + 테스트 | ⬜ | — |
-| 1 | 호스트 배선(Provider·Builder) | ⬜ | — |
+| 0 | `ChatMode.ts` 정책 모듈 + 테스트(55건) | ✅ 2026-09-01 | `8def0ab` |
+| 1 | 호스트 배선(Provider·Builder) — §7 전량 green | ✅ 2026-09-01 | 미커밋 |
 | 2 | UI(칩·팝오버·배지) | ⬜ | — |
 | 3 | 탈출구·전환 제안·오프라인 안내 | ⬜ | — |
 | 4 | 설정·도식 | ⬜ (선택) | — |
