@@ -36,6 +36,17 @@ export interface AxiomSettings {
      * 같은 리터럴 유니온을 그대로 적는다. (옵셔널: 기존 메시지 하위호환)
      */
     endpointMode?: 'base' | 'full';
+    /**
+     * 서버 호환 스위치 — 설정 화면 "서버 연결 → ④ 세부 조정"에서 조정한다.
+     * 전부 머신 단위(전역 settings.json)다. 프로젝트가 아니라 **접속 대상 서버**의 성질이라
+     * 프로젝트 파일(axiom.config.json)이 아닌 서버 연결 쪽에 둔다. (옵셔널: 기존 메시지 하위호환)
+     * - stream: 스트리밍 수신(axiom-ai.llm.stream). SSE를 막는 게이트웨이에서 끈다.
+     * - injectNoThink / sendThinkingParams: thinking 억제 방식(axiom-ai.llm.thinking.*).
+     *   provider='ollama'는 think:false로 항상 끄므로 이 둘이 적용되지 않는다(UI에서 비활성 표시).
+     */
+    stream?: boolean;
+    injectNoThink?: boolean;
+    sendThinkingParams?: boolean;
   };
   rag: {
     userRagFolder: string;
@@ -66,8 +77,8 @@ export interface AxiomSettings {
     logSystemPrompt: boolean;
   };
   /**
-   * 고급 튜닝 설정. 대부분 프로젝트 파일(axiom.config.json)에 저장되며,
-   * thinking(injectNoThink/sendThinkingParams)만 머신 단위(전역 settings.json)다. 옵셔널 — 하위호환.
+   * 고급 튜닝 설정. 전부 프로젝트 파일(axiom.config.json)에 저장된다. 옵셔널 — 하위호환.
+   * (서버 성질에 속하는 thinking·stream 스위치는 여기가 아니라 llm 블록에 있다 — 서버 연결 탭 ④ 세부 조정.)
    */
   advanced?: {
     // 프롬프트 다이어트
@@ -95,9 +106,6 @@ export interface AxiomSettings {
     qnaAntiRepeatRepeatPenalty: number;
     qnaAntiRepeatFrequencyPenalty: number;
     qnaAntiRepeatPresencePenalty: number;
-    // thinking (머신 단위 — 전역 settings.json)
-    injectNoThink: boolean;
-    sendThinkingParams: boolean;
     // 기타
     offlineFallback: boolean;
     userStubsFolder: string;

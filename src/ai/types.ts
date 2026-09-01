@@ -33,6 +33,13 @@ export interface LlmConfig {
    */
   injectNoThink: boolean;
   sendThinkingParams: boolean;
+  /**
+   * 응답을 스트리밍(SSE/NDJSON)으로 받을지 여부. 기본 true — 토큰이 오는 대로 화면에 흘린다.
+   * 폐쇄망 SI에서 사내 리버스 프록시·API 게이트웨이가 SSE를 버퍼링하거나 청크 전송을 막는 구성이 있는데,
+   * 그때 증상은 '느림'이 아니라 **빈 응답**이다(스트림 파서가 `data:` 없는 본문을 전부 버리기 때문).
+   * false면 완성된 JSON 응답 한 덩어리를 받아 파싱한다 — 타자기 효과는 없지만 그런 게이트웨이에서도 답을 받는다.
+   */
+  stream: boolean;
 }
 
 /**

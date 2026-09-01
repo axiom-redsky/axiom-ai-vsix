@@ -110,6 +110,9 @@ export class LlmService {
    * 두 가지 자동 폴백을 둔다.
    *  - 400 Bad Request(엄격한 게이트웨이가 미지 필드 거부) → thinking 파라미터를 빼고 1회 재시도.
    *  - 빈 응답(추론 토큰이 max_tokens 소진) → max_tokens를 16384로 올려 1회 재시도.
+   *
+   * config.stream=false면 스트리밍 대신 완성된 JSON 응답 한 덩어리를 받아 파싱한다(SSE를 버퍼링·차단하는
+   * 사내 게이트웨이용 탈출구). 함수 이름·시그니처는 그대로 두어 호출부는 두 경우를 구분하지 않는다.
    */
   async *streamChat(
     messages: ChatMessage[],
@@ -122,6 +125,8 @@ export class LlmService {
   ): AsyncGenerator<string> {
     // Ollama 네이티브는 /api/chat(줄단위 JSON), OpenAI 호환은 /v1/chat/completions(SSE).
     const isOllama = config.provider === 'ollama';
+    // 스트리밍 수신 여부. 미지정(구버전 설정 객체)이면 종전 동작인 스트리밍으로 본다.
+    const useStream = config.stream !== false;
     // 엔드포인트 미설정/형식 오류는 여기서 원인이 드러나는 메시지로 실패시킨다(호출부가 잡아 표시).
     // 그냥 두면 `new URL`의 "Invalid URL" TypeError만 남아 사용자가 원인을 알 수 없다.
     // (정상 흐름에선 사전 헬스체크가 오프라인으로 걸러 여기까지 오지 않는다.)
@@ -140,7 +145,7 @@ export class LlmService {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Accept': isOllama ? 'application/x-ndjson' : 'text/event-stream',
+      'Accept': !useStream ? 'application/json' : isOllama ? 'application/x-ndjson' : 'text/event-stream',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     };
     Object.assign(headers, this._buildAuthHeaders(config));
@@ -151,9 +156,9 @@ export class LlmService {
     // 이 엔드포인트가 이전에 튜닝 파라미터를 거부했다면 처음부터 안 싣는다(왕복 절약).
     let activeTuning = this._tuningUnsupported.has(config.endpoint) ? undefined : tuning;
     const buildBody = (): string =>
-      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens, tuning: activeTuning });
+      this._buildRequestBody(messages, config, { sendThinkingParams, maxTokens, tuning: activeTuning, stream: useStream });
 
-    console.log(`[Axiom AI] → 요청 URL: ${url} (provider=${config.provider})`);
+    console.log(`[Axiom AI] → 요청 URL: ${url} (provider=${config.provider}, stream=${useStream})`);
     console.log(
       `[Axiom AI] → 모델: ${config.model}, 메시지 수: ${messages.length}, temperature: ${config.temperature}, ` +
       (isOllama
@@ -280,11 +285,16 @@ export class LlmService {
 
     onServerConnected?.();
 
-    // 스트림 소비 → content 누적치를 stats로 받는다 (provider별 포맷 분기)
+    // 응답 소비 → content 누적치를 stats로 받는다 (스트리밍 여부 · provider별 포맷 분기)
+    const consume = (res: Response, st: ReturnType<typeof LlmService._newStreamStats>): AsyncGenerator<string> =>
+      !useStream
+        ? this._consumeJsonResponse(res, st, maxTokens, isOllama, onUsage)
+        : isOllama
+          ? this._consumeOllamaStream(res, st, maxTokens, onUsage)
+          : this._consumeStream(res, st, maxTokens, onUsage);
+
     const stats = LlmService._newStreamStats();
-    yield* isOllama
-      ? this._consumeOllamaStream(response, stats, maxTokens, onUsage)
-      : this._consumeStream(response, stats, maxTokens, onUsage);
+    yield* consume(response, stats);
 
     // 자동 폴백 ②: 빈 응답 + thinking 오버플로 → max_tokens를 올려 1회 재시도.
     // content를 한 글자도 내보내지 않았으므로 안전하게 재요청할 수 있다.
@@ -300,9 +310,7 @@ export class LlmService {
       const retry = await attemptFetch();
       if (retry?.ok && retry.body) {
         const stats2 = LlmService._newStreamStats();
-        yield* isOllama
-          ? this._consumeOllamaStream(retry, stats2, maxTokens, onUsage)
-          : this._consumeStream(retry, stats2, maxTokens, onUsage);
+        yield* consume(retry, stats2);
       } else {
         console.warn(`[Axiom AI] max_tokens 증액 재시도 실패 (status=${retry?.status ?? 'network'})`);
       }
@@ -464,6 +472,87 @@ export class LlmService {
     }
   }
 
+  /**
+   * 비(非)스트리밍 응답(단일 JSON 본문)을 파싱해 content를 한 번에 yield 한다.
+   * 설정 `axiom-ai.llm.stream=false`(설정 화면: 서버 연결 → ④ 세부 조정) 전용 경로다.
+   * SSE를 버퍼링하거나 청크 전송을 막는 사내 게이트웨이에서는 스트림 파서가 `data:` 없는 본문을
+   * 전부 버려 '빈 응답'이 되는데, 그때 이 경로로 답을 받는다(타자기 효과만 없다).
+   *
+   * 응답 스키마는 provider에 따라 다르다.
+   * - openai 호환: { choices: [{ message: { content }, finish_reason }], usage }
+   * - ollama 네이티브: { message: { content, thinking }, done_reason, prompt_eval_count, eval_count }
+   */
+  private async *_consumeJsonResponse(
+    response: Response,
+    stats: ReturnType<typeof LlmService._newStreamStats>,
+    effectiveMaxTokens: number,
+    isOllama: boolean,
+    onUsage?: (usage: LlmUsage) => void,
+  ): AsyncGenerator<string> {
+    try {
+      const raw = await response.text();
+      stats.chunksReceived++;
+
+      let content = '';
+      try {
+        const parsed = JSON.parse(raw) as {
+          // openai 호환
+          choices?: {
+            message?: { content?: string; reasoning_content?: string; reasoning?: string };
+            finish_reason?: string | null;
+          }[];
+          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+          // ollama 네이티브
+          message?: { content?: string; thinking?: string };
+          done_reason?: string;
+          prompt_eval_count?: number;
+          eval_count?: number;
+        };
+
+        if (isOllama) {
+          content = parsed.message?.content ?? '';
+          // thinking은 출력하지 않고 진단용으로만 집계한다(스트리밍 경로와 동일 규칙).
+          if (parsed.message?.thinking) stats.reasoningChars += parsed.message.thinking.length;
+          stats.finishReason = parsed.done_reason ?? 'stop';
+          if (onUsage) {
+            onUsage({
+              promptTokens: parsed.prompt_eval_count,
+              completionTokens: parsed.eval_count,
+              totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0) || undefined,
+            });
+          }
+        } else {
+          const choice = parsed.choices?.[0];
+          content = choice?.message?.content ?? '';
+          const reasoning = choice?.message?.reasoning_content ?? choice?.message?.reasoning;
+          if (reasoning) stats.reasoningChars += reasoning.length;
+          stats.finishReason = choice?.finish_reason ?? null;
+          if (parsed.usage && onUsage) {
+            onUsage({
+              promptTokens: parsed.usage.prompt_tokens,
+              completionTokens: parsed.usage.completion_tokens,
+              totalTokens: parsed.usage.total_tokens,
+            });
+          }
+        }
+      } catch {
+        // 게이트웨이가 JSON이 아닌 것(HTML 오류 페이지 등)을 200으로 돌려준 경우. 원인을 로그에 남긴다.
+        stats.parseErrors++;
+        console.warn(
+          `[Axiom AI] 비스트리밍 응답을 JSON으로 파싱하지 못했습니다: ${raw.trim().slice(0, 200)}`,
+        );
+      }
+
+      if (content) {
+        stats.contentChunks++;
+        stats.contentChars += content.length;
+        yield content;
+      }
+    } finally {
+      LlmService._logStreamEnd(stats, effectiveMaxTokens);
+    }
+  }
+
   /** 스트림 종료 시 진단 로그를 남긴다(빈 응답이면 원인 분류 경고). OpenAI·Ollama 파서 공용. */
   private static _logStreamEnd(
     stats: ReturnType<typeof LlmService._newStreamStats>,
@@ -492,12 +581,12 @@ export class LlmService {
 
   /**
    * /v1/chat/completions 요청 본문을 만든다.
-   * thinking 억제 옵션(injectNoThink / sendThinkingParams)과 max_tokens를 호출 시점에 반영한다.
+   * thinking 억제 옵션(injectNoThink / sendThinkingParams)·max_tokens·스트리밍 여부를 호출 시점에 반영한다.
    */
   private _buildRequestBody(
     messages: ChatMessage[],
     config: LlmConfig,
-    opts: { sendThinkingParams: boolean; maxTokens: number; tuning?: LlmTuning },
+    opts: { sendThinkingParams: boolean; maxTokens: number; tuning?: LlmTuning; stream: boolean },
   ): string {
     if (config.provider === 'ollama') {
       // Ollama 네이티브(/api/chat): thinking은 top-level think:false로만 확실히 꺼진다.
@@ -522,7 +611,7 @@ export class LlmService {
       return JSON.stringify({
         model: config.model,
         messages,
-        stream: true,
+        stream: opts.stream,
         think: false,
         options,
       });
@@ -532,12 +621,16 @@ export class LlmService {
       model: config.model,
       // qwen3 계열은 JSON 파라미터를 무시하는 서버가 있어, 모델 레벨에서 인식하는 /no_think 소프트 스위치를 함께 쓴다.
       messages: config.injectNoThink ? LlmService._applyNoThink(messages) : messages,
-      stream: true,
+      stream: opts.stream,
       temperature: config.temperature,
       max_tokens: opts.maxTokens,
-      // OpenAI/vLLM 호환: 스트림 마지막 chunk에 usage를 포함시킨다. 미지원 서버는 무시한다.
-      stream_options: { include_usage: true },
     };
+    // OpenAI/vLLM 호환: 스트림 마지막 chunk에 usage를 포함시킨다. 미지원 서버는 무시한다.
+    // 비스트리밍에서는 usage가 응답 본문에 그대로 들어오고, stream_options는 stream=true 전용 필드라
+    // 엄격한 서버가 400을 낼 수 있어 아예 싣지 않는다.
+    if (opts.stream) {
+      body.stream_options = { include_usage: true };
+    }
     // per-call 튜닝(Q&A 경로에서만 주입). 표준 OpenAI 필드이나, 미지정이면 바디에 넣지 않아 종전과 동일하게 둔다.
     if (opts.tuning?.frequencyPenalty != null) {
       body.frequency_penalty = opts.tuning.frequencyPenalty;

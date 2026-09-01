@@ -1503,6 +1503,29 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   opacity: 0.6;
 }
 
+/* 섹션 안의 하위 묶음 — ④ 세부 조정의 서버 호환 스위치(스트리밍·thinking)처럼 성격이 다른 값을 갈라 놓는다. */
+.settings__subgroup {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.settings__subgroup-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+
+/* provider가 값을 정해버려 만질 수 없는 토글. 왜 잠겼는지는 바로 위 hint가 설명한다. */
+.settings__toggle--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings__toggle--locked input[type='checkbox'] {
+  cursor: not-allowed;
+}
+
 .settings__rag-folder {
   display: flex;
   flex-direction: column;

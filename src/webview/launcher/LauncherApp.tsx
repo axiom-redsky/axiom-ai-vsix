@@ -107,8 +107,6 @@ const DEFAULT_ADVANCED: NonNullable<AxiomSettings['advanced']> = {
   qnaAntiRepeatRepeatPenalty: 1.3,
   qnaAntiRepeatFrequencyPenalty: 0.3,
   qnaAntiRepeatPresencePenalty: 0.3,
-  injectNoThink: true,
-  sendThinkingParams: true,
   offlineFallback: true,
   userStubsFolder: '',
   externalCorpusEnabled: true,
@@ -116,7 +114,11 @@ const DEFAULT_ADVANCED: NonNullable<AxiomSettings['advanced']> = {
 };
 
 const DEFAULT_SETTINGS: AxiomSettings = {
-  llm: { endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768, provider: 'openai' },
+  llm: {
+    endpoint: '', model: '', apiKey: '', temperature: 0.2, maxTokens: 8192, contextWindow: 32768, provider: 'openai',
+    // 서버 호환 스위치(④ 세부 조정) — 정상 환경의 기본값. 증상이 있을 때만 끈다.
+    stream: true, injectNoThink: true, sendThinkingParams: true,
+  },
   rag: { userRagFolder: '', additionalFiles: [] },
   project: { ...DEFAULT_PROJECT },
   advanced: { ...DEFAULT_ADVANCED },
@@ -182,7 +184,7 @@ export function LauncherApp(): React.ReactElement {
   }, []);
 
   const handleLlmChange = useCallback(
-    (field: keyof AxiomSettings['llm'], value: string | number) => {
+    (field: keyof AxiomSettings['llm'], value: string | number | boolean) => {
       setSettings((prev) => ({ ...prev, llm: { ...prev.llm, [field]: value } }));
       setDirty(true);
       setSaved(false);
@@ -436,7 +438,7 @@ interface SettingsTabProps {
   settings: AxiomSettings;
   connTest: { ok: boolean; detail: string } | null;
   testing: boolean;
-  onLlmChange: (field: keyof AxiomSettings['llm'], value: string | number) => void;
+  onLlmChange: (field: keyof AxiomSettings['llm'], value: string | number | boolean) => void;
   onProjectChange: (field: keyof NonNullable<AxiomSettings['project']>, value: string | boolean) => void;
   onAdvancedChange: (field: keyof NonNullable<AxiomSettings['advanced']>, value: string | number | boolean) => void;
   onTestConnection: () => void;
@@ -480,6 +482,9 @@ function SettingsTab({
   // 출력 자리를 크게 잡을수록 입력(파일)이 줄어든다. 1/4 초과면 알려준다.
   const maxTokensTooBig =
     settings.llm.contextWindow > 0 && settings.llm.maxTokens > settings.llm.contextWindow / 4;
+  // ollama 네이티브는 요청마다 think:false를 실어 추론을 확실히 끈다 → thinking 스위치가 적용되지 않는다.
+  // 화면에서 잠가 두지 않으면 "만졌는데 아무것도 안 바뀐다"가 된다.
+  const isOllama = (settings.llm.provider ?? 'openai') === 'ollama';
 
   return (
     <div className="settings">
@@ -762,6 +767,60 @@ function SettingsTab({
           hint="코드 작업에서는 낮을수록 좋습니다. 높이면 창의적이 되는 게 아니라 규약을 안 지킵니다. 다만 일부 Qwen3 모델은 너무 낮으면 같은 문장을 반복할 수 있어, 그럴 때만 0.6~0.7로 올려 보세요."
           onChange={(v) => onLlmChange('temperature', v)}
         />
+
+        {/* 응답 수신 방식 — 모델이 아니라 '중간 경로(프록시·게이트웨이)'가 정하는 값. 증상이 아주 특징적이다. */}
+        <div className="settings__subgroup">
+          <h3 className="settings__subgroup-title">응답 받는 방식</h3>
+          <label className="settings__toggle">
+            <input
+              type="checkbox"
+              checked={settings.llm.stream !== false}
+              onChange={(e) => onLlmChange('stream', e.target.checked)}
+            />
+            <span>스트리밍으로 받기 — llm.stream</span>
+          </label>
+          <p className="settings__hint">
+            켜짐(기본) — 답변이 타자 치듯 한 글자씩 나옵니다.
+            <strong> 연결 테스트는 통과하는데 답변만 계속 비어서 나오면 이걸 끄세요.</strong>
+            사내 프록시·API 게이트웨이가 스트리밍(SSE) 전송을 막으면 느려지는 게 아니라 응답이 통째로 비어 보입니다.
+            끄면 모델이 답을 다 쓴 뒤 한 번에 받습니다 — 기다리는 느낌은 있어도 답은 옵니다.
+          </p>
+        </div>
+
+        {/* thinking 억제 — 모델이 '혼잣말'로 출력 토큰을 다 쓰는 것을 막는다. ollama는 항상 꺼지므로 잠근다. */}
+        <div className="settings__subgroup">
+          <h3 className="settings__subgroup-title">thinking(혼잣말) 억제</h3>
+          {isOllama && (
+            <p className="settings__hint">
+              지금 백엔드가 <b>ollama</b>라 확장이 요청마다 <code>think: false</code>를 실어 추론을 확실히 끕니다.
+              아래 두 스위치는 openai 호환 백엔드 전용이므로 지금은 적용되지 않습니다.
+            </p>
+          )}
+          <label className={`settings__toggle${isOllama ? ' settings__toggle--locked' : ''}`}>
+            <input
+              type="checkbox"
+              disabled={isOllama}
+              checked={settings.llm.injectNoThink !== false}
+              onChange={(e) => onLlmChange('injectNoThink', e.target.checked)}
+            />
+            <span>/no_think 주입 — llm.thinking.injectNoThink</span>
+          </label>
+          <label className={`settings__toggle${isOllama ? ' settings__toggle--locked' : ''}`}>
+            <input
+              type="checkbox"
+              disabled={isOllama}
+              checked={settings.llm.sendThinkingParams !== false}
+              onChange={(e) => onLlmChange('sendThinkingParams', e.target.checked)}
+            />
+            <span>thinking 파라미터 전송 — llm.thinking.sendThinkingParams</span>
+          </label>
+          <p className="settings__hint">
+            Qwen3 계열은 그냥 두면 답 대신 <b>혼잣말(추론)</b>에 출력 토큰을 다 써서 응답이 비어 옵니다.
+            두 스위치는 그걸 끄는 서로 다른 두 방법입니다 — <b>/no_think</b>는 프롬프트에 넣는 텍스트 스위치(비-Qwen 모델에선
+            의미 없는 문장이 되니 그때 끄세요), <b>파라미터 전송</b>은 요청 JSON에 <code>enable_thinking:false</code>를 싣는 방식
+            (미지 필드를 거부하는 게이트웨이에서 400이 나면 끄세요 — 확장이 1회 자동으로 빼고 재시도도 합니다).
+          </p>
+        </div>
       </section>
 
       </>
@@ -941,7 +1000,7 @@ function SettingsTab({
         </label>
       </section>
 
-      {/* 고급 설정 — 접이식. 대부분 axiom.config.json, thinking만 전역. */}
+      {/* 고급 설정 — 접이식. 전부 axiom.config.json(프로젝트 단위). */}
       <AdvancedSection advanced={settings.advanced ?? DEFAULT_ADVANCED} onChange={onAdvancedChange} />
       </>
       )}
@@ -1001,8 +1060,8 @@ function AdvancedSection({
     <details className="settings__advanced">
       <summary className="settings__advanced-summary">고급 설정 (튜닝)</summary>
       <p className="settings__hint">
-        대부분 현재 프로젝트의 axiom.config.json에 저장됩니다. thinking 항목만 전역(머신) 설정입니다.
-        값이 헷갈리면 건드리지 말고 기본값을 두세요.
+        현재 프로젝트의 axiom.config.json에 저장됩니다. 값이 헷갈리면 건드리지 말고 기본값을 두세요.
+        (서버 성질에 속하는 thinking·스트리밍 스위치는 <b>서버 연결 → ④ 세부 조정</b>에 있습니다.)
       </p>
 
       <div className="settings__advanced-group">
@@ -1060,12 +1119,6 @@ function AdvancedSection({
           {num('qnaAntiRepeatPresencePenalty', 'presencePenalty (openai)', 0.05)}
           <span className="settings__label settings__label--half" />
         </div>
-      </div>
-
-      <div className="settings__advanced-group">
-        <h3 className="settings__advanced-title">thinking (전역 · 머신)</h3>
-        {toggle('injectNoThink', '/no_think 주입 — thinking.injectNoThink')}
-        {toggle('sendThinkingParams', 'thinking 파라미터 전송 — sendThinkingParams')}
       </div>
 
       <div className="settings__advanced-group">

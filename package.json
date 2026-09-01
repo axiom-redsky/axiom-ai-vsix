@@ -177,6 +177,11 @@
           "default": true,
           "description": "요청에 enable_thinking / chat_template_kwargs 파라미터를 포함시켜 thinking 모드를 끕니다. 미지(未知) JSON 필드를 거부하는 엄격한 API 게이트웨이에서 400 오류가 나면 false로 끄세요. (참고: 빈 응답이 감지되면 확장이 1회 자동으로 이 파라미터를 빼고 재시도합니다.)"
         },
+        "axiom-ai.llm.stream": {
+          "type": "boolean",
+          "default": true,
+          "description": "응답을 스트리밍(SSE/NDJSON)으로 받습니다. 기본 켜짐 — 토큰이 오는 대로 화면에 표시됩니다. 사내 리버스 프록시·API 게이트웨이가 SSE를 버퍼링하거나 청크 전송을 막는 구성에서는 '느림'이 아니라 응답이 통째로 비어 보이는 증상이 납니다(스트림 파서가 data: 없는 본문을 버림). 서버는 살아 있는데 답이 계속 비어 있으면 false로 끄세요 — 완성된 JSON을 한 번에 받아 파싱하므로 타자기 효과는 없지만 답을 받습니다."
+        },
         "axiom-ai.rag.userRagFolder": {
           "type": "string",
           "default": "",

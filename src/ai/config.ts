@@ -35,6 +35,11 @@ export const AI_DEFAULTS = {
    */
   injectNoThink: true,
   sendThinkingParams: true,
+  /**
+   * 스트리밍 수신 기본값. 정상 환경에선 켜두는 값이며,
+   * SSE를 버퍼링·차단하는 게이트웨이(증상: 빈 응답)에서만 끈다.
+   */
+  stream: true,
   /** scaffold 컨벤션·패턴·문서 통합 지식 폴더 (.rag/ + corpus/ 통합) */
   knowledgePath: 'knowledge',
   maxFileLines: 200,

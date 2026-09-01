@@ -238,6 +238,7 @@ export class ExtensionConfig {
       contextWindow: cfg.get<number>('llm.contextWindow', AI_DEFAULTS.contextWindow),
       injectNoThink: cfg.get<boolean>('llm.thinking.injectNoThink', AI_DEFAULTS.injectNoThink),
       sendThinkingParams: cfg.get<boolean>('llm.thinking.sendThinkingParams', AI_DEFAULTS.sendThinkingParams),
+      stream:      cfg.get<boolean>('llm.stream',      AI_DEFAULTS.stream),
     };
   }
 
@@ -573,7 +574,6 @@ export class ExtensionConfig {
     const mp = ExtensionConfig.getMultiPatchConfig();
     const le = ExtensionConfig.getLineEditConfig();
     const qa = ExtensionConfig.getQnaAntiRepeatConfig();
-    const llm = ExtensionConfig.getLlmConfig();
     return {
       promptDietQnaGating:          pd.qnaGating,
       adaptiveBudgetEnabled:        pd.adaptiveBudget.enabled,
@@ -595,8 +595,6 @@ export class ExtensionConfig {
       qnaAntiRepeatRepeatPenalty:   qa.repeatPenalty,
       qnaAntiRepeatFrequencyPenalty: qa.frequencyPenalty,
       qnaAntiRepeatPresencePenalty: qa.presencePenalty,
-      injectNoThink:                llm.injectNoThink,
-      sendThinkingParams:           llm.sendThinkingParams,
       offlineFallback:              ExtensionConfig.isOfflineFallbackEnabled(),
       userStubsFolder:              ExtensionConfig.getUserStubsFolder(),
       externalCorpusEnabled:        ExtensionConfig._resolve<boolean>('rag.externalCorpusEnabled', true),

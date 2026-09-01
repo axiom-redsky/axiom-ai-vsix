@@ -113,6 +113,10 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         contextWindow: llm.contextWindow,
         provider:    llm.provider,
         endpointMode: llm.endpointMode,
+        // 서버 호환 스위치 — 설정 화면 "서버 연결 → ④ 세부 조정". 전부 머신(전역) 단위.
+        stream:      llm.stream,
+        injectNoThink:      llm.injectNoThink,
+        sendThinkingParams: llm.sendThinkingParams,
       },
       rag: {
         userRagFolder:   rag.folder,
@@ -172,6 +176,10 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       if (llm.temperature !== undefined) await this._updateCfgSticky(cfg, 'llm.temperature', llm.temperature);
       if (llm.maxTokens  !== undefined) await this._updateCfgSticky(cfg, 'llm.maxTokens',    llm.maxTokens);
       if (llm.contextWindow !== undefined) await this._updateCfgSticky(cfg, 'llm.contextWindow', llm.contextWindow);
+      // 서버 호환 스위치(④ 세부 조정) — 접속 대상 서버의 성질이라 프로젝트 파일이 아닌 전역에 둔다.
+      if (llm.stream     !== undefined) await this._updateCfgSticky(cfg, 'llm.stream',       llm.stream);
+      if (llm.injectNoThink      !== undefined) await this._updateCfgSticky(cfg, 'llm.thinking.injectNoThink',      llm.injectNoThink);
+      if (llm.sendThinkingParams !== undefined) await this._updateCfgSticky(cfg, 'llm.thinking.sendThinkingParams', llm.sendThinkingParams);
       // apiKey만 SecretStorage(키체인) — 평문·Settings Sync 유출 차단.
       if (llm.apiKey     !== undefined) await ExtensionConfig.setApiKey(llm.apiKey);
     }
@@ -204,11 +212,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
     if (partial.advanced) {
       const a = partial.advanced;
-      // thinking은 머신(전역) 단위 — 모델/게이트웨이 호환 설정.
-      if (a.injectNoThink      !== undefined) await cfg.update('llm.thinking.injectNoThink',      a.injectNoThink,      vscode.ConfigurationTarget.Global);
-      if (a.sendThinkingParams !== undefined) await cfg.update('llm.thinking.sendThinkingParams', a.sendThinkingParams, vscode.ConfigurationTarget.Global);
-
-      // 나머지 고급 튜닝 → 프로젝트 파일(axiom.config.json). 평탄화 필드 ↔ dotted 설정 키 매핑.
+      // 고급 튜닝 → 프로젝트 파일(axiom.config.json). 평탄화 필드 ↔ dotted 설정 키 매핑.
+      // (thinking·stream은 서버 성질이라 여기가 아니라 위의 llm 블록에서 전역으로 저장한다.)
       const ADVANCED_KEY_MAP: [keyof typeof a, string][] = [
         ['promptDietQnaGating',          'promptDiet.qnaGating'],
         ['adaptiveBudgetEnabled',        'promptDiet.adaptiveBudget.enabled'],
