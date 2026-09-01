@@ -22,11 +22,12 @@ interface Props {
   onCardSlotSet?: (requestId: string, cardId: string, slotName: string, value: string) => void;
   onCardBindingChoice?: (requestId: string, cardId: string, field: string, value: string) => void;
   onCardExecute?: (requestId: string, cardId: string) => void;
+  onModeSuggest?: (suggestId: string) => void;
 }
 
 const BOTTOM_THRESHOLD = 100;
 
-export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery, onCardChip, onCardSlotSet, onCardBindingChoice, onCardExecute }: Props): React.ReactElement {
+export function MessageList({ messages, isStreaming, isWaiting, status, progressSteps, pinQuestionTop, onConfirm, onPatchRecovery, onCardChip, onCardSlotSet, onCardBindingChoice, onCardExecute, onModeSuggest }: Props): React.ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -104,7 +105,7 @@ export function MessageList({ messages, isStreaming, isWaiting, status, progress
         </div>
       )}
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} onCardChip={onCardChip} onCardSlotSet={onCardSlotSet} onCardBindingChoice={onCardBindingChoice} onCardExecute={onCardExecute} />
+        <MessageItem key={msg.id} message={msg} onConfirm={onConfirm} onPatchRecovery={onPatchRecovery} onCardChip={onCardChip} onCardSlotSet={onCardSlotSet} onCardBindingChoice={onCardBindingChoice} onCardExecute={onCardExecute} onModeSuggest={onModeSuggest} />
       ))}
       {(isWaiting || isStreaming) && (
         <div className="typing-indicator">

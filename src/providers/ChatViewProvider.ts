@@ -13,6 +13,7 @@ import { applyStructuralEdit, findUnresolvedReferences, findDuplicateDeclaration
 import { runHybridRegionEdit, classifyRegionDecline, buildDisambiguationPrompt, parseDisambiguationPick, buildImportProvenance, REGION_GROUNDABLE_REASONS, type RegionEditOutcome } from '../ai/pipeline/RegionEditService';
 import { buildCaptureEntry, serializeCaptureLine, shouldCapture } from '../ai/pipeline/RegionCaptureRecorder';
 import { crossFileSuppressionReason } from '../ai/intent/CrossFileTargeting';
+import { isExplicitEditOrCreate } from '../ai/intent/IntentSignals';
 import { buildContractSection } from '../ai/contracts/ScaffoldContracts';
 import { buildComponentOptionsReference, detectComponentsInText } from '../ai/contracts/ComponentPropsIndex';
 import {
@@ -36,6 +37,7 @@ import {
   DEFAULT_CHAT_MODE,
   normalizeChatMode,
   resolveModePolicy,
+  shouldSuggestAutoMode,
   stripHistoryForGeneral,
   type ChatMode,
 } from '../ai/ChatMode';
@@ -150,6 +152,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private _chatMode: ChatMode = DEFAULT_CHAT_MODE;
   /** 모드 저장소 = workspaceState(§5.2 — 프로젝트마다 Axiom 쓰임이 다르다). */
   private _chatModeStore: vscode.Memento | undefined;
+  /**
+   * **이번 턴**의 모드. `/g 질문`처럼 한 번만 다른 모드로 도는 경우(§5.1) 기억된 _chatMode와 갈린다.
+   * 파일 쓰기 차단 같은 턴 단위 게이트는 _chatMode가 아니라 이걸 봐야 한다.
+   */
+  private _turnMode: ChatMode = DEFAULT_CHAT_MODE;
+  /** 전환 제안 대기 — 버튼을 누르면 원문 그대로 다시 돌린다(§5.5). */
+  private readonly _pendingModeSuggest = new Map<string, { text: string; targetMode: ChatMode; sticky: boolean }>();
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._llm = new LlmService(_extensionUri);
@@ -866,11 +875,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._post({ type: 'chatMode', mode: this._chatMode });
           break;
         case 'sendMessage':
-          await this._handleMessage(msg.text, msg.selection, msg.mode);
+          await this._handleMessage(msg.text, msg.selection, msg.mode, msg.oneShot);
           break;
         case 'setChatMode':
           // 전송을 기다리지 않고 즉시 기억한다(§5.2) — 고르고 창을 닫아도 선택이 남는다.
           this._setChatMode(normalizeChatMode(msg.mode));
+          break;
+        case 'modeSuggestAccept':
+          await this._acceptModeSuggest(msg.suggestId);
           break;
         case 'openModeSettings':
           // 모드 메뉴의 '⚙ 기본 모드 설정' — 런처(설정) 패널을 연다.
@@ -1676,6 +1688,41 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._chatMode = normalizeChatMode(context.workspaceState.get(CHAT_MODE_KEY));
   }
 
+  /**
+   * 모드 전환 제안(§5.5) — 막고 끝내지 않고 "한 번 눌러 전환+재실행"을 준다.
+   * 판정기는 새로 만들지 않는다(호출부가 기존 route/PageCreationDetector 판정을 그대로 넘긴다).
+   */
+  private _postModeSuggest(
+    text: string,
+    targetMode: ChatMode,
+    opts: { sticky: boolean; message: string; label: string; tone: 'card' | 'chip' },
+  ): void {
+    const suggestId = `ms-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    this._pendingModeSuggest.set(suggestId, { text, targetMode, sticky: opts.sticky });
+    // 제안은 UI일 뿐이므로 _history에 넣지 않는다 — 다음 턴 프롬프트를 오염시키지 않는다.
+    this._post({
+      type: 'modeSuggest',
+      suggestId,
+      targetMode,
+      label: opts.label,
+      message: opts.message,
+      tone: opts.tone,
+    });
+  }
+
+  /** 제안 버튼 수락 — 모드를 바꾸고 **원문 그대로** 다시 돌린다. */
+  private async _acceptModeSuggest(suggestId: string): Promise<void> {
+    const entry = this._pendingModeSuggest.get(suggestId);
+    if (!entry) return;
+    this._pendingModeSuggest.delete(suggestId);
+    // 제안이 뜨기 전에 이미 히스토리에 들어간 그 요청을 걷어낸다 — 재실행이 같은 user 턴을
+    // 두 번 쌓으면 모델이 "두 번 물었다"고 읽는다.
+    const last = this._history[this._history.length - 1];
+    if (last?.role === 'user' && last.content === entry.text) this._history.pop();
+    // sticky=false(약한 제안)는 이번 턴만 — 사용자가 고른 모드를 칩 하나가 바꿔버리면 안 된다.
+    await this._handleMessage(entry.text, undefined, entry.targetMode, !entry.sticky);
+  }
+
   /** 모드 변경 — 저장·로그·웹뷰 통지를 한 곳에서 한다(보이지 않는 상태 금지, §2 원칙 3). */
   private _setChatMode(mode: ChatMode): void {
     if (mode === this._chatMode) return;
@@ -1692,19 +1739,41 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // ─── private: 메시지 처리 ────────────────────────────────────────────────────
 
+  /**
+   * ── 대화 모드 관문 ──────────────────────────────────────────────────────────
+   * 웹뷰가 실어 보낸 값이 진실원(사용자가 방금 고른 것). 안 실려 오면 기억된 모드를 그대로 쓴다.
+   * oneShot(=/g)이면 기억은 건드리지 않고 **이번 턴만** 그 모드로 돈다(§5.1).
+   *
+   * 턴이 끝나면 _turnMode를 기억된 모드로 되돌린다 — 이게 없으면 /g 한 번 뒤에 _turnMode가
+   * 'general'로 남아, 그 다음에 사용자가 누른 행동 카드 실행까지 파일 쓰기 가드에 걸린다.
+   */
   private async _handleMessage(
     text: string,
     overrideSelection?: { filePath: string; startLine: number; endLine: number },
     mode?: ChatMode,
+    /** 이번 턴만 mode를 적용하고 기억은 바꾸지 않는다(/g). */
+    oneShot = false,
+  ): Promise<void> {
+    if (!this._view) return;
+    const turnMode = normalizeChatMode(mode ?? this._chatMode);
+    if (mode && !oneShot) this._setChatMode(turnMode);
+    this._turnMode = turnMode;
+    try {
+      await this._handleMessageTurn(text, overrideSelection);
+    } finally {
+      this._turnMode = this._chatMode;
+    }
+  }
+
+  private async _handleMessageTurn(
+    text: string,
+    overrideSelection?: { filePath: string; startLine: number; endLine: number },
   ): Promise<void> {
     if (!this._view) return;
 
-    // ── 대화 모드 ────────────────────────────────────────────────────────────
-    // 웹뷰가 실어 보낸 값이 진실원(사용자가 방금 고른 것). 안 실려 오면 기억된 모드를 그대로 쓴다.
     // policy는 새 파이프라인이 아니라 **기존 게이트의 프리셋**이다 — auto면 모든 키가 종전 값이라
     // 아래 분기가 하나도 달라지지 않는다(§7 불변식 #1).
-    if (mode) this._setChatMode(mode);
-    const policy = resolveModePolicy(this._chatMode);
+    const policy = resolveModePolicy(this._turnMode);
 
     // 오프라인 의도 되묻기 대기: 번호 선택 처리
     if (this._offlineClarify) {
@@ -1848,11 +1917,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // 모드 계약 위반이다(§5.6) — 숨기지 말고 솔직히 말한다. (전환 버튼은 Phase 3)
         if (!policy.allowOfflineKnowledge) {
           this._postOfflineTurn();
-          this._post({
-            type: 'token',
-            content:
-              '\n> 지금 서버에 연결되지 않아 일반 질문에 답할 수 없습니다.\n' +
-              '> 🧭 자동 모드로 바꾸면 로컬 scaffold 지식으로 찾아볼 수 있습니다.\n',
+          this._postModeSuggest(text, DEFAULT_CHAT_MODE, {
+            sticky: true,
+            message: '지금 서버에 연결되지 않아 일반 질문에 답할 수 없습니다. 로컬 scaffold 지식으로 찾아볼까요?',
+            label: '🧭 자동으로 전환하고 다시 시도',
+            tone: 'card',
           });
           this._post({ type: 'done' });
           this._postStatus('⚠️ 오프라인 모드');
@@ -1904,6 +1973,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 소비처 alias — 종전 이름·의미 유지(회귀 0). 두 게이트가 단일 route에서 흐른다.
       const qnaGated = route === 'qna';
       const isFileCtx = route === 'modify';
+
+      // §5.5 전환 제안(강) — 모드 때문에 못 하는 요청이면 **막고 끝내지 말고** 한 번 눌러 전환+재실행.
+      // 판정기는 새로 만들지 않는다: 방금 계산한 autoRoute(= 자동이었다면 어디로 갔을지)와 기존
+      // PageCreationDetector를 그대로 본다. 그래서 자동 모드의 판정과 어긋날 수가 없다.
+      // 조합 규칙은 ChatMode.shouldSuggestAutoMode가 단일 진실원(테스트로 고정).
+      if (shouldSuggestAutoMode(policy, {
+        autoRoute,
+        explicitEdit: isExplicitEditOrCreate(text),
+        pageCreation: pageIntent.isPageCreation,
+      })) {
+        this._postModeSuggest(text, DEFAULT_CHAT_MODE, {
+          sticky: true,
+          message: '지금은 💬 그냥 묻기 모드라 파일을 고치지 않습니다. 자동 모드로 바꾸면 그대로 실행합니다.',
+          label: '🧭 자동 모드로 전환하고 실행',
+          tone: 'card',
+        });
+        this._post({ type: 'done' });
+        this._postStatus(config.model);
+        return;
+      }
 
       // [S1 비파괴 측정 — 라우팅 통합 준비] 라우팅은 **바꾸지 않고**, 단일 라우터 후보 effectiveIntent
       // (분류기 확신 시 그 결과, null/other면 정규식 통합 폴백 classifyOfflineIntent)를 계산해 기존 게이트
@@ -2008,9 +2097,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const breakdown = this._scaffoldBuilder.lastBreakdown();
       // 모드가 실제로 프롬프트를 줄였는지 한 줄로 남긴다 — 알약만 바뀌고 배선이 안 걸린 상태를
       // 구분하는 유일한 근거다(계획 §6 Phase 1 완료 기준). auto는 로그를 늘리지 않는다.
-      if (this._chatMode !== DEFAULT_CHAT_MODE) {
+      if (this._turnMode !== DEFAULT_CHAT_MODE) {
         this._corpusOutputChannel.appendLine(
-          `[Axiom AI] [모드] ${this._chatMode} — 시스템 프롬프트 ${systemPrompt.length}자 · 규칙 ${breakdown.rulesChars} · RAG ${breakdown.ragChars} · 파일 ${breakdown.fileChars}`,
+          `[Axiom AI] [모드] ${this._turnMode} — 시스템 프롬프트 ${systemPrompt.length}자 · 규칙 ${breakdown.rulesChars} · RAG ${breakdown.ragChars} · 파일 ${breakdown.fileChars}`,
         );
       }
       this._post({
@@ -2230,6 +2319,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this._scaffoldBuilder.lastScaffoldSources(),
         );
         if (footer) this._post({ type: 'token', content: footer });
+      }
+
+      // §5.5 전환 제안(약) — 자동인데 scaffold 문서 0건 + 파일 컨텍스트 없음이면, 이 질문은
+      // 애초에 규약이 필요 없었다는 뜻이다. 답 **아래**에 조용한 칩으로만 알린다(강요 금지).
+      if (
+        this._turnMode === DEFAULT_CHAT_MODE &&
+        !wasFallback && !isFileCtx && !editorCtx.filePath &&
+        this._scaffoldBuilder.lastScaffoldSources().length === 0 &&
+        fullResponse.trim()
+      ) {
+        this._postModeSuggest(text, 'general', {
+          sticky: false,
+          message: '',
+          label: '💬 그냥 묻기로 다시 질문',
+          tone: 'chip',
+        });
       }
 
       this._post({ type: 'done' });
@@ -3031,7 +3136,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   ): Promise<boolean> {
     // 안전은 프롬프트가 아니라 코드로(§2 원칙 5) — 파일 쓰기가 꺼진 모드에선 파서 진입 자체를 막는다.
     // 약한 모델은 "수정하지 마세요"라는 문장을 어긴다. 모든 호출부가 이 한 지점을 지난다.
-    if (!resolveModePolicy(this._chatMode).allowFileWrite) {
+    if (!resolveModePolicy(this._turnMode).allowFileWrite) {
       this._corpusOutputChannel.appendLine('[Axiom AI] [모드] 파일 쓰기 차단 — axiom-action 파싱 생략');
       return false;
     }

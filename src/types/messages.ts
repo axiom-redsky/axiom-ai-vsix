@@ -532,7 +532,10 @@ export interface ActionCatalogDryrunResult {
 
 // WebView → Extension Host
 export type WebviewToHostMessage =
-  | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number }; mode?: ChatMode }
+  // oneShot: 이번 턴만 그 모드로(예: /g 질문). 기억된 모드는 바뀌지 않는다(§5.1).
+  | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number }; mode?: ChatMode; oneShot?: boolean }
+  // 전환 제안 카드/칩의 버튼을 눌렀다 — 호스트가 모드를 바꾸고 원문을 그대로 재실행한다(§5.5).
+  | { type: 'modeSuggestAccept'; suggestId: string }
   // 사용자가 모드를 골랐다 — 전송을 기다리지 않고 바로 기억한다(§5.2). 창을 닫았다 열어도 유지.
   | { type: 'setChatMode'; mode: ChatMode }
   // 모드 메뉴 구분선 아래 '⚙ 기본 모드 설정' — 설정 패널을 연다(§4.2 규칙 9).
@@ -652,6 +655,11 @@ export type HostToWebviewMessage =
   | { type: 'status'; text: string }
   // 현재 대화 모드 — 호스트가 진실원(workspaceState 복원값). 웹뷰 알약이 이 값을 그린다(§4.2).
   | { type: 'chatMode'; mode: ChatMode }
+  /**
+   * 모드 전환 제안(§5.5) — 모드 때문에 막힌 요청을 **막고 끝내지 않고** 한 번 눌러 전환+재실행하게 한다.
+   * tone: 'card' = 강한 제안(답 대신 뜬다) / 'chip' = 약한 제안(답 아래 조용히). 강요하지 않는다.
+   */
+  | { type: 'modeSuggest'; suggestId: string; targetMode: ChatMode; label: string; message: string; tone: 'card' | 'chip' }
   // 처리 단계(마일스톤) — "생각 중" 인디케이터에 체크리스트처럼 누적 표시된다(status 한 줄과 별개 채널).
   | { type: 'progress'; label: string }
   | { type: 'selectionContext'; filePath: string; startLine: number; endLine: number; selectedText: string }

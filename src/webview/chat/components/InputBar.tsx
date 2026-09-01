@@ -49,9 +49,11 @@ interface Props {
   onModeChange: (mode: ChatMode) => void;
   /** 모드 메뉴 구분선 아래 '⚙ 기본 모드 설정'. */
   onOpenModeSettings?: () => void;
+  /** '/mode' 슬래시 명령이 메뉴를 여는 신호 — 값이 바뀌면 연다(값 자체엔 의미 없음). */
+  openMenuNonce?: number;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge, suggestions, onQueryChange, onPickSuggestion, mode, onModeChange, onOpenModeSettings }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge, suggestions, onQueryChange, onPickSuggestion, mode, onModeChange, onOpenModeSettings, openMenuNonce }: Props): React.ReactElement {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
@@ -117,6 +119,15 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     });
   }, [appendText, onAppendConsumed]);
 
+  // '/mode' 로 열기 — 첫 렌더에서는 열지 않는다(신호가 실제로 바뀐 뒤부터).
+  const menuNonceSeen = useRef(openMenuNonce);
+  useEffect(() => {
+    if (openMenuNonce === undefined || openMenuNonce === menuNonceSeen.current) return;
+    menuNonceSeen.current = openMenuNonce;
+    setModeMenuOpen(true);
+    setModeIdx(Math.max(0, CHAT_MODES.findIndex((m) => m.id === mode)));
+  }, [openMenuNonce, mode]);
+
   const closePalette = useCallback(() => {
     setCmdMatches([]);
     setSelectedIdx(0);
@@ -153,10 +164,17 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
   const submit = useCallback(() => {
     if (!value.trim() || isStreaming) return;
 
-    // 팔레트에서 선택된 명령어가 있으면 그걸 먼저 적용
+    // 팔레트에서 선택된 명령어가 있으면 그걸 먼저 **입력에 채운다**(자동완성).
+    // 단, 이미 그 명령을 다 쳐 놓은 상태면 채울 게 없다 — 그때 또 채우면 화면상 아무 일도
+    // 일어나지 않고 팔레트만 닫혀, 사용자는 Enter를 **두 번** 눌러야 했다(/clear·/mode 실측).
+    // 입력이 이미 완성된 명령과 같으면 곧바로 실행한다.
     if (cmdMatches.length > 0) {
-      selectCommand(cmdMatches[selectedIdx]?.syntax ?? cmdMatches[0].syntax);
-      return;
+      const picked = cmdMatches[selectedIdx]?.syntax ?? cmdMatches[0].syntax;
+      if (value.trim() !== picked) {
+        selectCommand(picked);
+        return;
+      }
+      closePalette();
     }
 
     onSend(value.trim());

@@ -167,6 +167,24 @@ export function chatModeHint(mode: ChatMode): string | null {
     : null;
 }
 
+/**
+ * 전환 제안(강)을 띄울지 — "모드 때문에 못 하는 요청"인지 판정한다(§5.5).
+ *
+ * 판정기를 새로 만들지 않는다: 호출부가 기존 단일 라우터 결과(autoRoute)·PageCreationDetector·
+ * IntentSignals를 그대로 넘긴다. 여기서는 **조합 규칙**만 고정한다.
+ *
+ * autoRoute==='modify' 하나만 보면 안 된다 — 그 판정은 "도메인 파일이 열려 있고 질문형이 아니면
+ * 수정"이라, general 모드에서 짧은 명사구("리액트 훅 예제")까지 가로채 답을 막는다. 그건 이 설계가
+ * 금지한 '가두기'다. 그래서 **명시적 편집·생성 신호를 함께** 요구한다(페이지 생성은 그 자체가 명시적).
+ */
+export function shouldSuggestAutoMode(
+  policy: ChatModePolicy,
+  signals: { autoRoute: ChatRoute; explicitEdit: boolean; pageCreation: boolean },
+): boolean {
+  if (policy.allowFileWrite) return false; // 이미 할 수 있는 모드면 제안할 일이 없다
+  return signals.pageCreation || (signals.autoRoute === 'modify' && signals.explicitEdit);
+}
+
 export interface GeneralPromptInput {
   /** 사용자가 **직접 고른** 선택 영역 텍스트(있을 때만). 파일 전문은 넣지 않는다(§5.4). */
   selectedText?: string;

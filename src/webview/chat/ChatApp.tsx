@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useChat } from './hooks/useChat';
 import { MessageList } from './components/MessageList';
 import { InputBar } from './components/InputBar';
@@ -7,20 +7,34 @@ import { isExactSlashCommand } from './slashCommands';
 import { chatModeView } from '../../ai/ChatMode';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach, cardSuggestions, requestCardSuggestions, pickCardSuggestion, mode, changeMode, openModeSettings } = useChat();
+  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach, cardSuggestions, requestCardSuggestions, pickCardSuggestion, mode, changeMode, openModeSettings, acceptModeSuggest, pushNotice } = useChat();
+  /** /mode 가 메뉴를 여는 신호 — 값이 바뀔 때마다 InputBar가 연다(호출 시점만 전달). */
+  const [openMenuNonce, setOpenMenuNonce] = useState(0);
   const totalChars = useMemo(
     () => messages.reduce((sum, m) => sum + m.content.length, 0),
     [messages],
   );
 
   const handleSend = useCallback((text: string) => {
+    // '/g 질문' — 이번 턴만 그냥 묻기(§5.1). 기억된 모드는 건드리지 않는다(oneShot).
+    const G = '/g ';
+    if (text.startsWith(G)) {
+      const question = text.slice(G.length).trim();
+      if (question) {
+        sendMessage(question, { mode: 'general', oneShot: true });
+        return;
+      }
+    }
     const cmd = isExactSlashCommand(text);
     if (cmd?.type === 'local') {
       if (cmd.syntax === '/clear') clearHistory();
+      else if (cmd.syntax === '/mode') setOpenMenuNonce((n) => n + 1);
+      // 질문 없이 /g 만 친 경우 — 조용히 삼키지 말고 쓰는 법을 알려준다.
+      else if (cmd.syntax === '/g') pushNotice('/g 는 질문과 함께 씁니다 — 예: /g 클로저가 뭐야');
       return;
     }
     sendMessage(text);
-  }, [sendMessage, clearHistory]);
+  }, [sendMessage, clearHistory, pushNotice]);
 
   return (
     <div className="chat-app">
@@ -53,7 +67,7 @@ export function ChatApp(): React.ReactElement {
         </div>
       </div>
 
-      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} progressSteps={progressSteps} pinQuestionTop={pinQuestionTop} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} onCardChip={sendCardChip} onCardSlotSet={sendCardSlot} onCardBindingChoice={sendCardBindingChoice} onCardExecute={sendCardExecute} />
+      <MessageList messages={messages} isStreaming={isStreaming} isWaiting={isWaiting} status={status} progressSteps={progressSteps} pinQuestionTop={pinQuestionTop} onConfirm={sendConfirmation} onPatchRecovery={sendPatchRecovery} onCardChip={sendCardChip} onCardSlotSet={sendCardSlot} onCardBindingChoice={sendCardBindingChoice} onCardExecute={sendCardExecute} onModeSuggest={acceptModeSuggest} />
       <ClearWarningBanner
         messages={messages}
         isStreaming={isStreaming}
@@ -87,6 +101,7 @@ export function ChatApp(): React.ReactElement {
         mode={mode}
         onModeChange={changeMode}
         onOpenModeSettings={openModeSettings}
+        openMenuNonce={openMenuNonce}
       />
     </div>
   );

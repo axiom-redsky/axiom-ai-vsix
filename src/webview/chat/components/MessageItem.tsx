@@ -99,6 +99,7 @@ interface Props {
   onCardSlotSet?: (requestId: string, cardId: string, slotName: string, value: string) => void;
   onCardBindingChoice?: (requestId: string, cardId: string, field: string, value: string) => void;
   onCardExecute?: (requestId: string, cardId: string) => void;
+  onModeSuggest?: (suggestId: string) => void;
 }
 
 const ACTION_BLOCK_COMPLETE_RE = /<axiom-action>[\s\S]*?<\/axiom-action>/g;
@@ -304,11 +305,54 @@ function FileResultCard({
   );
 }
 
-export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, onCardSlotSet, onCardBindingChoice, onCardExecute }: Props): React.ReactElement {
+export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, onCardSlotSet, onCardBindingChoice, onCardExecute, onModeSuggest }: Props): React.ReactElement {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
   if (isSystem) {
+    // 슬래시 명령 사용법 같은 웹뷰 전용 한 줄 안내.
+    if (message.subtype === 'notice') {
+      return (
+        <div className="message message--notice">
+          <span className="message__notice-text">{message.content}</span>
+        </div>
+      );
+    }
+
+    // 모드 전환 제안(§5.5) — 강한 제안은 카드(답 대신), 약한 제안은 칩(답 아래).
+    // 어느 쪽도 막지 않는다: 누르지 않으면 아무 일도 일어나지 않는다.
+    if (message.subtype === 'mode-suggest' && message.modeSuggest) {
+      const { suggestId, label, tone } = message.modeSuggest;
+      const done = !!message.suggestAccepted;
+      if (tone === 'chip') {
+        return (
+          <div className="message message--mode-chip">
+            <button
+              className="mode-suggest__chip"
+              disabled={done}
+              onClick={() => onModeSuggest?.(suggestId)}
+            >
+              {done ? '다시 질문했습니다' : label}
+            </button>
+          </div>
+        );
+      }
+      return (
+        <div className="message message--system">
+          <div className="mode-suggest">
+            <p className="mode-suggest__text">{message.content}</p>
+            <button
+              className="mode-suggest__btn"
+              disabled={done}
+              onClick={() => onModeSuggest?.(suggestId)}
+            >
+              {done ? '전환하고 실행했습니다' : label}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     // 모드가 바뀐 지점 — 대화 흐름에 얇은 구분선 한 줄(§4.3).
     if (message.subtype === 'mode-switch') {
       return (

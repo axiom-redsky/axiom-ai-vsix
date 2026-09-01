@@ -25,7 +25,11 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
-  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed' | 'action-cards' | 'mode-switch';
+  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed' | 'action-cards' | 'mode-switch' | 'mode-suggest' | 'notice';
+  /** 모드 전환 제안(§5.5) — subtype 'mode-suggest' 전용. */
+  modeSuggest?: { suggestId: string; targetMode: ChatMode; label: string; tone: 'card' | 'chip' };
+  /** 제안 버튼을 이미 눌렀는지 — 두 번 눌러 같은 요청이 두 번 도는 것을 막는다. */
+  suggestAccepted?: boolean;
   /** 이 메시지를 보낼 때의 대화 모드 — 스크롤을 올렸을 때 답의 성격을 설명하는 유일한 근거(§4.3). */
   mode?: ChatMode;
   diff?: DiffLine[];
@@ -150,6 +154,23 @@ export function useChat() {
           setIsStreaming(false);
           break;
         }
+        case 'modeSuggest':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: msg.suggestId,
+              role: 'system',
+              subtype: 'mode-suggest',
+              content: msg.message,
+              modeSuggest: {
+                suggestId: msg.suggestId,
+                targetMode: msg.targetMode,
+                label: msg.label,
+                tone: msg.tone,
+              },
+            },
+          ]);
+          break;
         case 'chatMode':
           // 호스트가 기억하고 있던 모드(워크스페이스별). 웹뷰 기본값을 덮어쓴다.
           setMode(msg.mode);
@@ -342,7 +363,7 @@ export function useChat() {
   }, []);
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, override?: { mode: ChatMode; oneShot: boolean }) => {
       if (!text.trim() || isStreaming || isWaiting) return;
       // 새 턴 시작 — 정독 고정 해제(이번 턴이 지식·가이드면 host가 pinQuestion으로 다시 켠다).
       setPinQuestionTop(false);
@@ -350,7 +371,7 @@ export function useChat() {
       setMessages((prev) => [
         ...prev,
         // 그때의 모드를 메시지에 박아 둔다 — 나중에 모드를 바꿔도 이 말풍선의 배지는 안 바뀐다.
-        { id: Date.now().toString(), role: 'user', content: text, mode },
+        { id: Date.now().toString(), role: 'user', content: text, mode: override?.mode ?? mode },
       ]);
       setIsWaiting(true);
       // 핀(chip)으로 붙은 선택 범위를 함께 전송 — host가 라이브 에디터 selection 대신 이걸
@@ -362,7 +383,14 @@ export function useChat() {
             endLine: selectionContext.endLine,
           }
         : undefined;
-      vscode.postMessage({ type: 'sendMessage', text, selection, mode });
+      // /g 같은 단발 요청은 기억된 모드를 바꾸지 않는다(oneShot) — 다음 턴은 원래 모드로 돌아온다.
+      vscode.postMessage({
+        type: 'sendMessage',
+        text,
+        selection,
+        mode: override?.mode ?? mode,
+        oneShot: override?.oneShot,
+      });
     },
     [isStreaming, isWaiting, selectionContext, mode],
   );
@@ -390,6 +418,25 @@ export function useChat() {
       vscode.postMessage({ type: 'setChatMode', mode: next });
       return next;
     });
+  }, []);
+
+  /**
+   * 전환 제안 수락 — 버튼/칩을 누르면 호스트가 모드를 바꾸고 원문을 다시 돌린다(§5.5).
+   * 누른 카드는 즉시 비활성화한다(같은 요청이 두 번 도는 것을 막는다).
+   */
+  const acceptModeSuggest = useCallback((suggestId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.modeSuggest?.suggestId === suggestId ? { ...m, suggestAccepted: true } : m)),
+    );
+    vscode.postMessage({ type: 'modeSuggestAccept', suggestId });
+  }, []);
+
+  /** 슬래시 명령의 사용법 같은 한 줄 안내 — 호스트를 거치지 않는 웹뷰 전용 메시지. */
+  const pushNotice = useCallback((content: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: `notice-${Date.now()}`, role: 'system', subtype: 'notice', content },
+    ]);
   }, []);
 
   /** 모드 메뉴의 '기본 모드 설정' — 호스트가 설정 패널을 연다. */
@@ -505,6 +552,6 @@ export function useChat() {
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop,
     attachReference, attachText, consumeAttach,
     cardSuggestions, requestCardSuggestions, pickCardSuggestion,
-    mode, changeMode, openModeSettings,
+    mode, changeMode, openModeSettings, acceptModeSuggest, pushNotice,
   };
 }

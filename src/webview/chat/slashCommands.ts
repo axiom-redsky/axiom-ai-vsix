@@ -7,6 +7,9 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { syntax: '/clear',        description: '대화 기록을 초기화합니다',                    type: 'local'  },
+  // 단발 탈출구(§5.1) — 모드를 바꾸지 않고 이번 질문만 규약 없이 묻는다.
+  { syntax: '/g',            description: '이번 질문만 그냥 묻기 (예: /g 클로저가 뭐야)', type: 'local'  },
+  { syntax: '/mode',         description: '대화 모드 메뉴를 엽니다',                     type: 'local'  },
 ];
 
 export function matchSlashCommands(input: string): SlashCommand[] {

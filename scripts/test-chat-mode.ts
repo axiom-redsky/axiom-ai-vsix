@@ -12,6 +12,7 @@ import {
   nextChatMode,
   normalizeChatMode,
   resolveModePolicy,
+  shouldSuggestAutoMode,
   stripActionBlocks,
   stripHistoryForGeneral,
   type ChatModePolicy,
@@ -111,6 +112,24 @@ console.log('\n── D. CHAT_MODES ──');
   // 전환 한 줄의 조사 — 받침 있는 '자동'은 '으로', 없는 '묻기'는 '로' (F5에서 발견된 실제 오류)
   ok(chatModeSwitchNotice('auto').includes('자동으로 전환'), 'D8: 자동 → 으로');
   ok(chatModeSwitchNotice('general').includes('그냥 묻기로 전환'), 'D9: 그냥 묻기 → 로');
+}
+
+// ═══ E0. 전환 제안 판정 (§5.5 — 가두지 않기) ═══════════════════════════════
+console.log('\n── E0. shouldSuggestAutoMode ──');
+{
+  const g = resolveModePolicy('general');
+  const a = resolveModePolicy('auto');
+  ok(!shouldSuggestAutoMode(a, { autoRoute: 'modify', explicitEdit: true, pageCreation: true }),
+    'E0-1: 자동 모드에선 제안하지 않는다(이미 할 수 있다)');
+  ok(shouldSuggestAutoMode(g, { autoRoute: 'modify', explicitEdit: true, pageCreation: false }),
+    'E0-2: general + 수정 라우트 + 명시 신호 → 제안');
+  ok(shouldSuggestAutoMode(g, { autoRoute: 'passthrough', explicitEdit: false, pageCreation: true }),
+    'E0-3: 페이지 생성은 그 자체로 명시적');
+  // 여기가 핵심 — 파일이 열려 있다는 이유로 일반 질문을 가로채면 안 된다
+  ok(!shouldSuggestAutoMode(g, { autoRoute: 'modify', explicitEdit: false, pageCreation: false }),
+    'E0-4: 명시 신호 없는 modify 판정만으로는 가두지 않는다');
+  ok(!shouldSuggestAutoMode(g, { autoRoute: 'qna', explicitEdit: false, pageCreation: false }),
+    'E0-5: 질문은 그대로 답한다');
 }
 
 // ═══ E. general 시스템 프롬프트 ═════════════════════════════════════════════

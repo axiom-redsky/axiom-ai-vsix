@@ -1,6 +1,6 @@
 # 대화 모드 전환 (Chat Mode) — 설계 계획
 
-> 상태: **Phase 0·1·2 구현 완료 (2026-09-01)** — 정책 모듈 + 호스트 배선 + UI. F5 수동 검증 대기.
+> 상태: **Phase 0~3 구현 완료 (2026-09-01)** — Phase 2까지 F5 검증 통과, Phase 3은 F5 검증 대기.
 > 작성: 2026-09-01
 > 관련 문서: [offline-action-cards-plan.md](offline-action-cards-plan.md) · [page-creation-intent-routing-plan.md](page-creation-intent-routing-plan.md) · [unified-settings-plan.md](unified-settings-plan.md)
 > 관련 메모리: [qna-gating-consistency], [intent-routing-redesign], [prefer-intent-over-blocking], [offline-intent-responder], [online-knowledge-answer]
@@ -35,10 +35,15 @@ F5에서 발견해 고친 것 2건:
    전환 **버튼**은 계획대로 Phase 3.
 
 ### 다음에 할 일
-**Phase 3(탈출구·전환 제안)** — `/g`·`/mode` 슬래시 명령(§5.1), 전환 제안 배너/칩 2종(§5.5),
-오프라인 × general 안내에 **버튼** 달기(§5.6 — 안내 문구 자체는 Phase 1에서 이미 나간다).
-판정기는 새로 만들지 않는다: 기존 `PageCreationDetector`·`isFileModificationContext` 재사용,
-버튼 동작은 기존 프리필 채널(`prefillText`) 재사용.
+**Phase 3의 F5 수동 검증** — 네 가지만 눌러 보면 된다:
+1. `💬 그냥 묻기`에서 "이 파일 고쳐줘" → 답 대신 카드 + `🧭 자동 모드로 전환하고 실행` 버튼 1개,
+   눌렀을 때 자동 모드로 바뀌고 원문이 그대로 다시 도는가 (**Phase 3 완료 기준**)
+2. `/g 클로저가 뭐야` → 그 턴만 그냥 묻기(말풍선 배지 💬), **다음 턴은 원래 모드**로 돌아오는가
+3. `/mode` → 모드 메뉴가 열리는가
+4. 자동 모드에서 scaffold와 무관한 질문(파일 안 열고) → 답 아래 조용한 칩
+   `💬 그냥 묻기로 다시 질문`
+
+그 다음은 **Phase 4(선택)** — `axiom-ai.chat.defaultMode` 설정 등록, 런처 설정 패널 한 줄, 도식.
 
 > 분해 패널의 `규칙·가이드 188`은 scaffold 규칙이 아니라 **general 프롬프트 본문 자체**다
 > (분해 합계 = 프롬프트 길이여야 하므로 rulesChars에 넣었다). scaffold 규칙은 실제로 0.
@@ -408,6 +413,15 @@ Axiom이 이번 요청에서 실제로 필요한 건 **지식 축**이다. 두 �
 - 전환 제안 배너/칩 2종(§5.5) — 판정기 재사용, 버튼은 프리필 채널
 - 오프라인 × `general` 안내(§5.6)
 - **완료 기준**: `general`에서 "이 파일 고쳐줘" → 버튼 1클릭으로 자동 모드 재실행까지 F5 확인
+- **결과(2026-09-01)**: 코드 완료, F5 검증 대기. 제안 3종이 `modeSuggest`/`modeSuggestAccept`
+  **한 메커니즘**을 공유한다(강 카드 2종 + 약 칩 1종). 수락하면 호스트가 모드를 바꾸고 원문을 재실행한다.
+  - 판정은 `shouldSuggestAutoMode`(ChatMode)로 모아 테스트로 고정 — `autoRoute==='modify'` **하나만**
+    보면 도메인 파일이 열려 있다는 이유로 짧은 명사구까지 가로채 '가두기'가 된다. 그래서 명시적
+    편집·생성 신호(`IntentSignals.isExplicitEditOrCreate`)를 함께 요구한다(E0-4가 이걸 지킨다).
+  - `/g 질문`은 **oneShot** — 기억된 모드를 바꾸지 않는다. 턴이 끝나면 `_turnMode`를 되돌린다
+    (안 그러면 /g 한 번 뒤 행동 카드 실행이 파일 쓰기 가드에 걸린다).
+  - 약한 칩은 sticky=false로 재실행 → 칩 하나가 사용자가 고른 모드를 바꿔버리지 않는다.
+  - 재실행 전 히스토리에서 중복 user 턴을 걷어낸다(같은 요청이 두 번 쌓이지 않게).
 
 ### Phase 4 — 설정·문서 (선택)
 - `axiom-ai.chat.defaultMode` 설정 등록([package.json](../package.json) `contributes.configuration`)
@@ -458,7 +472,7 @@ npm run eval:region        # 적용률·게이트 회귀 확인
 | 0 | `ChatMode.ts` 정책 모듈 + 테스트(55건) | ✅ 2026-09-01 | `8def0ab` |
 | 1 | 호스트 배선(Provider·Builder) — §7 전량 green | ✅ 2026-09-01 | 미커밋 |
 | 2 | UI(칩·팝오버·배지) | ✅ 2026-09-01 (F5 7항목 검증 완료) | `4a15f7b` + 후속 |
-| 3 | 탈출구·전환 제안·오프라인 안내 | ⬜ | — |
+| 3 | 탈출구·전환 제안·오프라인 안내 | ✅ 2026-09-01 (F5 검증 대기) | 미커밋 |
 | 4 | 설정·도식 | ⬜ (선택) | — |
 
 > 이어서 작업한 사람은 이 표와 §RESUME을 **함께** 갱신할 것.
