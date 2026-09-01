@@ -8,6 +8,7 @@ import { LocateProbePanel } from './providers/LocateProbePanel';
 import { ContractsProbePanel } from './providers/ContractsProbePanel';
 import { GuidePanel } from './providers/GuidePanel';
 import { ActionCardsPanel } from './providers/ActionCardsPanel';
+import { ComponentCatalogPanel } from './providers/ComponentCatalogPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
 import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
@@ -116,6 +117,11 @@ export function activate(context: vscode.ExtensionContext): void {
     // 행동 카드 관리 패널 — 3계층 목록·켜기끄기·새 카드·lint·드라이런 (§5).
     vscode.commands.registerCommand('axiom-ai.openActionCards', () => {
       ActionCardsPanel.createOrShow(context.extensionUri);
+    }),
+
+    // 컴포넌트 카탈로그 패널 — props 인덱스·가이드·지식 문서를 한 창에서 훑어보기 (§7 B1).
+    vscode.commands.registerCommand('axiom-ai.openComponentCatalog', () => {
+      ComponentCatalogPanel.createOrShow(context.extensionUri);
     }),
   );
 

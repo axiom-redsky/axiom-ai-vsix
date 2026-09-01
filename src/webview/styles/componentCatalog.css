@@ -1,0 +1,389 @@
+/* ================================================================
+   COMPONENT CATALOG — 부품 목록 창 (계획서 §7 B1)
+
+   왼쪽 검색+목록 / 오른쪽 상세. 색은 전부 VSCode 테마 토큰이라
+   라이트·다크·하이컨트라스트에서 같은 위계로 읽힌다(하드코딩 색 금지).
+   webview.css 의 다른 앱과 같은 어휘: 4~6px 라운드, 얇은 패널 보더,
+   글자 크기·불투명도로 위계, hover 는 list-hoverBackground.
+   ================================================================ */
+.cc {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+}
+
+/* ── 헤더 ───────────────────────────────────────────────────────── */
+.cc__header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 18px 8px;
+}
+.cc__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.cc__counts {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+.cc__count {
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  background: var(--vscode-badge-background, rgba(127, 127, 127, 0.16));
+  border-radius: 9px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.cc__count b {
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  opacity: 0.85;
+}
+.cc__lead {
+  padding: 0 18px 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+.cc__lead b {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+/* ── 버튼 ───────────────────────────────────────────────────────── */
+.cc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.32));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.cc-btn:hover:not(:disabled) {
+  color: var(--vscode-foreground);
+  background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.14));
+}
+.cc-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 주 행동(가이드 열기) — 런처 primary 와 같은 "테두리→채움" 패턴 */
+.cc-btn--primary {
+  color: var(--vscode-button-background, #0e639c);
+  border-color: var(--vscode-button-background, #0e639c);
+  font-weight: 500;
+  opacity: 0.9;
+}
+.cc-btn--primary:hover:not(:disabled) {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  opacity: 1;
+}
+
+/* 접기/펴기 삼각형 — 테두리 없는 아이콘 버튼 */
+.cc-btn--caret {
+  border: none;
+  padding: 0 2px;
+  min-width: 16px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+.cc-btn--caret:hover:not(:disabled) {
+  background: none;
+  opacity: 1;
+}
+
+/* ── 본문 2단 ───────────────────────────────────────────────────── */
+.cc__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.cc__side {
+  width: 268px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 12px 12px 18px;
+  border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+.cc__search {
+  width: 100%;
+  padding: 5px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.32)));
+  background: var(--vscode-input-background, rgba(127, 127, 127, 0.1));
+  color: var(--vscode-input-foreground, inherit);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.cc__search::placeholder {
+  color: var(--vscode-input-placeholderForeground, rgba(128, 128, 128, 0.8));
+}
+.cc__search:focus {
+  border-color: var(--vscode-focusBorder, #0e639c);
+}
+.cc__side-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.85));
+  padding: 6px 2px;
+}
+
+.cc__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.cc__item {
+  position: relative;
+  padding: 6px 10px 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cc__item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.12));
+}
+.cc__item--active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(127, 127, 127, 0.25));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+/* 선택 표시는 배경만으로는 약하다 — 왼쪽 강조 막대를 함께 둔다 */
+.cc__item--active::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--vscode-focusBorder, #0e639c);
+}
+.cc__item-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.cc__item-name {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.cc__item-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.85));
+}
+.cc__item-meta {
+  font-size: 10.5px;
+  margin-top: 1px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.75));
+}
+.cc__item--active .cc__item-count,
+.cc__item--active .cc__item-meta {
+  color: inherit;
+  opacity: 0.75;
+}
+.cc__empty {
+  padding: 14px 4px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.85));
+}
+
+/* ── 상세 ───────────────────────────────────────────────────────── */
+.cc__detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 14px 18px 32px;
+}
+.cc__detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cc__name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.cc__badges {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.cc__badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--vscode-badge-background, rgba(127, 127, 127, 0.18));
+  color: var(--vscode-badge-foreground, inherit);
+  opacity: 0.85;
+}
+.cc__summary {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+  max-width: 74ch;
+}
+
+.cc__section {
+  margin-top: 14px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cc__section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.06));
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+.cc__section-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.cc__section-note {
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc__section-body {
+  padding: 10px 12px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+}
+.cc__section-body--flush {
+  padding: 0;
+}
+
+.cc__code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+  padding: 10px 12px;
+  margin: 0;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.08));
+  color: var(--vscode-editor-foreground, inherit);
+}
+
+/* 패밀리 구성원(Select·SelectItem…) — 접히는 소제목 + prop 표 */
+.cc__member {
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+}
+.cc__member:first-child {
+  border-top: none;
+}
+.cc__member-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.cc__member-head:hover {
+  background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.1));
+}
+.cc__member-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+.cc__member-src {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.7));
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.cc__table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+  padding: 4px 12px;
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.05));
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+}
+.cc__table td {
+  padding: 5px 12px;
+  vertical-align: top;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.12));
+}
+.cc__table tr:hover td {
+  background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.07));
+}
+.cc__prop-name {
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: nowrap;
+}
+.cc__req {
+  margin-left: 3px;
+  font-size: 9px;
+  color: var(--vscode-errorForeground, #f48771);
+  vertical-align: super;
+}
+.cc__prop-type {
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-symbolIcon-typeParameterForeground, var(--vscode-textLink-foreground, #4ec9b0));
+  opacity: 0.9;
+  max-width: 300px;
+  overflow-wrap: anywhere;
+}
+.cc__prop-doc {
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.95));
+}
+
+.cc__notice {
+  margin: 10px 18px 0;
+  padding: 7px 11px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.08));
+}
+.cc__notice--error {
+  border-color: var(--vscode-errorForeground, #f48771);
+  color: var(--vscode-errorForeground, #f48771);
+}

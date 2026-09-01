@@ -1,4 +1,5 @@
 import type { ITocManifest, TGuideSource } from './guide';
+import type { ICatalogEntry as IComponentCatalogEntry } from '../ai/catalog/ComponentCatalog';
 
 // 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
 export interface ProjectConfig {
@@ -354,6 +355,28 @@ export interface ActionCatalogPayload {
   };
 }
 
+// ── 컴포넌트 카탈로그 패널 (§7 B1) ───────────────────────────────────────────
+
+/**
+ * 카탈로그 payload — 항목 자체는 순수 모듈(`ai/catalog/ComponentCatalog`)의 타입을 그대로 쓴다.
+ * 검색을 웹뷰가 직접 돌리므로(타이핑마다 호스트 왕복 없음) 목록 전체가 한 번에 내려간다.
+ */
+export interface ComponentCatalogPayload {
+  entries: IComponentCatalogEntry[];
+  /** 자료별 개수 — "없는 것"을 숨기지 않기 위해 화면 위에 그대로 적는다. */
+  counts: {
+    entries: number;
+    components: number;
+    props: number;
+    guideDocs: number;
+    knowledgeDocs: number;
+  };
+  /** 스캐폴드 워크스페이스인가(소스 열기 버튼의 가용 조건). */
+  scaffoldDetected: boolean;
+  /** 지식 문서를 어디서 읽었는지(번들/워크스페이스) — 문서가 비었을 때의 진단용. */
+  knowledgeDir: string | null;
+}
+
 export interface ActionCatalogDryrunRow {
   cardId: string;
   icon: string;
@@ -432,8 +455,15 @@ export type WebviewToHostMessage =
       /** 확신도 임계(비우면 매처 기본값 0.5). */
       gapRatio?: number;
     }
+  // 컴포넌트 카탈로그 패널(§7 B1): 목록 로드 / 스니펫 복사 / 가이드 딥링크 / 소스·지식문서 열기
+  | { type: 'componentCatalogLoad' }
+  | { type: 'componentCatalogCopy'; text: string; label: string }
+  | { type: 'componentCatalogOpenGuide'; docId: string }
+  | { type: 'componentCatalogOpenSource'; source: string }
+  | { type: 'componentCatalogOpenKnowledge'; source: string }
   | { type: 'openGuide' }
   | { type: 'openActionCards' }
+  | { type: 'openComponentCatalog' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
   | { type: 'guideEditDoc'; docId: string }
@@ -501,6 +531,9 @@ export type HostToWebviewMessage =
   | { type: 'actionCatalog'; payload: ActionCatalogPayload }
   | { type: 'actionCatalogDryrunResult'; result: ActionCatalogDryrunResult }
   | { type: 'actionCatalogNotice'; message: string; severity: 'info' | 'error' }
+  // 컴포넌트 카탈로그 패널
+  | { type: 'componentCatalog'; payload: ComponentCatalogPayload }
+  | { type: 'componentCatalogNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

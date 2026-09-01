@@ -11,7 +11,9 @@ import { LocateProbeApp } from './locateProbe/LocateProbeApp';
 import { ContractsProbeApp } from './contractsProbe/ContractsProbeApp';
 import { GuideApp } from './guide/GuideApp';
 import { ActionCardsApp } from './actionCards/ActionCardsApp';
+import { ComponentCatalogApp } from './componentCatalog/ComponentCatalogApp';
 import './styles/webview.css';
+import './styles/componentCatalog.css';
 import 'highlight.js/styles/vs2015.css';
 
 const mode = (document.body as HTMLElement).dataset.mode ?? 'chat';
@@ -29,6 +31,7 @@ if (rootEl) {
     : mode === 'contracts-probe' ? <ContractsProbeApp />
     : mode === 'guide' ? <GuideApp />
     : mode === 'action-cards' ? <ActionCardsApp />
+    : mode === 'component-catalog' ? <ComponentCatalogApp />
     : <ChatApp />,
   );
 }

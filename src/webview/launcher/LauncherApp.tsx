@@ -303,6 +303,7 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleClearHistory = () => vscode.postMessage({ type: 'clearHistory' });
   const handleOpenGuide = () => vscode.postMessage({ type: 'openGuide' });
   const handleOpenActionCards = () => vscode.postMessage({ type: 'openActionCards' });
+  const handleOpenComponentCatalog = () => vscode.postMessage({ type: 'openComponentCatalog' });
 
   return (
     <>
@@ -347,6 +348,13 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
           title="오프라인 모드에서 뜨는 추천 카드의 카탈로그 — 목록·켜기끄기·새 카드·드라이런"
         >
           🃏 오프라인 행동 카드
+        </button>
+        <button
+          className="launcher__secondary-btn"
+          onClick={handleOpenComponentCatalog}
+          title="scaffold 부품 목록 — prop 표·예제·스니펫 복사 (모델 호출 없음)"
+        >
+          🧩 컴포넌트 카탈로그
         </button>
       </div>
 

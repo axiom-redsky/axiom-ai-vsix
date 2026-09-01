@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 레시피 실행기 ✅ / C1 Scaffold 린트 ✅ — 둘 다 F5 라이브 검증 통과)** (2026-08-31, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 레시피 실행기 ✅ / C1 Scaffold 린트 ✅ — 둘 다 F5 라이브 검증 통과 / B1 컴포넌트 카탈로그 ✅ 코드 완료·F5 수동 검증 대기)** (2026-09-01, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -13,17 +13,21 @@
 > 이 절만 읽으면 맥락 없이도 이어갈 수 있게 쓴다. Claude 메모리는 PC 로컬이라 다른 기기에서는 안 보인다 —
 > **이 문서가 유일한 진실원**이다. 이어서 작업한 뒤에는 이 절도 함께 갱신할 것.
 
-### 지금 어디까지 왔나
-Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)** 까지 완료. 전부 F5 라이브 검증 통과, 전 게이트 green.
+### 지금 어디까지 왔나 (2026-09-01 갱신)
+Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B1(컴포넌트 카탈로그)** 까지 완료.
+A3·C1은 F5 라이브 검증 통과, **B1은 코드·게이트 완료 + F5 수동 검증 대기**. 전 게이트 green.
 상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
 
-### 다음에 할 일 = 아래 셋 중 택1 (전부 독립 트랙, 순서 무관)
+### 다음에 할 일 = 아래 둘 중 택1 (독립 트랙, 순서 무관)
 
 | 후보 | 무게 | 시작점 |
 |---|---|---|
-| **B1 컴포넌트 카탈로그 패널** (§7 B1) | 가벼움 — 데이터는 이미 다 있고 UI만 없다 | `ai/contracts/generated/componentPropsIndex.ts`(53종) + `knowledge/components/`. 패널 패턴은 `providers/ActionCardsPanel.ts` + `webview/actionCards/` 를 그대로 베낀다 |
 | **형태 B — 입력창 위 실시간 추천** (§3.5) | 중간 — 매칭 엔진은 완성돼 있고 표시 컴포넌트만 | `ai/actions/CardMatcher.ts` 를 그대로 호출. 붙일 곳은 `webview/chat/components/` 의 InputBar. `/` 슬래시 메뉴와 **표시 컴포넌트를 공유**할 것 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **설계 결정이 먼저** |
+
+(끝난 트랙: **B1 컴포넌트 카탈로그 패널** — §9 Phase 4 B1. 남은 일은 F5 눈 확인뿐.)
+후속 후보로 §7 A4(컴포넌트 삽입기)가 자연스럽게 붙는다 — 카탈로그가 이미 prop·필수·스니펫을 알고 있어
+"고른 부품을 커서 자리에 넣기"는 A3의 삽입기를 재사용하면 된다.
 
 ### 개발 환경 되살리기
 ```bash
@@ -37,6 +41,7 @@ F5(Run Extension) → 새 창에서 **대상 워크스페이스 폴더를 직접
 ```bash
 npm run typecheck && npm run compile
 npm run test:scaffold-lint      # 64   ← C1
+npm run test:component-catalog  # 80   ← B1
 npm run test:action-cards       # 222  ← 카드 엔진 전체
 npm run test:offline-recipe     # 81   ← A3
 npm run test:offline-api-binding # 96  ← Phase 2
@@ -51,6 +56,10 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
 ### F5로 눈으로 확인하는 법
 - **행동 카드(Phase 1~3, A3)** = **오프라인 전용**. LLM 엔드포인트를 비우거나 서버를 내려야 뜬다.
   채팅 토큰 메터가 "오프라인 · 토큰 미사용"이면 오프라인 진입 성공.
+- **컴포넌트 카탈로그(B1)** = 온·오프라인 무관·모델 호출 0. 런처의 `🧩 컴포넌트 카탈로그` 버튼 또는
+  명령 팔레트 `Axiom AI: 컴포넌트 카탈로그 열기`. 확인할 것: 왼쪽 목록 34개 · 검색창에 `표`(→SmartTable)·
+  `달력`(→Calendar) · 오른쪽 prop 표/스니펫 복사 · `📖 가이드에서 열기`가 가이드 패널로 딥링크되는지 ·
+  `소스 열기`(scaffold 워크스페이스를 열었을 때만 성공, 아니면 사유 안내).
 - **Scaffold 린트(C1)** = 온·오프라인 무관하게 항상 동작. 스캐폴드 폴더를 열고 아무 `.tsx`나 보면 된다.
   Problems 패널(Ctrl+Shift+M) 필터에 `Axiom` 을 치면 tsc·eslint를 걸러내고 린트만 본다.
   확실히 걸리는 곳: `domains/example/components/ui-components/checkbox/CheckboxGroupDemo.tsx:3`(import 경로),
@@ -432,7 +441,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 ### B. 지식·탐색 — 제자리에서 보여주기
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
-| ★B1 | **컴포넌트 카탈로그 패널** | props 표+예제 브라우징·검색·스니펫 복사 (데이터는 전부 있고 UI만 없음) | ComponentPropsIndex, knowledge/components |
+| ★B1 | **컴포넌트 카탈로그 패널** ✅(2026-09-01) | props 표+예제 브라우징·검색·스니펫 복사 (데이터는 전부 있고 UI만 없음) | ComponentPropsIndex, knowledge/components, media/guide-docs |
 | B2 | Hover/자동완성 승격 | `useApi` 위에 hover → 봉투계약 카드. "질문할 줄 알아야 도움받는" 채팅 한계 돌파 | ScaffoldContracts, knowledge |
 | B3 | 디자인 토큰 브라우저 | tokens/*.css 파싱 → 색 견본·CSS 변수 자동완성·복사 | — (신규, 소형) |
 | B4 | 라우터 맵 | domains/*/router 파싱 → 경로 트리, 고아 페이지·중복 경로 탐지 | — (신규, 소형) |
@@ -775,6 +784,61 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       무회귀(react-rules 39/0 · region-edit 243/0 · action-cards 222/0 · offline-recipe 81/0 ·
       offline-api-binding 96/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0 ·
       line-edits 15/0 · code-slice 26/0).
+
+  - **B1 컴포넌트 카탈로그 패널 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+    §7의 ★우선순위 넷 중 마지막 남은 항목. A1·A2·A3가 "만들기", C1이 "검사"였다면 이건 **찾아보기** 축이다.
+    - **왜 값어치가 있나 — 데이터는 다 있는데 사람이 볼 창구만 없었다**: `componentPropsIndex`(53종,
+      자동생성)는 지금까지 **모델 프롬프트에만** 주입됐다. 즉 "Axiom은 아는데 개발자는 못 보는" 지식이었다.
+      가이드 문서(32종, 스크린샷 포함)는 GuidePanel에 있고, 지식 문서(7종)는 오프라인 답변 안에만 있었다.
+      셋을 한 창에 모으는 것 = 새 엔진 0, 모델 호출 0(폐쇄망 그대로).
+    - 구성 = `ai/catalog/ComponentCatalog.ts`(순수: 조립·파싱·스니펫·검색) +
+      `providers/ComponentCatalogPanel.ts`(파일 읽기·클립보드·에디터 연동) +
+      `webview/componentCatalog/ComponentCatalogApp.tsx`(왼쪽 검색+목록 / 오른쪽 상세) +
+      명령 `axiom-ai.openComponentCatalog` + 런처 버튼.
+    - ★**목록의 단위는 컴포넌트가 아니라 패밀리다**: 53종을 평평하게 늘어놓으면 Select* 10개,
+      Combobox* 15개, DropdownMenu* 9개가 목록을 잡아먹어 "훑어보기"라는 목적 자체가 깨진다.
+      묶는 규칙 = **첫 단어로 모으고 라벨은 그룹 전원의 최장 공통 단어 접두사**(→ 34개 항목).
+      두 컴포넌트씩 최장 공통을 찾으면 SelectScrollUp/Down이 'SelectScroll'로 떨어져 나가 패밀리가 쪼개진다.
+    - ★**합집합이지 교집합이 아니다**: props 인덱스에 없는 문서 전용 부품(Alert·Tabs·Toast·Form…)을 빼면
+      "부품 목록"이 아니라 "prop 있는 것만의 목록"이 된다. 없는 자료는 숨기지 않고 배지로 사실대로
+      표시한다(속성표/가이드/예제). 34 = 인덱스 패밀리 12 + 가이드 32 − 겹침 11 + 지식 전용 1(Form).
+    - **문서 렌더러를 두 벌 만들지 않는다**: 전문·이미지·TOC는 GuidePanel이 이미 잘 한다 →
+      `axiom-ai.openGuide(docId)` 딥링크로 위임하고, 카탈로그는 **prop 표·예제·스니펫**만 맡는다.
+      가이드 루트도 GuidePanel과 **같은 2계층**(워크스페이스 시드본 → 번들)을 따른다 — 다르게 고르면
+      카드에 보이는 요약과 딥링크로 열리는 문서가 갈라진다.
+    - **검색은 웹뷰가 직접 돌린다**: 타이핑마다 호스트를 왕복하면 훑어보는 흐름이 끊긴다. 그래서 조립·검색
+      모듈은 vscode·fs 비의존 순수 층이고, 호스트·웹뷰·테스트가 **같은 함수**를 부른다(미러 금지).
+    - **스니펫은 필수 prop만, 값은 타입에서 결정론적으로**(boolean=플래그 · 함수=`{handleX}` ·
+      리터럴 유니온=첫 값 · 복합 타입=같은 이름 변수). import를 모르면 아예 만들지 않는다 — 추측한
+      스니펫은 복사돼서 그대로 컴파일 에러가 된다.
+    - ★**실 자료 전량 스모크가 또 값을 했다**(C1의 교훈 재확인, 테스트 F 섹션). 합성 케이스는 전부
+      통과했는데 실제 32+7+53으로 돌리자 셋이 틀렸다:
+      1. **태그 상한 60이 뒤쪽 태그를 잘라먹었다** — SmartTable 지식 문서의 태그가 90개를 넘어
+         정작 사람이 칠 말인 `표`가 색인에서 통째로 사라졌다(→ 상한 200).
+      2. **한글은 부분 일치가 쉽게 오염된다** — `표`가 다른 문서 본문의 `표시`에 걸려 Native Select가
+         SmartTable을 눌렀다. → **태그 정확 일치**(26)를 요약·본문 언급(12·8)보다 확실히 위로.
+      3. 패밀리 수·항목 수를 실제 값(10 / 34)으로 고정. 머릿속 셈(11)은 틀렸다.
+    - ⚠ **1차 F5에서 발각(사용자 지적) — ①화면이 테마와 겉돌았다 ②본문에 문서 부스러기**:
+      1. **디자인**: 인라인 스타일 + 맨 `<button>` 이라 버튼이 브라우저 기본 흰색으로 떴다. → 전용 스타일시트
+         `webview/styles/componentCatalog.css`(`.cc-*`)로 옮기고 색은 **전부 VSCode 테마 토큰**으로
+         (`--vscode-button-*`·`list-activeSelectionBackground`·`textCodeBlock-background`…). 목록 선택은
+         배경만으로는 약해 **왼쪽 강조 막대**를 함께 두고, 섹션은 헤더/본문 있는 카드로, prop 표는
+         대문자 소제목 + 타입 단색 강조 + 필수 표시로. 런처·행동 카드와 **같은 시각 어휘**(4~6px 라운드,
+         얇은 패널 보더, 불투명도로 위계).
+      2. **문서에서 긁어온 값이 그대로 화면에 나왔다** — 화면을 보고서야 드러난 4종:
+         - 가이드 문서 상단 **MDX 주석 블록**이 요약으로 나옴(10개 부품). 첫 줄만 걸러내면 속성 줄
+           (`storyPath=…`)이, `}` 로 블록을 닫으면 `minHeight={600}` 에서 일찍 풀려 `/>` 가 요약이 됐다
+           → 여는 모양(`{/*`·`{`·`<`)에 맞는 **닫는 모양으로 블록째** 건너뛴다.
+         - **가이드 문서는 큰따옴표 import**(`from "@axiom/components/ui"`) — 작은따옴표만 보던 탓에
+           가이드 전용 부품 12종의 스니펫이 통째로 비어 있었다.
+         - `"single" | "multiple"` 처럼 **큰따옴표 리터럴 유니온**이 `type={type}` 로 나오던 것 → `type="single"`.
+         - **루트 없는 조합형 패밀리**(Combobox·DropdownMenu)가 `<ComboboxChip />` 을 대표 사용법인 척
+           보여주던 것 → 루트가 없으면 **JSX를 만들지 않고 import 줄만**(진짜 사용법은 가이드 문서).
+      **교훈: 실 자료 스모크(F)로도 "문장이 사람 말인지"는 안 잡힌다 — 화면에 띄워 봐야 보인다.**
+      네 가지 모두 F19·F20·B12~B14·D12~D13 회귀로 고정.
+    - 게이트: `test:component-catalog` 80/0(신설, F 섹션 = 실 자료 스모크) · typecheck · compile ·
+      무회귀(scaffold-lint 64/0 · action-cards 222/0 · offline-recipe 81/0 · offline-api-binding 96/0 ·
+      react-rules 39/0 · region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).

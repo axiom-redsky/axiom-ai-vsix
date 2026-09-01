@@ -49,6 +49,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         case 'openActionCards':
           vscode.commands.executeCommand('axiom-ai.openActionCards');
           break;
+        case 'openComponentCatalog':
+          vscode.commands.executeCommand('axiom-ai.openComponentCatalog');
+          break;
         case 'getSettings':
           this._handleGetSettings();
           break;

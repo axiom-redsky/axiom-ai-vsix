@@ -455,6 +455,11 @@
         "title": "Axiom AI: 오프라인 행동 카드 관리"
       },
       {
+        "command": "axiom-ai.openComponentCatalog",
+        "title": "Axiom AI: 컴포넌트 카탈로그 열기",
+        "category": "Axiom AI"
+      },
+      {
         "command": "axiom-ai.reseedGuide",
         "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }
@@ -505,6 +510,7 @@
     "test:offline-api-binding": "node scripts/run-test-offline-api-binding.mjs",
     "test:offline-recipe": "node scripts/run-test-offline-recipe.mjs",
     "test:scaffold-lint": "node scripts/run-test-scaffold-lint.mjs",
+    "test:component-catalog": "node scripts/run-test-component-catalog.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",
