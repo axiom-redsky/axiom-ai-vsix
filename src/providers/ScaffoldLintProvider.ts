@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   lintScaffoldSource, SCAFFOLD_LINT_RULES,
   type ILintFinding, type TLintRuleId,
 } from '../ai/lint/ScaffoldLint';
 import { FileCreatorService } from '../ai/pipeline/FileCreatorService';
 import { ExtensionConfig } from '../config/ExtensionConfig';
+import { SCAFFOLD_LANGS, isScaffoldSourceDocument } from './scaffoldWorkspace';
 
 /**
  * Scaffold 린트의 VSCode 배선 — 진단(Diagnostics) 발행 + Quick Fix 제공 (C1).
@@ -27,8 +26,8 @@ export class ScaffoldLintProvider implements vscode.CodeActionProvider {
   private static readonly SOURCE = 'Axiom';
   /** 타이핑 중 재검사 디바운스(ms). 파일 한 장 정규식 스캔이라 가볍지만 매 키 입력마다 돌 이유는 없다. */
   private static readonly DEBOUNCE_MS = 300;
-  /** 검사 대상 언어. */
-  private static readonly LANGS = ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'];
+  /** 검사 대상 언어(hover와 공유 — 계약이 적용되는 파일의 정의는 하나다). */
+  private static readonly LANGS = SCAFFOLD_LANGS;
 
   private readonly _diagnostics = vscode.languages.createDiagnosticCollection('axiom-scaffold');
   private readonly _timers = new Map<string, NodeJS.Timeout>();
@@ -109,44 +108,12 @@ export class ScaffoldLintProvider implements vscode.CodeActionProvider {
 
   /**
    * 이 문서를 검사할지. scaffold 계약은 scaffold 프로젝트의 **업무 코드**에서만 참이므로,
-   * 워크스페이스가 스캐폴드로 보이지 않거나 파일이 코어/벤더 영역이면 아무 진단도 내지 않는다.
+   * 워크스페이스가 스캐폴드로 보이지 않거나 파일이 코어/벤더 영역이면 아무 진단도 내지 않는다
+   * (판정 자체는 hover와 공유한다 — `providers/scaffoldWorkspace`).
    */
   private _isTarget(doc: vscode.TextDocument): boolean {
     if (!ExtensionConfig.isLintEnabled()) return false;
-    if (doc.uri.scheme !== 'file') return false;
-    if (!ScaffoldLintProvider.LANGS.includes(doc.languageId)) return false;
-    const p = doc.uri.fsPath;
-    if (/[\\/](node_modules|dist|build|out|\.git)[\\/]/.test(p)) return false;
-    if (/\.d\.ts$/.test(p)) return false;
-    if (ScaffoldLintProvider._isFrameworkArea(p)) return false;
-    return ScaffoldLintProvider._isScaffoldWorkspace(p);
-  }
-
-  /**
-   * 계약을 **적용받는 쪽이 아니라 구현하는 쪽**인 영역인지.
-   *
-   * CLAUDE.md의 구조 정의대로 `src/core`는 "업무 개발자 미작업 영역"이고, `src/shared/lib`는 shadcn 원본
-   * 벤더 코드다. 여기에 계약을 들이대면 전부 오탐이 된다 — `core/hooks/use-api.ts`는 **`useApi`의 구현체**라
-   * `useQuery`/`useMutation`을 직접 쓰는 게 당연하고, `core/api/api-client.ts`는 axios 그 자체다
-   * (실측: 이 제외가 없으면 실 scaffold에서 raw-http 7건이 전부 코어 구현부에서 나온다).
-   */
-  private static _isFrameworkArea(filePath: string): boolean {
-    const norm = filePath.replace(/\\/g, '/');
-    return /\/src\/(core|config|types|__stories__)\//.test(norm)
-      || /\/src\/shared\/lib\//.test(norm)
-      || /\/shadcn\//.test(norm);
-  }
-
-  /** 파일이 속한 워크스페이스 폴더가 react-app-scaffold 모양인지(행동 카드의 `scaffold-detected`와 같은 신호). */
-  private static _isScaffoldWorkspace(filePath: string): boolean {
-    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
-    const root = folder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!root) return false;
-    try {
-      return fs.existsSync(path.join(root, 'src', 'domains'));
-    } catch {
-      return false;
-    }
+    return isScaffoldSourceDocument(doc);
   }
 
   private static _disabledRules(): string[] {

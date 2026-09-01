@@ -11,6 +11,7 @@ import { ActionCardsPanel } from './providers/ActionCardsPanel';
 import { ComponentCatalogPanel } from './providers/ComponentCatalogPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
 import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
+import { ScaffoldHoverProvider } from './providers/ScaffoldHoverProvider';
 import { ProjectConfigProvider } from './providers/ProjectConfigProvider';
 import { SliceProbeProvider } from './providers/SliceProbeProvider';
 import { RegionIoProbeProvider } from './providers/RegionIoProbeProvider';
@@ -120,8 +121,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     // 컴포넌트 카탈로그 패널 — props 인덱스·가이드·지식 문서를 한 창에서 훑어보기 (§7 B1).
-    vscode.commands.registerCommand('axiom-ai.openComponentCatalog', () => {
-      ComponentCatalogPanel.createOrShow(context.extensionUri);
+    // 인자로 부품 id를 주면 그 부품을 펼쳐서 연다(hover 카드의 "카탈로그에서 열기" 딥링크, §7 B2).
+    vscode.commands.registerCommand('axiom-ai.openComponentCatalog', (entryId?: unknown) => {
+      ComponentCatalogPanel.createOrShow(context.extensionUri, typeof entryId === 'string' ? entryId : undefined);
     }),
   );
 
@@ -129,6 +131,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Scaffold 린트(C1) — scaffold 고유 계약을 Problems 패널 진단 + Quick Fix로. 모델 호출 0(오프라인 동작).
   new ScaffoldLintProvider().register(context);
+  // Scaffold hover(B2) — 심볼 위에 계약·부품 카드를 띄운다(묻지 않아도 먼저 알려주는 축). 모델 호출 0.
+  new ScaffoldHoverProvider(context.extensionUri).register(context);
 
   // corpus 파일 변경 감시 등록
   chatProvider.registerCorpusWatcher(context);

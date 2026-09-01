@@ -420,6 +420,11 @@
           },
           "default": [],
           "description": "끌 Scaffold 린트 규칙 id 목록. 진단의 Quick Fix \"Axiom 규칙 끄기\"가 여기에 추가합니다."
+        },
+        "axiom-ai.hover.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scaffold Hover: useApi·$router·$ui·$util·UI 컴포넌트 위에 마우스를 올리면 계약 카드(봉투 계약·전역 객체 사용법)와 부품 카드(prop 표·스니펫·가이드 링크)를 그 자리에 띄웁니다. 읽기 전용이며 모델 호출이 없어 오프라인에서도 동작합니다."
         }
       }
     },
@@ -511,6 +516,7 @@
     "test:offline-recipe": "node scripts/run-test-offline-recipe.mjs",
     "test:scaffold-lint": "node scripts/run-test-scaffold-lint.mjs",
     "test:component-catalog": "node scripts/run-test-component-catalog.mjs",
+    "test:scaffold-hover": "node scripts/run-test-scaffold-hover.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",

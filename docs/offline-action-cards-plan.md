@@ -1,6 +1,6 @@
 # 오프라인 추천 카드 (Offline Action Cards) — 설계 계획
 
-> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ — 넷 다 F5 검증 통과 / A4 부품 삽입기 ✅ 코드 완료·F5 수동 검증 대기)** (2026-09-01, §9 진행표)
+> 상태: **Phase 0~3 완료 · Phase 4 진행중(A3 ✅ / C1 ✅ / B1 ✅ / 형태 B ✅ / A4 ✅ — F5 검증 통과 / B2 hover 승격 ✅ 코드 완료·F5 수동 검증 대기)** (2026-09-01, §9 진행표)
 > 확정 이력: 2026-08-28 카드 파일 형식 §4 · 추천 표시 2형태 §3.5 · 계획 카드 §3.6 / 2026-08-31 슬롯 소스 v1 §4.5
 > 작성: 2026-08-28
 > 도식: `docs/diagrams/09-오프라인-추천카드.svg`
@@ -15,20 +15,21 @@
 
 ### 지금 어디까지 왔나 (2026-09-01 갱신)
 Phase 0~3 + Phase 4의 **A3(레시피 실행기)**·**C1(Scaffold 린트)**·**B1(컴포넌트 카탈로그)**·
-**형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)** 까지 완료.
-**다섯 트랙 전부 F5 라이브 검증 통과**, 전 게이트 green. §7의 ★우선순위 항목은 이것으로 전부 소진.
+**형태 B(입력창 위 실시간 추천, §3.5)**·**A4(부품 삽입기 + 필수/선택 prop 입력 폼)**·
+**B2(hover 승격)** 까지 완료. 앞의 다섯은 **F5 라이브 검증 통과**, B2는 **코드·게이트 완료·F5 대기**.
+전 게이트 green. §7의 ★우선순위 항목은 이미 전부 소진했고, B2로 "지식·탐색" 축도 닫혔다.
 상세는 §9 진행표 — 각 Phase 밑에 "왜 그렇게 했는지"와 F5에서 발각한 함정이 전부 적혀 있다.
 
-> ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`).
-> **형태 B와 A4는 아직 미커밋**일 수 있다 — 이어서 하기 전에 `git status`로 먼저 확인할 것.
-> 미커밋이면 그 상태 그대로 이어가도 되고, 먼저 커밋해도 된다(작업은 이미 검증 완료).
+> ⚠ **커밋 상태**: A3·C1·B1은 커밋됨(`ebf0de7`·`babd666`·`486190d`), 형태 B·A4는 `f97b78c`에 포함.
+> **B2는 미커밋** — 이어서 하기 전에 `git status`로 먼저 확인할 것.
+> 미커밋이면 그 상태 그대로 이어가도 되고, 먼저 커밋해도 된다(게이트는 이미 전부 통과).
 
 ### 다음에 할 일 = 아래 중 택1
 
 | 후보 | 무게 | 시작점 |
 |---|---|---|
-| **★ §7 B2 — hover 승격**(권장) | 작음 | 편집기에서 `useApi`·`$router`·UI 컴포넌트 위에 hover → 계약 카드를 그 자리에 띄운다. 지식은 이미 전부 있다: `ai/contracts/ScaffoldContracts`(계약 카드 11종) + `ai/catalog/ComponentCatalog`(prop 표·스니펫) + `knowledge/`. 붙일 곳 = 새 `providers/ScaffoldHoverProvider.ts`(`vscode.languages.registerHoverProvider`), 패턴은 `providers/ScaffoldLintProvider.ts`(스캐폴드 워크스페이스에서만 동작·설정으로 끄기)를 그대로 베낀다. **왜 값어치**: 카탈로그·린트가 "찾아보기/검사"라면 hover는 **묻지 않아도 먼저 알려주는** 축 — "질문할 줄 알아야 도움받는" 채팅의 한계를 넘는다. 모델 호출 0 |
-| §7 B3 디자인 토큰 브라우저 · B4 라우터 맵 | 작음 | 같은 "결정론 데이터 + 창" 패턴. B3=`assets/styles/tokens/*.css` 파싱 → 색 견본·복사, B4=`domains/*/router` 파싱 → 경로 트리·고아/중복 탐지 |
+| **★ B2 F5 수동 검증**(가장 먼저) | 아주 작음 | 코드·게이트는 끝났고 **실 화면 확인만 남았다**. 아래 "F5로 눈으로 확인하는 법"의 hover 절 참고 |
+| **★ §7 B3 디자인 토큰 브라우저 · B4 라우터 맵**(권장) | 작음 | 같은 "결정론 데이터 + 창" 패턴. B3=`assets/styles/tokens/*.css` 파싱 → 색 견본·복사, B4=`domains/*/router` 파싱 → 경로 트리·고아/중복 탐지. ⚠ B2가 만든 자리를 재사용할 것: 토큰 hover(`var(--color-…)` 위에 색 견본)는 `ai/hover/ScaffoldHover`에 심볼 표를 한 줄 늘리는 일이다 |
 | **§6 채집 플라이휠** | 무거움 — 설계부터 | 온라인 성공 편집(applied+미되돌림) → 카드 제안. 원료는 `ai/pipeline/RegionCaptureRecorder`. ⚠ §10-5(그 파일 전용 → 재사용 골격 추상화 규칙) 미해결이라 **코드보다 설계 결정이 먼저**(착수하면 규칙 선택지 정리부터) |
 
 **이 트랙에서 반복해서 통한 작업 방식**(새 항목도 이대로 하면 된다):
@@ -51,6 +52,7 @@ F5(Run Extension) → 새 창에서 **대상 워크스페이스 폴더를 직접
 npm run typecheck && npm run compile
 npm run test:scaffold-lint      # 64   ← C1
 npm run test:component-catalog  # 126  ← B1 + A4 삽입/입력 폼
+npm run test:scaffold-hover     # 76   ← B2
 npm run test:action-cards       # 235  ← 카드 엔진 전체(T 섹션 = 형태 B)
 npm run test:offline-recipe     # 81   ← A3
 npm run test:offline-api-binding # 96  ← Phase 2
@@ -84,6 +86,15 @@ npm run dryrun:cards -- "직원 목록 페이지 만들어줘"   # 매처 계기
   명령 팔레트 `Axiom AI: 컴포넌트 카탈로그 열기`. 확인할 것: 왼쪽 목록 34개 · 검색창에 `표`(→SmartTable)·
   `달력`(→Calendar) · 오른쪽 prop 표/스니펫 복사 · `📖 가이드에서 열기`가 가이드 패널로 딥링크되는지 ·
   `소스 열기`(scaffold 워크스페이스를 열었을 때만 성공, 아니면 사유 안내).
+- **Scaffold hover(B2)** = 온·오프라인 무관·모델 호출 0. 스캐폴드 폴더를 열고 아무 `.tsx`나 보면 된다.
+  확인할 것: ①`useApi` 위에 마우스 → 봉투 계약 카드 + `📖 가이드에서 열기`(눌러서 가이드 패널이 열리는지)
+  ②`$util.date.format` 의 **`date` 위**에 올려도 카드가 뜨고 링크가 **date-util 문서**로 가는지(멤버를 본다)
+  ③`$ui.confirm` → confirm 문서 · `$router` → 라우터 문서 ④`<Button …>` 태그나 import 줄의 `Button` →
+  prop 표 + 스니펫 + `🧩 카탈로그에서 열기`(카탈로그가 **그 부품이 펼쳐진 채** 열리는지)
+  ⑤`SelectItem` 같은 패밀리 구성원은 그 구성원의 prop + 형제 목록이 뜨는지
+  ⑥**안 떠야 하는 곳**: 로컬에서 직접 선언한 동명 컴포넌트, `lucide-react`의 `Badge`처럼 다른 패키지에서
+  가져온 동명 부품, `src/core`·shadcn 원본 파일(계약을 구현하는 쪽) — 여기서는 TS hover만 떠야 정상이다.
+  끄려면 설정 `axiom-ai.hover.enabled`.
 - **Scaffold 린트(C1)** = 온·오프라인 무관하게 항상 동작. 스캐폴드 폴더를 열고 아무 `.tsx`나 보면 된다.
   Problems 패널(Ctrl+Shift+M) 필터에 `Axiom` 을 치면 tsc·eslint를 걸러내고 린트만 본다.
   확실히 걸리는 곳: `domains/example/components/ui-components/checkbox/CheckboxGroupDemo.tsx:3`(import 경로),
@@ -466,7 +477,7 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
 | # | 기능 | 내용 | 재사용 자산 |
 |---|---|---|---|
 | ★B1 | **컴포넌트 카탈로그 패널** ✅(2026-09-01) | props 표+예제 브라우징·검색·스니펫 복사 (데이터는 전부 있고 UI만 없음) | ComponentPropsIndex, knowledge/components, media/guide-docs |
-| B2 | Hover/자동완성 승격 | `useApi` 위에 hover → 봉투계약 카드. "질문할 줄 알아야 도움받는" 채팅 한계 돌파 | ScaffoldContracts, knowledge |
+| B2 | **Hover 승격** ✅(2026-09-01) | `useApi`·`$router`·`$ui`·`$util`·`cn`·`useForm` 위에 hover → 계약 카드 / UI 컴포넌트 위에 hover → prop 표·스니펫·가이드 딥링크. "질문할 줄 알아야 도움받는" 채팅 한계 돌파 | ScaffoldContracts, ComponentCatalog, guide-docs |
 | B3 | 디자인 토큰 브라우저 | tokens/*.css 파싱 → 색 견본·CSS 변수 자동완성·복사 | — (신규, 소형) |
 | B4 | 라우터 맵 | domains/*/router 파싱 → 경로 트리, 고아 페이지·중복 경로 탐지 | — (신규, 소형) |
 
@@ -950,6 +961,51 @@ const [{{formName}}Params, set{{formName}}Params] = useState<T{{formName}}Params
       typecheck · compile · 무회귀(action-cards 235/0 · offline-recipe 81/0 · region-edit 243/0 ·
       react-rules 39/0 · scaffold-lint 64/0 · offline-api-binding 96/0 · offline-intent 73/0 ·
       api-binding 75/0 · knowledge-routing 80/0 · line-edits 15/0).
+
+  - **B2 hover 승격 (2026-09-01): 코드 완료 · F5 수동 검증 대기**
+    카탈로그·린트가 각각 "찾아보기"와 "검사"라면 hover는 **묻지 않아도 먼저 알려주는** 축이다 —
+    채팅은 질문할 줄 알아야 하고, 카탈로그는 찾아봐야 하고, 린트는 이미 틀린 뒤에 말한다.
+    hover만이 **코드를 읽는 그 자리에서** 먼저 말한다.
+    - ★**새 지식을 한 줄도 만들지 않았다**: 계약 본문은 `ScaffoldContracts` 카드 **원문 그대로**,
+      부품 카드는 B1의 `buildCatalog`(요약·prop 표·`buildSnippet`) 결과 그대로, 문서는 GuidePanel
+      딥링크로 위임. 여기서 문안을 다시 쓰면 그 순간 카드가 두 벌이 되고, 프롬프트에 주입되는 계약과
+      사람이 읽는 계약이 갈라진다.
+    - **어떤 카드를 hover로 올릴지의 기준 = "이미 사람이 읽을 수 있게 쓰인 것"**: `use-api`·`router`·
+      `global-ui-alerts`·`global-util`·`class-merge-cn`·`form-validation` 6종만 올렸다. 레시피형
+      (`date-picker`·`list-table-binding`·`button-component` 등)은 본문이 **모델 지시문**
+      ("axiom-action을 내세요", "…를 출력하세요")이라 사람 hover에 부적합하다 — 올리려면 문안을
+      새로 써야 하고, 그건 위의 원칙을 깨는 일이다(테스트 B17이 이 선을 고정한다).
+    - **멤버까지 본다**: `$util.date.format` 의 어느 조각에 커서를 두든 뿌리(`$util`)를 찾아 카드를
+      띄우되, 딥링크는 **멤버를 보고** 고른다(`date` → `date-util` 문서, `$ui.confirm` → `confirm-ui`).
+      `foo().bar` 처럼 점 앞이 식별자가 아니면 거기서 멈춘다(엉뚱한 뿌리 금지).
+    - **양보가 기능의 절반**: 해당 심볼이 아니면 null을 돌려 TS hover에 자리를 내준다. 오탐 가드 4겹 —
+      ①`refetch`는 같은 파일에 `useApi`가 있을 때만 ②`cn`은 호출 형태이거나 import 돼 있을 때만
+      ③이 파일이 **직접 선언**한 이름이면 남의 부품이 아니다 ④JSX 태그이거나 import 된 이름일 때만.
+    - ⚠ **실 코드베이스 전량 스모크가 또 한 건을 잡았다**(C1·B1에 이어 세 번째): 실 scaffold 199파일
+      10.7만 식별자 위치에 전부 hover를 걸어 보니 `lucide-react`의 `Badge`, `@mui/material`의 `Button`,
+      `vaul`의 `Drawer` 같은 **동명이인**에 shadcn 문서가 붙고 있었다. → import **모듈 지정자**까지
+      확인하도록 고쳤다. 그런데 여기서 반대 방향 함정이 하나 더: 처음엔 배럴(`@axiom/components/ui`)만
+      인정했더니 발동이 4583→4090으로 떨어졌는데, 없어진 493건은 **배럴을 건너뛰고
+      `@/shared/lib/shadcn/ui/combobox` 로 직접 가져다 쓰는 실제 업무 파일**이었다(그건 린트
+      `ui-import-path`가 지적할 일이지 hover가 입 다물 이유가 아니다). shadcn 경로도 인정해 4567로
+      복구 — 남은 16건만이 진짜 동명이인이다. **합성 케이스로는 어느 쪽도 보이지 않는다.**
+    - **공유한 것 둘**(미러 금지 원칙): ①`providers/scaffoldWorkspace.ts` — "이 파일에 계약을 들이대도
+      되는가"(스캐폴드 워크스페이스 · `src/core`·shadcn 원본 제외)를 린트에서 끌어내 **린트와 hover가
+      같은 판정**을 쓴다. 두 벌이면 "린트는 조용한데 hover는 떠드는" 상태가 되고 사용자에겐 규칙이 두
+      개로 보인다. ②`providers/CatalogSource.ts` — 가이드·지식 문서 읽기(워크스페이스 시드본 → 번들
+      스냅샷 2계층)를 카탈로그 패널에서 끌어내 공유. 출처가 갈라지면 "패널엔 있는데 hover엔 없는" 부품이 생긴다.
+    - **딥링크는 있는 문서에만 건다**: `hasGuideDoc`으로 파일 존재를 확인하고 링크를 만든다(없는 문서로
+      보내면 눌렀을 때 "문서를 읽을 수 없습니다"만 뜬다). 테스트 E7·E8이 **실제 파일 존재**로 이 계약을 고정한다.
+    - **카탈로그 딥링크**: `axiom-ai.openComponentCatalog` 명령이 부품 id를 받아 그 부품을 **펼친 채**
+      연다(`focusEntryId`). 목록만 열어 두면 hover에서 넘어온 맥락이 끊긴다.
+    - **표가 깨지지 않게**: 실 인덱스의 prop 타입에는 유니온(`'a' | 'b'`)이 흔한데 그 `|`가 마크다운
+      표를 그대로 부순다(백틱 안에서도). `typeCell`이 이스케이프·길이 제한을 하고, E4가 실 53종의
+      모든 prop으로 표 무결성을 검사한다.
+    - 설정 `axiom-ai.hover.enabled`(기본 on) — 린트와 같은 규약으로 끌 수 있다.
+    - 게이트: `test:scaffold-hover` 76/0(A 심볼 12 · B 계약 17 · C 컴포넌트 20 · D 마크다운 13 ·
+      E 실 자료 14) · typecheck · compile · 무회귀(component-catalog 126/0 · action-cards 235/0 ·
+      offline-recipe 81/0 · offline-api-binding 96/0 · scaffold-lint 64/0 · react-rules 39/0 ·
+      region-edit 243/0 · offline-intent 73/0 · api-binding 75/0 · knowledge-routing 80/0).
 
 각 Phase 완료 기준: 기존 테스트 무회귀 + 해당 기능 전용 테스트 green
 (오프라인 개선 시 공유 어휘스코어러 buildContext 절대 수정 금지 원칙 유지).

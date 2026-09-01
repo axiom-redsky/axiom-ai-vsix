@@ -346,7 +346,15 @@ export function ComponentCatalogApp(): React.ReactElement {
       if (msg.type === 'componentCatalog') {
         setPayload(msg.payload);
         setTarget(msg.payload.target);
-        setSelected((prev) => prev ?? msg.payload.entries[0]?.id ?? null);
+        // hover 딥링크로 열렸으면 그 부품을 펼친다 — 넘어온 맥락을 이어 준다(검색어도 비워
+        // 목록에서 실제로 보이게 한다). 딥링크가 아니면 종전대로 첫 항목.
+        const focus = msg.payload.focusEntryId ?? null;
+        if (focus) {
+          setQuery('');
+          setSelected(focus);
+        } else {
+          setSelected((prev) => prev ?? msg.payload.entries[0]?.id ?? null);
+        }
       } else if (msg.type === 'componentCatalogTarget') {
         setTarget(msg.target);
       } else if (msg.type === 'componentCatalogNotice') {

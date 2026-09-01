@@ -378,6 +378,14 @@ export class ExtensionConfig {
    * 끌 린트 규칙 id 목록. 규칙 하나가 소음이라고 린트 전체를 끄는 것보다 그 규칙만 빼는 편이 낫다
    * (Quick Fix "Axiom 규칙 끄기"가 여기에 추가한다).
    */
+  /**
+   * Scaffold hover(B2) — 심볼 위 계약·부품 카드를 띄울지 여부. 기본 on.
+   * 읽기 전용이고 모델 호출이 없어 오프라인에서도 그대로 돈다(끄면 TS hover만 뜬다).
+   */
+  static isHoverEnabled(): boolean {
+    return ExtensionConfig._resolve<boolean>('hover.enabled', AI_DEFAULTS.hover.enabled);
+  }
+
   static getLintDisabledRules(): string[] {
     const raw = ExtensionConfig._resolve<string[]>('lint.disabledRules', AI_DEFAULTS.lint.disabledRules as string[]);
     return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : [];

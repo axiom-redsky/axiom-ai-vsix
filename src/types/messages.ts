@@ -396,6 +396,8 @@ export interface ComponentCatalogPayload {
   knowledgeDir: string | null;
   /** "어디에 넣을지" — 버튼이 누르기 전에 정확히 말하기 위한 값. */
   target: ComponentCatalogTarget | null;
+  /** hover(§7 B2) 딥링크로 열렸을 때 펼쳐 보일 부품 id. 없으면 종전대로 첫 항목. */
+  focusEntryId?: string | null;
 }
 
 export interface ActionCatalogDryrunRow {

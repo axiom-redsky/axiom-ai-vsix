@@ -15,27 +15,26 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ExtensionConfig } from '../config/ExtensionConfig';
-import { buildCatalog, buildSnippet, type ICatalogEntry, type IRawDoc } from '../ai/catalog/ComponentCatalog';
+import { buildSnippet, type ICatalogEntry } from '../ai/catalog/ComponentCatalog';
 import { buildComponentInsert, computeMinimalEdit } from '../ai/catalog/ComponentInsert';
 import { COMPONENT_PROPS_INDEX } from '../ai/contracts/generated/componentPropsIndex';
+import { loadComponentCatalog } from './CatalogSource';
 import type {
   ComponentCatalogPayload, ComponentCatalogTarget, HostToWebviewMessage, WebviewToHostMessage,
 } from '../types/messages';
-
-/** 가이드 문서 중 컴포넌트 문서만 있는 하위 경로(가이드 루트 기준). */
-const GUIDE_COMPONENT_DIR = ['components', 'ui'];
-/** 지식 문서 중 컴포넌트 문서 하위 경로(지식 루트 기준). */
-const KNOWLEDGE_COMPONENT_DIR = 'components';
 
 export class ComponentCatalogPanel {
   public static readonly viewType = 'axiom-ai.componentCatalogPanel';
   private static _current: ComponentCatalogPanel | undefined;
 
-  static createOrShow(extensionUri: vscode.Uri): void {
+  /**
+   * `focusEntryId`를 주면 그 부품을 펼친 상태로 연다 — hover(B2)의 "🧩 카탈로그에서 열기"가 쓰는
+   * 딥링크다. 목록만 열어 놓고 사용자가 다시 찾게 하면 hover에서 넘어온 맥락이 끊긴다.
+   */
+  static createOrShow(extensionUri: vscode.Uri, focusEntryId?: string): void {
     if (ComponentCatalogPanel._current) {
       ComponentCatalogPanel._current._panel.reveal();
-      ComponentCatalogPanel._current._postCatalog();
+      ComponentCatalogPanel._current._postCatalog(focusEntryId);
       return;
     }
     const panel = vscode.window.createWebviewPanel(
@@ -50,11 +49,13 @@ export class ComponentCatalogPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist')],
       },
     );
-    ComponentCatalogPanel._current = new ComponentCatalogPanel(panel, extensionUri);
+    ComponentCatalogPanel._current = new ComponentCatalogPanel(panel, extensionUri, focusEntryId);
   }
 
   private _entries: ICatalogEntry[] | null = null;
   private _knowledgeDir: string | null = null;
+  /** hover 딥링크로 열렸을 때 펼쳐 보일 부품 id(웹뷰가 목록을 요청하면 함께 보낸다). */
+  private _pendingFocus: string | null = null;
   /**
    * 삽입 대상 = **마지막으로 보고 있던 코드 편집기**.
    *
@@ -68,7 +69,10 @@ export class ComponentCatalogPanel {
   private constructor(
     private readonly _panel: vscode.WebviewPanel,
     private readonly _extensionUri: vscode.Uri,
+    focusEntryId?: string,
   ) {
+    // 웹뷰는 뜬 다음에야 목록을 요청한다 — 그때까지 딥링크 대상을 들고 있는다.
+    this._pendingFocus = focusEntryId ?? null;
     _panel.webview.html = this._buildHtml(_panel.webview);
     _panel.onDidDispose(() => {
       ComponentCatalogPanel._current = undefined;
@@ -121,13 +125,15 @@ export class ComponentCatalogPanel {
 
   // ── 목록 ────────────────────────────────────────────────────────────────────
 
-  private _postCatalog(): void {
-    const guideDocs = this._readGuideDocs();
-    const knowledgeDocs = this._readKnowledgeDocs();
-    if (!this._entries) {
-      this._entries = buildCatalog({ index: COMPONENT_PROPS_INDEX, guideDocs, knowledgeDocs });
-    }
+  private _postCatalog(focusEntryId?: string): void {
+    // 자료 읽기는 hover(B2)와 **같은 모듈**을 쓴다 — 출처가 갈라지면 "패널엔 있는데 hover엔 없는" 부품이 생긴다.
+    const source = loadComponentCatalog(this._extensionUri);
+    this._knowledgeDir = source.knowledgeDir;
+    if (!this._entries) this._entries = source.entries;
     const entries = this._entries;
+
+    const focus = focusEntryId ?? this._pendingFocus;
+    this._pendingFocus = null;
 
     const payload: ComponentCatalogPayload = {
       entries,
@@ -135,12 +141,14 @@ export class ComponentCatalogPanel {
         entries: entries.length,
         components: Object.keys(COMPONENT_PROPS_INDEX).length,
         props: entries.reduce((n, e) => n + e.propCount, 0),
-        guideDocs: guideDocs.length,
-        knowledgeDocs: knowledgeDocs.length,
+        guideDocs: source.guideDocs.length,
+        knowledgeDocs: source.knowledgeDocs.length,
       },
       scaffoldDetected: this._detectScaffold(),
       knowledgeDir: this._knowledgeDir ? this._displayPath(this._knowledgeDir) : null,
       target: this._targetView(),
+      // 있는 부품일 때만 — 없는 id를 보내면 웹뷰가 빈 상세를 띄운다.
+      focusEntryId: focus && entries.some((e) => e.id === focus) ? focus : null,
     };
     this._post({ type: 'componentCatalog', payload });
   }
@@ -243,75 +251,6 @@ export class ComponentCatalogPanel {
       + (result.summary.length > 0 ? ` (${result.summary.join(' · ')})` : ''),
       'info',
     );
-  }
-
-  // ── 자료 읽기 ───────────────────────────────────────────────────────────────
-
-  /**
-   * 가이드 루트는 GuidePanel과 **같은 2계층**(워크스페이스 시드본 → 번들 스냅샷)을 따른다.
-   * 다르게 고르면 카드에 보이는 요약과 딥링크로 열리는 문서가 갈라진다.
-   */
-  private _guideRoot(): string | null {
-    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const axiomFolder = ExtensionConfig.getSddAxiomFolder() || '.axiom';
-    const seeded = path.isAbsolute(axiomFolder)
-      ? path.join(axiomFolder, 'guide')
-      : wsRoot ? path.join(wsRoot, axiomFolder, 'guide') : null;
-    if (seeded && fs.existsSync(path.join(seeded, ...GUIDE_COMPONENT_DIR))) return seeded;
-
-    const bundled = vscode.Uri.joinPath(this._extensionUri, 'media', 'guide-docs').fsPath;
-    return fs.existsSync(bundled) ? bundled : null;
-  }
-
-  private _readGuideDocs(): IRawDoc[] {
-    const root = this._guideRoot();
-    if (!root) return [];
-    const dir = path.join(root, ...GUIDE_COMPONENT_DIR);
-    return this._readMarkdownDir(dir).map((f) => ({
-      // docId = 가이드 루트 기준 확장자 없는 상대경로(openGuide 딥링크 계약).
-      id: [...GUIDE_COMPONENT_DIR, path.basename(f.name, '.md')].join('/'),
-      text: f.text,
-    }));
-  }
-
-  /** 지식 루트도 워크스페이스(.axiom/knowledge) 우선, 없으면 번들 knowledge/. */
-  private _readKnowledgeDocs(): IRawDoc[] {
-    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const axiomFolder = ExtensionConfig.getSddAxiomFolder() || '.axiom';
-    const candidates: string[] = [];
-    if (path.isAbsolute(axiomFolder)) candidates.push(path.join(axiomFolder, 'knowledge'));
-    else if (wsRoot) candidates.push(path.join(wsRoot, axiomFolder, 'knowledge'));
-    candidates.push(vscode.Uri.joinPath(this._extensionUri, 'knowledge').fsPath);
-
-    for (const root of candidates) {
-      const dir = path.join(root, KNOWLEDGE_COMPONENT_DIR);
-      const files = this._readMarkdownDir(dir);
-      if (files.length > 0) {
-        this._knowledgeDir = dir;
-        return files.map((f) => ({ id: `${KNOWLEDGE_COMPONENT_DIR}/${f.name}`, text: f.text }));
-      }
-    }
-    this._knowledgeDir = null;
-    return [];
-  }
-
-  /** 디렉터리의 .md를 이름순으로 읽는다(읽기 실패는 조용히 건너뛴다 — 목록은 계속 떠야 한다). */
-  private _readMarkdownDir(dir: string): { name: string; text: string }[] {
-    let names: string[];
-    try {
-      names = fs.readdirSync(dir).filter((n) => n.toLowerCase().endsWith('.md')).sort();
-    } catch {
-      return [];
-    }
-    const out: { name: string; text: string }[] = [];
-    for (const name of names) {
-      try {
-        out.push({ name, text: fs.readFileSync(path.join(dir, name), 'utf8') });
-      } catch {
-        /* 한 파일이 깨져도 나머지는 보여준다 */
-      }
-    }
-    return out;
   }
 
   // ── 에디터 연동 ─────────────────────────────────────────────────────────────

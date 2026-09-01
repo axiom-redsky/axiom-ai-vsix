@@ -175,6 +175,14 @@ export const AI_DEFAULTS = {
     disabledRules: [] as string[],
   },
   /**
+   * Scaffold hover(B2) 기본값. `useApi`·`$router`·`$ui`·`$util`·UI 컴포넌트 위에 마우스를 올리면
+   * 계약 카드/부품 카드(prop 표·스니펫·가이드 딥링크)를 그 자리에 띄운다. 린트와 같은 자료를 쓰고
+   * 모델 호출이 0이라 오프라인에서도 그대로 돈다. 읽기 전용(코드를 바꾸지 않는다).
+   */
+  hover: {
+    enabled: true,
+  },
+  /**
    * Q&A(조회·설명형) 응답의 반복(degenerate repetition) 억제 튜닝.
    * 약한 sLLM이 자유 산문 답변에서 같은 문단을 num_predict 한도까지 무한 반복하는 실패를 줄인다.
    * ⚠ 이 튜닝은 호출자가 Q&A 경로(isQnAGated)에서만 주입한다. 코드 편집(region/patch/full)·스펙·eval
