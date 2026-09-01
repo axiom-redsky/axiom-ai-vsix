@@ -4,9 +4,10 @@ import { MessageList } from './components/MessageList';
 import { InputBar } from './components/InputBar';
 import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
+import { chatModeView } from '../../ai/ChatMode';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach, cardSuggestions, requestCardSuggestions, pickCardSuggestion } = useChat();
+  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach, cardSuggestions, requestCardSuggestions, pickCardSuggestion, mode, changeMode, openModeSettings } = useChat();
   const totalChars = useMemo(
     () => messages.reduce((sum, m) => sum + m.content.length, 0),
     [messages],
@@ -31,7 +32,10 @@ export function ChatApp(): React.ReactElement {
           <span className="chat-header__title">Axiom AI</span>
         </div>
         <div className="chat-header__right">
-          <span className="chat-header__status">{status}</span>
+          {/* 상태바에도 모드를 얹는다(§4.4). 기본(auto)은 종전 문구 그대로 — 잉크를 쓰지 않는다. */}
+          <span className="chat-header__status">
+            {status}{mode !== 'auto' ? ` · ${chatModeView(mode).icon} ${chatModeView(mode).label}` : ''}
+          </span>
           <button
             className="chat-header__btn"
             onClick={clearHistory}
@@ -80,6 +84,9 @@ export function ChatApp(): React.ReactElement {
         suggestions={cardSuggestions}
         onQueryChange={requestCardSuggestions}
         onPickSuggestion={pickCardSuggestion}
+        mode={mode}
+        onModeChange={changeMode}
+        onOpenModeSettings={openModeSettings}
       />
     </div>
   );

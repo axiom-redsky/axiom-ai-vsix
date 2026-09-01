@@ -868,6 +868,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'sendMessage':
           await this._handleMessage(msg.text, msg.selection, msg.mode);
           break;
+        case 'setChatMode':
+          // 전송을 기다리지 않고 즉시 기억한다(§5.2) — 고르고 창을 닫아도 선택이 남는다.
+          this._setChatMode(normalizeChatMode(msg.mode));
+          break;
+        case 'openModeSettings':
+          // 모드 메뉴의 '⚙ 기본 모드 설정' — 런처(설정) 패널을 연다.
+          void vscode.commands.executeCommand('axiom-ai.chatPanel.focus');
+          break;
         case 'stopMessage':
           this._abortController?.abort();
           for (const [, entry] of this._pendingConfirmations) entry.resolve(false);

@@ -533,6 +533,10 @@ export interface ActionCatalogDryrunResult {
 // WebView → Extension Host
 export type WebviewToHostMessage =
   | { type: 'sendMessage'; text: string; selection?: { filePath: string; startLine: number; endLine: number }; mode?: ChatMode }
+  // 사용자가 모드를 골랐다 — 전송을 기다리지 않고 바로 기억한다(§5.2). 창을 닫았다 열어도 유지.
+  | { type: 'setChatMode'; mode: ChatMode }
+  // 모드 메뉴 구분선 아래 '⚙ 기본 모드 설정' — 설정 패널을 연다(§4.2 규칙 9).
+  | { type: 'openModeSettings' }
   | { type: 'stopMessage' }
   | { type: 'clearHistory' }
   | { type: 'ready' }

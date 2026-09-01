@@ -1,6 +1,6 @@
 # 대화 모드 전환 (Chat Mode) — 설계 계획
 
-> 상태: **Phase 0·1 구현 완료 (2026-09-01)** — 정책 모듈 + 호스트 배선. 기능은 켜졌고 UI만 없다(Phase 2).
+> 상태: **Phase 0·1·2 구현 완료 (2026-09-01)** — 정책 모듈 + 호스트 배선 + UI. F5 수동 검증 대기.
 > 작성: 2026-09-01
 > 관련 문서: [offline-action-cards-plan.md](offline-action-cards-plan.md) · [page-creation-intent-routing-plan.md](page-creation-intent-routing-plan.md) · [unified-settings-plan.md](unified-settings-plan.md)
 > 관련 메모리: [qna-gating-consistency], [intent-routing-redesign], [prefer-intent-over-blocking], [offline-intent-responder], [online-knowledge-answer]
@@ -13,7 +13,8 @@
 > **이 문서가 이 트랙의 유일한 진실원**이다. 이어서 작업한 뒤에는 이 절도 함께 갱신할 것.
 
 ### 지금 어디까지 왔나
-**Phase 0·1 완료.** 모드는 호스트에서 실제로 동작한다 — 다만 **고를 UI가 없어** 아직 `auto` 고정이다.
+**Phase 0·1·2 완료.** 모드를 화면에서 고를 수 있고, 고른 값이 호스트 게이트까지 흐른다.
+**남은 것은 F5 수동 검증**(§6 Phase 2 완료 기준 7항목) — 코드로는 확인할 수 없는 부분이다.
 
 - Phase 0: `src/ai/ChatMode.ts` 신설(정책 표·CHAT_MODES·general 프롬프트·히스토리 스트립) + `npm run test:chat-mode` 55건
 - Phase 1: 게이트 ①②③④⑥ policy 배선 · `forceRoute` · `buildSystemPrompt` general 조기 분기 ·
@@ -29,10 +30,10 @@
    전환 **버튼**은 계획대로 Phase 3.
 
 ### 다음에 할 일
-**Phase 2(UI: 알약 + 모드 메뉴 + 배지)부터.** §4가 확정 사양, §6 Phase 2가 작업 목록이다.
-호스트 계약은 이미 있다 — 웹뷰는 `sendMessage`에 `mode`를 실어 보내고, 호스트가 `chatMode` 알림을 준다.
-행 데이터는 `CHAT_MODES`(`src/ai/ChatMode.ts`)를 import할 것 — 라벨을 웹뷰에 다시 적지 말 것.
-검증은 §6 Phase 2 완료 기준 7항목(F5 수동). **6번(규칙 0 / RAG 0)이 안 나오면 웹뷰만 바뀐 것.**
+1. **F5 수동 검증** — §6 Phase 2 완료 기준 7항목. 특히 6번(컨텍스트 분해에서 규칙 0 / RAG 0)이
+   안 나오면 웹뷰만 바뀌고 배선이 안 걸린 것이다(Phase 1 쪽을 볼 것).
+2. **Phase 3(탈출구·전환 제안)** — `/g`·`/mode` 슬래시 명령, 전환 제안 배너/칩 2종,
+   오프라인 × general 안내에 **버튼** 달기(안내 문구 자체는 Phase 1에서 이미 나간다).
 
 ### 확정된 것 (2026-09-01, 사용자 지시)
 - **UI 형태 = Claude Code 모드 메뉴와 동일 계열**(입력창 우하단 알약 → 위로 뜨는 모드 메뉴). §4가 확정 사양.
@@ -387,6 +388,12 @@ Axiom이 이번 요청에서 실제로 필요한 건 **지식 축**이다. 두 �
   6. 일반 질문 전송 → 컨텍스트 분해에서 **규칙 0 / RAG 0**
   7. 스크롤 올렸을 때 그 메시지에 💬 배지가 남아 있음
   (틀리면: 알약은 바뀌었는데 6번 분해가 그대로면 Phase 1 배선이 안 걸린 것 — 웹뷰만 바뀐 상태)
+- **결과(2026-09-01)**: 코드 완료, F5 수동 검증 대기. 신설 `ModeMenu.tsx`(알약+팝오버).
+  계획에 없던 것 2가지를 함께 넣었다: ① 모드를 고른 즉시 호스트에 `setChatMode`를 보내 기억시킨다
+  (전송을 안 하고 창을 닫아도 선택이 남게 — §5.2의 "기억한다"를 실제로 지키려면 필요).
+  ② 메뉴의 `⚙ 기본 모드 설정`은 `openModeSettings` → `axiom-ai.chatPanel.focus`로 런처 패널을 연다.
+  키보드(↑↓·Enter·Esc·Shift+Tab)는 ModeMenu가 아니라 **InputBar의 textarea 핸들러**가 처리한다 —
+  팝오버가 떠도 포커스가 입력창에 남아야 하기 때문(§4.2.1의 Palette 규칙과 동일).
 
 ### Phase 3 — 탈출구·전환 제안
 - `/g`·`/mode` 슬래시 명령(§5.1)
@@ -442,7 +449,7 @@ npm run eval:region        # 적용률·게이트 회귀 확인
 | 계획 | UI 사양 확정(§4 = Claude Code 모드 메뉴 형태, 사용자 지시) | ✅ 2026-09-01 | 미커밋 |
 | 0 | `ChatMode.ts` 정책 모듈 + 테스트(55건) | ✅ 2026-09-01 | `8def0ab` |
 | 1 | 호스트 배선(Provider·Builder) — §7 전량 green | ✅ 2026-09-01 | 미커밋 |
-| 2 | UI(칩·팝오버·배지) | ⬜ | — |
+| 2 | UI(칩·팝오버·배지) | ✅ 2026-09-01 (F5 검증 대기) | 미커밋 |
 | 3 | 탈출구·전환 제안·오프라인 안내 | ⬜ | — |
 | 4 | 설정·도식 | ⬜ (선택) | — |
 

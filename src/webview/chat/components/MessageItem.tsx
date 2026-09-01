@@ -5,6 +5,7 @@ import hljs from 'highlight.js';
 import type { Message } from '../hooks/useChat';
 import type { DiffLine } from '../../../types/messages';
 import { ActionCardsView } from './ActionCardsView';
+import { chatModeView } from '../../../ai/ChatMode';
 
 /**
  * react-markdown의 code 컴포넌트를 직접 교체한다.
@@ -308,6 +309,14 @@ export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, o
   const isSystem = message.role === 'system';
 
   if (isSystem) {
+    // 모드가 바뀐 지점 — 대화 흐름에 얇은 구분선 한 줄(§4.3).
+    if (message.subtype === 'mode-switch') {
+      return (
+        <div className="message message--mode-switch">
+          <span className="message__mode-switch-label">— {message.content} —</span>
+        </div>
+      );
+    }
     // 오프라인 행동 카드(계획 카드/컴팩트 리스트) — 파일 결과 카드와 별도 인터랙티브 렌더.
     if (message.subtype === 'action-cards' && message.actionCards) {
       return (
@@ -349,6 +358,12 @@ export function MessageItem({ message, onConfirm, onPatchRecovery, onCardChip, o
 
       <div className="message__body">
         <div className="message__content">
+          {/* 기본 모드(auto)엔 배지를 그리지 않는다 — 기본값에 잉크를 쓰면 소음이 된다(§4.3). */}
+          {isUser && message.mode && message.mode !== 'auto' && (
+            <span className="message__mode-badge" title={chatModeView(message.mode).summary}>
+              {chatModeView(message.mode).icon} {chatModeView(message.mode).label}
+            </span>
+          )}
           {isUser ? (
             <p>{message.content}</p>
           ) : (

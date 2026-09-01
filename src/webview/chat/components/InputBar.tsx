@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { matchSlashCommands } from '../slashCommands';
 import { Palette, type IPaletteItem } from './Palette';
+import { ModeMenu } from './ModeMenu';
+import { CHAT_MODES, chatModeHint, nextChatMode, type ChatMode } from '../../../ai/ChatMode';
 import type { SlashCommand } from '../slashCommands';
 import type { SelectionContext, ContextUsage } from '../hooks/useChat';
 import type { CardSuggestionsPayload, ContextBreakdown } from '../../../types/messages';
@@ -42,9 +44,14 @@ interface Props {
   onQueryChange?: (query: string) => void;
   /** 추천 목록에서 카드를 골랐다. */
   onPickSuggestion?: (cardId: string, query: string) => void;
+  /** 현재 대화 모드(§4.2 — 알약에 항상 텍스트로 보인다). */
+  mode: ChatMode;
+  onModeChange: (mode: ChatMode) => void;
+  /** 모드 메뉴 구분선 아래 '⚙ 기본 모드 설정'. */
+  onOpenModeSettings?: () => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge, suggestions, onQueryChange, onPickSuggestion }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge, suggestions, onQueryChange, onPickSuggestion, mode, onModeChange, onOpenModeSettings }: Props): React.ReactElement {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
@@ -57,6 +64,12 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
   const [suggestIdx, setSuggestIdx] = useState(-1);
   /** Esc로 닫음 — 이번 입력에서는 다시 뜨지 않는다(전송·비움으로 리셋). */
   const [suggestDismissed, setSuggestDismissed] = useState(false);
+  /**
+   * 모드 메뉴 열림 + 키보드 이동 위치. 팝오버가 떠 있어도 포커스는 입력창에 남으므로(§4.2.1)
+   * 방향키·Enter·Esc는 여기 textarea 핸들러가 처리한다 — Palette와 같은 규칙이다.
+   */
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [modeIdx, setModeIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -121,7 +134,7 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
    * 슬래시 팔레트가 떠 있으면 양보한다(같은 자리에 목록 둘 = Enter 예측 불가).
    */
   const suggestItems =
-    !suggestDismissed && cmdMatches.length === 0 && !isStreaming
+    !suggestDismissed && cmdMatches.length === 0 && !isStreaming && !modeMenuOpen
       && suggestions && suggestions.query === value.trim() && suggestions.query.length > 0
       ? suggestions.items
       : [];
@@ -159,6 +172,43 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
   }, [value, isStreaming, cmdMatches, selectedIdx, onSend, closePalette, selectCommand, focusTextarea, onQueryChange]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Shift+Tab = 메뉴를 열지 않고 다음 모드로 바로 순환(§4.5). 알약이 즉시 바뀌므로 "모르고 바뀜"이 없다.
+    // 기본 동작(포커스 이동)을 반드시 막고, 한글 IME 조합 중에는 무시한다 — 이 코드베이스는 한국어
+    // 입력이 기본이라 조합 중 단축키가 먹으면 입력이 깨진다.
+    if (e.key === 'Tab' && e.shiftKey) {
+      if (e.nativeEvent.isComposing) return;
+      e.preventDefault();
+      setModeMenuOpen(false);
+      onModeChange(nextChatMode(mode));
+      return;
+    }
+
+    // 모드 메뉴가 열려 있는 동안의 키 — 포커스는 입력창에 있으므로 여기서 처리한다(§4.2.1).
+    if (modeMenuOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setModeIdx((i) => (i + 1) % CHAT_MODES.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setModeIdx((i) => (i - 1 + CHAT_MODES.length) % CHAT_MODES.length);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        onModeChange(CHAT_MODES[modeIdx].id);
+        setModeMenuOpen(false);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setModeMenuOpen(false);
+        focusTextarea();
+        return;
+      }
+    }
+
     if (cmdMatches.length > 0) {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -233,7 +283,14 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     }
   };
 
-  const showPalette = cmdMatches.length > 0;
+  // 모드 메뉴가 떠 있으면 슬래시 팔레트는 양보한다 — 같은 자리에 목록이 둘이면 Enter를 예측할 수 없다.
+  const showPalette = cmdMatches.length > 0 && !modeMenuOpen;
+
+  /** 메뉴를 열 때는 커서를 현재 모드 행에 둔다(바로 ↑↓로 옮길 수 있게). */
+  const setModeMenuOpenAt = useCallback((next: boolean) => {
+    setModeMenuOpen(next);
+    if (next) setModeIdx(Math.max(0, CHAT_MODES.findIndex((m) => m.id === mode)));
+  }, [mode]);
 
   const lineLabel = selectionContext
     ? selectionContext.startLine === selectionContext.endLine
@@ -319,6 +376,16 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
               </svg>
             </button>
           )}
+          {/* 알약은 전송 버튼 **바로 왼쪽**(§4.2 규칙 1) — 보내기 직전에 모드를 확인하게 되는 자리. */}
+          <ModeMenu
+            mode={mode}
+            open={modeMenuOpen}
+            activeIdx={modeIdx}
+            onOpenChange={setModeMenuOpenAt}
+            onChange={onModeChange}
+            onOpenSettings={onOpenModeSettings}
+            disabled={isStreaming}
+          />
           {isStreaming ? (
             <button
               onClick={onStop}
@@ -349,7 +416,10 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
         </div>
       </div>
       <div className="input-bar__footer">
-        <p className="input-bar__hint">Enter 전송 · Shift+Enter 줄바꿈 · /명령어</p>
+        {/* general이면 상태를 두 곳에서 말한다 — 알약 + 이 한 줄(§4.2). auto는 종전 안내 그대로. */}
+        <p className={'input-bar__hint' + (chatModeHint(mode) ? ' input-bar__hint--mode' : '')}>
+          {chatModeHint(mode) ?? 'Enter 전송 · Shift+Enter 줄바꿈 · /명령어'}
+        </p>
         {contextTotalChars !== undefined && offline && (
           // 오프라인/로컬 지식 턴 — 로컬 문서로 답하므로 LLM 컨텍스트 윈도우를 소비하지 않는다.
           // 누적 추정 토큰을 보여주면 실재하지 않는 예산처럼 오해를 줘서, 막대를 비활성 상태로

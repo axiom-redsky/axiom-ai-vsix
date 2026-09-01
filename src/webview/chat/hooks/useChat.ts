@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
 import type { HostToWebviewMessage, DiffLine, ContextBreakdown, ActionCardsPayload, CardSuggestionsPayload } from '../../../types/messages';
+import { DEFAULT_CHAT_MODE, chatModeView, type ChatMode } from '../../../ai/ChatMode';
 
 export interface ContextUsage {
   promptTokens?: number;
@@ -24,7 +25,9 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
-  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed' | 'action-cards';
+  subtype?: 'file-created' | 'file-updated' | 'file-error' | 'file-cancelled' | 'file-confirm-request' | 'patch-failed' | 'action-cards' | 'mode-switch';
+  /** 이 메시지를 보낼 때의 대화 모드 — 스크롤을 올렸을 때 답의 성격을 설명하는 유일한 근거(§4.3). */
+  mode?: ChatMode;
   diff?: DiffLine[];
   actionId?: string;
   confirmPending?: boolean;
@@ -75,6 +78,11 @@ export function useChat() {
    * 지금 입력과 다르면 InputBar가 버린다(늦게 온 응답이 엉뚱하게 붙지 않게).
    */
   const [cardSuggestions, setCardSuggestions] = useState<CardSuggestionsPayload>({ query: '', items: [] });
+  /**
+   * 대화 모드(§chat-mode-plan). 호스트가 진실원이다 — 'ready' 직후 chatMode 알림으로 복원값이 온다.
+   * 여기 기본값 'auto'는 그 알림이 도착하기 전의 잠깐 동안만 쓰인다.
+   */
+  const [mode, setMode] = useState<ChatMode>(DEFAULT_CHAT_MODE);
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -142,6 +150,10 @@ export function useChat() {
           setIsStreaming(false);
           break;
         }
+        case 'chatMode':
+          // 호스트가 기억하고 있던 모드(워크스페이스별). 웹뷰 기본값을 덮어쓴다.
+          setMode(msg.mode);
+          break;
         case 'status':
           setStatus(msg.text);
           break;
@@ -337,7 +349,8 @@ export function useChat() {
       setProgressSteps([]);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), role: 'user', content: text },
+        // 그때의 모드를 메시지에 박아 둔다 — 나중에 모드를 바꿔도 이 말풍선의 배지는 안 바뀐다.
+        { id: Date.now().toString(), role: 'user', content: text, mode },
       ]);
       setIsWaiting(true);
       // 핀(chip)으로 붙은 선택 범위를 함께 전송 — host가 라이브 에디터 selection 대신 이걸
@@ -349,10 +362,38 @@ export function useChat() {
             endLine: selectionContext.endLine,
           }
         : undefined;
-      vscode.postMessage({ type: 'sendMessage', text, selection });
+      vscode.postMessage({ type: 'sendMessage', text, selection, mode });
     },
-    [isStreaming, isWaiting, selectionContext],
+    [isStreaming, isWaiting, selectionContext, mode],
   );
+
+  /**
+   * 모드 전환 — 전송을 기다리지 않고 호스트에 바로 알려 기억시킨다(§5.2).
+   * 대화 흐름에는 얇은 구분선 한 줄을 남긴다(§4.3) — 3턴 전에 바뀐 모드 때문에 "왜 답이 이래?"가
+   * 되는 것이 모드 UI의 가장 흔한 실패다.
+   */
+  const changeMode = useCallback((next: ChatMode) => {
+    setMode((prev) => {
+      if (prev === next) return prev;
+      const view = chatModeView(next);
+      setMessages((msgs) => [
+        ...msgs,
+        {
+          id: `mode-${Date.now()}`,
+          role: 'system',
+          subtype: 'mode-switch',
+          content: `${view.icon} ${view.label}로 전환`,
+        },
+      ]);
+      vscode.postMessage({ type: 'setChatMode', mode: next });
+      return next;
+    });
+  }, []);
+
+  /** 모드 메뉴의 '기본 모드 설정' — 호스트가 설정 패널을 연다. */
+  const openModeSettings = useCallback(() => {
+    vscode.postMessage({ type: 'openModeSettings' });
+  }, []);
 
   const clearHistory = useCallback(() => {
     streamingIdRef.current = null;
@@ -462,5 +503,6 @@ export function useChat() {
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop,
     attachReference, attachText, consumeAttach,
     cardSuggestions, requestCardSuggestions, pickCardSuggestion,
+    mode, changeMode, openModeSettings,
   };
 }
