@@ -6,7 +6,7 @@ import { ClearWarningBanner } from './components/ClearWarningBanner';
 import { isExactSlashCommand } from './slashCommands';
 
 export function ChatApp(): React.ReactElement {
-  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach } = useChat();
+  const { messages, status, progressSteps, isStreaming, isWaiting, sendMessage, clearHistory, stopStreaming, sendConfirmation, sendPatchRecovery, sendCardChip, sendCardSlot, sendCardBindingChoice, sendCardExecute, selectionContext, dismissSelection, systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop, attachReference, attachText, consumeAttach, cardSuggestions, requestCardSuggestions, pickCardSuggestion } = useChat();
   const totalChars = useMemo(
     () => messages.reduce((sum, m) => sum + m.content.length, 0),
     [messages],
@@ -77,6 +77,9 @@ export function ChatApp(): React.ReactElement {
         breakdown={breakdown}
         offline={isOffline}
         localKnowledge={isLocalKnowledge}
+        suggestions={cardSuggestions}
+        onQueryChange={requestCardSuggestions}
+        onPickSuggestion={pickCardSuggestion}
       />
     </div>
   );

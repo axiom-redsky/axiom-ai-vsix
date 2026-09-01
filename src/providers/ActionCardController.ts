@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CardCatalogService } from './CardCatalogService';
 import { matchCards, listApplicableCards, type ICardMatchContext } from '../ai/actions/CardMatcher';
+import { suggestCards, type ICardSuggestion } from '../ai/actions/CardSuggest';
 import {
   buildBindingView, buildCardsPayload, buildOutputViews, buildRecipeView, buildSlotViews, substituteSlots,
 } from '../ai/actions/CardPlanView';
@@ -165,6 +166,22 @@ export class ActionCardController {
     return this._catalog.activeCards();
   }
 
+  /**
+   * 전제조건만 판정하는 가벼운 상황 — 프리필 재료(도메인·엔드포인트 스캔)를 넣지 않는다.
+   * 타이핑 중 추천(형태 B)이 키 입력마다 파일시스템을 훑지 않게 하는 것이 목적이라,
+   * `scaffoldDetected`의 existsSync 조차 짧게 캐시한다.
+   */
+  private _lightContext(fileOpen: boolean): ICardMatchContext {
+    const now = Date.now();
+    if (!this._scaffoldCache || now - this._scaffoldCache.at > 5_000) {
+      const wsRoot = this._host.workspaceRoot();
+      this._scaffoldCache = { at: now, value: !!wsRoot && fs.existsSync(path.join(wsRoot, 'src', 'domains')) };
+    }
+    return { fileOpen, scaffoldDetected: this._scaffoldCache.value };
+  }
+
+  private _scaffoldCache: { at: number; value: boolean } | null = null;
+
   private _matchContext(fileOpen: boolean): ICardMatchContext {
     const wsRoot = this._host.workspaceRoot();
     return {
@@ -206,9 +223,53 @@ export class ActionCardController {
     const shown = new Set(rec.matches.map((m) => m.card.id));
     const more = listApplicableCards(query, cards, ctx).matches.filter((m) => !shown.has(m.card.id));
 
+    return this._present(query, rec.mode === 'plan' ? 'plan' : 'list', rec.matches, more, note);
+  }
+
+  /**
+   * 입력창 위 실시간 추천(형태 B, §3.5) — **Enter 전** 타이핑 중에 부른다.
+   *
+   * 상황(ctx)은 **가벼운 것만** 쓴다: 이 목록은 제목만 보여주므로 프리필 재료(도메인·엔드포인트
+   * 스캔)가 필요 없는데, 키 입력마다 파일시스템을 훑으면 타이핑이 끊긴다.
+   */
+  suggest(query: string, fileOpen: boolean): ICardSuggestion[] {
+    const cards = this._loadCatalog();
+    if (cards.length === 0) return [];
+    return suggestCards(query, cards, this._lightContext(fileOpen));
+  }
+
+  /**
+   * 형태 B에서 사용자가 고른 카드를 **계획 카드 1장**으로 세운다(위저드 직행, §3.5).
+   *
+   * 사용자가 이미 골랐으므로 확신도 게이트를 다시 묻지 않는다 — 매칭 점수가 무엇이든 그 카드가
+   * 계획 카드다. 나머지는 종전처럼 `[다른 작업 ▾]`으로 남겨 탈출구를 유지한다.
+   * 고른 카드가 사라졌으면(핫리로드·토글) false — 호출부가 평소 흐름으로 되돌린다.
+   */
+  recommendCard(cardId: string, query: string, fileOpen: boolean): boolean {
+    const cards = this._loadCatalog();
+    const ctx = this._matchContext(fileOpen);
+    const all = listApplicableCards(query, cards, ctx, { topN: cards.length }).matches;
+    const picked = matchCards(query, cards, ctx, { topN: cards.length }).matches.find((m) => m.card.id === cardId)
+      // 트리거가 안 걸린 카드도 고를 수 있다(목록에 떴다면 근거는 이미 화면에 있었다).
+      ?? all.find((m) => m.card.id === cardId);
+    if (!picked) return false;
+    return this._present(query, 'plan', [picked], all.filter((m) => m.card.id !== cardId));
+  }
+
+  /**
+   * 세션을 세우고 카드 payload를 보낸다 — `recommend`(형태 A)와 `recommendCard`(형태 B)의 공통 몸통.
+   * 두 경로가 각자 세션을 만들면 칩 편집·실행 규약이 갈라진다(진실원 하나).
+   */
+  private _present(
+    query: string,
+    mode: 'plan' | 'list',
+    primary: ICardMatch[],
+    more: ICardMatch[],
+    note?: string,
+  ): boolean {
     const requestId = `ac-${Date.now().toString(36)}-${++seq}`;
     const values = new Map<string, Record<string, string>>();
-    const all = [...rec.matches, ...more];
+    const all = [...primary, ...more];
     // 요청 시점의 대상 파일·커서 위치를 **붙잡아** 둔다(이후 활성 편집기가 바뀌어도 카드는 이 자리를 본다).
     const targetFile = this._host.currentCodeFile();
     const anchor = this._host.currentEditorAnchor();
@@ -223,12 +284,12 @@ export class ActionCardController {
     }
     // 세션엔 둘 다 담는다 — [다른 작업]에서 펼친 카드도 칩 편집·실행이 되어야 한다.
     this._session = {
-      requestId, query, matches: all, primary: rec.matches, values,
+      requestId, query, matches: all, primary, values,
       choices: new Map(), cursorMoved: new Set(),
     };
 
     const payload: ActionCardsPayload = buildCardsPayload(
-      requestId, query, rec.mode === 'plan' ? 'plan' : 'list', rec.matches, values,
+      requestId, query, mode, primary, values,
       {
         hooks: {
           outputs: (card, v) => this._resolveOutputs(card, v),

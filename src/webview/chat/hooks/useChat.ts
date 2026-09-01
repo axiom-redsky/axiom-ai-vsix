@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { vscode } from '../../vscodeApi';
-import type { HostToWebviewMessage, DiffLine, ContextBreakdown, ActionCardsPayload } from '../../../types/messages';
+import type { HostToWebviewMessage, DiffLine, ContextBreakdown, ActionCardsPayload, CardSuggestionsPayload } from '../../../types/messages';
 
 export interface ContextUsage {
   promptTokens?: number;
@@ -70,6 +70,11 @@ export function useChat() {
   const [pinQuestionTop, setPinQuestionTop] = useState(false);
   // 파일 피커로 첨부한 참조 파일 토큰(`@경로`) — 입력창에 append되도록 InputBar에 전달한다.
   const [attachText, setAttachText] = useState('');
+  /**
+   * 입력창 위 실시간 추천(형태 B, §3.5). `query`는 이 목록이 계산된 입력 —
+   * 지금 입력과 다르면 InputBar가 버린다(늦게 온 응답이 엉뚱하게 붙지 않게).
+   */
+  const [cardSuggestions, setCardSuggestions] = useState<CardSuggestionsPayload>({ query: '', items: [] });
   const streamingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -269,6 +274,9 @@ export function useChat() {
           // 온라인 지식·가이드 전문 렌더 — 정독용으로 질문을 상단 고정(토큰 메터는 건드리지 않음).
           setPinQuestionTop(true);
           break;
+        case 'cardSuggestions':
+          setCardSuggestions(msg.payload);
+          break;
         case 'actionCards':
           // 오프라인 추천 카드 — 계획 카드는 위에서 읽으므로 상단 고정하지 않는다(짧은 카드).
           setIsWaiting(false);
@@ -423,6 +431,26 @@ export function useChat() {
     vscode.postMessage({ type: 'pickReferenceFile' });
   }, []);
 
+  /** 타이핑 중 추천 요청(디바운스는 InputBar가 한다). 빈 문자열이면 목록을 지운다. */
+  const requestCardSuggestions = useCallback((query: string) => {
+    if (!query) {
+      setCardSuggestions({ query: '', items: [] });
+      return;
+    }
+    vscode.postMessage({ type: 'cardSuggestRequest', query });
+  }, []);
+
+  /**
+   * 추천 목록에서 카드를 고름 — 사용자가 친 문장을 **말풍선으로 남기고**(맥락 없이 카드만 뜨면
+   * 무엇에 대한 계획인지 알 수 없다) 호스트에 그 카드로 직행을 요청한다.
+   */
+  const pickCardSuggestion = useCallback((cardId: string, query: string) => {
+    if (!query.trim()) return;
+    setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', content: query }]);
+    setCardSuggestions({ query: '', items: [] });
+    vscode.postMessage({ type: 'cardSuggestPick', cardId, query });
+  }, []);
+
   /** InputBar가 attachText를 입력창에 반영한 뒤 호출 — 다음 첨부를 위해 비운다. */
   const consumeAttach = useCallback(() => setAttachText(''), []);
 
@@ -433,5 +461,6 @@ export function useChat() {
     selectionContext, dismissSelection,
     systemPromptChars, breakdown, contextWindow, outputReserve, usage, isOffline, isLocalKnowledge, pinQuestionTop,
     attachReference, attachText, consumeAttach,
+    cardSuggestions, requestCardSuggestions, pickCardSuggestion,
   };
 }

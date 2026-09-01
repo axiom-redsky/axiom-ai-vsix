@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { matchSlashCommands } from '../slashCommands';
+import { Palette, type IPaletteItem } from './Palette';
 import type { SlashCommand } from '../slashCommands';
 import type { SelectionContext, ContextUsage } from '../hooks/useChat';
-import type { ContextBreakdown } from '../../../types/messages';
+import type { CardSuggestionsPayload, ContextBreakdown } from '../../../types/messages';
 import { computeContextBudget, budgetPct } from '../contextBudget';
 
 function getContextLevel(pct: number): 'ok' | 'warn' | 'danger' {
@@ -35,14 +36,29 @@ interface Props {
   offline?: boolean;
   /** offline 중에서도 "온라인 지식 가이드"(서버 온라인·LLM 미호출)면 라벨을 "로컬 지식"으로 구분한다. */
   localKnowledge?: boolean;
+  /** 타이핑 중 추천(형태 B, §3.5) — 호스트가 계산해 내려준 목록. */
+  suggestions?: CardSuggestionsPayload;
+  /** 입력이 바뀌었을 때(디바운스 후) 추천을 요청한다. 빈 문자열이면 목록을 지운다. */
+  onQueryChange?: (query: string) => void;
+  /** 추천 목록에서 카드를 골랐다. */
+  onPickSuggestion?: (cardId: string, query: string) => void;
 }
 
-export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge }: Props): React.ReactElement {
+export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillConsumed, onAttach, appendText, onAppendConsumed, selectionContext, onDismissSelection, contextTotalChars, systemPromptChars, contextWindow, outputReserve, usage, breakdown, offline, localKnowledge, suggestions, onQueryChange, onPickSuggestion }: Props): React.ReactElement {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [value, setValue] = useState('');
   const [cmdMatches, setCmdMatches] = useState<SlashCommand[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  /**
+   * 추천 목록의 선택 위치. **-1로 시작한다** — 이 목록은 사용자가 부른 게 아니라 타이핑 중에
+   * 저절로 뜬 것이라, Enter를 가로채면 평범한 메시지를 보내려던 사람이 엉뚱한 위저드로 끌려간다.
+   * ↓ 를 눌러 목록에 들어온 뒤에야 Enter가 선택이 된다.
+   */
+  const [suggestIdx, setSuggestIdx] = useState(-1);
+  /** Esc로 닫음 — 이번 입력에서는 다시 뜨지 않는다(전송·비움으로 리셋). */
+  const [suggestDismissed, setSuggestDismissed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const focusTextarea = useCallback(() => {
     requestAnimationFrame(() => {
@@ -99,6 +115,28 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     focusTextarea();
   }, [closePalette, focusTextarea]);
 
+  /**
+   * 지금 그릴 추천 목록. 호스트 응답은 **계산된 입력(query)** 을 달고 오므로, 지금 입력과 다르면
+   * 버린다 — 디바운스된 응답이 늦게 도착해 엉뚱한 목록이 붙는 것을 구조로 막는다.
+   * 슬래시 팔레트가 떠 있으면 양보한다(같은 자리에 목록 둘 = Enter 예측 불가).
+   */
+  const suggestItems =
+    !suggestDismissed && cmdMatches.length === 0 && !isStreaming
+      && suggestions && suggestions.query === value.trim() && suggestions.query.length > 0
+      ? suggestions.items
+      : [];
+
+  const pickSuggestion = useCallback((index: number) => {
+    const item = suggestItems[index];
+    if (!item) return;
+    onPickSuggestion?.(item.cardId, value.trim());
+    setValue('');
+    setSuggestIdx(-1);
+    onQueryChange?.('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    focusTextarea();
+  }, [suggestItems, onPickSuggestion, onQueryChange, value, focusTextarea]);
+
   const submit = useCallback(() => {
     if (!value.trim() || isStreaming) return;
 
@@ -110,12 +148,15 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
 
     onSend(value.trim());
     setValue('');
+    setSuggestIdx(-1);
+    setSuggestDismissed(false);
+    onQueryChange?.('');
     closePalette();
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
     focusTextarea();
-  }, [value, isStreaming, cmdMatches, selectedIdx, onSend, closePalette, selectCommand, focusTextarea]);
+  }, [value, isStreaming, cmdMatches, selectedIdx, onSend, closePalette, selectCommand, focusTextarea, onQueryChange]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (cmdMatches.length > 0) {
@@ -141,6 +182,31 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
       }
     }
 
+    // 추천 목록 — 슬래시 팔레트와 달리 **기본 선택이 없다**(위 suggestIdx 주석).
+    if (suggestItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggestIdx((i) => Math.min(i + 1, suggestItems.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggestIdx((i) => Math.max(i - 1, -1)); // -1 = 목록에서 빠져나와 입력으로 복귀
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSuggestDismissed(true);
+        setSuggestIdx(-1);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey && suggestIdx >= 0) {
+        e.preventDefault();
+        pickSuggestion(suggestIdx);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -156,6 +222,15 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
     const matches = matchSlashCommands(newValue);
     setCmdMatches(matches);
     setSelectedIdx(0);
+
+    // 타이핑 중 추천(형태 B) — 키 입력마다 부르지 않고 잠깐 멈췄을 때만 묻는다.
+    setSuggestIdx(-1);
+    if (!newValue.trim()) setSuggestDismissed(false); // 다 지우면 다시 뜰 수 있게
+    if (onQueryChange) {
+      if (suggestTimer.current) clearTimeout(suggestTimer.current);
+      const q = newValue.trim();
+      suggestTimer.current = setTimeout(() => onQueryChange(q.startsWith('/') ? '' : q), 140);
+    }
   };
 
   const showPalette = cmdMatches.length > 0;
@@ -190,23 +265,29 @@ export function InputBar({ onSend, onStop, isStreaming, prefillText, onPrefillCo
         </div>
       )}
       {showPalette && (
-        <div className="slash-palette" role="listbox" aria-label="명령어 목록">
-          {cmdMatches.map((cmd, i) => (
-            <button
-              key={cmd.syntax}
-              role="option"
-              aria-selected={i === selectedIdx}
-              className={`slash-palette__item${i === selectedIdx ? ' slash-palette__item--active' : ''}`}
-              onMouseDown={(e) => {
-                e.preventDefault(); // blur 방지
-                selectCommand(cmd.syntax);
-              }}
-            >
-              <span className="slash-palette__syntax">{cmd.syntax}</span>
-              <span className="slash-palette__desc">{cmd.description}</span>
-            </button>
-          ))}
-        </div>
+        <Palette
+          ariaLabel="명령어 목록"
+          items={cmdMatches.map((cmd): IPaletteItem => ({
+            key: cmd.syntax, primary: cmd.syntax, secondary: cmd.description,
+          }))}
+          selectedIdx={selectedIdx}
+          onPick={(i) => selectCommand(cmdMatches[i].syntax)}
+        />
+      )}
+      {suggestItems.length > 0 && (
+        <Palette
+          ariaLabel="추천 작업 목록"
+          items={suggestItems.map((s): IPaletteItem => ({
+            key: s.cardId,
+            icon: s.icon,
+            primary: s.title,
+            // 왜 떴는지를 그대로 — 근거 없이 뜬 것처럼 보이면 목록을 못 믿는다.
+            secondary: s.matchedTriggers.length > 0 ? s.matchedTriggers.join(' · ') : undefined,
+          }))}
+          selectedIdx={suggestIdx}
+          onPick={pickSuggestion}
+          footer={suggestIdx >= 0 ? '↵ 이 작업으로 · Esc 닫기' : '↓ 로 작업 선택 · Enter = 그냥 메시지로 보내기'}
+        />
       )}
       <div className="input-bar__inner">
         <textarea

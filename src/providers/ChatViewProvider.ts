@@ -520,6 +520,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return this._actionCards.runPageWizard();
   }
 
+  // ── 입력창 위 실시간 추천 (형태 B, §3.5) ────────────────────────────────────
+
+  /**
+   * 타이핑 중 추천 목록을 만들어 보낸다.
+   *
+   * ★**타이핑이 네트워크를 기다리게 하지 않는다**: 카드는 오프라인 전용이라(§10.1) 온라인이면
+   * 목록을 내지 않아야 하는데, 헬스체크를 키 입력마다 부르면 입력이 끊긴다. 그래서 **캐시된
+   * 상태만** 읽고, 캐시가 없거나 낡았으면 이번엔 빈 목록으로 답한 뒤 비동기로 캐시를 채운다
+   * (다음 타이핑에서 자연히 정확해진다 — 목록이 한 박자 늦게 뜰 뿐 잘못 뜨지는 않는다).
+   */
+  private _suggestCards(query: string): void {
+    const cached = this._healthCache;
+    const fresh = !!cached && Date.now() - cached.at < 10_000;
+    if (!fresh) {
+      // fire-and-forget — 결과는 캐시에만 남기고 이번 응답은 기다리지 않는다.
+      void this._isLlmOnline(ExtensionConfig.getEffectiveLlmConfig()).catch(() => undefined);
+    }
+    const offline = fresh && !cached!.online;
+    // ⚠ 전제조건(file-open) 판정에 `_currentCodeFilePath()`를 쓰면 안 된다 — 그건 경로를 얻으려고
+    //   **파일 본문을 통째로 읽는다**. 타이핑마다 큰 파일을 읽으면 입력이 끊긴다. 열린 탭 목록만 본다.
+    const items = offline ? this._actionCards.suggest(query, this._listOpenCodeFiles().length > 0) : [];
+    this._post({ type: 'cardSuggestions', payload: { query, items } });
+  }
+
+  /**
+   * 목록에서 고른 카드로 **직행**한다(위저드 직행, §3.5). 사용자 말풍선은 웹뷰가 이미 붙였으므로
+   * 여기서는 카드 렌더 + 히스토리·상태줄만 맡는다 — 형태 A(_handleMessage 경유)와 같은 규약.
+   * 고른 카드가 사라졌으면(핫리로드·토글) 평소 흐름으로 돌린다: 빗나감은 절벽이 아니라 계단.
+   */
+  private async _pickCardSuggestion(cardId: string, query: string): Promise<void> {
+    const fileOpen = !!this._currentCodeFilePath();
+    if (!this._actionCards.recommendCard(cardId, query, fileOpen)) {
+      await this._handleMessage(query);
+      return;
+    }
+    this._postOfflineTurn();
+    this._history.push({ role: 'user', content: query });
+    this._history.push({ role: 'assistant', content: this._actionCards.historySummary() });
+    this._lastUserQuery = query;
+    this._post({ type: 'done' });
+    this._postStatus('⚠️ 오프라인 모드');
+  }
+
   /**
    * 계획 카드의 "만들어질 것" 미리보기를 **실행이 실제로 만들 액션 목록에서 그대로 파생**한다.
    *
@@ -848,6 +891,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'actionCardExecute':
           await this._actionCards.handleExecute(msg.requestId, msg.cardId);
+          break;
+        case 'cardSuggestRequest':
+          this._suggestCards(msg.query);
+          break;
+        case 'cardSuggestPick':
+          await this._pickCardSuggestion(msg.cardId, msg.query);
           break;
       }
     });

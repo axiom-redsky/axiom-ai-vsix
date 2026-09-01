@@ -1,5 +1,6 @@
 import type { ITocManifest, TGuideSource } from './guide';
 import type { ICatalogEntry as IComponentCatalogEntry } from '../ai/catalog/ComponentCatalog';
+import type { ICardSuggestion } from '../ai/actions/CardSuggest';
 
 // 프로젝트 설정 (SI 프로젝트 투입 시 작성, .axiom/knowledge/project-config.md 로 저장)
 export interface ProjectConfig {
@@ -355,12 +356,30 @@ export interface ActionCatalogPayload {
   };
 }
 
+// ── 입력창 위 실시간 추천 (형태 B, §3.5) ─────────────────────────────────────
+
+/**
+ * 타이핑 중 추천 목록. `query`는 **이 목록이 계산된 입력** — 웹뷰는 지금 입력과 다르면 버린다
+ * (디바운스·비동기 응답이 뒤늦게 도착해 엉뚱한 목록이 붙는 것을 막는 열쇠).
+ */
+export interface CardSuggestionsPayload {
+  query: string;
+  items: ICardSuggestion[];
+}
+
 // ── 컴포넌트 카탈로그 패널 (§7 B1) ───────────────────────────────────────────
 
 /**
  * 카탈로그 payload — 항목 자체는 순수 모듈(`ai/catalog/ComponentCatalog`)의 타입을 그대로 쓴다.
  * 검색을 웹뷰가 직접 돌리므로(타이핑마다 호스트 왕복 없음) 목록 전체가 한 번에 내려간다.
  */
+/** 삽입 대상(A4) — 마지막으로 보고 있던 코드 편집기. 없으면 버튼이 이유와 함께 잠긴다. */
+export interface ComponentCatalogTarget {
+  file: string;
+  line: number;
+  hasSelection: boolean;
+}
+
 export interface ComponentCatalogPayload {
   entries: IComponentCatalogEntry[];
   /** 자료별 개수 — "없는 것"을 숨기지 않기 위해 화면 위에 그대로 적는다. */
@@ -375,6 +394,8 @@ export interface ComponentCatalogPayload {
   scaffoldDetected: boolean;
   /** 지식 문서를 어디서 읽었는지(번들/워크스페이스) — 문서가 비었을 때의 진단용. */
   knowledgeDir: string | null;
+  /** "어디에 넣을지" — 버튼이 누르기 전에 정확히 말하기 위한 값. */
+  target: ComponentCatalogTarget | null;
 }
 
 export interface ActionCatalogDryrunRow {
@@ -461,6 +482,11 @@ export type WebviewToHostMessage =
   | { type: 'componentCatalogOpenGuide'; docId: string }
   | { type: 'componentCatalogOpenSource'; source: string }
   | { type: 'componentCatalogOpenKnowledge'; source: string }
+  // values = 필수 prop 입력 폼에서 채운 값(prop 이름 → 값). 비면 타입에서 유도한 기본값.
+  | { type: 'componentCatalogInsert'; entryId: string; values: Record<string, string> }
+  // 입력창 위 실시간 추천(형태 B): 타이핑 중 요청 / 목록에서 선택
+  | { type: 'cardSuggestRequest'; query: string }
+  | { type: 'cardSuggestPick'; cardId: string; query: string }
   | { type: 'openGuide' }
   | { type: 'openActionCards' }
   | { type: 'openComponentCatalog' }
@@ -531,9 +557,11 @@ export type HostToWebviewMessage =
   | { type: 'actionCatalog'; payload: ActionCatalogPayload }
   | { type: 'actionCatalogDryrunResult'; result: ActionCatalogDryrunResult }
   | { type: 'actionCatalogNotice'; message: string; severity: 'info' | 'error' }
+  | { type: 'cardSuggestions'; payload: CardSuggestionsPayload }
   // 컴포넌트 카탈로그 패널
   | { type: 'componentCatalog'; payload: ComponentCatalogPayload }
   | { type: 'componentCatalogNotice'; message: string; severity: 'info' | 'error' }
+  | { type: 'componentCatalogTarget'; target: ComponentCatalogTarget | null }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

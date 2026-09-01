@@ -63,6 +63,7 @@
 .cc-btn {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 5px;
   padding: 3px 9px;
   border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.32));
@@ -228,6 +229,7 @@
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 .cc__badges {
   display: flex;
@@ -236,6 +238,8 @@
 }
 .cc__badge {
   font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
   padding: 1px 6px;
   border-radius: 9px;
   background: var(--vscode-badge-background, rgba(127, 127, 127, 0.18));
@@ -260,6 +264,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 패널을 옆 칸에 좁게 열면 제목·설명·버튼이 한 줄에 안 들어간다. 줄바꿈을 허용하지 않으면
+     flex 가 제목을 1글자 폭까지 눌러 세로로 찌그러진다(실측). 줄을 넘기고 제목은 고정. */
+  flex-wrap: wrap;
+  row-gap: 6px;
   padding: 7px 12px;
   background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.06));
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
@@ -267,11 +275,13 @@
 .cc__section-title {
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .cc__section-note {
   font-size: 10.5px;
   color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
-  flex: 1;
+  flex: 1 1 90px; /* 남는 폭만 쓰고 제일 먼저 줄어든다 */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -308,6 +318,8 @@
 .cc__member-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 4px;
   gap: 6px;
   padding: 6px 12px;
   cursor: pointer;
@@ -318,6 +330,8 @@
 .cc__member-name {
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .cc__member-src {
   font-family: var(--vscode-editor-font-family, monospace);
@@ -386,4 +400,100 @@
 .cc__notice--error {
   border-color: var(--vscode-errorForeground, #f48771);
   color: var(--vscode-errorForeground, #f48771);
+}
+
+/* 옆 칸(Beside)에 좁게 열었을 때 — 목록이 상세를 밀어내지 않게 */
+@media (max-width: 720px) {
+  .cc__side {
+    width: 190px;
+    padding-left: 12px;
+  }
+  .cc__header,
+  .cc__lead {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .cc__detail {
+    padding: 12px;
+  }
+}
+
+/* ── 필수 prop 입력 폼 (A4 후속) ─────────────────────────────────
+   넣기 전에 값을 받는다. 값을 비우면 타입에서 유도한 기본값이 그대로 들어가므로
+   폼을 무시하고 눌러도 종전과 같다 — 그래서 폼은 조용한 보조 UI로 그린다. */
+.cc__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+}
+.cc__form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.cc__form-label {
+  font-family: var(--vscode-editor-font-family, monospace);
+  min-width: 96px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.cc__form-input {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.32)));
+  background: var(--vscode-input-background, rgba(127, 127, 127, 0.1));
+  color: var(--vscode-input-foreground, inherit);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11.5px;
+  outline: none;
+}
+.cc__form-input:focus {
+  border-color: var(--vscode-focusBorder, #0e639c);
+}
+.cc__form-input--check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-color: transparent;
+  background: none;
+}
+.cc__form-hint,
+.cc__form-type {
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+}
+.cc__form-type {
+  font-family: var(--vscode-editor-font-family, monospace);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+}
+
+/* 선택 prop 행·경고 (A4 후속 2차) */
+.cc__form--add {
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+  padding-top: 0;
+}
+.cc__form-optional {
+  margin-left: 3px;
+  font-size: 8px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+  vertical-align: super;
+}
+.cc__form-warn {
+  flex-basis: 100%;
+  padding-left: 104px;
+  font-size: 10.5px;
+  color: var(--vscode-editorWarning-foreground, rgba(204, 167, 0, 0.95));
+}
+.cc__form-row {
+  flex-wrap: wrap;
+  row-gap: 2px;
 }

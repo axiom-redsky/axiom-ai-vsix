@@ -11,10 +11,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  buildCatalog, buildSnippet, extractExamples, findImportLine, firstParagraph, groupFamilies,
-  readFrontmatter, searchCatalog, splitPascal, toKebab,
+  buildCatalog, buildPropFields, buildSnippet, checkPropValue, extractExamples, findImportLine, firstParagraph,
+  groupFamilies, optionalPropFields, readFrontmatter, searchCatalog, splitPascal, toKebab,
   type ICatalogEntry, type IPropsIndexEntry, type IRawDoc,
 } from '../src/ai/catalog/ComponentCatalog';
+import { buildComponentInsert, computeMinimalEdit } from '../src/ai/catalog/ComponentInsert';
 import { COMPONENT_PROPS_INDEX } from '../src/ai/contracts/generated/componentPropsIndex';
 
 let pass = 0;
@@ -354,6 +355,175 @@ console.log('\n── F. 실 자료(가이드 32 · 지식 7 · 인덱스 53) �
   // payload 크기 — 웹뷰로 한 번에 내려가므로 무한정 커지면 안 된다.
   const bytes = Buffer.byteLength(JSON.stringify(entries), 'utf8');
   ok(bytes < 900_000, `F18: payload ${Math.round(bytes / 1024)}KB (< 900KB)`);
+}
+
+// ═══ G. 부품 삽입 (A4) ══════════════════════════════════════════════════════
+console.log('\n── G. 커서 위치에 넣기 ──');
+{
+  const SRC = [
+    "import { useState } from 'react';",
+    '',
+    'export default function EmployeePage(): React.ReactNode {',
+    "  const [q, setQ] = useState('');",
+    '  return (',
+    '    <div className="page">',
+    '      <h1>직원</h1>',
+    '      <p>{q}</p>',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+  const SNIPPET = "import { Button } from '@axiom/components/ui';\n\n<Button />";
+
+  const r = buildComponentInsert({ source: SRC, snippet: SNIPPET, targetFile: 'a.tsx', cursorAnchor: 'line:8' });
+  eq(r.blocked, null, 'G1: 화면 안 커서면 넣을 수 있다');
+  ok(r.text!.includes("import { Button } from '@axiom/components/ui';"), 'G2: import 가 파일 상단에 추가된다');
+  ok(r.text!.includes('<Button />'), 'G3: JSX 조각이 들어간다');
+  const lines = r.text!.split('\n');
+  const btn = lines.findIndex((l) => l.includes('<Button />'));
+  const div = lines.findIndex((l) => l.includes('<div className="page">'));
+  const close = lines.findIndex((l) => l.includes('</div>'));
+  ok(btn > div && btn < close, 'G4: 화면(JSX) 안에 들어간다 — import 구역이 아니라');
+  ok(lines[btn].startsWith('      '), 'G5: 앵커 줄 들여쓰기에 맞춘다');
+
+  // ★ 멱등 — 사용자는 결과가 이상하면 반드시 다시 누른다(A3의 실측 교훈).
+  const again = buildComponentInsert({ source: r.text!, snippet: SNIPPET, targetFile: 'a.tsx', cursorAnchor: 'line:8' });
+  ok(again.blocked !== null || again.text === r.text, 'G6: 두 번 넣어도 늘어나지 않는다');
+
+  // 커서가 화면 밖(import 구역)이어도 자리를 찾아 준다 — 채팅과 달리 여기서도 커서를 못 믿는다.
+  const outside = buildComponentInsert({ source: SRC, snippet: SNIPPET, targetFile: 'a.tsx', cursorAnchor: 'line:1' });
+  if (!outside.blocked) {
+    const ol = outside.text!.split('\n');
+    const ob = ol.findIndex((l) => l.includes('<Button />'));
+    ok(ob > ol.findIndex((l) => l.includes('<div className="page">')), 'G7: 화면 밖 커서는 채택하지 않는다');
+  } else {
+    ok(true, `G7: 화면 밖 커서는 사유와 함께 막는다 — ${outside.blocked}`);
+  }
+
+  eq(
+    buildComponentInsert({ source: SRC, snippet: '', targetFile: 'a.tsx' }).blocked,
+    '이 부품에는 넣을 스니펫이 없습니다.',
+    'G8: 스니펫 없으면 막는다',
+  );
+  ok(
+    buildComponentInsert({ source: '', snippet: SNIPPET, targetFile: 'a.tsx' }).blocked !== null,
+    'G9: 원문이 비면 막는다(사유 있음)',
+  );
+}
+{
+  // 최소 편집 — 편집기에 그대로 반영하므로 바뀐 줄만 좁혀야 Ctrl+Z 한 번이 "방금 넣은 것"이 된다.
+  eq(computeMinimalEdit('a\nb\nc', 'a\nb\nc'), null, 'G10: 변화 없으면 null');
+  eq(computeMinimalEdit('a\nb\nc', 'a\nX\nb\nc'), { startLine: 1, endLine: 1, text: 'X\n' }, 'G11: 순수 삽입은 0줄 구간 + 개행 포함');
+  eq(computeMinimalEdit('a\nb\nc', 'a\nB\nc'), { startLine: 1, endLine: 2, text: 'B\n' }, 'G12: 한 줄 교체');
+  eq(computeMinimalEdit('a\nb\nc', 'a\nb'), { startLine: 2, endLine: 3, text: '' }, 'G13: 파일 끝 삭제');
+  eq(computeMinimalEdit('a\nb', 'a\nb\nc'), { startLine: 2, endLine: 2, text: 'c' }, 'G14: 파일 끝 추가는 개행을 붙이지 않는다');
+  // CRLF: \r 은 줄 내용에 붙어 그대로 보존된다(줄 끝 문자를 건드리지 않는다).
+  const crlf = computeMinimalEdit('a\r\nb\r\nc', 'a\r\nX\r\nb\r\nc');
+  eq(crlf, { startLine: 1, endLine: 1, text: 'X\r\n' }, 'G15: CRLF 보존');
+}
+
+// ═══ H. 필수 prop 입력 폼 (A4 후속) ═════════════════════════════════════════
+console.log('\n── H. 넣기 전 값 입력 ──');
+{
+  const member = (name: string, props: IPropsIndexEntry['props']) => ({
+    name, import: '@axiom/components/ui', source: 's.tsx', props, domNote: false, truncated: false,
+  });
+  const entry = {
+    name: 'SmartTable',
+    importPath: '@axiom/components/ui',
+    importLine: null,
+    members: [member('SmartTable', [
+      { name: 'columns', type: 'SmartColumns<TRow>', required: true },
+      { name: 'searchable', type: 'boolean', required: true },
+      { name: 'pageSize', type: 'number', required: true },
+      { name: 'density', type: "'sm' | 'lg'", required: true },
+      { name: 'title', type: 'string', required: true },
+      { name: 'onRowClick', type: '(row: TRow) => void', required: true },
+      { name: 'hidden', type: 'boolean', required: false },
+    ])],
+  };
+
+  const fields = buildPropFields(entry);
+  eq(fields.map((f) => f.name), ['columns', 'searchable', 'pageSize', 'density', 'title', 'onRowClick'], 'H1: 필수 prop만 칸이 된다');
+  eq(fields.map((f) => f.control), ['text', 'checkbox', 'number', 'select', 'text', 'text'], 'H2: 칸 종류는 타입에서 유도');
+  eq(fields.find((f) => f.name === 'density')?.options, ['sm', 'lg'], 'H3: 리터럴 유니온은 고르기');
+  eq(fields.find((f) => f.name === 'onRowClick')?.value, 'handleRowClick', 'H4: 함수 기본값은 handle 접두 핸들러명');
+  eq(buildPropFields({ name: 'Combobox', members: [member('ComboboxItem', [])] }), [], 'H5: 루트 없는 패밀리는 칸 없음');
+
+  // ★ 값을 안 넣으면 종전과 **완전히 같다** — 폼을 무시해도 동작이 바뀌지 않는다.
+  eq(buildSnippet(entry, {}), buildSnippet(entry), 'H6: 빈 값 = 기본값(종전 스니펫과 동일)');
+
+  const filled = buildSnippet(entry, {
+    columns: 'employeeColumns',
+    searchable: 'false',
+    pageSize: '20',
+    density: 'lg',
+    title: '직원 목록',
+    onRowClick: 'handleSelect',
+  })!;
+  ok(filled.includes('columns={employeeColumns}'), 'H7: 복합 타입은 표현식 그대로');
+  ok(filled.includes('searchable={false}'), 'H8: 체크 해제는 {false} 로 명시');
+  ok(filled.includes('pageSize={20}'), 'H9: 숫자');
+  ok(filled.includes('density="lg"'), 'H10: 고른 값');
+  ok(filled.includes('title="직원 목록"'), 'H11: 문자열은 따옴표(사용자가 따옴표를 안 써도 된다)');
+  ok(filled.includes('onRowClick={handleSelect}'), 'H12: 함수는 중괄호');
+
+  // 켜진 boolean 은 속성 이름만(관용 표기)
+  ok(buildSnippet(entry, { searchable: 'true' })!.includes(' searchable '), 'H13: 켜진 boolean 은 플래그');
+  // 빈 문자열·공백은 기본값으로 되돌린다(빈 칸이 `title=""` 가 되지 않게)
+  ok(buildSnippet(entry, { title: '   ' })!.includes('title="값"'), 'H14: 공백만 입력하면 기본값');
+
+  // ★ 미리보기 = 실제 삽입: 패널이 그리는 문자열과 호스트가 넣는 문자열이 **같은 함수**에서 나온다.
+  const preview = buildSnippet(entry, { columns: 'cols' })!;
+  const inserted = buildComponentInsert({
+    source: 'export default function P(): React.ReactNode {\n  return (\n    <div>\n      <h1>x</h1>\n    </div>\n  );\n}',
+    snippet: preview,
+    targetFile: 'p.tsx',
+    cursorAnchor: 'line:4',
+  });
+  eq(inserted.blocked, null, 'H15: 채운 스니펫도 그대로 삽입된다');
+  ok(inserted.text!.includes('columns={cols}'), 'H16: 미리보기에 보이던 값이 그대로 들어간다');
+}
+
+// ═══ I. 선택 prop + 값 점검 (A4 후속 2차 — 실측 사고) ═══════════════════════
+console.log('\n── I. 선택 prop 칸 · 값 점검 ──');
+{
+  const member = (name: string, props: IPropsIndexEntry['props']) => ({
+    name, import: '@axiom/components/ui', source: 's.tsx', props, domNote: false, truncated: false,
+  });
+  const entry = {
+    name: 'SmartTable',
+    importPath: '@axiom/components/ui',
+    importLine: null,
+    members: [member('SmartTable', [
+      { name: 'columns', type: 'SmartColumns<TRow>', required: true },
+      { name: 'pageSize', type: 'number', required: false },
+      { name: 'searchable', type: 'boolean', required: false },
+    ])],
+  };
+
+  // ★ 실측 사고: 필수 칸만 있으니 사용자가 `columns` 에 "employeeColumns, pageSize = 20" 을
+  //   몰아넣었고 `columns={employeeColumns, pageSize = 20}` 이라는 깨진 코드가 삽입됐다.
+  eq(optionalPropFields(entry).map((f) => f.name), ['pageSize', 'searchable'], 'I1: 선택 prop도 칸이 될 수 있다');
+  eq(buildPropFields(entry).map((f) => f.name), ['columns'], 'I2: 기본 폼은 여전히 필수만(짧게 유지)');
+
+  // 선택 prop은 **값을 준 것만** 붙는다 — 안 건드리면 종전과 동일.
+  eq(buildSnippet(entry, {}), buildSnippet(entry), 'I3: 선택 prop 미지정이면 종전 스니펫 그대로');
+  const withOpt = buildSnippet(entry, { columns: 'employeeColumns', pageSize: '20' })!;
+  ok(withOpt.includes('columns={employeeColumns}'), 'I4: 필수는 그대로');
+  ok(withOpt.includes('pageSize={20}'), 'I5: 추가한 선택 prop이 **각자 속성으로** 들어간다');
+  ok(!withOpt.includes(','), 'I6: 한 속성에 쉼표가 섞이지 않는다(사고 재현 방지)');
+  ok(buildSnippet(entry, { columns: 'c', searchable: 'true' })!.includes(' searchable '), 'I7: 선택 boolean 은 플래그로');
+
+  // 값 점검 — 막지 않고 알린다(경고 문구는 사람 말).
+  ok(checkPropValue('employeeColumns, pageSize = 20')!.includes('쉼표'), 'I8: 여러 prop을 한 칸에 넣으면 경고');
+  ok(checkPropValue('pageSize = 20')!.includes('등호'), 'I9: 대입문도 경고');
+  eq(checkPropValue('employeeColumns'), null, 'I10: 평범한 식별자는 조용');
+  eq(checkPropValue('{ a: 1, b: 2 }'), null, 'I11: 괄호 **안**의 쉼표는 정상(객체 리터럴)');
+  eq(checkPropValue('cols.filter((c) => c.visible)'), null, 'I12: 화살표 함수의 => 는 대입이 아니다');
+  eq(checkPropValue("t('a, b')"), null, 'I13: 따옴표 안 쉼표는 정상');
+  eq(checkPropValue('a === b'), null, 'I14: 비교 연산자는 대입이 아니다');
+  eq(checkPropValue(''), null, 'I15: 빈 값은 조용(기본값으로 채워진다)');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

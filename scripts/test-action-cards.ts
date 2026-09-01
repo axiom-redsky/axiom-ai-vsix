@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { parseMiniYaml } from '../src/ai/actions/MiniYaml';
 import { parseActionCard, findTriggerCollisions, splitCardFrontmatter } from '../src/ai/actions/CardParser';
 import { matchCards, listApplicableCards, prefillSlots, type ICardMatchContext } from '../src/ai/actions/CardMatcher';
+import { suggestCards, SUGGEST_LIMIT } from '../src/ai/actions/CardSuggest';
 import { loadCardsFromDir, finalizeCatalog, buildCatalog } from '../src/ai/actions/CardCatalog';
 import { buildCardTemplate, CARD_TEMPLATE_KINDS } from '../src/ai/actions/CardTemplate';
 import { buildCardsPayload, buildCardView, buildOutputViews, buildSlotViews, missingSlots, substituteSlots } from '../src/ai/actions/CardPlanView';
@@ -921,6 +922,48 @@ console.log('\n── S. 레시피 계획 카드 ──');
   });
   eq(filled.recipe?.pendingSlots, [], 'S9: 칩을 채우면 잠금이 풀린다');
   eq(filled.skeleton, 'const pickerRef = useRef(null);', 'S10: 카드에 보이는 골격 = 삽입될 골격(치환 반영)');
+}
+
+// ═══ T. 입력창 위 실시간 추천 (형태 B, §3.5) ════════════════════════════════
+console.log('\n── T. 타이핑 중 추천 ──');
+{
+  const cards = [
+    mkCard('create-page', ['페이지 만들', '목록 페이지'], 'builtin', { title: '페이지 생성', icon: '📄' }),
+    mkCard('api-binding', ['테이블 바인딩'], 'builtin', { title: 'API 바인딩', icon: '🔌' }),
+  ];
+
+  const hit = suggestCards('직원 목록 페이지', cards, CTX);
+  eq(hit.map((s) => s.cardId), ['create-page'], 'T1: 트리거가 걸린 카드만');
+  eq(hit[0].title, '페이지 생성', 'T2: 제목·아이콘을 그대로 싣는다');
+  eq(hit[0].matchedTriggers, ['목록 페이지'], 'T3: 왜 떴는지(근거 트리거)를 함께 — 목록이 근거 없이 뜨지 않게');
+
+  // ★ 형태 A와 갈리는 지점: 매칭 0이면 **아무것도 안 낸다**(안전망 목록을 타이핑 중에 띄우면 방해).
+  eq(suggestCards('오늘 날씨 어때', cards, CTX), [], 'T4: 매칭 0 → 빈 목록(안전망 카탈로그를 쓰지 않는다)');
+  ok(listApplicableCards('오늘 날씨 어때', cards, CTX).matches.length > 0, 'T5: 같은 입력에도 형태 A의 안전망은 여전히 목록을 낸다(규칙이 다르다)');
+
+  // 짧은 입력·슬래시 명령에는 뜨지 않는다
+  eq(suggestCards('페', cards, CTX), [], 'T6: 1글자 입력엔 뜨지 않는다');
+  eq(suggestCards('/clear 목록 페이지', cards, CTX), [], 'T7: 슬래시 명령은 슬래시 팔레트 자리');
+  eq(suggestCards('   ', cards, CTX), [], 'T8: 공백만');
+  eq(suggestCards('목록 페이지', [], CTX), [], 'T9: 카탈로그가 비면 빈 목록');
+
+  // 전제조건은 형태 A와 같은 판정 — 못 하는 작업을 목록에 띄우지 않는다
+  const needsFile = [mkCard('needs-file', ['테이블 바인딩'], 'builtin', { preconditions: ['file-open'] })];
+  eq(suggestCards('테이블 바인딩', needsFile, { fileOpen: false, scaffoldDetected: true }), [], 'T10: 전제조건 미충족 카드 제외');
+
+  // 좁은 목록이라 상한이 형태 A(3장)보다 작다
+  const many = [
+    mkCard('m1', ['가나'], 'builtin'), mkCard('m2', ['가나'], 'builtin'),
+    mkCard('m3', ['가나'], 'builtin'), mkCard('m4', ['가나'], 'builtin'),
+  ];
+  eq(suggestCards('가나 해줘', many, CTX).length, SUGGEST_LIMIT, `T11: 상한 ${SUGGEST_LIMIT}장`);
+  eq(suggestCards('가나 해줘', many, CTX, { limit: 1 }).length, 1, 'T12: 상한 옵션');
+
+  // 정렬은 운영 매처 그대로(미러 금지) — 긴 트리거가 위
+  const ranked = suggestCards('가나다라마바 해줘', [
+    mkCard('short', ['가나'], 'builtin'), mkCard('long', ['가나다라마바'], 'builtin'),
+  ], CTX);
+  eq(ranked.map((s) => s.cardId), ['long', 'short'], 'T13: 매처와 같은 순서');
 }
 
 // ═══ 결과 ═══════════════════════════════════════════════════════════════════

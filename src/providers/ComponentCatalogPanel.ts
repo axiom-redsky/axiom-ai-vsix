@@ -16,9 +16,12 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExtensionConfig } from '../config/ExtensionConfig';
-import { buildCatalog, type ICatalogEntry, type IRawDoc } from '../ai/catalog/ComponentCatalog';
+import { buildCatalog, buildSnippet, type ICatalogEntry, type IRawDoc } from '../ai/catalog/ComponentCatalog';
+import { buildComponentInsert, computeMinimalEdit } from '../ai/catalog/ComponentInsert';
 import { COMPONENT_PROPS_INDEX } from '../ai/contracts/generated/componentPropsIndex';
-import type { ComponentCatalogPayload, HostToWebviewMessage, WebviewToHostMessage } from '../types/messages';
+import type {
+  ComponentCatalogPayload, ComponentCatalogTarget, HostToWebviewMessage, WebviewToHostMessage,
+} from '../types/messages';
 
 /** 가이드 문서 중 컴포넌트 문서만 있는 하위 경로(가이드 루트 기준). */
 const GUIDE_COMPONENT_DIR = ['components', 'ui'];
@@ -38,7 +41,9 @@ export class ComponentCatalogPanel {
     const panel = vscode.window.createWebviewPanel(
       ComponentCatalogPanel.viewType,
       '컴포넌트 카탈로그',
-      vscode.ViewColumn.Active,
+      // 옆 칸에 연다 — 삽입(A4)은 "코드를 보면서 부품을 고르는" 흐름이라, 카탈로그가 편집기를
+      // 덮어버리면 커서가 어디 있는지 볼 수 없다.
+      vscode.ViewColumn.Beside,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
@@ -50,6 +55,15 @@ export class ComponentCatalogPanel {
 
   private _entries: ICatalogEntry[] | null = null;
   private _knowledgeDir: string | null = null;
+  /**
+   * 삽입 대상 = **마지막으로 보고 있던 코드 편집기**.
+   *
+   * 이 패널 자체가 탭이라, 패널에 포커스가 가면 `activeTextEditor`는 비어 버린다(A3·채팅에서 이미
+   * 겪은 함정). 그래서 편집기 전환·커서 이동을 구독해 **직접 기억한다** — 버튼이 "어디에 넣을지"를
+   * 정확히 말할 수 있어야 사용자가 누르기 전에 확인할 수 있다.
+   */
+  private _target: { uri: vscode.Uri; rel: string; anchor: string; line: number; hasSelection: boolean } | null = null;
+  private readonly _disposables: vscode.Disposable[] = [];
 
   private constructor(
     private readonly _panel: vscode.WebviewPanel,
@@ -58,7 +72,25 @@ export class ComponentCatalogPanel {
     _panel.webview.html = this._buildHtml(_panel.webview);
     _panel.onDidDispose(() => {
       ComponentCatalogPanel._current = undefined;
+      for (const d of this._disposables) d.dispose();
     });
+
+    // 대상 추적 — 편집기를 바꾸거나 커서를 옮기면 버튼 문구가 따라간다.
+    this._captureTarget(vscode.window.activeTextEditor);
+    this._disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((e) => {
+        if (this._captureTarget(e)) this._postTarget();
+      }),
+    );
+    let cursorTimer: ReturnType<typeof setTimeout> | undefined;
+    this._disposables.push(
+      vscode.window.onDidChangeTextEditorSelection((e) => {
+        if (cursorTimer) clearTimeout(cursorTimer);
+        cursorTimer = setTimeout(() => {
+          if (this._captureTarget(e.textEditor)) this._postTarget();
+        }, 200);
+      }),
+    );
 
     _panel.webview.onDidReceiveMessage(async (msg: WebviewToHostMessage) => {
       switch (msg.type) {
@@ -79,6 +111,9 @@ export class ComponentCatalogPanel {
           break;
         case 'componentCatalogOpenKnowledge':
           await this._openKnowledge(msg.source);
+          break;
+        case 'componentCatalogInsert':
+          await this._insert(msg.entryId, msg.values);
           break;
       }
     });
@@ -105,8 +140,109 @@ export class ComponentCatalogPanel {
       },
       scaffoldDetected: this._detectScaffold(),
       knowledgeDir: this._knowledgeDir ? this._displayPath(this._knowledgeDir) : null,
+      target: this._targetView(),
     };
     this._post({ type: 'componentCatalog', payload });
+  }
+
+  // ── 삽입 대상(A4) ───────────────────────────────────────────────────────────
+
+  /** 코드 편집기면 대상으로 기억한다. 바뀐 게 있으면 true(그때만 웹뷰에 알린다). */
+  private _captureTarget(editor: vscode.TextEditor | undefined): boolean {
+    if (!editor || editor.document.uri.scheme !== 'file') return false;
+    // JSX를 넣는 것이라 대상은 .tsx/.jsx — 카탈로그를 열어 둔 채 .md·.json을 봐도 대상은 유지된다.
+    if (!/\.(tsx|jsx)$/i.test(editor.document.uri.fsPath)) return false;
+
+    const sel = editor.selection;
+    const anchor = sel.isEmpty
+      ? `line:${sel.active.line + 1}`
+      : `sel:${sel.start.line + 1}-${sel.end.line + 1}`;
+    const prev = this._target;
+    this._target = {
+      uri: editor.document.uri,
+      rel: vscode.workspace.asRelativePath(editor.document.uri),
+      anchor,
+      line: sel.active.line + 1,
+      hasSelection: !sel.isEmpty,
+    };
+    return !prev || prev.anchor !== anchor || prev.uri.fsPath !== this._target.uri.fsPath;
+  }
+
+  private _targetView(): ComponentCatalogTarget | null {
+    const t = this._target;
+    if (!t) return null;
+    return { file: t.rel, line: t.line, hasSelection: t.hasSelection };
+  }
+
+  private _postTarget(): void {
+    this._post({ type: 'componentCatalogTarget', target: this._targetView() });
+  }
+
+  /**
+   * 고른 부품을 편집기에 넣는다 — 삽입 규칙은 레시피 실행기(A3)를 그대로 쓴다(§7 A4).
+   *
+   * 편집기 **버퍼**를 원문으로 쓰고 결과도 버퍼에 적용한다(디스크가 아니라): 저장 안 한 편집이
+   * 있어도 덮어쓰지 않고, Ctrl+Z 한 번으로 되돌릴 수 있어야 하기 때문이다.
+   */
+  private async _insert(entryId: string, values: Record<string, string>): Promise<void> {
+    const entry = (this._entries ?? []).find((e) => e.id === entryId);
+    if (!entry?.snippet) {
+      this._notice('이 부품에는 넣을 스니펫이 없습니다.', 'error');
+      return;
+    }
+    // 폼 값이 반영된 스니펫 — **패널 미리보기와 같은 함수**를 부른다(보이는 것 = 넣는 것).
+    const snippet = buildSnippet(entry, values) ?? entry.snippet;
+    const target = this._target;
+    if (!target) {
+      this._notice('넣을 파일을 찾지 못했습니다. .tsx 파일을 열고 넣을 자리에 커서를 두세요.', 'error');
+      return;
+    }
+    let doc: vscode.TextDocument;
+    try {
+      doc = await vscode.workspace.openTextDocument(target.uri);
+    } catch {
+      this._notice(`대상 파일을 열지 못했습니다: ${target.rel}`, 'error');
+      return;
+    }
+
+    const source = doc.getText();
+    const result = buildComponentInsert({
+      source,
+      snippet,
+      targetFile: target.rel,
+      cursorAnchor: target.anchor,
+    });
+    if (result.blocked || !result.text) {
+      this._notice(result.blocked ?? '삽입 결과를 만들지 못했습니다.', 'error');
+      return;
+    }
+    const edit = computeMinimalEdit(source, result.text);
+    if (!edit) {
+      // 멱등 — A3의 중복 삽입 방지가 "이미 있다"고 판단한 경우다. 조용히 넘기지 않고 말해 준다.
+      this._notice(`${entry.name}은(는) 이미 ${target.rel} 안에 있습니다(중복 삽입 안 함).`, 'info');
+      return;
+    }
+
+    const editor = await vscode.window.showTextDocument(doc, { preserveFocus: false });
+    const range = doc.validateRange(
+      new vscode.Range(new vscode.Position(edit.startLine, 0), new vscode.Position(edit.endLine, 0)),
+    );
+    const okEdit = await editor.edit((b) => b.replace(range, edit.text));
+    if (!okEdit) {
+      this._notice('편집기에 적용하지 못했습니다(다른 편집과 충돌).', 'error');
+      return;
+    }
+    // 넣은 자리를 보여준다 — 어디에 들어갔는지 눈으로 확인하고 필요하면 바로 Ctrl+Z.
+    const shown = new vscode.Position(edit.startLine, 0);
+    editor.selection = new vscode.Selection(shown, shown);
+    editor.revealRange(new vscode.Range(shown, shown), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+
+    const where = result.anchorLabel ?? `${target.line}줄`;
+    this._notice(
+      `${entry.name}을(를) ${target.rel}에 넣었습니다 — ${where}. 되돌리려면 편집기에서 Ctrl+Z.`
+      + (result.summary.length > 0 ? ` (${result.summary.join(' · ')})` : ''),
+      'info',
+    );
   }
 
   // ── 자료 읽기 ───────────────────────────────────────────────────────────────

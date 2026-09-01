@@ -11,8 +11,11 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { vscode } from '../vscodeApi';
-import { searchCatalog, type ICatalogEntry, type ICatalogExample, type ICatalogMember } from '../../ai/catalog/ComponentCatalog';
-import type { ComponentCatalogPayload, HostToWebviewMessage } from '../../types/messages';
+import {
+  buildPropFields, buildSnippet, checkPropValue, optionalPropFields, searchCatalog,
+  type ICatalogEntry, type ICatalogExample, type ICatalogMember, type IPropField,
+} from '../../ai/catalog/ComponentCatalog';
+import type { ComponentCatalogPayload, ComponentCatalogTarget, HostToWebviewMessage } from '../../types/messages';
 
 const ORIGIN_LABEL: Record<string, string> = {
   props: '속성표',
@@ -108,7 +111,104 @@ function ExampleSection({ example, defaultOpen }: { example: ICatalogExample; de
   );
 }
 
-function Detail({ entry }: { entry: ICatalogEntry }): React.ReactElement {
+/**
+ * 필수 prop 입력 폼(A4 후속) — 넣기 전에 값을 받는다.
+ *
+ * 칸의 종류(텍스트/숫자/체크/선택)와 기본값은 **타입에서 결정론으로** 유도한다(`propField`).
+ * 사용자가 비워 두면 그 기본값이 그대로 들어가므로, 폼을 무시하고 눌러도 종전과 같다.
+ */
+function PropForm({ fields, values, onChange, onRemove }: {
+  fields: (IPropField & { optional?: boolean })[];
+  values: Record<string, string>;
+  onChange: (name: string, value: string) => void;
+  onRemove?: (name: string) => void;
+}): React.ReactElement {
+  return (
+    <div className="cc__form">
+      {fields.map((f) => {
+        const value = values[f.name] ?? f.value;
+        // 한 칸에 여러 prop을 몰아넣으면 그대로 깨진 코드가 된다(실측). 막지 않고 알려준다.
+        const warn = f.control === 'text' ? checkPropValue(value) : null;
+        return (
+          <label key={f.name} className="cc__form-row" title={f.doc ?? f.type}>
+            <span className="cc__form-label">
+              {f.name}
+              {f.optional
+                ? <span className="cc__form-optional" title="선택 prop">○</span>
+                : <span className="cc__req" title="필수">●</span>}
+            </span>
+            {f.control === 'select' ? (
+              <select className="cc__form-input" value={value} onChange={(e) => onChange(f.name, e.target.value)}>
+                {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : f.control === 'checkbox' ? (
+              <span className="cc__form-input cc__form-input--check">
+                <input
+                  type="checkbox"
+                  checked={value !== 'false'}
+                  onChange={(e) => onChange(f.name, e.target.checked ? 'true' : 'false')}
+                />
+                <span className="cc__form-hint">{value !== 'false' ? '켜짐 (속성만 씀)' : '{false}'}</span>
+              </span>
+            ) : (
+              <input
+                className="cc__form-input"
+                type={f.control === 'number' ? 'number' : 'text'}
+                value={value}
+                onChange={(e) => onChange(f.name, e.target.value)}
+              />
+            )}
+            <span className="cc__form-type">{f.type}</span>
+            {f.optional && onRemove && (
+              <button
+                className="cc-btn cc-btn--caret"
+                title="이 prop 빼기"
+                onClick={(e) => { e.preventDefault(); onRemove(f.name); }}
+              >
+                ✕
+              </button>
+            )}
+            {warn && <span className="cc__form-warn">⚠ {warn}</span>}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function Detail({ entry, target }: { entry: ICatalogEntry; target: ComponentCatalogTarget | null }): React.ReactElement {
+  const required = useMemo(() => buildPropFields(entry), [entry]);
+  const optional = useMemo(() => optionalPropFields(entry), [entry]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  /** 사용자가 추가한 선택 prop 이름들 — 기본은 비어 있어 폼이 짧게 유지된다. */
+  const [extra, setExtra] = useState<string[]>([]);
+  // 부품을 바꾸면 앞 부품의 값이 남아 있으면 안 된다(다른 컴포넌트의 prop 값이 섞인다).
+  useEffect(() => { setValues({}); setExtra([]); }, [entry.id]);
+
+  const addOptional = (name: string): void => {
+    const f = optional.find((o) => o.name === name);
+    if (!f) return;
+    setExtra((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    // 추가하는 순간 기본값을 넣어야 스니펫에 나타난다(선택 prop은 "값이 있을 때만" 붙는다).
+    setValues((prev) => ({ ...prev, [name]: prev[name] ?? f.value }));
+  };
+  const removeOptional = (name: string): void => {
+    setExtra((prev) => prev.filter((n) => n !== name));
+    setValues((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
+  const fields = [
+    ...required,
+    ...extra.map((n) => optional.find((o) => o.name === n)).filter((f): f is IPropField => !!f)
+      .map((f) => ({ ...f, optional: true })),
+  ];
+  const addable = optional.filter((o) => !extra.includes(o.name));
+  // ★ 미리보기 = 실제 삽입. 호스트도 같은 함수를 부른다(보이는 것과 넣는 것이 갈리지 않게).
+  const snippet = useMemo(() => buildSnippet(entry, values) ?? entry.snippet, [entry, values]);
+
   return (
     <div className="cc__detail">
       <div className="cc__detail-head">
@@ -140,14 +240,58 @@ function Detail({ entry }: { entry: ICatalogEntry }): React.ReactElement {
 
       {entry.summary && <div className="cc__summary">{entry.summary}</div>}
 
-      {entry.snippet && (
+      {snippet && (
         <div className="cc__section">
           <div className="cc__section-head">
             <span className="cc__section-title">빠른 스니펫</span>
-            <span className="cc__section-note">import + 필수 prop만 — 값은 자리표시자입니다</span>
-            <CopyButton text={entry.snippet} label={`${entry.name} 스니펫`} />
+            <span className="cc__section-note">
+              {target
+                // 버튼이 어디에 넣을지 **누르기 전에** 말한다 — 눌러 봐야 아는 버튼은 무섭다.
+                ? `${target.file} ${target.line}줄${target.hasSelection ? ' (선택 영역 교체)' : ''}`
+                : '.tsx 파일을 열고 넣을 자리에 커서를 두세요'}
+            </span>
+            <button
+              className="cc-btn cc-btn--primary"
+              disabled={!target}
+              title={target
+                ? `${target.file} ${target.line}줄에 넣습니다 (import 자동 정리 · Ctrl+Z로 취소)`
+                : '.tsx 파일을 열고 넣을 자리에 커서를 두세요'}
+              onClick={() => vscode.postMessage({ type: 'componentCatalogInsert', entryId: entry.id, values })}
+            >
+              ⤵ 커서 위치에 넣기
+            </button>
+            <CopyButton text={snippet} label={`${entry.name} 스니펫`} />
           </div>
-          <pre className="cc__code">{entry.snippet}</pre>
+          {(fields.length > 0 || addable.length > 0) && (
+            <>
+              {fields.length > 0 && (
+                <PropForm
+                  fields={fields}
+                  values={values}
+                  onChange={(n, v) => setValues((prev) => ({ ...prev, [n]: v }))}
+                  onRemove={removeOptional}
+                />
+              )}
+              {addable.length > 0 && (
+                <div className="cc__form cc__form--add">
+                  <label className="cc__form-row">
+                    <span className="cc__form-label">+ prop 추가</span>
+                    <select
+                      className="cc__form-input"
+                      value=""
+                      onChange={(e) => { addOptional(e.target.value); e.currentTarget.value = ''; }}
+                    >
+                      <option value="">선택 prop 고르기 ({addable.length}개)</option>
+                      {addable.map((o) => (
+                        <option key={o.name} value={o.name}>{o.name} — {o.type}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </>
+          )}
+          <pre className="cc__code">{snippet}</pre>
         </div>
       )}
 
@@ -192,6 +336,7 @@ export function ComponentCatalogApp(): React.ReactElement {
   const [payload, setPayload] = useState<ComponentCatalogPayload | null>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [target, setTarget] = useState<ComponentCatalogTarget | null>(null);
   const [notice, setNotice] = useState<{ message: string; severity: 'info' | 'error' } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -200,7 +345,10 @@ export function ComponentCatalogApp(): React.ReactElement {
       const msg = event.data;
       if (msg.type === 'componentCatalog') {
         setPayload(msg.payload);
+        setTarget(msg.payload.target);
         setSelected((prev) => prev ?? msg.payload.entries[0]?.id ?? null);
+      } else if (msg.type === 'componentCatalogTarget') {
+        setTarget(msg.target);
       } else if (msg.type === 'componentCatalogNotice') {
         setNotice({ message: msg.message, severity: msg.severity });
         if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -292,7 +440,7 @@ export function ComponentCatalogApp(): React.ReactElement {
 
         {/* ── 오른쪽: 상세 ── */}
         {current ? (
-          <Detail entry={current} />
+          <Detail entry={current} target={target} />
         ) : (
           <div className="cc__detail">
             <div className="cc__empty">{payload ? '왼쪽에서 부품을 선택하세요.' : '불러오는 중…'}</div>

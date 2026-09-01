@@ -303,32 +303,127 @@ function parseDoc(text: string, withExamples: boolean): IParsedDoc {
 // ── 스니펫 ────────────────────────────────────────────────────────────────────
 
 /** 필수 prop 하나를 JSX 속성 문자열로. 타입만 보고 **결정론적으로** 만든다(값 추측 금지). */
-function attrFor(prop: ICatalogProp): string {
-  const type = prop.type.trim();
-  if (type === 'boolean') return prop.name;
-  if (type.includes('=>')) {
-    const base = prop.name.replace(/^on/, '');
-    return `${prop.name}={handle${base.charAt(0).toUpperCase()}${base.slice(1)}}`;
-  }
-  // 리터럴 유니온은 첫 값을 쓴다. 따옴표는 두 종류 다 — 실 인덱스에 `"single" | "multiple"` 형태가 있다.
+/** prop 타입에서 유도한 입력 방식 — 사람이 값을 채우는 칸의 종류. */
+export type TPropControl = 'text' | 'number' | 'checkbox' | 'select';
+
+/** 삽입 전에 값을 받는 칸 하나(A4 후속 — 자리표시자 대신 실제 값). */
+export interface IPropField {
+  name: string;
+  type: string;
+  control: TPropControl;
+  /** select일 때 고를 값들(리터럴 유니온). */
+  options?: string[];
+  /** 기본값 — 비워 두면 이 값이 그대로 들어간다(종전 자리표시자와 같다). */
+  value: string;
+  doc?: string;
+}
+
+/** 리터럴 유니온이면 값 목록(따옴표는 두 종류 다 — 실 인덱스에 `"a" | "b"` 형태가 있다). */
+function literalOptions(type: string): string[] | null {
+  if (!type.includes('|')) return null;
   const literals = type.match(/'[^']+'|"[^"]+"/g);
-  if (literals && type.includes('|')) return `${prop.name}="${literals[0].replace(/['"]/g, '')}"`;
-  if (type === 'string') return `${prop.name}="값"`;
-  if (type === 'number') return `${prop.name}={0}`;
-  if (type.endsWith('[]')) return `${prop.name}={[]}`;
-  return `${prop.name}={${prop.name}}`;
+  if (!literals || literals.length === 0) return null;
+  return literals.map((l) => l.replace(/['"]/g, ''));
+}
+
+/** 타입만 보고 정하는 입력 방식·기본값 — 프리뷰·삽입·폼이 **같은 규칙**을 쓰게 하는 진실원. */
+export function propField(prop: ICatalogProp): IPropField {
+  const type = prop.type.trim();
+  const base = { name: prop.name, type, ...(prop.doc ? { doc: prop.doc } : {}) };
+  const options = literalOptions(type);
+  if (options) return { ...base, control: 'select', options, value: options[0] };
+  if (type === 'boolean') return { ...base, control: 'checkbox', value: 'true' };
+  if (type === 'number') return { ...base, control: 'number', value: '0' };
+  if (type.includes('=>')) {
+    const stem = prop.name.replace(/^on/, '');
+    return { ...base, control: 'text', value: `handle${stem.charAt(0).toUpperCase()}${stem.slice(1)}` };
+  }
+  if (type === 'string') return { ...base, control: 'text', value: '값' };
+  if (type.endsWith('[]')) return { ...base, control: 'text', value: '[]' };
+  return { ...base, control: 'text', value: prop.name };
+}
+
+/**
+ * 값 하나를 JSX 속성으로 옮긴다. **문자열은 따옴표, 나머지는 중괄호** — 사용자가 친 값을
+ * 그대로 표현식으로 넣는다(따옴표 규칙을 사람이 외우지 않게).
+ * 빈 값은 기본값으로 되돌린다 — 빈 칸이 `label=""` 같은 무의미한 코드가 되지 않게.
+ */
+export function formatPropAttr(prop: ICatalogProp, raw?: string): string {
+  const field = propField(prop);
+  const value = (raw ?? '').trim() || field.value;
+
+  if (field.control === 'checkbox') {
+    // 참이면 플래그(`searchable`), 거짓이면 명시적으로 `{false}`.
+    return value === 'false' ? `${prop.name}={false}` : prop.name;
+  }
+  if (field.control === 'select' || field.type === 'string') return `${prop.name}="${value}"`;
+  return `${prop.name}={${value}}`;
+}
+
+/** 이 부품을 넣기 전에 채울 칸들(루트 컴포넌트의 **필수 prop만**). 없으면 빈 배열. */
+export function buildPropFields(entry: { name: string; members: ICatalogMember[] }): IPropField[] {
+  const root = entry.members.find((m) => m.name === entry.name) ?? null;
+  return (root?.props ?? []).filter((p) => p.required).map(propField);
+}
+
+/**
+ * 선택 prop 칸들 — 기본으로는 안 보이고 사용자가 **골라서 추가**한다.
+ *
+ * 왜 필요한가(실측): 필수 칸만 뒀더니 `pageSize` 같은 흔한 선택 prop을 넣을 자리가 없어,
+ * 사용자가 `columns` 칸에 `employeeColumns, pageSize = 20`을 몰아넣었고 그대로
+ * `columns={employeeColumns, pageSize = 20}` 이라는 **깨진 코드**가 삽입됐다.
+ * 칸이 없으면 사람은 있는 칸에 욱여넣는다 — 그건 사용자 실수가 아니라 폼의 실패다.
+ */
+export function optionalPropFields(entry: { name: string; members: ICatalogMember[] }): IPropField[] {
+  const root = entry.members.find((m) => m.name === entry.name) ?? null;
+  return (root?.props ?? []).filter((p) => !p.required).map(propField);
+}
+
+/**
+ * 값이 "prop 하나의 값"으로 말이 되는지 본다. 문제면 사람 말 경고, 아니면 null.
+ * **막지는 않는다** — 표현식은 얼마든지 복잡할 수 있어 완전한 판정은 불가능하고,
+ * 틀린 경고로 막는 것보다 알려주고 사람이 정하는 편이 낫다(카드의 되묻기 원칙과 같다).
+ */
+export function checkPropValue(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+
+  // 괄호·중괄호·대괄호 밖의 쉼표/대입은 "여러 prop을 한 칸에 넣은" 신호다.
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quote) {
+      if (c === quote && value[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+    if ('([{'.includes(c)) { depth++; continue; }
+    if (')]}'.includes(c)) { depth--; continue; }
+    if (depth > 0) continue;
+    if (c === ',') return '쉼표가 있습니다 — 한 칸에는 prop 하나의 값만 넣고, 다른 prop은 아래 [+ prop 추가]로 넣어주세요.';
+    if (c === '=' && value[i + 1] !== '>' && value[i + 1] !== '=' && value[i - 1] !== '=' && value[i - 1] !== '!'
+      && value[i - 1] !== '<' && value[i - 1] !== '>') {
+      return '등호(=)가 있습니다 — 값만 넣어주세요(예: `20`). prop 이름은 왼쪽 칸이 이미 말합니다.';
+    }
+  }
+  return null;
 }
 
 /**
  * 최소 사용 스니펫 = import 한 줄 + **필수 prop만** 채운 JSX.
  * 필수가 없으면 태그만 — "일단 붙여넣고 시작"하는 용도이고, 진짜 예제는 문서 쪽이 준다.
+ *
+ * `values`(prop 이름 → 사용자가 입력한 값)를 주면 그 값으로 채운다. **패널의 미리보기와 실제 삽입이
+ * 이 한 함수를 함께 쓴다** — 두 벌이면 "보이는 것 ≠ 넣는 것"이 되고, 그건 계획 카드가 지키려던
+ * 안전 속성(사람 눈 검증)을 그대로 깨뜨린다(§3.6).
  */
 export function buildSnippet(entry: {
   name: string;
   members: ICatalogMember[];
   importPath: string | null;
   importLine: string | null;
-}): string | null {
+}, values: Record<string, string> = {}): string | null {
   const root = entry.members.find((m) => m.name === entry.name) ?? null;
   const tag = root?.name ?? entry.name.replace(/\s+/g, '');
   if (!/^[A-Z][A-Za-z0-9]*$/.test(tag)) return null;
@@ -342,7 +437,11 @@ export function buildSnippet(entry: {
   //   그런 부품은 여러 조각을 조립해야 하므로 진짜 사용법은 가이드 문서 쪽이 답이다.
   if (!root && entry.members.length > 0) return importLine;
 
-  const attrs = (root?.props ?? []).filter((p) => p.required).map(attrFor).join(' ');
+  // 필수는 항상, 선택은 **값을 준 것만** — 사용자가 폼에서 추가한 prop이 그대로 반영된다.
+  const attrs = (root?.props ?? [])
+    .filter((p) => p.required || Object.prototype.hasOwnProperty.call(values, p.name))
+    .map((p) => formatPropAttr(p, values[p.name]))
+    .join(' ');
   return `${importLine}\n\n${attrs ? `<${tag} ${attrs} />` : `<${tag} />`}`;
 }
 
