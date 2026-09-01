@@ -307,6 +307,7 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
   const handleOpenDesignTokens = () => vscode.postMessage({ type: 'openDesignTokens' });
   const handleOpenRouterMap = () => vscode.postMessage({ type: 'openRouterMap' });
   const handleOpenHandoff = () => vscode.postMessage({ type: 'openPublishingHandoff' });
+  const handleOpenMockData = () => vscode.postMessage({ type: 'openMockData' });
 
   return (
     <>
@@ -379,6 +380,13 @@ function HomeTab({ model }: { model: string }): React.ReactElement {
           title="퍼블리셔 산출물(publishing/)을 domains/로 옮기기 — import 재작성·라우터 등록까지"
         >
           📦 퍼블리싱 포팅
+        </button>
+        <button
+          className="launcher__secondary-btn"
+          onClick={handleOpenMockData}
+          title="타입으로 fixture JSON 만들기 — 백엔드 없이 화면 돌리기 (모델 호출 없음)"
+        >
+          🧪 Mock 데이터
         </button>
       </div>
 

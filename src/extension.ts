@@ -12,6 +12,7 @@ import { ComponentCatalogPanel } from './providers/ComponentCatalogPanel';
 import { DesignTokensPanel } from './providers/DesignTokensPanel';
 import { RouterMapPanel } from './providers/RouterMapPanel';
 import { PublishingHandoffPanel } from './providers/PublishingHandoffPanel';
+import { MockDataPanel } from './providers/MockDataPanel';
 import { CardCatalogService } from './providers/CardCatalogService';
 import { ScaffoldLintProvider } from './providers/ScaffoldLintProvider';
 import { ScaffoldHoverProvider } from './providers/ScaffoldHoverProvider';
@@ -143,6 +144,11 @@ export function activate(context: vscode.ExtensionContext): void {
     // 퍼블리싱 포팅 — publishing/ 산출물을 domains/로 옮기는 결정론 계획 + 적용 (§7 D1).
     vscode.commands.registerCommand('axiom-ai.openPublishingHandoff', () => {
       PublishingHandoffPanel.createOrShow(context.extensionUri);
+    }),
+
+    // Mock 데이터 — 워크스페이스 타입으로 fixture JSON을 만든다(백엔드 미완성 상태 개발, §7 D2).
+    vscode.commands.registerCommand('axiom-ai.openMockData', () => {
+      MockDataPanel.createOrShow(context.extensionUri);
     }),
 
     // hover 카드의 "정의 열기" — 토큰이 선언된 파일의 그 줄로 이동한다.

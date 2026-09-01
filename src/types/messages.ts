@@ -456,6 +456,50 @@ export interface HandoffPayload {
   blocked: string | null;
 }
 
+/** Mock 데이터 생성기(§7 D2) 페이로드 — 타입 목록 + 지금 만든 JSON. */
+export interface MockDataPayload {
+  /** 워크스페이스의 타입들(데이터로 쓸 만한 것부터). */
+  types: Array<{
+    name: string;
+    kind: 'type' | 'interface';
+    file: string;
+    line: number;
+    /** data = 그대로 fixture · partial = 일부는 직접 · ui = 데이터가 아님 */
+    level: 'data' | 'partial' | 'ui';
+    levelReason: string;
+    fieldCount: number;
+  }>;
+  /** 지금 고른 타입. */
+  selected: { name: string; file: string } | null;
+  /** 지금 편집기에서 보고 있는 파일(그 파일의 타입을 목록 맨 위로 올린다). */
+  currentFile: string | null;
+  options: {
+    count: number;
+    asList: boolean;
+    seed: number;
+    includeOptional: boolean;
+    envelopeKey: string | null;
+    envelopeMeta: boolean;
+  };
+  /** 만들어진 JSON 미리보기(그대로 저장된다). */
+  preview: string | null;
+  /** 그 JSON과 같은 모양의 `useApi` 제네릭. */
+  generic: string | null;
+  /** 붙여넣을 `useApi` 사용 예. */
+  snippet: string | null;
+  /** 저장 위치(워크스페이스 상대) · 브라우저가 부르는 주소. */
+  filePath: string | null;
+  endpoint: string | null;
+  /** 그 자리에 파일이 이미 있는가(있으면 덮어쓰기임을 밝힌다). */
+  exists: boolean;
+  /** 타입을 읽으며 못 푼 것들. */
+  issues: string[];
+  /** 값 만들며 알아야 할 것들. */
+  notices: string[];
+  envelopeChoices: string[];
+  blocked: string | null;
+}
+
 export interface ActionCatalogDryrunRow {
   cardId: string;
   icon: string;
@@ -556,6 +600,13 @@ export type WebviewToHostMessage =
   | { type: 'handoffSelect'; domain: string; pages: string[] }
   | { type: 'handoffOpen'; file: string; line: number }
   | { type: 'handoffApply' }
+  // Mock 데이터 생성기(§7 D2): 목록 로드 / 타입 선택 / 옵션 변경 / 복사 / 파일 저장 / 파일 열기
+  | { type: 'mockLoad' }
+  | { type: 'mockSelect'; name: string; file: string }
+  | { type: 'mockOptions'; options: MockDataPayload['options'] }
+  | { type: 'mockCopy'; text: string; what: 'json' | 'snippet' }
+  | { type: 'mockSave' }
+  | { type: 'mockOpen'; file: string; line: number }
   // 입력창 위 실시간 추천(형태 B): 타이핑 중 요청 / 목록에서 선택
   | { type: 'cardSuggestRequest'; query: string }
   | { type: 'cardSuggestPick'; cardId: string; query: string }
@@ -565,6 +616,7 @@ export type WebviewToHostMessage =
   | { type: 'openDesignTokens' }
   | { type: 'openRouterMap' }
   | { type: 'openPublishingHandoff' }
+  | { type: 'openMockData' }
   | { type: 'guideReady' }
   | { type: 'guideLoadDoc'; docId: string; anchor?: string }
   | { type: 'guideEditDoc'; docId: string }
@@ -644,6 +696,8 @@ export type HostToWebviewMessage =
   | { type: 'routerMapNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'handoff'; payload: HandoffPayload }
   | { type: 'handoffNotice'; message: string; severity: 'info' | 'error' }
+  | { type: 'mockData'; payload: MockDataPayload }
+  | { type: 'mockNotice'; message: string; severity: 'info' | 'error' }
   | { type: 'usage'; promptTokens?: number; completionTokens?: number; totalTokens?: number; contextWindow: number; outputReserve?: number }
   | { type: 'probeFilePicked'; filePath: string }
   | {

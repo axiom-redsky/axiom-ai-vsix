@@ -480,6 +480,11 @@
         "category": "Axiom AI"
       },
       {
+        "command": "axiom-ai.openMockData",
+        "title": "Axiom AI: Mock 데이터 열기",
+        "category": "Axiom AI"
+      },
+      {
         "command": "axiom-ai.reseedGuide",
         "title": "Axiom AI: 가이드 재시드 (번들에서 복구)"
       }
@@ -535,6 +540,7 @@
     "test:design-tokens": "node scripts/run-test-design-tokens.mjs",
     "test:router-map": "node scripts/run-test-router-map.mjs",
     "test:publishing-handoff": "node scripts/run-test-publishing-handoff.mjs",
+    "test:mock-data": "node scripts/run-test-mock-data.mjs",
     "import:guide": "node scripts/import-guide-docs.mjs",
     "eval:region": "node scripts/run-eval-region.mjs",
     "eval:intent": "node scripts/run-eval-intent.mjs",

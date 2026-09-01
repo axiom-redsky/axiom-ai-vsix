@@ -61,6 +61,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         case 'openPublishingHandoff':
           vscode.commands.executeCommand('axiom-ai.openPublishingHandoff');
           break;
+        case 'openMockData':
+          vscode.commands.executeCommand('axiom-ai.openMockData');
+          break;
         case 'getSettings':
           this._handleGetSettings();
           break;
